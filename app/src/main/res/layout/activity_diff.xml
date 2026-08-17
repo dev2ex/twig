@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:titleTextAppearance="@style/CompactToolbarTitle"
+        app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
+        android:background="@color/toolbar"
+        app:titleTextColor="@color/white"
+        app:subtitleTextColor="#B3FFFFFF"
+        app:navigationIcon="@drawable/ic_up" />
+
+    <FrameLayout
+        android:id="@+id/overlay_host"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 方向由代码定:左右并排 / 上下并排(见 DiffActivity.applyLayoutMode) -->
+        <LinearLayout
+            android:id="@+id/panes"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <!-- 每栏顶上一条标题,标明这边是旧/新(或左/右)——两栏同时显示时不标就得
+                 靠位置猜,竖屏一次看一侧时更是完全没线索 -->
+            <LinearLayout
+                android:id="@+id/side_left"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/title_left"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@color/path_bar_active"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp"
+                    android:singleLine="true"
+                    android:ellipsize="start"
+                    android:textColor="@color/white"
+                    android:textSize="11sp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/list_left"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/divider"
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="@color/divider" />
+
+            <LinearLayout
+                android:id="@+id/side_right"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/title_right"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@color/path_bar_active"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="3dp"
+                    android:paddingBottom="3dp"
+                    android:singleLine="true"
+                    android:ellipsize="start"
+                    android:textColor="@color/white"
+                    android:textSize="11sp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/list_right"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_empty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+        <ProgressBar
+            android:id="@+id/loading"
+            style="?android:attr/progressBarStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+
+        <!-- 合并差异的悬浮按钮:位置由代码算(见 DiffActivity.updateMergePill)——
+             跟着当前定位的那块差异走,并排布局贴在分隔线上、跟随滚动;不可见就整体
+             GONE。x/y 用 View.setX/setY 直接摆,不走 layout_gravity,因为位置是连续
+             变化的,margin 改起来比 translation 麻烦。 -->
+        <LinearLayout
+            android:id="@+id/merge_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_merge_pill"
+            android:elevation="4dp"
+            android:visibility="gone">
+
+            <ImageButton
+                android:id="@+id/btn_merge_a"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:scaleType="fitCenter" />
+
+            <ImageButton
+                android:id="@+id/btn_merge_b"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:scaleType="fitCenter" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

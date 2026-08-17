@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 字段比其他连接多(端点/密钥对/区域/桶/寻址风格),小屏放不下,所以包一层 ScrollView -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <EditText
+            android:id="@+id/et_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/conn_name"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/et_endpoint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/s3_endpoint"
+            android:inputType="textUri"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/et_key"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/s3_access_key"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/et_secret"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/s3_secret_key"
+            android:inputType="textPassword"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/et_bucket"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/s3_bucket"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <EditText
+            android:id="@+id/et_region"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/s3_region"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <CheckBox
+            android:id="@+id/cb_path_style"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:checked="true"
+            android:text="@string/s3_path_style" />
+    </LinearLayout>
+</ScrollView>

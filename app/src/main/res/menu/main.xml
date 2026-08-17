@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_view_mode"
+        android:title="@string/action_view_mode"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_thumbs"
+        android:title="@string/action_thumbs"
+        android:checkable="true"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_show_hidden"
+        android:title="@string/action_show_hidden"
+        android:checkable="true"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_density"
+        android:title="@string/action_density"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_remember_location"
+        android:title="@string/action_remember_location"
+        android:checkable="true"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_fullscreen"
+        android:title="@string/action_fullscreen"
+        android:checkable="true"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_theme"
+        android:title="@string/action_theme"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_language"
+        android:title="@string/action_language"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_pin_music_shortcut"
+        android:title="@string/music_pin_shortcut"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_settings"
+        android:title="@string/action_settings"
+        app:showAsAction="never" />
+</menu>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 一段细条从左掠到右,途中先抻长再收窄:和系统 indeterminate 一个观感,不是"填满进度" -->
+<set xmlns:android="http://schemas.android.com/apk/res/android">
+    <objectAnimator
+        android:propertyName="translateX"
+        android:valueFrom="-80"
+        android:valueTo="360"
+        android:valueType="floatType"
+        android:duration="1600"
+        android:repeatCount="infinite"
+        android:interpolator="@android:interpolator/accelerate_decelerate" />
+    <objectAnimator
+        android:propertyName="scaleX"
+        android:valueFrom="0.08"
+        android:valueTo="0.42"
+        android:valueType="floatType"
+        android:duration="800"
+        android:repeatCount="infinite"
+        android:repeatMode="reverse" />
+</set>

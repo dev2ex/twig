@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 基于 AppCompat DayNight(随系统/手动深色,不引入 Material 库) -->
+    <style name="Theme.Twig" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/toolbar</item>
+    </style>
+
+    <!-- 侧边操作列条目:图标 + 小字标签,X-plore 式 -->
+    <style name="StripItem">
+        <!-- 父容器是 GridLayout:0dp + columnWeight 让每列等宽(1 列时即占满) -->
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:layout_gravity">fill_horizontal</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingTop">7dp</item>
+        <item name="android:paddingBottom">7dp</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="StripIcon">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:tint">@color/primary</item>
+    </style>
+
+    <style name="StripLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">9sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:singleLine">true</item>
+    </style>
+
+    <!--
+      **带副标题的 Toolbar** 都该用这一对(对比 / 文本对比 / 图片对比 / Git)。
+      不定死的话走 Theme.AppCompat 默认的 TextAppearance.Widget.AppCompat.Toolbar.Title
+      (20sp)——竖屏 actionBarSize 是 56dp,20sp 标题 + 14sp 副标题两行摆得开、字显得
+      很大;横屏只有 48dp,同样两行被挤扁,于是"竖屏进入字大、横屏进入正常"。而这套
+      尺寸在 Toolbar 建 title view 那一刻就定了,转屏也不会重来。显式给尺寸即可。
+    -->
+    <style name="CompactToolbarTitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="CompactToolbarSubtitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Subtitle">
+        <item name="android:textSize">11sp</item>
+    </style>
+</resources>

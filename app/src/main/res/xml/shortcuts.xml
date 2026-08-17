@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="music"
+        android:enabled="true"
+        android:icon="@drawable/ic_music_note"
+        android:shortcutShortLabel="@string/music_menu"
+        android:shortcutLongLabel="@string/music_title">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.twig.app"
+            android:targetClass="com.twig.app.ui.MusicPlayerActivity" />
+    </shortcut>
+</shortcuts>

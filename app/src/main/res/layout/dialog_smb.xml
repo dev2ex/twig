@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <EditText
+        android:id="@+id/et_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/conn_name"
+        android:inputType="text"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_host"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/smb_host"
+        android:inputType="textUri"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_share"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/smb_share"
+        android:inputType="text"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_user"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/ftp_user"
+        android:inputType="text"
+        android:text="guest"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_pass"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/ftp_pass"
+        android:inputType="textPassword"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_domain"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/smb_domain"
+        android:inputType="text"
+        android:text="WORKGROUP"
+        android:importantForAutofill="no" />
+</LinearLayout>

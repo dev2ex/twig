@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 上下两栏。白色:diff 顶栏上的图标都是直接画成白的,不在代码里染 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,4h18v7H3V4zM5,6v3h14V6H5z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M3,13h18v7H3v-7zM5,15v3h14v-3H5z" />
+</vector>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/toolbar"
+        app:titleTextColor="@color/white"
+        app:subtitleTextColor="#B3FFFFFF"
+        app:navigationIcon="@drawable/ic_up">
+
+        <!-- 会话切换下拉:标题位放会话列表,选中即切换 -->
+        <Spinner
+            android:id="@+id/session_spinner"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:popupBackground="@color/toolbar" />
+    </androidx.appcompat.widget.Toolbar>
+
+    <com.termux.view.TerminalView
+        android:id="@+id/terminal"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- 附加键条:实体键盘没有的控制键,两行 -->
+    <LinearLayout
+        android:id="@+id/extra_keys"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:orientation="vertical"
+        android:background="#1A1A1A" />
+</LinearLayout>

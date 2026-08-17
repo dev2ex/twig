@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 横屏双栏:左侧封面,右侧歌名/歌词/操作区——歌词常驻显示,不需要像竖屏那样点击切换。
+     控件 id 与竖屏版(layout/activity_music_player.xml)保持一致,ViewBinding 字段复用,
+     MusicPlayerActivity 无需区分布局各写一套逻辑。 -->
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/drawer"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- 主内容 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 毛玻璃背景:全屏铺满(含状态栏区域,沉浸式) -->
+        <ImageView
+            android:id="@+id/bgBlur"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null" />
+
+        <LinearLayout
+            android:id="@+id/content"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <!-- 顶行 -->
+            <LinearLayout
+                android:id="@+id/topBar"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="4dp">
+
+                <ImageButton
+                    android:id="@+id/btnDrawer"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_menu"
+                    android:tint="@color/white"
+                    android:contentDescription="@string/music_playlists" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="1dp"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/btnMore"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_more_vert"
+                    android:tint="@color/white"
+                    android:contentDescription="@string/music_info" />
+            </LinearLayout>
+
+            <!-- 双栏行:左封面 / 右(歌名·歌词·操作) -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <!-- 左:封面(左右滑切歌,单击无效果——歌词已常驻右侧) -->
+                <FrameLayout
+                    android:id="@+id/centerArea"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:paddingHorizontal="24dp"
+                    android:paddingTop="16dp"
+                    android:paddingBottom="40dp">
+
+                    <ImageView
+                        android:id="@+id/cover"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_audio"
+                        android:contentDescription="@null" />
+                </FrameLayout>
+
+                <!-- 右:歌名/艺术家/专辑 + 歌词(占满剩余空间)+ 播放操作 -->
+                <LinearLayout
+                    android:id="@+id/controls"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1.1"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="12dp"
+                    android:paddingTop="4dp">
+
+                    <TextView
+                        android:id="@+id/trackTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:textColor="@color/white"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <!-- 艺术家一行:左=加入我的最爱,右=当前播放列表 -->
+                    <LinearLayout
+                        android:id="@+id/artistRow"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="2dp">
+
+                        <ImageButton
+                            android:id="@+id/btnFav"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_marginStart="-8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_heart"
+                            android:tint="@color/white"
+                            android:contentDescription="@string/music_add_fav" />
+
+                        <TextView
+                            android:id="@+id/trackArtist"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:textColor="#CCFFFFFF"
+                            android:textSize="12sp" />
+
+                        <ImageButton
+                            android:id="@+id/btnQueue"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_marginEnd="-8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_queue"
+                            android:tint="@color/white"
+                            android:contentDescription="@string/music_playlists" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/trackAlbum"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="2dp" />
+
+                    <!-- 歌词:常驻显示,占满标题区与操作区之间的剩余空间 -->
+                    <com.twig.app.ui.LyricsView
+                        android:id="@+id/lyrics"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <!-- 播放操作栏:两侧弹性占位挤到中间靠拢 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical"
+                        android:layout_marginTop="4dp">
+
+                        <ImageButton
+                            android:id="@+id/btnShuffle"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_marginStart="-8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_shuffle"
+                            android:tint="@color/white"
+                            android:contentDescription="@null" />
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <ImageButton
+                            android:id="@+id/btnPrev"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginEnd="6dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_skip_prev"
+                            android:tint="@color/white"
+                            android:contentDescription="@null" />
+
+                        <ImageButton
+                            android:id="@+id/btnPlay"
+                            android:layout_width="58dp"
+                            android:layout_height="58dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_play"
+                            android:tint="@color/white"
+                            android:scaleType="fitCenter"
+                            android:padding="4dp"
+                            android:contentDescription="@null" />
+
+                        <ImageButton
+                            android:id="@+id/btnNext"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginStart="6dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_skip_next"
+                            android:tint="@color/white"
+                            android:contentDescription="@null" />
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <ImageButton
+                            android:id="@+id/btnRepeat"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:layout_marginEnd="-8dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_repeat"
+                            android:tint="@color/white"
+                            android:contentDescription="@null" />
+                    </LinearLayout>
+
+                    <!-- 波形进度条 -->
+                    <com.twig.app.ui.WaveformSeekBar
+                        android:id="@+id/wave"
+                        android:layout_width="match_parent"
+                        android:layout_height="28dp"
+                        android:layout_marginTop="2dp" />
+
+                    <!-- 最下一行:当前时间 / 曲目序号·总数 / 时长 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <TextView
+                            android:id="@+id/tvPos"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#CCFFFFFF"
+                            android:textSize="11sp"
+                            android:text="0:00" />
+
+                        <TextView
+                            android:id="@+id/tvIndex"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:gravity="center"
+                            android:textColor="#99FFFFFF"
+                            android:textSize="11sp" />
+
+                        <TextView
+                            android:id="@+id/tvDur"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="#CCFFFFFF"
+                            android:textSize="11sp"
+                            android:text="0:00" />
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- 抽屉 -->
+    <LinearLayout
+        android:id="@+id/drawerContent"
+        android:layout_width="290dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="@color/surface">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp"
+            android:text="@string/music_playlists"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:background="@color/bar" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/drawerList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- 退出播放器 -->
+        <LinearLayout
+            android:id="@+id/drawerExit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="16dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_exit"
+                android:tint="@color/text_secondary"
+                android:contentDescription="@string/music_exit" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="@string/music_exit"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </LinearLayout>
+</androidx.drawerlayout.widget.DrawerLayout>

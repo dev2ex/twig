@@ -1,0 +1,10 @@
+<!-- 上下并排布局下的"搬到上面那栏":ic_merge_right 转 -90° -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/white">
+    <group android:rotation="-90" android:pivotX="12" android:pivotY="12">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M3,9.5h10v-4l7,6.5 -7,6.5v-4H3z" />
+    </group>
+</vector>

@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- 共享中:地址 + 状态。未开启时整块隐藏 -->
+        <LinearLayout
+            android:id="@+id/box_running"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tv_address"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textIsSelectable="true"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_address_more"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textIsSelectable="true"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tv_warn"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btn_battery"
+                style="?android:attr/buttonBarButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/share_battery_settings" />
+        </LinearLayout>
+
+        <!-- 未开启:配置表单 -->
+        <LinearLayout
+            android:id="@+id/box_form"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/share_scope"
+                android:textSize="13sp" />
+
+            <RadioGroup
+                android:id="@+id/rg_scope"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/rb_all"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/share_scope_all" />
+
+                <RadioButton
+                    android:id="@+id/rb_dir"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/share_scope_dir" />
+            </RadioGroup>
+
+            <!--
+              目录路径单独一行,不拼进单选项的文字里:路径要能从**开头**省略
+              (`ellipsize="start"`,末尾那几级才是有信息量的),而
+              "指定目录:" 这个前缀恰恰在开头,拼在一起会被一起吃掉。
+              marginStart 让它对齐到单选钮右边的文字,读起来是同一项的第二行。
+            -->
+            <TextView
+                android:id="@+id/tv_dir_path"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="32dp"
+                android:layout_marginBottom="4dp"
+                android:ellipsize="start"
+                android:singleLine="true"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <androidx.appcompat.widget.SwitchCompat
+                android:id="@+id/sw_readonly"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:checked="true"
+                android:text="@string/share_readonly" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:text="@string/share_readonly_desc"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/et_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/share_device_name"
+                android:importantForAutofill="no"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/et_port"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/share_port"
+                android:importantForAutofill="no"
+                android:inputType="number" />
+
+            <EditText
+                android:id="@+id/et_user"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/share_user"
+                android:importantForAutofill="no"
+                android:inputType="text" />
+
+            <EditText
+                android:id="@+id/et_pass"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/share_password"
+                android:importantForAutofill="no"
+                android:inputType="textPassword" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

@@ -1,0 +1,21 @@
+# Android / Gradle
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# 签名密钥绝不入库
+*.keystore
+*.jks
+keystore.properties
+
+# 本机专属:测试机地址、发布目录、本地服务凭据
+CLAUDE.local.md
+.claude/

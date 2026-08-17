@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <SurfaceView
+        android:id="@+id/surface"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
+    <!-- 位图字幕(PGS 等)叠加层,铺满屏幕,内部按视频显示矩形映射坐标 -->
+    <com.twig.app.ui.BitmapCueView
+        android:id="@+id/pgs_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 音频模式:图标 + 文件名 -->
+    <LinearLayout
+        android:id="@+id/audio_info"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:src="@drawable/ic_audio"
+            android:tint="@color/accent"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/audio_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/white"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+    <!-- 外挂/内嵌字幕 -->
+    <TextView
+        android:id="@+id/tv_subtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="56dp"
+        android:gravity="center"
+        android:shadowColor="#CC000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="4"
+        android:textColor="@color/white"
+        android:textSize="17sp"
+        android:visibility="gone" />
+
+    <!-- 长按加速提示:顶部、无背景色,靠文字阴影保证亮画面上也看得清 -->
+    <TextView
+        android:id="@+id/tv_speed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="28dp"
+        android:drawableEnd="@drawable/ic_fast_forward"
+        android:drawablePadding="6dp"
+        android:gravity="center_vertical"
+        android:shadowColor="#CC000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="4"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <!-- 手势反馈(进度/亮度/音量) -->
+    <TextView
+        android:id="@+id/tv_gesture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_overlay"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/white"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <ProgressBar
+        android:id="@+id/loading"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:layout_gravity="top"
+        android:background="#88000000"
+        app:titleTextColor="@color/white"
+        app:navigationIcon="@drawable/ic_up" />
+
+    <LinearLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="#88000000"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp">
+
+        <ImageButton
+            android:id="@+id/btn_play"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_pause"
+            android:tint="@color/white"
+            android:contentDescription="@string/slideshow" />
+
+        <TextView
+            android:id="@+id/tv_pos"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="@color/white"
+            android:textSize="12sp" />
+
+        <SeekBar
+            android:id="@+id/seek"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/tv_dur"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0:00"
+            android:textColor="@color/white"
+            android:textSize="12sp" />
+
+        <ImageButton
+            android:id="@+id/btn_subtitle"
+            android:layout_width="42dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_subtitle"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_subtitle" />
+
+        <ImageButton
+            android:id="@+id/btn_audio_track"
+            android:layout_width="42dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_audio_track"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_audio_track" />
+
+        <ImageButton
+            android:id="@+id/btn_scale"
+            android:layout_width="42dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_scale"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_scale_mode" />
+
+        <ImageButton
+            android:id="@+id/btn_orientation"
+            android:layout_width="42dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_rotate_unlock"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_orientation" />
+    </LinearLayout>
+</FrameLayout>

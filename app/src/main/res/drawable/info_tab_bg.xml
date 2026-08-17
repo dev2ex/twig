@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 属性卡片 tab 标题栏:只圆上角,底边与内容盒描边重叠成一条线 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/surface" />
+    <stroke android:width="1dp" android:color="@color/divider" />
+    <corners android:topLeftRadius="4dp" android:topRightRadius="4dp" />
+</shape>

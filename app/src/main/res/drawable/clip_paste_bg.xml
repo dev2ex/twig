@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 剪贴板栏「粘贴」按钮:实心圆角 + 点击涟漪(绿底白字,深浅色主题通用) -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#4DFFFFFF">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/primary" />
+            <corners android:radius="4dp" />
+        </shape>
+    </item>
+</ripple>

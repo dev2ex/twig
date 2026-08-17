@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp"
+    android:paddingTop="12dp">
+
+    <!-- 归档文件名(含扩展名;切换格式时跟着换) -->
+    <EditText
+        android:id="@+id/et_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/hint_name"
+        android:importantForAutofill="no"
+        android:inputType="text"
+        android:singleLine="true"
+        android:textSize="16sp" />
+
+    <RadioGroup
+        android:id="@+id/rg_format"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rb_zip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="ZIP"
+            android:textSize="14sp" />
+
+        <RadioButton
+            android:id="@+id/rb_7z"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="24dp"
+            android:text="7Z"
+            android:textSize="14sp" />
+    </RadioGroup>
+
+    <!-- 密码:留空 = 不加密(见 ArchiveWriter) -->
+    <EditText
+        android:id="@+id/et_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:hint="@string/compress_password_hint"
+        android:importantForAutofill="no"
+        android:inputType="textPassword"
+        android:singleLine="true"
+        android:textSize="16sp" />
+
+    <!-- 填了密码才露出来的说明(加密包只读这一条得先说清楚) -->
+    <TextView
+        android:id="@+id/tv_encrypt_note"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/compress_encrypt_note"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- 源:名称(单项)或"N 项" + 总大小 -->
+    <TextView
+        android:id="@+id/tv_src"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="middle"
+        android:maxLines="3"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/compress_save_to"
+        android:textColor="@color/text_primary"
+        android:textSize="16sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- 图标按目标来源类型设置(FileIcons.sourceIconRes),这里只是占位 -->
+        <ImageView
+            android:id="@+id/iv_dest"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_storage" />
+
+        <TextView
+            android:id="@+id/tv_dest"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:ellipsize="start"
+            android:singleLine="true"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+    <CheckBox
+        android:id="@+id/cb_move"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/compress_move_mode"
+        android:textSize="14sp" />
+</LinearLayout>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  一行 = 偏移 + hex + 分割线 + 字符。三列都是等宽字体,且每行字节数固定(由 Activity
+  按面板宽度算好),所以各列宽度自然对齐,不需要横向滚动。hex 列 weight=1 把富余空间
+  吃掉,于是**字符这一列整体被顶到行末**(右对齐);列内的字符本身仍是 gravity=start
+  左对齐——末行字节不满时,字符要跟上一行对得上,不能靠右挤。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:paddingStart="8dp"
+    android:paddingEnd="30dp">
+
+    <TextView
+        android:id="@+id/off"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:includeFontPadding="false"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/hex"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="start"
+        android:fontFamily="monospace"
+        android:includeFontPadding="false"
+        android:maxLines="1" />
+
+    <!-- hex 与字符两列之间的分割线;颜色跟主题走,在 bindRow 里上 -->
+    <View
+        android:id="@+id/divider"
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp" />
+
+    <TextView
+        android:id="@+id/chars"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="start"
+        android:fontFamily="monospace"
+        android:includeFontPadding="false"
+        android:maxLines="1" />
+</LinearLayout>

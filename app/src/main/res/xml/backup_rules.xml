@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 及以下的备份规则(android:fullBackupContent)。
+
+  默认全量备份会把应用私有目录整个打包走 —— 包括保存的服务器口令与 SFTP 私钥。
+  这些内容一旦进了 adb backup 或云备份,就脱离了"仅本应用可读"的保护:
+  Android ≤ 11 上 `adb backup` 可以直接把它们拖到电脑上明文查看。
+  凭据类数据一律排除;丢了大不了重新填一次,泄漏了是要换所有服务器密码的。
+
+  API 31+ 走 data_extraction_rules.xml,两份要一起改。
+-->
+<full-backup-content>
+    <!-- 服务器连接:host/user/password 明文 JSON -->
+    <exclude domain="sharedpref" path="twig_connections.xml" />
+    <!-- restic 仓库密码 -->
+    <exclude domain="sharedpref" path="twig_restic_pw.xml" />
+    <!-- 导入的 SFTP 私钥(MainActivity 的私钥选取会拷进这里) -->
+    <exclude domain="file" path="keys/" />
+</full-backup-content>

@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <!-- 扫描进度条压在标题栏底边内侧。★ elevation 提到这层 FrameLayout 上,
+         留在 Toolbar 上的话它会盖住同级没有 elevation 的进度条 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/toolbar"
+        android:elevation="4dp">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/toolbar"
+            app:titleTextAppearance="@style/CompactToolbarTitle"
+            app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
+            app:titleTextColor="@color/white"
+            app:subtitleTextColor="#B3FFFFFF"
+            app:navigationIcon="@drawable/ic_up" />
+
+        <ProgressBar
+            android:id="@+id/progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_gravity="bottom"
+            android:indeterminate="true"
+            android:indeterminateDrawable="@drawable/progress_thin_indet"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- 与主界面双面板同一形制:两侧各有自己的路径栏(活动侧高亮),
+             中间是一列状态符号;竖屏只显示一侧,状态列照样在 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <LinearLayout
+                android:id="@+id/side_left"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:background="@color/surface">
+
+                <LinearLayout
+                    android:id="@+id/path_bar_left"
+                    android:layout_width="match_parent"
+                    android:layout_height="30dp"
+                    android:background="@color/path_bar_active"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp">
+
+                    <ImageView
+                        android:id="@+id/iv_path_left"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_marginEnd="6dp"
+                        android:tint="@color/white"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/tv_path_left"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:singleLine="true"
+                        android:ellipsize="start"
+                        android:textColor="@color/white"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/list_left"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="vertical" />
+            </LinearLayout>
+
+            <!--
+              中间列 = 路径栏那一段 + 下面的状态列。★ 三者必须包在一起:竖线单靠
+              marginTop 避开路径栏是不够的,那 1dp 会露出根布局的底色,在绿色路径栏
+              里依旧是一条(浅色的)竖线。包起来之后路径栏那一行整段同色,无缝。
+            -->
+            <LinearLayout
+                android:layout_width="30dp"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <!-- 给两侧路径栏让位的一段。★ 用 path_bar_active 而不是 path_bar:
+                     深色主题下这两个是不同的值(#3D3D3D / #262626),固定成后者的话中间
+                     这块看着跟"非活动侧"一个色,与高亮那侧割裂;浅色主题里两者同色,
+                     所以之前看不出来 -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="30dp"
+                    android:background="@color/path_bar_active" />
+
+                <!-- 状态列:一行一个符号(= 相同 / ≠ 不同 / ◀ ▶ 只在一侧),与两侧
+                     逐行对齐、跟着一起滚。竖屏只显示一侧列表时它照样在 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:orientation="horizontal"
+                    android:background="@color/surface">
+
+                    <View
+                        android:id="@+id/divider"
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/list_state"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1" />
+
+                    <View
+                        android:id="@+id/divider2"
+                        android:layout_width="1dp"
+                        android:layout_height="match_parent"
+                        android:background="@color/divider" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/side_right"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:background="@color/surface">
+
+                <LinearLayout
+                    android:id="@+id/path_bar_right"
+                    android:layout_width="match_parent"
+                    android:layout_height="30dp"
+                    android:background="@color/path_bar"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp">
+
+                    <ImageView
+                        android:id="@+id/iv_path_right"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_marginEnd="6dp"
+                        android:tint="@color/white"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/tv_path_right"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:singleLine="true"
+                        android:ellipsize="start"
+                        android:textColor="@color/white"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/list_right"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scrollbars="vertical" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_empty"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+    </FrameLayout>
+</LinearLayout>

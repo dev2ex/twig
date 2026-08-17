@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  传输进度框的自定义标题栏(AlertDialog.setCustomTitle):标题文字 + 右边的「转到后台」。
+  用自定义标题而不是把按钮放进内容区,是因为要的位置就是标题这一行的右端;
+  内边距照抄 AppCompat 默认标题(左右 dialogPreferredPadding),换上去看不出接缝。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="?attr/dialogPreferredPadding"
+    android:paddingEnd="8dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/tv_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:singleLine="true"
+        android:ellipsize="end"
+        android:textAppearance="@style/TextAppearance.AppCompat.Title"
+        android:textColor="@color/text_primary" />
+
+    <!-- 点了收起进度框,传输交给前台服务接着跑(通知栏那条进度条点回来) -->
+    <ImageView
+        android:id="@+id/btn_background"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_marginStart="8dp"
+        android:padding="10dp"
+        android:src="@drawable/ic_chevron_down"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/transfer_background" />
+</LinearLayout>

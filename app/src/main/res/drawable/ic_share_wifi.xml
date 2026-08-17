@@ -1,0 +1,11 @@
+<!--
+  「WiFi 共享」入口(未开启):三段细弧 + 向下三角。
+  ★ 不要在这里写 android:tint —— 它挂在操作列上,着色由 @style/StripIcon 的
+  tint(@color/primary)统一给,自带 tint 会把深浅色主题下的统一配色顶掉。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="@android:color/black"
+        android:pathData="M12,21l-3.5,-4.5h7L12,21zM1.4,8.6C4.3,5.8 8,4.2 12,4.2s7.7,1.6 10.6,4.4l-1.8,1.8C18.4,8.1 15.3,6.8 12,6.8S5.6,8.1 3.2,10.4L1.4,8.6zM5,12.2c1.9,-1.8 4.4,-2.9 7,-2.9s5.1,1.1 7,2.9l-1.8,1.8c-1.4,-1.3 -3.2,-2.1 -5.2,-2.1s-3.8,0.8 -5.2,2.1L5,12.2z" />
+</vector>

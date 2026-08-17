@@ -1,0 +1,296 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 旧设备(<= Android 12L / 部分场景)的传统存储权限 -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+
+    <!-- Android 11+ 完整文件访问;上架 Google Play 需单独申报用途。
+         自有/侧载安装可直接使用。 -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- FTP 等网络文件系统 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- WiFi 共享(内置 HTTP/WebDAV 服务):
+         - ACCESS_WIFI_STATE:拿 WifiManager 建 WiFi 锁 / 组播锁;
+         - CHANGE_WIFI_MULTICAST_STATE:设备发现要收广播 UDP,省电模式下没有它会被丢包;
+         - WAKE_LOCK:传输进行中不让 CPU 睡(空闲时不持有,见 WebShare)。
+         全是 normal 级,装机即授予。 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- 点击 apk 直接拉起安装器(Android 8+ 需声明,否则"安装未知应用"开关对本应用不生效) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- 应用管理里的「卸载」:Android 8+ 系统卸载界面会校验调用方有没有声明它,
+         没有就直接 finish —— 表现为点了卸载毫无反应(不报错、不弹框)。normal 级权限,
+         装机即授予,无需运行时申请。 -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <!-- 音乐后台播放:前台服务 + 通知(Android 13+ 通知需运行时授权,拒绝也不影响播放) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- 远程命令静默执行(CmdService):命令可能跑几分钟,进程不能被回收 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 应用管理(树里的「应用」根):枚举整机已安装应用。Android 11+ 没有它,
+         getInstalledApplications 只返回本应用与下面 <queries> 声明过的,列表基本是空的。
+         Google Play 视为敏感权限,上架需按"文件管理器"用途单独申报;侧载不受影响。 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Shizuku:以 shell 身份跑特权进程(设置页「特权访问」)。
+         这是 Shizuku 自己定义的权限,由它的管理器授予,不是系统运行时权限。 -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- Android 11+ 包可见性:查询某类型的默认打开应用(文件图标显示关联 app 图标) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <!-- ★ 不声明这一条,targetSdk 30+ 下 Shizuku 的 pingBinder/版本查询一律失败,
+             表现是「明明装了 Shizuku 却说没装」——包可见性把它整个挡在视野外了。 -->
+        <package android:name="moe.shizuku.privileged.api" />
+    </queries>
+
+    <application
+        android:name=".TwigApp"
+        android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
+        android:roundIcon="@drawable/ic_launcher"
+        android:usesCleartextTraffic="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Twig">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false"
+            android:label="@string/action_settings" />
+
+        <activity
+            android:name=".ui.TextViewerActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.HexViewerActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.ImageViewerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.GitActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <!-- 独立任务栈:最近任务里单独一张卡,可与文管来回切换/分屏,会话由 TermHolder 常驻 -->
+        <activity
+            android:name=".ui.TerminalActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.twig.app.terminal"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
+            android:label="@string/terminal_menu" />
+
+        <activity
+            android:name=".ui.DiffActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.ImageCompareActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/compare_image_diff" />
+
+        <activity
+            android:name=".ui.CompareActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/compare_title" />
+
+        <activity
+            android:name=".ui.MediaPlayerActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/app_name" />
+
+        <activity
+            android:name=".ui.MusicPlayerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/music_title" />
+
+        <activity
+            android:name=".ui.PlaylistActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/music_playlists" />
+
+        <!-- 音乐后台播放前台服务 -->
+        <service
+            android:name=".ui.MusicService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- 「用 Twig 打开」:接住其他 App 的 ACTION_VIEW,分发到内置查看器 / 压缩包挂载。
+             无界面中转页(透明主题),分发完立即 finish。只登记内置查看器真支持的类型,
+             不用 */* 抢注,免得 Twig 出现在所有文件的"打开方式"里。 -->
+        <activity
+            android:name=".ui.ViewIntentActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <!-- 文本 / 图片 / 音频 / 视频 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="audio/*" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+            <!-- 可挂载浏览的压缩包(zip/jar/7z/rar,见 Archives)+ 常被标成 application/* 的文本格式 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/java-archive" />
+                <data android:mimeType="application/x-7z-compressed" />
+                <data android:mimeType="application/x-rar-compressed" />
+                <data android:mimeType="application/vnd.rar" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="application/xhtml+xml" />
+                <data android:mimeType="application/javascript" />
+                <data android:mimeType="application/x-sh" />
+            </intent-filter>
+        </activity>
+
+        <!-- 接收其他 App 分享的图片/文件("用 Twig 复制到…"),弹目录选择界面 -->
+        <activity
+            android:name=".ui.ShareTargetActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/copy_to">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- 桌面命令快捷方式的入口(无界面中转:判断走终端还是后台服务) -->
+        <activity
+            android:name=".ui.RunCommandActivity"
+            android:exported="true"
+            android:label="@string/cmd_shortcut"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- 静默执行远程命令的前台服务(命令可能跑几分钟,不能随进程被回收) -->
+        <service
+            android:name=".ui.CmdService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 复制/移动/压缩的前台服务:进度进通知栏,进度框可收起转后台,进程不被回收 -->
+        <service
+            android:name=".ui.TransferService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- WiFi 共享:HTTP/WebDAV 服务与 UDP 发现应答都挂在这个进程上,共享期间
+             (可能几小时无人操作)不能被回收,否则局域网那头正在拷的文件直接断线 -->
+        <service
+            android:name=".share.ShareService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 文件选择器:别的 App 发 GET_CONTENT 时把 Twig 列进来(结果是 StreamProvider
+             的 content://,带临时读权限);应用内的字体/配色/私钥导入也复用这个页面,
+             好处是能选到 SMB/FTP/压缩包里的文件——SAF 看不见这些来源。 -->
+        <activity
+            android:name=".ui.PickerActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:label="@string/picker_title">
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- "用其他应用打开":任意来源流式暴露为 content:// URI,经 grant 授权访问 -->
+        <provider
+            android:name=".StreamProvider"
+            android:authorities="${applicationId}.stream"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Shizuku 握手用:它通过这个 provider 把 binder 递进来。
+             exported 必须为 true(跨进程),permission 那条把它挡住不让别人调。
+             multiprocess 必须为 false —— 多进程各起一份会拿到互不相干的 binder。 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- 让 AppCompatDelegate.setApplicationLocales() 在 Android 13 以下也能自动持久化 +
+             在 Activity onCreate 前应用语言选择(否则每次冷启动会先闪一下系统语言)。 -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
+    </application>
+</manifest>

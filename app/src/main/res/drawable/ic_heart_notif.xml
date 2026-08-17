@@ -1,0 +1,8 @@
+<!-- 通知栏专用:心形路径占满 24 的画布(20x18.35),比 播放/暂停/上下一首 那几个(约 12x13)
+     大出一圈,系统把动作图标统一缩到同一尺寸后就显得心形特别大。这里整体缩到 0.63,
+     包围盒 ≈ 12.6x11.6,和其他媒体键视觉大小对齐。播放页里的心形仍用原图,不受影响。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <group android:pivotX="12" android:pivotY="12" android:scaleX="0.63" android:scaleY="0.63">
+        <path android:fillColor="@android:color/white" android:pathData="M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35zM12,18.6l0.35,-0.32C17.1,13.94 20,11.31 20,8.5 20,6.5 18.5,5 16.5,5c-1.54,0 -3.04,0.99 -3.57,2.36h-1.87C10.54,5.99 9.04,5 7.5,5 5.5,5 4,6.5 4,8.5c0,2.81 2.9,5.44 7.65,9.78L12,18.6z" />
+    </group>
+</vector>

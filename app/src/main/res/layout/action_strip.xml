@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="52dp"
+    android:layout_height="match_parent"
+    android:background="@color/bar"
+    android:orientation="vertical">
+
+    <!-- 顶部固定区:横屏隐藏 Toolbar 后,原来标题栏右侧的按钮(终端/音乐/切面板/菜单)
+         挪到这里,不随下方操作列滚动。竖屏由 MainActivity 整块 GONE -->
+    <com.twig.app.ui.StripGrid
+        android:id="@+id/as_top"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="2"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <LinearLayout android:id="@+id/as_term" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_terminal"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_term" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_music" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_music_note"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/music_menu" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_swap" style="@style/StripItem">
+            <ImageView android:id="@+id/as_swap_icon" style="@style/StripIcon"
+                android:src="@drawable/ic_pane_to_right"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_swap" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_menu" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_more_vert"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_menu" />
+        </LinearLayout>
+    </com.twig.app.ui.StripGrid>
+
+    <View
+        android:id="@+id/as_top_divider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/divider"
+        android:visibility="gone" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:scrollbars="none">
+
+    <!-- 列数由代码按屏幕方向设置(竖屏 1 列、横屏 2 列,见 MainActivity.applyStripColumns);
+         条目按行填充,0dp + columnWeight=1 让每列等宽 -->
+    <com.twig.app.ui.StripGrid
+        android:id="@+id/as_grid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="1"
+        android:orientation="horizontal">
+
+        <LinearLayout android:id="@+id/as_up" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_up"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_up" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_sort" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_sort"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/action_sort" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_refresh" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_refresh"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_refresh" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_new_folder" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_new_folder"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_new_folder" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_copy" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_copy"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_copy" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_move" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_move"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_move" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_compress" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_compress"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_compress" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_rename" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_rename"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_rename" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_delete" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_delete"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_delete" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_compare" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_compare"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_compare" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_map" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_treemap"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_map" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_search" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_search"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_search" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_history" style="@style/StripItem">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_history"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_history" />
+        </LinearLayout>
+
+        <!-- WiFi 共享:图标在服务开着时换成实心扇形(见 MainActivity.syncShareIcon) -->
+        <LinearLayout android:id="@+id/as_share" style="@style/StripItem">
+            <ImageView android:id="@+id/as_share_icon" style="@style/StripIcon"
+                android:src="@drawable/ic_share_wifi"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_share" />
+        </LinearLayout>
+    </com.twig.app.ui.StripGrid>
+    </ScrollView>
+</LinearLayout>

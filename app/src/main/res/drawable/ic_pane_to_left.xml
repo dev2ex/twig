@@ -1,0 +1,14 @@
+<!-- 切到左面板:右面板实心(当前)、左面板空心(目标),箭头指左(整体镜像) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/white">
+    <group android:scaleX="-1" android:pivotX="12" android:pivotY="12">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M3,4h8v10h-8z" />
+        <path android:fillColor="@android:color/white" android:fillType="evenOdd"
+            android:pathData="M13,4h8v10h-8zM14.7,5.7h4.6v6.6h-4.6z" />
+        <path android:fillColor="@android:color/white"
+            android:pathData="M6,17.6h9v-2.8l6,3.7 -6,3.7v-2.8h-9z" />
+    </group>
+</vector>

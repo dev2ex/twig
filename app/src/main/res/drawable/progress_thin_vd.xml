@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  细线进度条的图形:整条 viewport 宽的一段,靠 group 的 scaleX 决定它多长、
+  translateX 决定它跑到哪儿。**只有这一段,没有 track**——系统那套 indeterminate
+  横条自带一层 30% 的轨道,压在同色标题栏底边上就是一条淡带,而它没法单独隐藏。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="2dp"
+    android:viewportWidth="360"
+    android:viewportHeight="1">
+    <group
+        android:name="bar"
+        android:pivotX="0"
+        android:scaleX="0.08"
+        android:translateX="-80">
+        <path
+            android:name="seg"
+            android:fillColor="@color/accent"
+            android:pathData="M0,0h360v1h-360z" />
+    </group>
+</vector>

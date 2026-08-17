@@ -1,0 +1,54 @@
+[versions]
+agp = "8.5.2"
+kotlin = "1.9.24"
+coreKtx = "1.13.1"
+appcompat = "1.7.0"
+recyclerview = "1.3.2"
+constraintlayout = "2.1.4"
+lifecycle = "2.8.4"
+coroutines = "1.8.1"
+activity = "1.9.1"
+fragment = "1.8.2"
+viewpager2 = "1.1.0"
+commonsNet = "3.10.0"
+ftpserver = "1.2.0"
+sshj = "0.38.0"
+okhttp = "4.12.0"
+sshd = "2.12.1"
+commonsCompress = "1.26.2"
+xz = "1.9"
+junrar = "7.5.5"
+media3 = "1.9.0"
+jellyfinFfmpeg = "1.9.0+1"
+shizuku = "13.1.5"
+
+[libraries]
+androidx-fragment-ktx = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
+commons-net = { group = "commons-net", name = "commons-net", version.ref = "commonsNet" }
+ftpserver-core = { group = "org.apache.ftpserver", name = "ftpserver-core", version.ref = "ftpserver" }
+sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+sshd-sftp = { group = "org.apache.sshd", name = "sshd-sftp", version.ref = "sshd" }
+commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
+xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
+junrar = { group = "com.github.junrar", name = "junrar", version.ref = "junrar" }
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
+androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "viewpager2" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+jellyfin-media3-ffmpeg = { group = "org.jellyfin.media3", name = "media3-ffmpeg-decoder", version.ref = "jellyfinFfmpeg" }
+shizuku-api = { group = "dev.rikka.shizuku", name = "api", version.ref = "shizuku" }
+shizuku-provider = { group = "dev.rikka.shizuku", name = "provider", version.ref = "shizuku" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

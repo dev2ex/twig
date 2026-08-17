@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 中间状态列的一行:只有一个符号,行高必须与 item_compare_row 一致才对得齐 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/state"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:gravity="center"
+    android:textSize="13sp"
+    android:textStyle="bold" />

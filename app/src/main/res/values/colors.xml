@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#2E7D32</color>        <!-- 枝叶绿,呼应 Twig -->
+    <color name="primary_dark">#1B5E20</color>
+    <color name="accent">#66BB6A</color>
+    <color name="bg">#FAFAFA</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="divider">#E0E0E0</color>
+    <color name="selected">#E8F5E9</color>
+    <color name="folder">#FBC02D</color>
+    <color name="white">#FFFFFF</color>
+    <color name="bar">#ECECEC</color>
+    <color name="toolbar">#2E7D32</color>
+    <color name="action_text">#2E7D32</color>   <!-- 栏内文字按钮:深色主题下换亮绿保对比度 -->
+    <!-- 面板路径栏:活动面板用亮色,非活动用暗色(深色主题下两者差异靠这对颜色拉开,
+         只靠 alpha 会跟面板底色糊在一起) -->
+    <color name="path_bar_active">#2E7D32</color>
+    <color name="path_bar">#2E7D32</color>
+    <!-- 目录对比:两侧都有但不同 / 只在一侧 / 该侧缺失的占位行。文字色与行底色成对,
+         底色要淡到不盖住文字,深浅两套各调一遍 -->
+    <color name="cmp_diff">#C05300</color>
+    <color name="cmp_diff_bg">#FFF1E0</color>
+    <color name="cmp_only">#1565C0</color>
+    <color name="cmp_only_bg">#E4F0FC</color>
+    <color name="cmp_missing_bg">#EFEFEF</color>
+    <!-- 长按菜单的图标:默认跟正文一个灰度;删除/卸载这类不可逆动作单独染红 -->
+    <color name="menu_icon">#5F6368</color>
+    <color name="menu_icon_danger">#D32F2F</color>
+</resources>

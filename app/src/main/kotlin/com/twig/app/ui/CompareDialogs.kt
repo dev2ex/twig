@@ -1,0 +1,184 @@
+package com.twig.app.ui
+
+import android.content.Context
+import android.text.InputType
+import android.view.Gravity
+import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
+import com.twig.app.CompareSession
+import com.twig.app.Prefs
+import com.twig.app.R
+import org.json.JSONObject
+
+/**
+ * 对比选项与排除规则的对话框。手写视图,不引 preference 库(与 [SettingsActivity] 同一约定)。
+ */
+
+/** 上次用的选项;没存过就是 [CompareOptions] 的默认值。 */
+fun loadCompareOptions(ctx: Context): CompareOptions {
+    val raw = Prefs.compareOptions(ctx)
+    if (raw.isBlank()) return CompareOptions()
+    return runCatching { CompareSession.optionsFromJson(JSONObject(raw)) }.getOrDefault(CompareOptions())
+}
+
+fun saveCompareOptions(ctx: Context, o: CompareOptions) {
+    Prefs.setCompareOptions(ctx, CompareSession.optionsToJson(o).toString())
+}
+
+/** 时间容差档位。最后一档"忽略时间"= 只按大小(和内容)判。 */
+private val TOLERANCES = longArrayOf(0L, 1_000L, 2_000L, 60_000L, Long.MAX_VALUE / 4)
+
+/** 内容对比的大小上限档位;0 = 关。 */
+private val CONTENT_LIMITS = longArrayOf(0L, 256L * 1024, 1L shl 20, 16L shl 20)
+
+private fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
+
+private fun spinner(ctx: Context, labels: List<String>, selected: Int): Spinner =
+    Spinner(ctx).apply {
+        adapter = android.widget.ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item, labels)
+        setSelection(selected.coerceIn(0, labels.size - 1))
+    }
+
+private fun label(ctx: Context, text: String) = TextView(ctx).apply {
+    this.text = text
+    textSize = 12f
+    setPadding(0, dp(ctx, 10), 0, dp(ctx, 2))
+}
+
+fun showCompareOptions(ctx: Context, current: CompareOptions, onApply: (CompareOptions) -> Unit) {
+    val tolLabels = listOf(
+        ctx.getString(R.string.compare_tol_exact),
+        ctx.getString(R.string.compare_tol_1s),
+        ctx.getString(R.string.compare_tol_2s),
+        ctx.getString(R.string.compare_tol_1m),
+        ctx.getString(R.string.compare_tol_ignore),
+    )
+    val limitLabels = listOf(
+        ctx.getString(R.string.compare_content_off),
+        "256 KB", "1 MB", "16 MB",
+    )
+    fun idxOf(arr: LongArray, v: Long) = arr.indexOfFirst { it == v }.let { if (it < 0) 0 else it }
+
+    val spTol = spinner(ctx, tolLabels, idxOf(TOLERANCES, current.timeToleranceMs))
+    val cbHour = CheckBox(ctx).apply {
+        text = ctx.getString(R.string.compare_hour_shift)
+        isChecked = current.allowHourShift
+    }
+    val cbCase = CheckBox(ctx).apply {
+        text = ctx.getString(R.string.compare_ignore_case)
+        isChecked = current.ignoreCase
+    }
+    val spLocal = spinner(ctx, limitLabels, idxOf(CONTENT_LIMITS, current.contentLimitLocal))
+    val spNet = spinner(ctx, limitLabels, idxOf(CONTENT_LIMITS, current.contentLimitNetwork))
+    val cbTimeGate = CheckBox(ctx).apply {
+        text = ctx.getString(R.string.compare_content_time_gate)
+        isChecked = current.contentOnlyIfTimeDiffers
+    }
+
+    val box = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(ctx, 20), dp(ctx, 8), dp(ctx, 20), dp(ctx, 8))
+        addView(label(ctx, ctx.getString(R.string.compare_tolerance)))
+        addView(spTol)
+        addView(cbHour)
+        addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.compare_hour_shift_hint)
+            textSize = 11f
+            alpha = 0.7f
+        })
+        addView(cbCase)
+        addView(label(ctx, ctx.getString(R.string.compare_content_local)))
+        addView(spLocal)
+        addView(label(ctx, ctx.getString(R.string.compare_content_net)))
+        addView(spNet)
+        addView(cbTimeGate)
+        addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.compare_content_time_gate_hint)
+            textSize = 11f
+            alpha = 0.7f
+        })
+        addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.compare_content_hint)
+            textSize = 11f
+            alpha = 0.7f
+        })
+    }
+
+    AlertDialog.Builder(ctx)
+        .setTitle(R.string.compare_options)
+        .setView(ScrollView(ctx).apply { addView(box) })
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(android.R.string.ok) { _, _ ->
+            val o = current.copy(
+                timeToleranceMs = TOLERANCES[spTol.selectedItemPosition],
+                allowHourShift = cbHour.isChecked,
+                ignoreCase = cbCase.isChecked,
+                contentLimitLocal = CONTENT_LIMITS[spLocal.selectedItemPosition],
+                contentLimitNetwork = CONTENT_LIMITS[spNet.selectedItemPosition],
+                contentOnlyIfTimeDiffers = cbTimeGate.isChecked,
+            )
+            saveCompareOptions(ctx, o)
+            onApply(o)
+        }
+        .show()
+}
+
+/** 常用排除规则,一键塞进编辑框——手打 `node_modules` 这种没人乐意每次都来一遍。 */
+private val EXCLUDE_PRESETS = listOf(".git", "node_modules", "build", ".DS_Store", "Thumbs.db", "*.tmp")
+
+fun showExcludeEditor(ctx: Context, current: List<String>, onApply: (List<String>) -> Unit) {
+    val input = EditText(ctx).apply {
+        setText(current.joinToString("\n"))
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        gravity = Gravity.TOP or Gravity.START
+        minLines = 5
+        setSingleLine(false)
+    }
+    val hint = TextView(ctx).apply {
+        text = ctx.getString(R.string.compare_excludes_hint)
+        textSize = 11f
+        alpha = 0.7f
+        setPadding(0, dp(ctx, 6), 0, 0)
+    }
+    val presets = TextView(ctx).apply {
+        text = ctx.getString(R.string.compare_excludes_presets)
+        textSize = 13f
+        setPadding(0, dp(ctx, 10), 0, dp(ctx, 4))
+        setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.action_text))
+        setOnClickListener {
+            val checked = BooleanArray(EXCLUDE_PRESETS.size)
+            AlertDialog.Builder(ctx)
+                .setTitle(R.string.compare_excludes_presets)
+                .setMultiChoiceItems(EXCLUDE_PRESETS.toTypedArray(), checked) { _, i, on -> checked[i] = on }
+                .setPositiveButton(android.R.string.ok) { _, _ ->
+                    val have = input.text.toString().lines().map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+                    EXCLUDE_PRESETS.forEachIndexed { i, p -> if (checked[i] && p !in have) have += p }
+                    input.setText(have.joinToString("\n"))
+                }
+                .show()
+        }
+    }
+
+    val box = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(ctx, 20), dp(ctx, 8), dp(ctx, 20), dp(ctx, 8))
+        addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(hint)
+        addView(presets)
+    }
+
+    AlertDialog.Builder(ctx)
+        .setTitle(R.string.compare_excludes)
+        .setView(ScrollView(ctx).apply { addView(box) })
+        .setNegativeButton(android.R.string.cancel, null)
+        .setPositiveButton(android.R.string.ok) { _, _ ->
+            val list = input.text.toString().lines().map { it.trim() }.filter { it.isNotEmpty() }
+            onApply(list)
+        }
+        .show()
+}

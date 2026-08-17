@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色主题:仅覆盖随主题变化的颜色,品牌绿沿用 -->
+    <color name="primary">#2E7D32</color>
+    <color name="primary_dark">#102A12</color>
+    <color name="accent">#66BB6A</color>
+    <color name="bg">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="text_primary">#E6E6E6</color>
+    <color name="text_secondary">#9E9E9E</color>
+    <color name="divider">#333333</color>
+    <color name="selected">#1B3A1E</color>
+    <color name="folder">#FBC02D</color>
+    <color name="white">#FFFFFF</color>
+    <color name="bar">#262626</color>
+    <color name="toolbar">#1C1C1C</color>
+    <color name="action_text">#66BB6A</color>
+    <!-- 活动面板路径栏:深色主题走中性灰阶(不带品牌绿),提亮到明显区别于面板底色;
+         非活动贴近栏底色 -->
+    <color name="path_bar_active">#3D3D3D</color>
+    <color name="path_bar">#262626</color>
+    <color name="cmp_diff">#FFB74D</color>
+    <color name="cmp_diff_bg">#33FF8F00</color>
+    <color name="cmp_only">#64B5F6</color>
+    <color name="cmp_only_bg">#332196F3</color>
+    <color name="cmp_missing_bg">#0DFFFFFF</color>
+    <!-- 长按菜单的图标:默认跟正文一个灰度;删除/卸载这类不可逆动作单独染红 -->
+    <color name="menu_icon">#BDBDBD</color>
+    <color name="menu_icon_danger">#EF5350</color>
+</resources>
