@@ -8,6 +8,7 @@
     <color name="surface">#1E1E1E</color>
     <color name="text_primary">#E6E6E6</color>
     <color name="text_secondary">#9E9E9E</color>
+    <color name="row_meta">#C6C6C6</color>
     <color name="divider">#333333</color>
     <color name="selected">#1B3A1E</color>
     <color name="folder">#FBC02D</color>

@@ -7,6 +7,10 @@
     <color name="surface">#FFFFFF</color>
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
+    <!-- Size/time line under a file name: deliberately darker than text_secondary (and lighter than it
+         in values-night). At 10sp the general secondary grey reads as a smudge against the row background,
+         and the size is the one thing this file manager is built around — it has to be legible at a glance. -->
+    <color name="row_meta">#4E4E4E</color>
     <color name="divider">#E0E0E0</color>
     <color name="selected">#E8F5E9</color>
     <color name="folder">#FBC02D</color>
