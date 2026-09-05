@@ -5,15 +5,17 @@ import android.view.Menu
 import androidx.appcompat.view.menu.MenuBuilder
 
 /**
- * 让溢出菜单 / PopupMenu 把图标画出来。
+ * Make overflow menus / PopupMenu render their icons.
  *
- * AppCompat 默认只在 ActionBar 上显示图标,落进溢出菜单就一律藏掉,而开关只有
- * `MenuBuilder` 上这个带 `@RestrictTo` 的方法,没有对应的公开 API。
+ * AppCompat only displays icons on the ActionBar by default; anything that falls into the
+ * overflow menu has its icon hidden, and the only switch is this `@RestrictTo`-annotated method
+ * on `MenuBuilder` — there is no corresponding public API.
  *
- * ★ 必须配 `androidx.appcompat.widget.PopupMenu`——framework 的
- * `android.widget.PopupMenu` 内部是另一个同名 `MenuBuilder`(com.android.internal.*),
- * 这里的 as? 会落空、图标依旧不显示(它自己的 `setForceShowIcon` 要 API 29+,
- * 而 minSdk 是 24)。转型失败时什么都不做,菜单退回没有图标的样子,不会崩。
+ * ★ Must be paired with `androidx.appcompat.widget.PopupMenu` — the framework's
+ * `android.widget.PopupMenu` internally uses a different same-named `MenuBuilder`
+ * (com.android.internal.*), so the `as?` here will miss and icons still won't render (its own
+ * `setForceShowIcon` requires API 29+, while minSdk is 24). When the cast fails, do nothing —
+ * the menu falls back to no icons, no crash.
  */
 @SuppressLint("RestrictedApi")
 fun Menu.showIcons() {

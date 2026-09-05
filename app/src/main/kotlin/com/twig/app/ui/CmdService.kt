@@ -20,14 +20,18 @@ import com.twig.fs.network.SftpFileSystem
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 静默执行远程命令的前台服务。
+ * Foreground service that silently executes remote commands.
  *
- * 为什么是前台服务而不是随手起个线程:命令可能跑几十秒到几分钟,而发起它的
- * 快捷方式中转页(`RunCommandActivity`)立刻就 finish 了——没有前台通知的话,
- * 进程随时可能在命令跑完前被回收,用户既看不到结果也不知道跑没跑。
+ * Why a foreground service rather than just spawning a thread: a command may run from tens
+ * of seconds to several minutes, and the shortcut relay Activity (`RunCommandActivity`)
+ * that launched it finishes immediately — without a foreground notification, the process
+ * can be reclaimed before the command completes, and the user sees neither the result nor
+ * whether it ran at all.
  *
- * 结果的呈现分两级:短输出直接 Toast,完整输出进通知(可展开);失败一定进
- * 通知,并把 stderr 带上——静默执行最怕的就是"点了没反应也不知道为什么"。
+ * Results are presented in two tiers: short output goes straight to a Toast, the full
+ * output goes into an expandable notification; failures always go to a notification with
+ * stderr included — the worst thing about a silent execution is "I tapped it and nothing
+ * happened and I don't know why".
  */
 class CmdService : Service() {
 
@@ -68,7 +72,7 @@ class CmdService : Service() {
         return START_NOT_STICKY
     }
 
-    /** 现连现取 scheme:快捷方式存的是连接标签,冷启动时这台服务器还没注册过。 */
+    /** Connect on demand and look up the scheme: the shortcut stores the connection label, and on a cold start this server has not been registered yet. */
     private fun execute(cmd: RemoteCmd): SftpFileSystem.ExecResult {
         val conn = Connections.find(this, cmd.connLabel)
             ?: throw IllegalStateException(getString(R.string.cmd_conn_missing))
@@ -97,7 +101,8 @@ class CmdService : Service() {
         )
         val ok = result.getOrNull()?.ok == true
 
-        // 短输出且成功:Toast 就够了,不留通知打扰;其余一律留通知(可展开看全文)
+        // Short output and successful: a Toast is enough, no notification needed to avoid
+        // nagging; everything else always gets a notification (expandable to see the full text)
         if (ok && body.length <= TOAST_MAX && !body.contains('\n')) {
             Toast.makeText(this, if (body.isEmpty()) title else body, Toast.LENGTH_LONG).show()
         } else {

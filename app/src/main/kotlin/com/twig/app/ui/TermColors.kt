@@ -12,25 +12,27 @@ import java.io.File
 import java.util.Properties
 
 /**
- * 终端配色方案。用的就是 termux 官方 `~/.termux/colors.properties` 那套格式
- * (`foreground` / `background` / `cursor` / `color0..255`,值为 `#RGB`、`#RRGGBB`
- * 或 `#AARRGGBB`),解析交给 termux 自己的 `TerminalColorScheme.updateWith`,
- * 于是 base16 那一大堆现成方案(chriskempson/base16-xresources 等)可以直接导入。
+ * Terminal color scheme. Uses exactly the format termux ships officially for
+ * `~/.termux/colors.properties` (`foreground` / `background` / `cursor` / `color0..255`,
+ * values being `#RGB`, `#RRGGBB`, or `#AARRGGBB`), with parsing delegated to termux's
+ * own `TerminalColorScheme.updateWith`, so the whole base16 family of ready-made
+ * schemes (chriskempson/base16-xresources, etc.) can be imported directly.
  *
- * `TerminalColors.COLOR_SCHEME` 是进程内**静态**的,新建会话的 `TerminalColors()`
- * 构造时就从它拷贝,所以换方案后新会话自动生效;已经建好的会话得各自
- * `mColors.reset()` 才会重新取值(见 [applyToSessions])。
+ * `TerminalColors.COLOR_SCHEME` is **statically** process-wide, and a new session's
+ * `TerminalColors()` copies from it in its constructor, so after a scheme switch new
+ * sessions pick it up automatically; sessions that already exist only re-read it
+ * after their own `mColors.reset()` (see [applyToSessions]).
  */
 object TermColors {
 
     private const val DIR = "colors"
 
-    /** 内置方案的 Prefs 值前缀;其余非空值一律当作自定义文件的绝对路径。 */
+    /** Prefix for built-in scheme values in Prefs; any other non-empty value is treated as the absolute path of a user file. */
     private const val BUILTIN = "builtin:"
 
     /**
-     * 随包内置的方案(assets/colors/<id>.properties,四个加起来 2KB)。
-     * 名字是配色本身的专有名词,不翻译。
+     * Bundled schemes (assets/colors/<id>.properties, total 2KB for all four). Names
+     * are the proper names of the schemes themselves and are not translated.
      */
     val PRESETS = listOf(
         "base16-atelierseaside-dark" to "Atelier Seaside Dark",
@@ -39,10 +41,10 @@ object TermColors {
         "solarized-light" to "Solarized Light",
     )
 
-    /** 合法值:#RGB / #RRGGBB / #AARRGGBB。 */
+    /** Acceptable values: #RGB / #RRGGBB / #AARRGGBB. */
     private val COLOR = Regex("^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?([0-9a-fA-F]{2})?$")
 
-    /** 当前方案的显示名;null = termux 默认配色。 */
+    /** Display name of the current scheme; null = termux default. */
     fun currentName(ctx: Context): String? {
         val id = Prefs.terminalColors(ctx)
         if (id.isEmpty()) return null
@@ -54,7 +56,7 @@ object TermColors {
         return if (f.isFile) f.name else null
     }
 
-    /** 已导入的自定义方案文件名(内置方案返回 null),用来在选择列表里单列一项。 */
+    /** File name of the imported custom scheme (null for built-in schemes), used to render it as a separate row in the pick list. */
     fun customName(ctx: Context): String? {
         val id = Prefs.terminalColors(ctx)
         if (id.isEmpty() || id.startsWith(BUILTIN)) return null
@@ -63,11 +65,12 @@ object TermColors {
     }
 
     /**
-     * 配色选择列表:termux 默认 + 内置方案 +(已导入的自定义)+「导入…」。
-     * 选中即生效;终端页与设置页共用,[onChanged] 各自刷新界面。
+     * The scheme pick list: termux default + built-in schemes + (any imported custom
+     * scheme) + "Import...". Picking one applies it immediately; the terminal page and
+     * the settings page share this dialog, and [onChanged] refreshes their respective UIs.
      */
     fun showPicker(act: Activity, onImport: () -> Unit, onChanged: () -> Unit) {
-        val ids = ArrayList<String?>() // null 表示末尾的「导入…」
+        val ids = ArrayList<String?>() // null = the trailing "Import..."
         val labels = ArrayList<String>()
         ids += ""
         labels += act.getString(R.string.settings_term_colors_default)
@@ -101,8 +104,9 @@ object TermColors {
     }
 
     /**
-     * 把配置套进全局方案。`updateWith` 内部会先 reset,所以传空 Properties
-     * 就是恢复 termux 默认,切换方案也不会残留上一套的颜色。
+     * Apply the configuration to the global scheme. `updateWith` resets internally
+     * before applying, so passing empty Properties restores termux default and
+     * switching schemes does not leave residue from the previous one.
      */
     fun apply(ctx: Context) {
         val props = Properties()
@@ -117,7 +121,7 @@ object TermColors {
         runCatching { TerminalColors.COLOR_SCHEME.updateWith(sanitize(props)) }
     }
 
-    /** 让已经建好的会话重新取色(新建的会话在构造里就拷过了,不用管)。 */
+    /** Re-read colors in already-created sessions (new sessions already copy them in their constructor). */
     fun applyToSessions() {
         for (t in TermManager.list()) t.emulatorOrNull?.mColors?.reset()
     }
@@ -126,10 +130,10 @@ object TermColors {
 
     fun fg(): Int = TerminalColors.COLOR_SCHEME.mDefaultColors[TextStyle.COLOR_INDEX_FOREGROUND]
 
-    /** 附加键条:在背景色上掺一点前景色,深浅两种方案都能和终端区分开又不刺眼。 */
+    /** Accessory key bar: blends a touch of the foreground color into the background so it stays distinguishable from the terminal, light or dark, without being harsh. */
     fun keyBarBg(): Int = blend(bg(), fg(), 0.10f)
 
-    /** 修饰键按下时的底色,比键条再明显一档(仍是同色系,不抢眼)。 */
+    /** Pressed modifier key background: a notch above the key bar (still within the same hue family, not visually loud). */
     fun keyActiveBg(): Int = blend(bg(), fg(), 0.32f)
 
     fun clear(ctx: Context) {
@@ -139,8 +143,9 @@ object TermColors {
     }
 
     /**
-     * 导入 SAF 选中的 .properties:能解析出至少一条认识的颜色才算数。
-     * 与字体导入同样拷进应用私有目录(content:// 权限跨重启不可靠),只留一份。
+     * Import the .properties chosen from SAF: only counts if at least one recognized
+     * color parses out. Like font import, copies into the app-private directory
+     * (content:// permissions are not reliable across restarts) and keeps only one copy.
      */
     fun import(ctx: Context, uri: Uri): String? {
         val props = Properties()
@@ -170,8 +175,9 @@ object TermColors {
     }
 
     /**
-     * 只留认得出的 key 和合法颜色值再交给 termux —— `updateWith` 是「先 reset 再
-     * 逐条套用」,中途遇到坏值抛出去就会留下一套只套了一半的配色,先过滤掉最省事。
+     * Keep only recognized keys with legal color values before handing off to termux —
+     * `updateWith` is "reset first, then apply each entry"; if a bad value throws in
+     * the middle you'd end up with a half-applied palette. Pre-filtering is simplest.
      */
     private fun sanitize(props: Properties): Properties {
         val out = Properties()

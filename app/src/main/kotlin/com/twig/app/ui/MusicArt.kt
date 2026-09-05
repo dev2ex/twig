@@ -10,11 +10,12 @@ import com.twig.core.XFile
 import java.util.concurrent.Executors
 
 /**
- * 当前曲目的封面美术资源缓存(单例):封面位图 + 毛玻璃背景 + 从封面提取的主色调,
- * 一次算好、播放页与列表页共享复用——避免每次进页面重算导致的"黑一下再出图"延迟。
+ * Artwork cache for the current track (singleton): cover bitmap + blurred background + accent
+ * color extracted from the cover — compute once, share between the player page and the list page —
+ * avoiding the "black flash then image" delay from recomputing on every page entry.
  *
- * 封面来源沿用 [Thumbs.audioCover](内嵌封面优先,无则同目录 cover/folder/front/albumart),
- * 与文件管理器缩略图同一套逻辑。
+ * Cover source follows [Thumbs.audioCover] (embedded cover first, otherwise same-directory
+ * cover/folder/front/albumart), the same logic as the file manager thumbnails.
  */
 @UnstableApi
 object MusicArt {
@@ -22,24 +23,27 @@ object MusicArt {
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "twig-music-art").apply { isDaemon = true } }
     private val main = Handler(Looper.getMainLooper())
 
-    private const val MAX = 5 // 最近 5 首的封面/毛玻璃/主色,配合预取下一首即时出图
+    private const val MAX = 5 // keep the cover/blur/accent for the most recent 5 tracks, paired with prefetching the next one for instant display
 
-    // key = "trackId|dark";accessOrder LRU 保留最近 MAX 首
+    // key = "trackId|dark"; accessOrder LRU keeps the most recent MAX tracks
     private val cache = object : LinkedHashMap<String, Snapshot>(8, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Snapshot>?): Boolean = size > MAX
     }
 
-    /** [bgTone] = 毛玻璃背景的平均色(文字实际压在上面的颜色,供 [MusicTint] 反推前景色);无封面时 0。 */
+    /** [bgTone] = average color of the blurred background (the color text actually sits on top of,
+     *  for [MusicTint] to derive foreground color); 0 when there is no cover. */
     data class Snapshot(val cover: Bitmap?, val blur: Bitmap?, val accent: Int, val bgTone: Int = 0)
 
-    /** 已缓存且匹配(含对应明暗的毛玻璃)时立即返回,供进页面瞬间上图;否则 null。 */
+    /** Returns immediately if already cached and matches (including the light/dark variant of the blur); null otherwise. */
     @Synchronized
     fun snapshot(trackId: String, dark: Boolean): Snapshot? = cache[key(trackId, dark)]
 
     /**
-     * 载入某曲目的封面资源;命中缓存(封面已算过、毛玻璃明暗匹配)则回调,否则后台算。
-     * 命中在主线程同步回调("进页面瞬间上图");调用方(如 PlaylistActivity)可能在后台线程,
-     * 那种情况 post 到主线程再回,避免在后台线程摸 View 崩溃。
+     * Loads the artwork for a track; if the cache hits (cover already computed, blur light/dark
+     * matches), callback fires; otherwise it computes in the background. Cache hit callback fires
+     * synchronously on the main thread ("instant image on page entry"); callers (e.g. PlaylistActivity)
+     * may be on a background thread — in that case post to the main thread before invoking, to
+     * avoid crashing by touching Views from a background thread.
      */
     fun load(ctx: Context, trackId: String, file: XFile, dark: Boolean, cb: (Snapshot) -> Unit) {
         synchronized(this) { cache[key(trackId, dark)] }?.let { snap ->
@@ -47,7 +51,8 @@ object MusicArt {
             return
         }
         io.execute {
-            // 同一曲目其它明暗变体已算过封面/主色 → 复用,只按当前明暗重算毛玻璃
+            // Another light/dark variant of the same track has already computed the cover/accent
+            // → reuse, only recompute the blur for the current light/dark
             val (reuseCover, reuseAccent) = synchronized(this) {
                 val any = cache.entries.firstOrNull { it.key.startsWith("$trackId|") }?.value
                 (any?.cover) to (any?.accent ?: 0)
@@ -62,7 +67,7 @@ object MusicArt {
         }
     }
 
-    /** 预取下一首封面(已缓存则跳过);结果只进缓存不回调。 */
+    /** Prefetch the next track's artwork (skips if already cached); result goes into the cache only, no callback. */
     fun prefetch(ctx: Context, trackId: String, file: XFile, dark: Boolean) {
         synchronized(this) { if (cache.containsKey(key(trackId, dark))) return }
         load(ctx, trackId, file, dark) {}
@@ -71,9 +76,10 @@ object MusicArt {
     private fun key(trackId: String, dark: Boolean) = "$trackId|$dark"
 
     /**
-     * 从封面提取一个"鲜明可用作强调色"的颜色(AIMP 式随封面变色)。
-     * 缩到 24×24,按色相分 12 桶累加"饱和度×明度"权重,取主导桶的加权平均色,
-     * 再把饱和度/明度拉到适合当强调色的区间。灰度封面(无够鲜明像素)返回 0。
+     * Extracts a "vivid, usable as accent color" color from the cover (AIMP-style color from cover).
+     * Shrinks to 24×24, bins by hue into 12 buckets accumulating "saturation × value" weight,
+     * takes the weighted average of the dominant bucket, then pulls saturation/value into a range
+     * suitable for an accent. Returns 0 for grayscale covers (not enough vivid pixels).
      */
     fun extractAccent(src: Bitmap): Int {
         val n = 24
@@ -86,7 +92,7 @@ object MusicArt {
         for (c in px) {
             Color.colorToHSV(c, hsv)
             val s = hsv[1]; val v = hsv[2]
-            if (s < 0.30f || v < 0.25f || v > 0.98f) continue // 太灰/太暗/过曝的忽略
+            if (s < 0.30f || v < 0.25f || v > 0.98f) continue // too gray / too dark / overexposed: ignore
             val w = (s * v).toDouble()
             val bin = ((hsv[0] / 30f).toInt()).coerceIn(0, 11)
             binW[bin] += w
@@ -99,8 +105,8 @@ object MusicArt {
         val g = (binG[best] / binW[best]).toInt().coerceIn(0, 255)
         val bl = (binB[best] / binW[best]).toInt().coerceIn(0, 255)
         Color.colorToHSV(Color.rgb(r, g, bl), hsv)
-        hsv[1] = hsv[1].coerceIn(0.55f, 1f)  // 保证够鲜艳
-        hsv[2] = hsv[2].coerceIn(0.60f, 0.92f) // 亮度控制在既醒目又不刺眼的区间
+        hsv[1] = hsv[1].coerceIn(0.55f, 1f)  // ensure vivid enough
+        hsv[2] = hsv[2].coerceIn(0.60f, 0.92f) // constrain brightness to a range that stands out without being harsh
         return Color.HSVToColor(hsv)
     }
 }

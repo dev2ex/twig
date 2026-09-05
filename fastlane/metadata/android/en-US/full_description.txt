@@ -1,0 +1,41 @@
+Twig is a dual-pane file manager for Android in the spirit of X-plore, written in plain Kotlin and XML views, with no Material library and as few dependencies as possible.
+
+<b>One tree, every source</b>
+
+Local storage, archives, FTP, SFTP, SMB, WebDAV, S3, restic backup repositories and Jellyfin/Emby servers are all the same thing to the interface. Copying between any two of them is one code path: an SMB folder can be compressed straight into a local ZIP, and a file inside a remote archive can be streamed to an FTP server. Archives expand in place, like folders.
+
+<b>It stays small</b>
+
+A per-device download is around 6.7 MB — including an FFmpeg audio decoder, an SMB implementation and a video player. Dependencies are added only after their cost in APK size has been measured; WebDAV, S3 request signing, git and restic decryption are all written from scratch rather than pulled in as SDKs.
+
+<b>Features</b>
+
+<ul>
+<li>Two panes with independent navigation, tree-style in-place expansion, grid view and thumbnails</li>
+<li>Copy, move, rename and delete across any pair of sources, with progress and cancellation</li>
+<li>Reading and writing ZIP and 7z, including encrypted archives</li>
+<li>Folder compare and sync between any two sources</li>
+<li>Disk usage treemap, pinch to zoom</li>
+<li>Built-in viewers: text with syntax highlighting and editing, hex, images, video and audio</li>
+<li>A git client written from scratch: status, history, side-by-side diff, worktrees and submodules, on local and remote repositories</li>
+<li>SSH terminal with multiple sessions, plus a local shell</li>
+<li>Wi-Fi sharing: Twig becomes an HTTP and WebDAV server, so a desktop can mount it</li>
+<li>Privileged access through root or Shizuku, as a fallback for the local filesystem rather than a separate tree</li>
+</ul>
+
+<b>Less usual things</b>
+
+<ul>
+<li>Browse restic backup repositories read-only, decrypted on the device, with snapshots shown as dated folders.</li>
+<li>Thumbnails for video on network shares without downloading the file: Twig parses the container itself, locates a keyframe about a tenth of the way in, and fetches roughly 2 MB.</li>
+<li>Blu-ray M2TS playback, including BDAV 192-byte packets, DTS-HD Master Audio, TrueHD through its embedded AC-3 core, and PGS bitmap subtitles.</li>
+<li>Jellyfin and Emby libraries browse like any other source, with playback position synced back to the server, and posters, tags, lyrics and external subtitles taken from the API instead of by reading the media file.</li>
+</ul>
+
+<b>About this build</b>
+
+The F-Droid build is the <i>libre</i> flavor and is entirely free software. It does not include RAR support: the only practical RAR library for Android carries the UnRAR license, whose use restriction makes it non-free. Everything else is identical to the developer's own builds.
+
+Twig contains no advertising, no analytics and no telemetry, and uses the network only for the connections you configure yourself.
+
+Licensed under GPL-3.0.

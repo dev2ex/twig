@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 字段比其他连接多(端点/密钥对/区域/桶/寻址风格),小屏放不下,所以包一层 ScrollView -->
+<!-- More fields than other connection types (endpoint / key pair / region / bucket / addressing style); won't fit on small screens, so wrapped in ScrollView -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">

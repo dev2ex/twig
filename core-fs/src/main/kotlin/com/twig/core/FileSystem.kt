@@ -4,102 +4,121 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 一个"文件系统提供者"。本地、压缩包、FTP、SMB、各云盘各实现一份。
+ * A "file system provider". One implementation each for local, archives, FTP, SMB,
+ * each cloud drive.
  *
- * 这是整个项目的地基:UI 只跟 [FileSystem] + [XFile] 打交道,
- * 跨来源的复制/移动由 [CopyEngine] 通过 openInput/openOutput 统一完成,
- * 因此新增一种来源 = 新增一个 FileSystem 实现,UI 与拷贝逻辑零改动。
+ * This is the project's foundation: the UI only talks to [FileSystem] + [XFile],
+ * and cross-source copy / move is handled uniformly by [CopyEngine] via
+ * openInput / openOutput. So adding a new source = adding one new FileSystem
+ * implementation, with zero changes to the UI or to copying.
  *
- * 实现约定:
- *  - 所有方法都是阻塞 IO,调用方负责放到工作线程。
- *  - 失败抛 [FsException],不要返回 null 吞错误。
+ * Implementation contract:
+ *  - All methods are blocking IO; the caller is responsible for putting them on a
+ *    worker thread.
+ *  - Failures throw [FsException]; don't return null and swallow the error.
  */
 interface FileSystem {
 
-    /** 该文件系统的 scheme,需与 [XFile.scheme] 对应且全局唯一。 */
+    /** This file system's scheme; must correspond to [XFile.scheme] and be globally unique. */
     val scheme: String
 
-    /** 人类可读名称,用于侧栏展示,如 "内部存储" / "FTP"。 */
+    /** Human-readable name for the sidebar, e.g. "Internal storage" / "FTP". */
     val displayName: String
 
-    /** 该文件系统的根条目。 */
+    /** The root entry of this file system. */
     fun root(): XFile
 
-    /** 取某个路径对应的条目(用于导航/校验);不存在抛 [FsException]。 */
+    /** Resolve a path to its entry (used for navigation / validation); throws [FsException] if missing. */
     fun resolve(path: String): XFile
 
-    /** 列出目录下的条目;[dir] 必须 isDir。 */
+    /** List entries under a directory; [dir] must be isDir. */
     fun list(dir: XFile): List<XFile>
 
-    /** 打开读取流;调用方负责关闭。 */
+    /** Open a read stream; caller is responsible for closing it. */
     fun openInput(file: XFile): InputStream
 
     /**
-     * 打开写入流;若文件不存在则创建,存在则按 [append] 决定追加或覆盖。
-     * 调用方负责关闭。
+     * Open a write stream; create the file if it does not exist, otherwise append
+     * or overwrite per [append]. Caller is responsible for closing it.
      */
     fun openOutput(file: XFile, append: Boolean = false): OutputStream
 
-    /** 在 [parent] 下创建子目录并返回其 [XFile]。 */
+    /** Create a subdirectory under [parent] and return its [XFile]. */
     fun mkdir(parent: XFile, name: String): XFile
 
     /**
-     * 为"将要写入"的新文件在 [parent] 下确定目标 [XFile],供 [CopyEngine] 随后 openOutput。
-     * 默认实现走路径拼接(file/ftp/zip 等真正写入时按需创建即可);
-     * 像 SAF 这类必须先 createDocument 才能得到 URI 的实现需覆盖此方法。
+     * Determine the target [XFile] under [parent] for a "soon-to-be-written" new
+     * file, for [CopyEngine] to later pass to openOutput. The default uses simple
+     * path concatenation (file / ftp / zip only need to create on demand at write
+     * time); implementations that must call createDocument first to obtain a URI
+     * (SAF, etc.) should override this method.
      */
     fun createFile(parent: XFile, name: String): XFile {
         val sep = if (parent.path.endsWith("/")) "" else "/"
         return XFile(scheme = scheme, path = "${parent.path}$sep$name", isDir = false)
     }
 
-    /** 删除文件或目录(目录递归删除)。 */
+    /** Delete a file or directory (directories are deleted recursively). */
     fun delete(file: XFile): Unit
 
     /**
-     * 重命名(同目录改名);返回新条目。
+     * Rename (within the same directory); returns the new entry.
      *
-     * **同名目标已存在时必须抛 [FsException],不得静默覆盖。**
-     * 这条要显式写下来,是因为几个底层 API 的默认行为恰恰相反:POSIX `rename(2)`
-     * (`File.renameTo`)会原子替换已有目标,WebDAV 的 `MOVE` 也可以带 `Overwrite: T`——
-     * 照抄默认值就会让"改个名字"无声吃掉另一个文件。要覆盖的话由调用方先删再改名,
-     * 那样至少经过了一次明确的用户确认。
+     * **When a target with the same name already exists, you must throw
+     * [FsException]; never silently overwrite.**
+     * This rule has to be spelled out because several underlying APIs default to
+     * the opposite: POSIX `rename(2)` (and `File.renameTo`) atomically replaces
+     * an existing target, and WebDAV `MOVE` can carry `Overwrite: T` — copying
+     * those defaults silently makes "rename" eat another file. To overwrite,
+     * the caller deletes first and then renames; at least that path involves
+     * an explicit user confirmation.
      */
     fun rename(file: XFile, newName: String): XFile
 
-    /** 该条目是否存在。 */
+    /** Whether the entry exists. */
     fun exists(file: XFile): Boolean
 
     /**
-     * 这整个文件系统是否支持写入(与具体条目的 [XFile.canWrite] 是两回事——
-     * 后者由 resolve()/list() 现算,一些调用点(如收藏夹)会绕过它直接拼 XFile,
-     * 此时仍需靠这个"按 scheme 固定"的判断兜底)。
-     * restic/7z/RAR/git 视图这类整个来源都只读的覆写为 false;默认 true。
+     * Whether this whole file system supports writing (a different question from
+     * an individual entry's [XFile.canWrite] — the latter is computed by
+     * resolve()/list(), but some call sites such as favorites bypass them and
+     * assemble XFile directly, in which case this "per-scheme" judgment is the
+     * fallback that catches them). Sources that are read-only end-to-end, such
+     * as restic / 7z / RAR / git view, override to false; default is true.
      */
     fun writable(): Boolean = true
 
     /**
-     * [openOutput] 覆盖写自身是否已经原子(要么完整换成新内容,要么原文件分毫不动)。
-     * 默认 false——绝大多数实现是"截断原文件再往里写",写到一半断网/断电就只剩残片。
-     * 原地保存(如文本编辑器写回)因此要走"写临时文件 → 删原 → rename"。
-     * zip 覆写条目本来就是整包重写到临时文件再替换,已经原子,覆写为 true 免掉
-     * 额外两次整包重写。
+     * Whether [openOutput] overwriting itself is already atomic (either the file
+     * is fully replaced with new content, or the original is left bit-for-bit
+     * intact). Default false — most implementations "truncate the original then
+     * write into it", so a half-written file after a disconnect / power loss is
+     * just a fragment. In-place save (e.g. a text editor writing back) therefore
+     * has to go through "write temp -> delete original -> rename".
+     * Zip's overwrite of an entry already rewrites the whole archive to a temp
+     * file and then swaps it in, which is already atomic, so it overrides to true
+     * and saves the two extra full-archive rewrites.
      */
     fun atomicOverwrite(): Boolean = false
 
     /**
-     * [openRandom] 的 readAt 是否为"真随机访问"(定位读代价与位置无关)。
-     * SMB(pread)/WebDAV(HTTP Range)= true;FTP/SFTP 及默认实现只能"重开跳过"
-     * (代价 O(位置))= false。缩略图对非 MP4 容器(MKV/AVI 等,没有可离线解析的
-     * 采样表)靠把一个真随机访问的数据源交给 MediaMetadataRetriever、让它自己
-     * 解封装 + seek——只在此为 true 时才这么做,否则乱 seek 会把整个文件拖下来。
+     * Whether `readAt` from [openRandom] is "true random access" (cost of a
+     * positional read is independent of position). SMB (pread) / WebDAV
+     * (HTTP Range) = true; FTP / SFTP and the default implementation can only
+     * "reopen and skip" (cost O(position)) = false. For non-MP4 containers
+     * (MKV / AVI / etc., which have no off-line-parsable sample table), the
+     * thumbnail path hands a truly random-access data source to
+     * MediaMetadataRetriever and lets it demux + seek itself — this is only
+     * done when the flag is true; otherwise any seek pulls the whole file down.
      */
     fun randomAccessEfficient(): Boolean = false
 
     /**
-     * 打开一个支持"定位读"的源(用于媒体播放器随机 seek)。
-     * 默认实现基于 [openInput] + 重开跳过(对不支持定位的来源可用但较慢);
-     * 像 SMB 这种支持定位读(pread)的实现应覆盖此方法以获得高效 seek。
+     * Open a source that supports "positional reads" (used by the media player
+     * for random seek). The default is built on [openInput] + reopen-and-skip
+     * (usable but slow for sources without positional read); implementations
+     * with native positional reads (e.g. SMB via pread) should override this
+     * method to get efficient seek.
      */
     fun openRandom(file: XFile): RandomSource = object : RandomSource {
         private var input: java.io.InputStream? = null
@@ -124,9 +143,10 @@ interface FileSystem {
     }
 
     /**
-     * 求父目录;已在该文件系统顶层时返回 null。
-     * 默认实现走 [XFile.parentPath];像 zip 这种带 "!/" 边界、
-     * 或需要在顶层"跳回宿主文件系统"的实现可覆盖此方法。
+     * Resolve the parent directory; returns null when already at the top of this
+     * file system. Default uses [XFile.parentPath]; implementations like zip,
+     * which has a "!/" boundary or needs to "jump back to the host file system"
+     * from the top level, may override this method.
      */
     fun parentOf(file: XFile): XFile? {
         if (file.path == "/" || file.path.isEmpty()) return null
@@ -134,32 +154,37 @@ interface FileSystem {
     }
 
     /**
-     * 同一文件系统内部的高效移动(可选优化)。
-     * 返回 true 表示已就地完成;返回 false 表示不支持,交由 [CopyEngine] 走"拷贝+删除"。
-     * 默认不支持。
+     * Efficient move within the same file system (optional optimisation).
+     * Returning true means it was done in place; returning false means it is not
+     * supported and [CopyEngine] falls back to "copy + delete source". Default
+     * is "not supported".
      */
     fun moveWithin(src: XFile, destDir: XFile, newName: String = src.name): Boolean = false
 
     /**
-     * 复制后把源的修改时间写回目标(可选优化)。返回 true = 已设置;false = 不支持或失败,
-     * [CopyEngine] 按尽力而为处理,不视为复制失败——目标就留着"刚写入"那一刻的时间。
+     * After a copy, write the source's modification time back to the destination
+     * (optional optimisation). true = set; false = unsupported or failed;
+     * [CopyEngine] treats this as best-effort and not a copy failure — the
+     * destination keeps the "moment of writing" timestamp.
      *
-     * 默认不支持。已实现:本地(直接 setLastModified)、SFTP(setattr 写 mtime)、
-     * FTP(MFMT 命令,RFC 3659,老服务器可能不认,失败不报错)。**未实现**:
-     * SMB(libsmb2 的 JNI 封装目前没有暴露 utime,需要改 native 代码)、WebDAV(没有
-     * 通用标准,各服务器扩展不一致)、压缩包写入(zip/7z 的条目时间要在写入 entry
-     * 那一刻就定好,不适合"写完再补"这种事后调用的接口)。
+     * Default is unsupported. Implemented for: local (direct setLastModified),
+     * SFTP (setattr writes mtime), FTP (MFMT, RFC 3659; older servers may not
+     * understand it — failure is not an error). **Not implemented for**:
+     * SMB (libsmb2's JNI wrapper doesn't expose utime yet; needs native code
+     * changes), WebDAV (no common standard, server extensions vary), archive
+     * writers (zip / 7z entry times must be set when the entry is written; not
+     * suitable for a "fill in afterwards" interface like this).
      */
     fun setModifiedTime(file: XFile, time: Long): Boolean = false
 }
 
-/** 文件系统操作异常的统一类型。 */
+/** Unified type for file system operation exceptions. */
 class FsException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
-/** 支持按位置读取的源(媒体播放器随机 seek 用)。 */
+/** Source supporting positional reads (used by the media player for random seek). */
 interface RandomSource : java.io.Closeable {
-    /** 从 [position] 读最多 [length] 字节到 [buffer];返回读取字节数,末尾返回 -1。 */
+    /** Read at most [length] bytes from [position] into [buffer]; returns the byte count, or -1 at EOF. */
     fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int
-    /** 总长度;未知返回 <=0。 */
+    /** Total length; returns <=0 when unknown. */
     fun length(): Long
 }

@@ -1,4 +1,4 @@
-<!-- 悬浮合并按钮的胶囊底——用 toolbar 同色,盖在任意行内容上都认得出是个可点的控件 -->
+<!-- Capsule background for the floating merge button — same color as the toolbar, recognizable as a tappable control on top of any row content -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/toolbar" />

@@ -9,7 +9,10 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.text.TextPaint
 import android.util.Log
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
@@ -45,19 +48,19 @@ import com.twig.fs.network.SftpFileSystem
 import kotlin.math.roundToInt
 
 /**
- * 一条常驻的终端会话(独立于 Activity 生命周期):存于 [TermManager],返回文件管理
- * 后仍在后台累积输出,重进原样接续。每条会话有独立的 SSH 连接与终端模拟器。
+ * A persistent terminal session (independent of Activity lifecycle): stored in [TermManager], it keeps
+ * accumulating output in the background after returning to the file manager, and resumes where it left off.
+ * Each session has its own SSH connection and terminal emulator.
  */
 class TermSession(
     val id: Long,
-    /** SSH 会话 = 该服务器的 scheme;本地会话 = [LOCAL_SCHEME]。 */
+    /** SSH session = that server's scheme; local session = [LOCAL_SCHEME]. */
     val scheme: String,
     var title: String,
 ) {
     /**
-     * 本地 shell 会话:直接用 termux 自己的本地 PTY 那条路(`initializeEmulator`
-     * fork 出 /system/bin/sh),不接 SSH——于是桥接线程、resize 探测、断线重连
-     * 这些为远程准备的东西一概不需要。
+     * Local shell session: takes termux's own local PTY path (`initializeEmulator` forks /system/bin/sh),
+     * without SSH — so the bridge thread, resize probing, reconnect logic and other things prepared for remote sessions are all unnecessary.
      */
     val isLocal: Boolean get() = scheme == LOCAL_SCHEME
 
@@ -65,26 +68,26 @@ class TermSession(
     lateinit var emulator: TerminalEmulator
 
     /**
-     * 还没就绪时为 null。SSH 会话在建视图之前就注入好模拟器,本地会话却要等
-     * 进程 fork 起来才有——凡是可能在会话就绪前跑到的地方(界面回调、遍历所有
-     * 会话)都得走这个,直接读 lateinit 会抛 UninitializedPropertyAccessException。
+     * Null before it's ready. SSH sessions have the emulator injected before the view is built; local sessions have to wait
+     * until the process forks — anywhere that might run before the session is ready (UI callbacks, iterating all sessions)
+     * has to go through this; reading `lateinit` directly would throw UninitializedPropertyAccessException.
      */
     val emulatorOrNull: TerminalEmulator? get() = if (::emulator.isInitialized) emulator else null
     var shell: SftpFileSystem.ShellSession? = null
     @Volatile var connecting = true
     @Volatile var alive = false
-    /** 每次 (重新)接通 shell 递增;桥接线程靠它判断自己是否已被新连接取代。 */
+    /** Incremented every time the shell is (re)connected; the bridge thread uses it to know whether it has been replaced by a newer connection. */
     @Volatile var gen = 0
-    /** 用户主动结束会话时置真,阻止断线重连逻辑误把它当掉线。 */
+    /** Set true when the user actively ends the session, to stop the reconnect logic from mistaking it for a dropped connection. */
     @Volatile var closing = false
 
-    /** 会话进程起来的时刻。用来分辨"用户敲了 exit"和"根本没起来就死了"。 */
+    /** When the session's process started. Used to tell apart "user typed exit" and "it died before it ever came up". */
     @Volatile var startedAt = System.currentTimeMillis()
 
-    /** 特权 PTY 会话:主设备端 fd 与子进程 pid(经 Shizuku 助手拿到);普通会话为 null。 */
+    /** Privileged PTY session: master device fd and child pid (obtained via the Shizuku helper); null for ordinary sessions. */
     @Volatile var privFd: android.os.ParcelFileDescriptor? = null
     @Volatile var privPid = 0
-    /** 仅当前展示中的会话设此回调刷新界面;后台会话为 null,只静默累积到模拟器。 */
+    /** Only the currently-displayed session sets this callback to refresh the UI; background sessions are null and just silently accumulate into the emulator. */
     @Volatile var onOutput: (() -> Unit)? = null
 
     fun close() {
@@ -94,8 +97,8 @@ class TermSession(
         onOutput = null
         privFd?.let { pfd ->
             privFd = null
-            // 先杀进程组再关 fd:只关 fd 的话 shell 要等到下次写才收到 SIGHUP,
-            // 而一个卡在读的 shell 可能一直不写。
+            // Kill the process group first, then close the fd: only closing the fd means the shell won't receive SIGHUP
+            // until its next write, and a shell stuck reading may never write.
             if (privPid > 0) runCatching { com.twig.app.priv.Pty.nativeKill(privPid) }
             runCatching { pfd.close() }
             return
@@ -110,12 +113,12 @@ class TermSession(
     }
 }
 
-/** 本地 shell 会话的 scheme 标记(不是 FsRegistry 里的来源)。 */
+/** Local shell session scheme marker (not a source in FsRegistry). */
 const val LOCAL_SCHEME = "local"
 
 /**
- * 多会话管理器(静态,跨 Activity 生命周期常驻)。终端页顶部下拉即这份列表,
- * 「在此打开终端 / SSH 终端 / 新建」都往这里追加会话,选中切换、显式结束才移除。
+ * Multi-session manager (static, persists across Activity lifecycle). The dropdown at the top of the terminal page is this list;
+ * "Terminal here / SSH terminal / New" all append sessions here; selecting one switches, only an explicit close removes.
  */
 object TermManager {
     private val sessions = ArrayList<TermSession>()
@@ -138,7 +141,7 @@ object TermManager {
         if (sessions.contains(t)) current = t
     }
 
-    /** 移除并关闭一条会话;返回移除后应展示的会话(可能为 null)。 */
+    /** Remove and close a session; returns the session that should be shown after removal (may be null). */
     @Synchronized fun remove(t: TermSession): TermSession? {
         val idx = sessions.indexOf(t)
         t.close()
@@ -157,12 +160,12 @@ object TermManager {
 }
 
 /**
- * SSH 终端:Termux 终端模拟器/渲染 + SSHJ shell 通道,支持多会话。
+ * SSH terminal: Termux terminal emulator/rendering + SSHJ shell channel, with multi-session support.
  *
- * Termux 的 TerminalSession 是 final 且绑定本地 PTY(JNI 子进程),这里不启动它的
- * 进程,而是反射注入自建 TerminalEmulator(输出直写 SSH stdin),置 mShellPid=1
- * 使按键入队,由桥接线程搬运到 SSH。会话存于 [TermManager],顶部下拉切换;
- * Activity 在独立任务栈,可与文件管理来回切换,会话不断。
+ * Termux's TerminalSession is final and bound to a local PTY (JNI child process); here we don't start its
+ * process but reflectively inject a self-built TerminalEmulator (output written straight to SSH stdin), set mShellPid=1
+ * to queue keypresses, with a bridge thread carrying them to SSH. Sessions live in [TermManager], switched via the top dropdown;
+ * Activity lives in its own task stack, so users can swap back and forth with the file manager without losing the session.
  */
 class TerminalActivity : AppCompatActivity() {
 
@@ -173,7 +176,7 @@ class TerminalActivity : AppCompatActivity() {
     private var altPending = false
     private var shiftPending = false
 
-    /** 当前展示中的会话(视图绑定的那条)。 */
+    /** Currently displayed session (the one bound to the view). */
     private var displayed: TermSession? = null
     private var suppressSpinner = false
 
@@ -182,10 +185,10 @@ class TerminalActivity : AppCompatActivity() {
         b = ActivityTerminalBinding.inflate(layoutInflater)
         setContentView(b.root)
         applyFullscreen()
-        CmdShims.ensureAsync(this) // 本地 shell 的命令补全垫片,后台建/补 symlink
-        SshHome.ensureAsync(this) // .mkshrc 的 ssh alias 要 -F 这份 config,得先存在
+        CmdShims.ensureAsync(this) // Command-completion shims for local shells — build/repair symlinks in the background.
+        SshHome.ensureAsync(this) // .mkshrc's ssh alias needs -F on this config, so it has to exist first.
 
-        b.toolbar.setNavigationOnClickListener { finish() } // 返回文管,会话保持
+        b.toolbar.setNavigationOnClickListener { finish() } // Back to file manager; the session keeps running.
         b.toolbar.menu.add(0, MENU_END_CURRENT, 0, getString(R.string.terminal_end_current)).apply {
             icon = ContextCompat.getDrawable(this@TerminalActivity, R.drawable.ic_close)
                 ?.mutate()?.apply { setTint(Color.WHITE) }
@@ -202,7 +205,7 @@ class TerminalActivity : AppCompatActivity() {
             setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
         b.toolbar.menu.add(0, MENU_NEW_LOCAL, 3, getString(R.string.terminal_new_local))
-        // 特权会话:只在特权访问已连上、且那条路真能起来时才出现
+        // Privileged session: only appears when privileged access has connected and that path can actually start.
         if (Privileged.active != Privileged.OFF && PrivShell.available(this, Privileged.active)) {
             b.toolbar.menu.add(0, MENU_NEW_PRIV, 4, getString(R.string.terminal_new_priv))
         }
@@ -234,8 +237,8 @@ class TerminalActivity : AppCompatActivity() {
             }
         }
 
-        // ★ setTextSize 必须在 setTypeface 之前:后者直接读 mRenderer.mTextSize,
-        // 而 mRenderer 只在 setTextSize 里创建,反过来会 NPE。
+        // ★ setTextSize must come before setTypeface: the latter reads mRenderer.mTextSize directly,
+        // and mRenderer is only created inside setTextSize, so the reverse order NPEs.
         applyTextSize(
             Prefs.terminalTextSize(this).takeIf { it > 0 }
                 ?: (13 * resources.displayMetrics.density).toInt(),
@@ -253,29 +256,35 @@ class TerminalActivity : AppCompatActivity() {
         }
         buildExtraKeys()
         applyColors()
-        // 布局变化(软键盘弹出收回/横竖屏)会让 termux-view 改本地 emulator 行列;
-        // 防抖后把新尺寸同步给远程 PTY,修 htop 等全屏程序键盘收回后的留白。
-        // 是否敢发按服务器探测记忆,见 syncRemoteSize()。
+        // Layout changes (soft keyboard show/hide, orientation flip) cause the termux-view to alter the local emulator's row/column;
+        // after debouncing, sync the new size to the remote PTY to fix the blank padding that full-screen programs like htop leave when the keyboard retracts.
+        // Whether to dare send is decided from per-server probing memory; see syncRemoteSize().
         b.terminal.viewTreeObserver.addOnGlobalLayoutListener {
-            scheduleSizeSync()
-            syncKeyboardIcon() // 键盘弹/收都会改布局,顺手把按钮图标切到对应状态
+            // While frozen the emulator did not move, so there is nothing to forward —
+            // just keep pushing the thaw out until the window stops jittering.
+            if (b.terminalBox.frozen) scheduleThaw(restart = false) else scheduleSizeSync()
+            syncKeyboardIcon() // The keyboard's show/hide also changes layout, so swap the icon to match.
         }
 
-        handleIntent(intent)
+        // ★ This is a **home-screen entry** (long-press app icon → Terminal), bypassing the main screen,
+        // so the unlock gate must intercept here: saved credentials are connected in the session, and even local shells can read the app's private dir.
+        // Views and lateinit are all built above; the callback only does "open the session" — moving initialization past the unlock callback
+        // causes lifecycle callbacks to run first (same trap as PaneFragment.adapter).
+        SecurityUi.gate(this) { handleIntent(intent) }
     }
 
     /**
-     * 当前终端字号(px)。双指缩放必须以它为基准累乘——termux 的 `mScaleFactor` 是
-     * 累积因子且被 [ViewClient.onScale] 的返回值覆写,我们每次返回 1.0f 把它清零,
-     * 若基准还取固定的初始字号,一次手势就只会在 base×阈值 那一档上反复设同一个值,
-     * 表现为「捏了没反应」。
+     * Current terminal text size (px). Pinch-zoom has to multiply on top of this — termux's `mScaleFactor` is
+     * a cumulative factor and gets overwritten by [ViewClient.onScale]'s return value; we always return 1.0f to reset it,
+     * so if the baseline is still the fixed initial size, a single gesture just keeps setting the same base×threshold value,
+     * looking like "pinch does nothing".
      */
     private var textSizePx = 0
 
     /**
-     * 换字号。★ 必须自己补 `invalidate()`:termux 的 `setTextSize` → `updateSize()`
-     * 里 `invalidate()` 关在「行列有变化」的分支内(`setTypeface` 就自己补了一次),
-     * 字号微调没跨过行列边界时画面会保持旧字号不动。
+     * Switch the text size. ★ Must call `invalidate()` ourselves: termux's `setTextSize` → `updateSize()`
+     * only calls `invalidate()` in the "row/column changed" branch (`setTypeface` does call it itself),
+     * so when a size tweak doesn't cross a row/column boundary the screen stays at the old size.
      */
     private fun applyTextSize(px: Int) {
         textSizePx = px.coerceIn(MIN_TEXT_PX, MAX_TEXT_PX)
@@ -283,13 +292,13 @@ class TerminalActivity : AppCompatActivity() {
         b.terminal.invalidate()
     }
 
-    /** 已应用的字体路径,用来在设置页改过之后按需重新加载。 */
+    /** Applied font path, used to reload after a change on the settings page. */
     private var appliedFont: String? = null
 
     /**
-     * 应用设置里选的字体(见 [TerminalFont])。termux 的 `setTypeface` 自己会
-     * `updateSize()` + `invalidate()`,换字体导致行列变化时还会回调 `onEmulatorSet`
-     * 把新尺寸同步给远端,这里不用额外补。
+     * Apply the font chosen in settings (see [TerminalFont]). termux's `setTypeface` itself calls
+     * `updateSize()` + `invalidate()`, and a font change that affects row/column also fires the `onEmulatorSet`
+     * callback to sync the new size to the remote, so we don't need to add anything here.
      */
     private fun applyFont() {
         appliedFont = Prefs.terminalFont(this)
@@ -297,15 +306,18 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 套用配色。renderer 只画到网格边界,右/下不足一格的余数区域露的是 View 背景,
-     * 所以 View 背景也得跟着方案走(默认那层黑色在浅色方案下会露出黑边);
-     * 附加键条同理,不然浅色方案配深色键条很割裂。
+     * Apply the color scheme. The renderer only paints up to the grid edge; the leftover region (right/bottom) shows the View background,
+     * so the View background has to follow the scheme too (the default black layer shows as a black border under a light scheme);
+     * same for the extra-key bar — otherwise a light scheme with a dark key bar looks mismatched.
      */
     private fun applyColors() {
         TermColors.apply(this)
         TermColors.applyToSessions()
         b.terminal.setBackgroundColor(TermColors.bg())
         b.extraKeys.setBackgroundColor(TermColors.keyBarBg())
+        // The terminal has its own color scheme (independent of the app theme); the nav bar follows the bottom-most extra-key bar;
+        // living in applyColors means it changes together with the terminal scheme.
+        NavBarTint.apply(this, TermColors.keyBarBg())
         for (btn in extraKeyButtons) btn.setTextColor(TermColors.fg())
         markMod(ctrlBtn, ctrlPending)
         markMod(altBtn, altPending)
@@ -313,7 +325,7 @@ class TerminalActivity : AppCompatActivity() {
         b.terminal.onScreenUpdated()
     }
 
-    /** 顶栏「终端配色」快速入口。 */
+    /** Top-bar "Terminal colors" quick entry. */
     private val colorsPicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
             val uri = r.data?.data ?: return@registerForActivityResult
@@ -333,7 +345,7 @@ class TerminalActivity : AppCompatActivity() {
             { applyColors() },
         )
 
-    /** 顶栏「终端字体」快速入口(细项同样在设置页里,见项目约定)。 */
+    /** Top-bar "Terminal font" quick entry (the details are also on the settings page, per project convention). */
     private val fontPicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
             val uri = r.data?.data ?: return@registerForActivityResult
@@ -359,7 +371,7 @@ class TerminalActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.settings_term_font))
             .setItems(items) { _, w ->
-                // MIME 用 */*:不少文件应用不给 ttf 正确的 MIME,限死会选不到
+                // MIME use */*: many file apps don't give ttf the right MIME, pinning it means you can't pick anything.
                 if (w == 0) {
                     fontPicker.launch(PickerActivity.intent(this, getString(R.string.settings_term_font)))
                 } else {
@@ -371,7 +383,70 @@ class TerminalActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 防抖:软键盘动画期间布局连发,只同步落定后的最终尺寸。 */
+    /**
+     * Screen off/on and app switching relayout the window several times before it
+     * settles, often ending up at the size it started from. Letting each of those
+     * passes resize the emulator wrecks the alternate screen buffer (tmux, htop, vim)
+     * while the peer sees no net change and never repaints — see [TermSizeFreezeLayout].
+     * So the size is frozen from [onPause] and applied again in **one** step once the
+     * layout has been quiet for [THAW_SETTLE_MS] (or [THAW_MAX_MS] has passed, in case
+     * layout passes keep trickling in).
+     */
+    private val thawSize = Runnable {
+        if (b.terminalBox.frozen) {
+            b.terminalBox.frozen = false
+            // The relayout requested above lands next frame; apply the settled size
+            // then, in one step (a no-op when it is the size we started from).
+            b.terminal.post {
+                b.terminal.updateSize()
+                logSize("size thaw")
+            }
+        }
+    }
+
+    /** Hard deadline for the debounce above, so a restless layout cannot starve it. */
+    private var thawAt = 0L
+
+    /**
+     * ★ Only coming back to the foreground arms the thaw; a layout pass may **postpone**
+     * an armed one but must never start one. Measured otherwise (2026-08-27): leaving the
+     * app restores the status bar, that relayout keeps rescheduling the debounce, and
+     * ~300 ms later — with the user already in another app — the thaw fired and applied
+     * the shorter size, so we froze again on the *wrong* size and coming back applied the
+     * real one: a blank strip at the bottom and the content visibly jumping. The three
+     * two exits (focus loss / `onPause`) arrive in no fixed order — measured here, focus
+     * loss always came first — so this flag, not their ordering, is what makes it right.
+     */
+    private var thawArmed = false
+
+    private fun freezeSize(why: String) {
+        if (!b.terminalBox.frozen) logSize("size freeze ($why)")
+        b.terminalBox.frozen = true
+        thawArmed = false
+        main.removeCallbacks(thawSize)
+    }
+
+    /** This corner is fragile enough to be worth a trace; grep logcat for `size freeze`. */
+    private fun logSize(what: String) {
+        val e = b.terminal.mEmulator
+        Log.i(
+            TAG,
+            "$what: view=${b.terminal.width}x${b.terminal.height} " +
+                "box=${b.terminalBox.width}x${b.terminalBox.height} " +
+                "grid=${e?.mColumns}x${e?.mRows}",
+        )
+    }
+
+    private fun scheduleThaw(restart: Boolean) {
+        if (restart) thawArmed = true
+        if (!b.terminalBox.frozen || !thawArmed) return
+        val now = SystemClock.uptimeMillis()
+        if (restart || thawAt == 0L) thawAt = now + THAW_MAX_MS
+        main.removeCallbacks(thawSize)
+        main.postDelayed(thawSize, (thawAt - now).coerceIn(0L, THAW_SETTLE_MS))
+    }
+
+    /** Debounce: the soft-keyboard animation produces a flurry of layout events, only sync the final size after it settles. */
     private val sizeSync = Runnable { syncRemoteSize() }
 
     private fun scheduleSizeSync() {
@@ -380,19 +455,20 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 把本地模拟器尺寸同步给远程 PTY(window-change)。按服务器记忆能力:
-     * unknown 时首发即探测,3 秒内连接死了标 broken 此后永不再发(自动重连兜底,
-     * 回到固定尺寸旧行为);活着标 ok 放心转发。resize() 与 stdin 同锁串行化、去重。
+     * Sync the local emulator's size to the remote PTY (window-change). Per-server capability memory:
+     * on `unknown` the first send is a probe; if the connection dies within 3 seconds we mark it `broken` and never send again
+     * (auto-reconnect falls back to the old fixed-size behavior); if it survives we mark it `ok` and forward freely.
+     * resize() shares a lock with stdin — serialized and deduped.
      *
-     * ★ 发送必须在后台线程:主线程碰 socket 会抛 NetworkOnMainThreadException,
-     * 而 SSHJ 在真正写 socket **之前**就已推进出站包序号与加密流状态——异常被吞
-     * 后状态已脏,下一个正常出站包(往往是第一个按键)MAC 对不上,服务器直接
-     * 关 TCP。这就是历史上「一输入就断」在**所有**服务器复现的真正根因,与
-     * 服务器、termux-view 均无关。
+     * ★ The send has to happen on a background thread: hitting a socket on the main thread throws NetworkOnMainThreadException,
+     * but SSHJ has already advanced the outbound packet sequence and cipher-stream state **before** it actually writes the socket —
+     * once the exception is swallowed the state is dirty, and the next normal outbound packet (often the first keypress) has a mismatched MAC,
+     * so the server closes the TCP. This is the real root cause of "disconnect on the first keypress" reproducing on **every** server,
+     * unrelated to the server or the termux-view.
      */
     private fun syncRemoteSize() {
         val t = displayed ?: return
-        if (t.isLocal) return // 本地 PTY 的尺寸 TerminalView.updateSize 已经同步过了
+        if (t.isLocal) return // Local PTY size has already been synced by TerminalView.updateSize.
         if (!t.alive) return
         val sh = t.shell ?: return
         if (Prefs.termResizeCap(this, t.scheme) == Prefs.RESIZE_BROKEN) return
@@ -403,7 +479,7 @@ class TerminalActivity : AppCompatActivity() {
             if (sent && Prefs.termResizeCap(this, t.scheme) == Prefs.RESIZE_UNKNOWN) {
                 val gen = t.gen
                 main.postDelayed({
-                    if (t.closing) return@postDelayed // 用户主动结束,无法判定,下次再探
+                    if (t.closing) return@postDelayed // User actively ended it — can't judge, probe again next time.
                     val ok = t.gen == gen && t.alive && sh.isOpen
                     Prefs.setTermResizeCap(
                         this,
@@ -419,15 +495,27 @@ class TerminalActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent)
+        SecurityUi.gate(this) { handleIntent(intent) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyFullscreen() // 系统可能在切换后恢复状态栏,重新应用
+        if (!hasFocus) {
+            // Screen off takes the window's focus **before** onPause, and the relayout
+            // it triggers (the IME is dismissed, the status bar returns for the
+            // keyguard) is exactly what must not reach the emulator — freeze here, not
+            // one lifecycle callback later. The soft keyboard does not take focus away,
+            // so this does not gate the ordinary keyboard show/hide resize.
+            freezeSize("unfocused")
+            return
+        }
+        applyFullscreen() // The system may have restored the status bar after switching; re-apply.
+        // Hiding the status bar again is itself a layout pass: keep the size frozen
+        // until it has landed, otherwise this is the second half of the round trip.
+        scheduleThaw(restart = true)
     }
 
-    /** 跟随主界面的「全屏(隐藏状态栏)」设置。 */
+    /** Follow the main screen's "Fullscreen (hide status bar)" setting. */
     private fun applyFullscreen() {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         if (Prefs.fullscreen(this)) {
@@ -439,7 +527,7 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** scheme 非空 = 来自文管的「打开终端」请求,总是新建一条;否则展示当前会话。 */
+    /** scheme non-null = an "Open terminal" request from the file manager, always creates a new one; otherwise show the current session. */
     private fun handleIntent(intent: Intent) {
         val scheme = intent.getStringExtra(EXTRA_SCHEME)
         if (scheme == LOCAL_SCHEME) {
@@ -451,14 +539,14 @@ class TerminalActivity : AppCompatActivity() {
                 ?: TermManager.current?.title ?: scheme
             openNew(scheme, title, intent.getStringExtra(EXTRA_DIR), intent.getStringExtra(EXTRA_CMD))
         } else {
-            // 一条会话都没有时不再直接退出:开一条本地 shell,顶栏那个终端入口
-            // 因此可以常驻(点进来总有东西可用)
+            // When there are no sessions we no longer just exit: open a local shell, so that top-bar Terminal entry
+            // can be persistent (tapping in always has something usable).
             val cur = TermManager.current
             if (cur == null) openLocal(intent.getStringExtra(EXTRA_DIR)) else showSession(cur)
         }
     }
 
-    /** 「新建」菜单:在当前会话所属服务器上再开一条 shell。 */
+    /** "New" menu: open another shell on the server the current session belongs to. */
     private fun newOnCurrentServer() {
         val cur = displayed ?: TermManager.current
         if (cur == null || cur.isLocal) { openLocal(null); return }
@@ -466,21 +554,20 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 新建**本地** shell 会话:走 termux 原本的路子——`TerminalSession` 自己
-     * `JNI.createSubprocess` fork 出 /system/bin/sh、分配 PTY、起读写线程喂模拟器,
-     * 所以这里既不用桥接线程,也没有连接/重连/尺寸探测那一套(本地 resize 就是
-     * 一次 ioctl,`TerminalView.updateSize` 已经替我们调了)。
+     * Create a **local** shell session: takes termux's original path — `TerminalSession` itself forks /system/bin/sh via
+     * `JNI.createSubprocess`, allocates a PTY, and starts read/write threads feeding the emulator, so we need neither a
+     * bridge thread nor the connection / reconnect / size-probing rig (local resize is just an ioctl, and `TerminalView.updateSize` already calls it).
      *
-     * 限制:进程就是本 app 的 uid,没有 root;可用命令是系统自带的 mksh + toybox。
-     * Android 10 起不能 execve 应用私有目录里的文件,所以脚本要用 `sh xxx.sh` 跑。
+     * Limitations: the process runs as this app's uid, not root; available commands are the system-provided mksh + toybox.
+     * Since Android 10 you can't execve files in the app's private dir, so scripts have to be run as `sh xxx.sh`.
      */
     private fun openLocal(cwd: String?, priv: Int = Privileged.OFF) {
         val dir = cwd?.takeIf { java.io.File(it).isDirectory }
             ?: android.os.Environment.getExternalStorageDirectory().absolutePath
         val cmd = PrivShell.command(this, priv)
         if (cmd == null) {
-            // 起不来就直说是哪种身份起不来,别默默退回普通 shell —— 用户以为自己
-            // 在 root 下敲命令,实际是应用 uid,那比报错危险得多。
+            // If it can't start, just say which identity can't start — don't silently fall back to a plain shell —
+            // the user thinks they're typing commands as root but is actually under the app uid; that's more dangerous than an error.
             Toast.makeText(this, getString(R.string.terminal_priv_unavailable), Toast.LENGTH_LONG).show()
             if (TermManager.current == null) openLocal(cwd, Privileged.OFF)
             return
@@ -497,15 +584,15 @@ class TerminalActivity : AppCompatActivity() {
         val s = TerminalSession(exe, dir, args, env, 5000, sessionClient)
         t.session = s
 
-        // attach 让视图量出真实列/行。★ TerminalView.updateSize → TerminalSession.updateSize
-        // 在模拟器为空时**会自己 initializeEmulator**(即 fork 出 shell),所以 attach
-        // 这一步通常就已经把进程起起来了;下面必须先检查,否则再调一次会 fork 出第二个
-        // shell,并把第一个的 fd/模拟器覆盖掉泄漏。
+        // attach lets the view measure out real columns/rows. ★ TerminalView.updateSize → TerminalSession.updateSize
+        // **calls initializeEmulator itself** when the emulator is empty (i.e. forks the shell), so this attach step
+        // usually starts the process already; we must check below, otherwise calling again forks a second shell
+        // and overwrites the first's fd/emulator, leaking them.
         showSession(t)
         b.terminal.postDelayed({
             if (t.closing) return@postDelayed
             if (s.getEmulator() == null) {
-                // 视图当时还没量出尺寸(updateSize 会直接 return),补起一次
+                // The view hasn't measured a size yet (updateSize just returns); kick it off once.
                 val cols = (b.terminal.mEmulator?.mColumns ?: 80).coerceIn(20, 500)
                 val rows = (b.terminal.mEmulator?.mRows ?: 24).coerceIn(6, 300)
                 runCatching { s.initializeEmulator(cols, rows) }
@@ -526,19 +613,18 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 本地 shell 的环境。
+     * Environment for a local shell.
      *
-     * - **PATH 头上插 [CmdShims] 的 symlink 目录**:系统 PATH 目录应用列不出来
-     *   (`drwxr-x--x`,只有 x 没有 r),命令补全一个候选都读不到;那个目录自己可读。
-     * - **PATH 其余部分直接继承本进程的**(zygote 从 init.environ.rc 拿到的那一串),于是
-     *   `/product/bin`、`/system_ext/bin`、`/vendor/bin`、`/apex/…/bin` 这些厂商/
-     *   分区目录都在——有些 ROM 的 `ssh`、`curl` 就装在 `/product/bin` 下,写死
-     *   `/system/bin` 会让它们统统"命令找不到"。
-     * - **TERM 必须给**,不然全屏程序不知道终端能力。
-     * - **HOME/TMPDIR 指到应用私有目录**:外部存储建不了 Unix socket,权限位也是
-     *   固定的——`ssh` 要求私钥 600,放 /sdcard 上它会拒绝使用。
-     * - **ENV 指到 [rcFile]**:mksh 交互式启动时 source 它,用户可以在里面加
-     *   自己的 PATH / alias。
+     * - **Prepend [CmdShims]'s symlink directory to PATH**: the system PATH directories are unreadable to apps
+     *   (`drwxr-x--x`, x without r), so Tab completion cannot list any candidates; that directory itself is readable.
+     * - **The rest of PATH is inherited from this process** (the chain zygote got from init.environ.rc), so
+     *   `/product/bin`, `/system_ext/bin`, `/vendor/bin`, `/apex/…/bin` and other vendor / partition directories
+     *   are all there — some ROMs put `ssh`, `curl` under `/product/bin`; hard-coding `/system/bin` would
+     *   produce "command not found" for them.
+     * - **TERM must be set**, otherwise full-screen programs don't know the terminal capabilities.
+     * - **HOME/TMPDIR point to the app's private directory**: external storage cannot host a Unix socket and the
+     *   permission bits are fixed — `ssh` requires private keys to be 600, and refuses to use them on /sdcard.
+     * - **ENV points to [rcFile]**: mksh sources it on interactive start, where users can add their own PATH / aliases.
      */
     private fun localEnv(dir: String): Array<String> = (
         listOf(
@@ -555,21 +641,21 @@ class TerminalActivity : AppCompatActivity() {
         ).toTypedArray()
 
     /**
-     * mksh 的启动脚本($ENV,交互式 shell 每次启动都会 source)。首次自动生成一份,
-     * 先引系统自带的 /system/etc/mkshrc(提示符等),用户要加自己的 PATH / alias /
-     * 函数往下写就行,新开会话即生效。
+     * The mksh startup script ($ENV, sourced by every interactive shell on start). Auto-generated on first use; first
+     * sources the system-provided /system/etc/mkshrc (for the prompt etc.), and the user can drop their own PATH / aliases /
+     * functions below — a new session picks them up immediately.
      *
-     * **别再试图设 `HISTFILE`**(2026-08-06 实测定案):Android 自带的
-     * `/system/bin/sh` 是 `HAVE_PERSISTENT_HISTORY=0` 编译的 mksh R59,
-     * `strings` 里**连 `HISTFILE` 这个字符串都没有**(只有 `HISTSIZE`)——
-     * 设了既不写也不读(预先造好文件、当环境变量传进去,`fc -l` 照样
-     * "no history (yet)")。历史是纯内存数组,`fc` 也没有 bash `history -r`
-     * 那样的加载命令,所以**跨会话翻历史在自带 shell 上做不到**;App 层也补不了,
-     * 唯一通路是 PTY 输入,而输入即执行。要真做只能打包带持久历史的 shell
-     * (放 nativeLibraryDir 绕过 W^X),与体积优先冲突,评估后不做。
-     * `HISTSIZE` 是有效的,用来加长会话内历史。
+     * **Do not try to set `HISTFILE`** (settled after an empirical test on 2026-08-06): Android's bundled
+     * `/system/bin/sh` is mksh R59 built with `HAVE_PERSISTENT_HISTORY=0`; `strings` shows **no `HISTFILE` token at all**
+     * (only `HISTSIZE`) — setting it neither writes nor reads (pre-creating the file and passing it via env, `fc -l` still
+     * says "no history (yet)"). History is a pure in-memory array, and `fc` has no bash `history -r`-style load command, so
+     * **cross-session history on the bundled shell is impossible**; the app layer can't fix it either, since the only path
+     * is PTY input, which executes immediately. To really do it you'd have to ship a shell with persistent history (placed
+     * in nativeLibraryDir to bypass W^X), which conflicts with size-first — evaluated and skipped.
+     * `HISTSIZE` does work; use it to extend in-session history.
      *
-     * 文件内容一律英文:它落在磁盘上、用户会自己编辑,不像 UI 文案能跟随语言切换。
+     * File contents are always in English: the file lives on disk and the user edits it themselves, so unlike UI copy it
+     * can't follow the language switch.
      */
     private fun rcFile(): java.io.File {
         val rc = java.io.File(filesDir, ".mkshrc")
@@ -631,8 +717,8 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 新建会话:先 attach 让终端视图算出真实列/行,再用这个尺寸建立 shell。
-     * 之后的尺寸变化经 [syncRemoteSize] 按服务器能力(探测+记忆)选择性转发。
+     * Create a session: first attach so the terminal view computes its real columns/rows, then open the shell at that size.
+     * Subsequent size changes are forwarded selectively by [syncRemoteSize] based on the server's capability (probed + remembered).
      */
     private fun openNew(scheme: String, title: String, cwd: String?, command: String? = null) {
         val fs = runCatching { FsRegistry.of(scheme) }.getOrNull() as? SftpFileSystem
@@ -642,27 +728,28 @@ class TerminalActivity : AppCompatActivity() {
             return
         }
         val t = TermManager.create(scheme, title)
-        // 不调 initializeEmulator(会 JNI 起本地进程);模拟器反射注入
+        // Don't call initializeEmulator (that would JNI-launch a local process); inject the emulator by reflection.
         val s = TerminalSession("/system/bin/sh", "/", arrayOf(), arrayOf(), 5000, sessionClient)
         val output = SshOutput()
         val emulator = TerminalEmulator(output, 80, 24, 5000, sessionClient)
         TerminalSession::class.java.getDeclaredField("mEmulator")
             .apply { isAccessible = true }.set(s, emulator)
-        // write() 只有 mShellPid>0 才入队
+        // write() only enqueues when mShellPid>0
         TerminalSession::class.java.getDeclaredField("mShellPid")
             .apply { isAccessible = true }.setInt(s, 1)
-        // 模拟器应答(光标位置查询等)也投递到输入队列,stdin 只有桥接线程一个写者
+        // Emulator replies (cursor position queries etc.) also go to the input queue; stdin has the bridge thread as its sole writer.
         output.redirect = { d, o, c -> s.write(d, o, c) }
         t.session = s
         t.emulator = emulator
 
-        // 先 attach:让视图布局并把 emulator 尺寸更新为真实列/行(本地,不碰 SSH)
+        // Attach first: let the view lay out and update the emulator size to real columns/rows (local, no SSH).
         showSession(t)
 
-        // 布局稳定后拿真实尺寸,用它一次性建立 shell(此后不再 resize)。
-        // 即便此刻已返回文管(isDestroyed),仍照常建连,会话在后台可用、回来接续。
+        // After layout stabilizes, take the real size and use it to open the shell in one shot (no further resize from here).
+        // Even if we've already returned to the file manager (isDestroyed), still establish the connection —
+        // the session can be used in the background and resumed when we come back.
         b.terminal.postDelayed({
-            if (!t.connecting) return@postDelayed // 连接前就被结束
+            if (!t.connecting) return@postDelayed // ended before connection
             val cols = emulator.mColumns.coerceIn(20, 500)
             val rows = emulator.mRows.coerceIn(6, 300)
             Thread({
@@ -691,9 +778,9 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 开一条特权会话。两种身份形态不同,但对调用方是同一件事:
-     *  - **root**:`su` 直接在 termux 自己 fork 的本地 PTY 里起 root shell;
-     *  - **Shizuku**:PTY 由特权进程分配,fd 传回来(见 [openPrivilegedPty])。
+     * Open a privileged session. Two identities, different in form, but the same thing to the caller:
+     *  - **root**: `su` directly starts a root shell in termux's own locally-forked PTY;
+     *  - **Shizuku**: the PTY is allocated by the privileged process and the fd is passed back (see [openPrivilegedPty]).
      */
     private fun openPrivileged(cwd: String?) {
         when (Privileged.active) {
@@ -704,10 +791,11 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 会话里的进程结束了。
+     * The session's process exited.
      *
-     * ★ **刚起来就死的不收掉**:那是启动失败,不是用户敲了 exit,而失败原因正打在
-     * 这块屏幕上。直接收掉的话界面一闪就回文件列表,唯一的线索也跟着没了。
+     * ★ **Don't clean up a session that died right after starting**: that's a startup failure, not the user typing
+     * `exit`, and the failure reason is right here on this screen. Cleaning it up immediately would just flash back
+     * to the file list, taking the only clue with it.
      */
     private fun onSessionEnded(t: TermSession) {
         val quick = System.currentTimeMillis() - t.startedAt < QUICK_EXIT_MS
@@ -725,16 +813,16 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 新建**特权 PTY** 会话(Shizuku 身份)。
+     * Open a **privileged PTY** session (Shizuku identity).
      *
-     * 与本地会话的区别只有一处:PTY 不是我们自己 fork 的,而是让跑在特权进程里的
-     * [com.twig.app.priv.TwigPrivService] 去 forkpty,再把**主设备端 fd** 经
-     * ParcelFileDescriptor 传回来。拿到之后一切照旧——所以这里复用的是 SSH 那套
-     * (注入模拟器 + 两条桥接线程),而不是本地那套(termux 自己 fork)。
+     * The only difference from a local session: the PTY is not forked by us, but by [com.twig.app.priv.TwigPrivService]
+     * running in the privileged process via `forkpty`, and the **master-side fd** is passed back via ParcelFileDescriptor.
+     * From then on everything is the same — so we reuse the SSH path here (inject emulator + two bridge threads),
+     * not the local path (termux forks itself).
      *
-     * ★ 为什么要绕这一圈:rish 那条路(在本进程里 app_process 加载 Shizuku 的 dex)
-     * 被 SELinux 挡死——`untrusted_app` 不许加载 `app_data_file` 标签的文件。
-     * 而这个助手跑的是**我们自己的 APK**(`/data/app`,`apk_data_file`),不受此限。
+     * ★ Why this detour: the rish route (app_process loading Shizuku's dex inside our process) is blocked by SELinux —
+     * `untrusted_app` is not allowed to load files labelled `app_data_file`. But the helper runs as **our own APK**
+     * (`/data/app`, `apk_data_file`), and is not subject to that limit.
      */
     private fun openPrivilegedPty(cwd: String?) {
         val dir = cwd?.takeIf { it.isNotBlank() } ?: "/"
@@ -786,9 +874,9 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 特权 shell 的环境。**不能照搬本地那份** —— `HOME`/`TMPDIR` 指向我们的应用
-     * 私有目录,而助手是 shell 身份时根本读不进去(0700,属主是应用 uid)。
-     * 落到 `/data/local/tmp/twig`:shell 与 root 都写得动。
+     * Environment for a privileged shell. **Don't just copy the local one** — `HOME`/`TMPDIR` point at our app's
+     * private directory, which the helper cannot read while running as shell (0700, owned by the app uid).
+     * They point at `/data/local/tmp/twig` instead: shell and root can both write there.
      */
     private fun privEnv(dir: String): Array<String> = (
         listOf(
@@ -802,12 +890,12 @@ class TerminalActivity : AppCompatActivity() {
         ).toTypedArray()
 
     /**
-     * 把传回来的 PTY 主设备端接到模拟器上。
+     * Connect the PTY master end returned by the helper to the emulator.
      *
-     * ★ 顺手把真实 fd 反射注进 `mTerminalFileDescriptor`:termux 的
-     * `TerminalSession.updateSize` 本来就会拿这个字段去 `setPtyWindowSize`,
-     * 注进去之后**窗口大小同步一行都不用写**,横竖屏切换/键盘弹收自动带 SIGWINCH。
-     * SSH 那边要靠 [syncRemoteSize] 探测+记忆,是因为那头没有本地 fd 可用。
+     * ★ While we're at it, inject the real fd into `mTerminalFileDescriptor` by reflection: termux's
+     * `TerminalSession.updateSize` already reads that field and calls `setPtyWindowSize`, so once it's set,
+     * **window-size sync needs zero extra code** — orientation changes / keyboard show/hide automatically carry
+     * SIGWINCH. SSH has to fall back to [syncRemoteSize] (probing + remembering) because there's no local fd to use there.
      */
     private fun wirePty(t: TermSession, pfd: android.os.ParcelFileDescriptor, pid: Int, cwd: String?) {
         val s = t.session
@@ -853,7 +941,7 @@ class TerminalActivity : AppCompatActivity() {
                     }
                 }
             } catch (e: Exception) {
-                // shell 退出时主设备端读会抛 EIO,这是正常收尾,不是故障
+                // When the shell exits, reading from the master end throws EIO — that's normal teardown, not a fault.
                 Log.i(PRIV_TAG, "pty closed: ${e.message}")
             }
             if (t.gen == myGen && !t.closing) main.post { onSessionEnded(t) }
@@ -863,11 +951,11 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * shell (重新)就绪后接通桥接。stdin 桥接线程只在首次连接([myGen] == 1)时
-     * 起一条,伴随 TermSession 全程存活——重连只是把 [TermSession.shell] 换成新
-     * 连接,避免重连时并发起第二条 stdin 线程去抢同一份按键队列(谁先抢到不
-     * 确定,会丢按键)。stdout 桥接线程则每条物理连接各起一条,断线/换连接
-     * 时随之结束。
+     * Wire up the bridges once the shell is (re)ready. The stdin bridge thread is started only on the first
+     * connection ([myGen] == 1) and lives for the whole TermSession — reconnecting only swaps [TermSession.shell]
+     * to a new connection, to avoid a second stdin thread racing for the same key queue during reconnect
+     * (whoever grabs first is non-deterministic and keys would be lost). The stdout bridge thread starts one
+     * per physical connection and ends with it (on disconnect / connection swap).
      */
     private fun wire(t: TermSession, sh: SftpFileSystem.ShellSession, cwd: String?, command: String? = null) {
         val s = t.session
@@ -877,20 +965,21 @@ class TerminalActivity : AppCompatActivity() {
         t.alive = true
         t.connecting = false
         refreshSessions()
-        // 连上后立即同步一次尺寸:unknown 服务器在此完成探测(shell 刚建、没跑
-        // 全屏程序,是最安全的探测时机);断线重连后本地尺寸可能已变,也靠这补上
+        // Sync the size once after connect: unknown servers complete probing here (the shell just started, no
+        // full-screen program running — safest moment to probe); after a disconnect + reconnect the local size may
+        // have changed, this also fixes that.
         if (displayed === t) scheduleSizeSync()
 
         if (myGen == 1) {
             val readInput = TermBridge.inputReader(s)
-            // 键盘输入 → session 队列 → SSH stdin(整个会话生命周期唯一写者)
+            // Key input → session queue → SSH stdin (sole writer for the entire session lifetime)
             Thread({
                 val buf = ByteArray(4096)
                 try {
                     while (!t.closing) {
                         val n = readInput(buf)
                         if (n <= 0) break
-                        t.shell?.write(buf, 0, n) // 重连间隙 shell 为 null,静默丢弃
+                        t.shell?.write(buf, 0, n) // shell is null between reconnects, drop silently
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "stdin bridge", e)
@@ -898,7 +987,7 @@ class TerminalActivity : AppCompatActivity() {
             }, "twig-term-in").start()
         }
 
-        // SSH stdout → 主线程 → 模拟器(界面不在时也累积,回来接着看)
+        // SSH stdout → main thread → emulator (accumulates while the UI is gone, picked up on return)
         Thread({
             val buf = ByteArray(8192)
             try {
@@ -914,7 +1003,7 @@ class TerminalActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "stdout bridge", e)
             }
-            // 非用户主动结束、也没被更新连接取代时,才需要判断这次 EOF 是什么
+            // Only need to inspect this EOF when it's neither user-initiated termination nor replaced by an updated connection
             if (t.gen == myGen && !t.closing) {
                 if (sh.exitedCleanly()) {
                     main.post { if (t.gen == myGen) closeExited(t) }
@@ -925,16 +1014,16 @@ class TerminalActivity : AppCompatActivity() {
         }, "twig-term-out").start()
 
         cwd?.let { s.write(cdCommand(it)) }
-        // 命令快捷方式:cd 之后把命令按进去(带回车,像用户自己敲的一样,输出照常滚)
+        // Command shortcut: after `cd`, type the command in (with Enter, like the user typed it themselves; output scrolls as usual)
         command?.takeIf { it.isNotBlank() }?.let { s.write(it.trimEnd() + "\r") }
     }
 
     /**
-     * Win32-OpenSSH 的 SFTP 根是虚拟的("/"下列出各盘符),Windows 路径在这个 app
-     * 里也被拼成 "/D:/bin" 这样带开头斜杠的形式——不能直接靠是否以 "/" 开头区分。
-     * 真正的信号是"斜杠后紧跟单个盘符字母 + 冒号"([WINDOWS_PATH])。命中时要把
-     * 这个人为加的开头斜杠去掉(cmd.exe 不认 "/D:/bin",必须是 "D:/bin"),默认
-     * shell 是 cmd.exe:不认单引号转义,跨盘符还必须 `cd /d` 才切得过去。
+     * Win32-OpenSSH's SFTP root is virtual ("/" lists drive letters), and Windows paths in this app also get
+     * composed as "/D:/bin" with a leading slash — so we can't just check whether the path starts with "/".
+     * The real signal is "slash followed by a single drive letter + colon" ([WINDOWS_PATH]). When that matches,
+     * strip the artificial leading slash (cmd.exe doesn't accept "/D:/bin", it has to be "D:/bin"); the default
+     * shell is cmd.exe: it doesn't honour single-quote escapes, and crossing drives requires `cd /d`.
      */
     private fun cdCommand(dir: String): String =
         if (WINDOWS_PATH.containsMatchIn(dir)) {
@@ -944,23 +1033,25 @@ class TerminalActivity : AppCompatActivity() {
         }
 
     /**
-     * 远端 shell 自己退出了(`exit` / Ctrl+D):不重连,直接把这条会话收掉——
-     * 和手动「结束当前会话」同一个归宿。当前会话退出就切到相邻那条,一条都不剩
-     * 就退出终端页;后台会话退出只需从列表里去掉。
+     * The remote shell exited on its own (`exit` / Ctrl+D): don't reconnect, just tear this session down —
+     * same end state as manually choosing "End current session". If the exited session was current, switch
+     * to a neighbouring one; with none left, exit the terminal page. Background sessions just need to be
+     * removed from the list.
      */
     private fun closeExited(t: TermSession) {
         val wasDisplayed = t === displayed
-        val next = TermManager.remove(t) // 内部会 close(),连接一并关掉
-        if (isDestroyed) return // 界面已经退出,移除即可
+        val next = TermManager.remove(t) // internally close(), which also closes the connection
+        if (isDestroyed) return // UI already gone, just remove
         if (!wasDisplayed) { refreshSessions(); return }
         displayed = null
         if (next == null) finish() else showSession(next)
     }
 
     /**
-     * 掉线重连:息屏/切后台被系统或运营商 NAT 静默掐断连接是常见情形,退避重试
-     * 几次,都失败才最终标记「已结束」。[myGen] 是断线时的连接代数,期间若已有
-     * 更新连接接上、或用户主动结束该会话,立即放弃。
+     * Reconnect after a drop: a screen-off / app-background event being silently disconnected by the system
+     * or carrier NAT is common — back off and retry a few times; only mark "ended" if all attempts fail.
+     * [myGen] is the connection generation captured at disconnect time; if an updated connection has
+     * already taken over, or the user manually ended this session, abandon immediately.
      */
     private fun reconnect(t: TermSession, myGen: Int) {
         t.shell = null
@@ -991,7 +1082,7 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    /** 切换到 [t] 并绑定视图:解绑旧会话回调,注册新会话刷新回调。 */
+    /** Switch to [t] and bind the view: unbind the previous session's callback, register the new one's refresh callback. */
     private fun showSession(t: TermSession) {
         val prev = displayed
         if (prev !== t) prev?.onOutput = null
@@ -1001,13 +1092,13 @@ class TerminalActivity : AppCompatActivity() {
         runCatching { t.session.updateTerminalSessionClient(sessionClient) }
         b.terminal.attachSession(t.session)
         b.terminal.post { maybeShowIme() }
-        scheduleSizeSync() // attach 会把该会话的本地 emulator 尺寸改成当前视图大小
+        scheduleSizeSync() // attach will change this session's local emulator size to the current view size
         @Suppress("DEPRECATION")
         setTaskDescription(ActivityManager.TaskDescription("SSH · ${t.title}"))
         refreshSessions()
     }
 
-    /** 结束当前会话:关闭并从列表移除,切到相邻会话;没有会话则退出。 */
+    /** End the current session: close and remove from the list, switch to a neighbour; exit if none left. */
     private fun endCurrent() {
         val t = displayed ?: return
         val next = TermManager.remove(t)
@@ -1016,7 +1107,7 @@ class TerminalActivity : AppCompatActivity() {
         showSession(next)
     }
 
-    /** 重建下拉列表(标题 + 连接/结束状态标记),并把选中项对准当前会话。 */
+    /** Rebuild the dropdown list (titles + connection/closed state markers) and align selection with the current session. */
     private fun refreshSessions() {
         if (isDestroyed) return
         val list = TermManager.list()
@@ -1054,7 +1145,7 @@ class TerminalActivity : AppCompatActivity() {
         b.terminal.requestFocus()
     }
 
-    /** 强制弹键盘(不管光标状态——[maybeShowIme] 猜错时的手动兜底)。 */
+    /** Force the keyboard up (regardless of cursor state — manual fallback when [maybeShowIme] guesses wrong). */
     private fun showIme() {
         focusTerminal()
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -1066,17 +1157,18 @@ class TerminalActivity : AppCompatActivity() {
             .hideSoftInputFromWindow(b.terminal.windowToken, 0)
     }
 
-    /** 工具栏「键盘」按钮:弹着就收起,收着就弹出。 */
+    /** Toolbar "keyboard" button: if it's up, hide it; if it's hidden, show it. */
     private fun toggleIme() {
         if (imeShown()) hideIme() else showIme()
-        // 收/弹要等布局跑完才反映到 insets 上,图标同步交给 OnGlobalLayoutListener
+        // Show/hide only reflects on insets after layout finishes — icon sync is left to OnGlobalLayoutListener.
     }
 
     /**
-     * 键盘现在是不是弹着的。API 30+ 有权威答案(`WindowInsets` 的 ime 可见性);更早的
-     * 系统上 `WindowInsetsCompat.isVisible(ime())` 只是恒为 true 的占位实现,只能按
-     * 「窗口可见区域被从底下压掉了多少」来判——本页是 `adjustResize`,键盘一弹可见区
-     * 必然缩掉一大截,这个判据够用了(阈值取屏高 1/5,躲开导航栏/挖孔那些几十像素的差)。
+     * Is the keyboard currently shown? API 30+ has an authoritative answer (ime visibility on `WindowInsets`);
+     * on older systems `WindowInsetsCompat.isVisible(ime())` is just a placeholder that always returns true,
+     * so we have to fall back to "how much was the visible window area squeezed from below" — this page
+     * uses `adjustResize`, so popping the keyboard always shaves a big chunk off the visible area; that
+     * heuristic is enough (threshold at 1/5 screen height, dodging nav bar / punch-hole's tens of pixels).
      */
     private fun imeShown(): Boolean {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -1091,7 +1183,7 @@ class TerminalActivity : AppCompatActivity() {
         return screenH > 0 && screenH - r.bottom > screenH / 5
     }
 
-    /** 键盘按钮的图标跟着实际状态走:弹着时换成「收起」那颗。 */
+    /** Keyboard button's icon follows the actual state: when up, swap to the "hide" one. */
     private fun syncKeyboardIcon() {
         val shown = imeShown()
         if (shown == keyboardIconShown) return
@@ -1101,13 +1193,13 @@ class TerminalActivity : AppCompatActivity() {
             ContextCompat.getDrawable(this, res)?.mutate()?.apply { setTint(Color.WHITE) }
     }
 
-    /** [syncKeyboardIcon] 上次设成的状态,避免每次布局都重建 drawable。 */
+    /** The state [syncKeyboardIcon] last set, to avoid rebuilding the drawable on every layout. */
     private var keyboardIconShown = false
 
     /**
-     * 点击终端/切换会话时按需弹键盘:全屏程序(htop/less/vim 等)通常会隐藏光标
-     * (DECTCEM),此时大概率不是在等你打字,不弹键盘更像 Termux 的体验;
-     * shell 提示符等光标可见的场景照常弹出。
+     * Pop the keyboard on demand when tapping the terminal / switching sessions: full-screen programs (htop/less/vim etc.)
+     * usually hide the cursor (DECTCEM), so the program is most likely not waiting for input — not popping matches Termux's feel;
+     * cases where the cursor is visible (shell prompt, etc.) still pop as usual.
      */
     private fun maybeShowIme() {
         focusTerminal()
@@ -1120,7 +1212,7 @@ class TerminalActivity : AppCompatActivity() {
     private val TerminalSession.emulator: TerminalEmulator?
         get() = runCatching { getEmulator() }.getOrNull()
 
-    /** 模拟器的回写通道(终端应答如光标位置查询);经 redirect 投递到输入队列。 */
+    /** The emulator's write-back channel (terminal replies like cursor-position queries); delivered to the input queue via `redirect`. */
     private class SshOutput : TerminalOutput() {
         var redirect: ((ByteArray, Int, Int) -> Unit)? = null
         override fun write(data: ByteArray, offset: Int, count: Int) {
@@ -1151,11 +1243,12 @@ class TerminalActivity : AppCompatActivity() {
         }
         override fun onTitleChanged(s: TerminalSession) = Unit
         /**
-         * 本地 shell 进程退出(exit / Ctrl+D):和 SSH 正常退出一样直接收掉会话。
+         * Local shell process exited (exit / Ctrl+D): same as a normal SSH exit, tear the session down.
          *
-         * ★ 但**刚起来就死的不收**:那是启动失败,不是用户敲了 exit,而失败原因正打在
-         * 这块屏幕上。直接收掉的话界面一闪就回文件列表,唯一的线索也跟着没了
-         * (rish/su 起不来时就是这个样子)。留着会话让人读得到,顺便进 logcat。
+         * ★ **But don't tear down a session that died right after starting**: that's a startup failure, not the user
+         * typing `exit`, and the failure reason is right here on this screen. Cleaning it up immediately would just
+         * flash back to the file list, taking the only clue with it (this is exactly what rish/su failure looks like).
+         * Keep the session so the message stays readable, and have it land in logcat too.
          */
         override fun onSessionFinished(s: TerminalSession) {
             val t = TermManager.list().firstOrNull { it.session === s } ?: return
@@ -1185,12 +1278,12 @@ class TerminalActivity : AppCompatActivity() {
 
     private inner class ViewClient : TerminalViewClient {
         override fun onScale(scale: Float): Float {
-            if (scale > 0.95f && scale < 1.05f) return scale // 攒够变化再动,免得抖
+            if (scale > 0.95f && scale < 1.05f) return scale // accumulate enough change before moving, avoid jitter
             var next = (textSizePx * scale).roundToInt()
-            // 小字号时 ×1.05 取整后可能还是原值,会卡住不动;至少挪一格
+            // At small font sizes, ×1.05 may round back to the original value and stall; nudge by at least one step
             if (next == textSizePx) next += if (scale > 1f) 1 else -1
             if (next != textSizePx) applyTextSize(next)
-            return 1.0f // 基准已换成新字号,累积因子清零
+            return 1.0f // baseline has switched to the new font size, accumulated factor reset to zero
         }
         override fun onSingleTapUp(e: MotionEvent) = maybeShowIme()
         override fun shouldBackButtonBeMappedToEscape() = false
@@ -1207,10 +1300,10 @@ class TerminalActivity : AppCompatActivity() {
         override fun readFnKey() = false
         override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession) = false
         /**
-         * termux 只在「行列真的变了」时回调这里。字号缩放走的正是这条路——
-         * `setTextSize` 不 `requestLayout()`,`OnGlobalLayoutListener` 不触发,
-         * 光靠那个监听器远端 PTY 收不到新尺寸,会继续按旧 cols/rows 输出(也不发
-         * SIGWINCH 让程序重画),屏幕上就留着按旧宽度画的旧内容。
+         * termux only calls back here when columns/rows actually change. Font-size pinch zoom is exactly that
+         * path — `setTextSize` does not `requestLayout()`, `OnGlobalLayoutListener` doesn't fire, so a listener-only
+         * approach doesn't deliver the new size to the remote PTY; the program keeps writing to the old cols/rows
+         * (and doesn't send SIGWINCH to redraw), so the screen retains content painted at the old width.
          */
         override fun onEmulatorSet() = scheduleSizeSync()
         override fun logError(tag: String?, message: String?) {
@@ -1228,9 +1321,9 @@ class TerminalActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 附加键条 ----
+    // ---- Extra key bar ----
 
-    /** 全部附加键按钮,换配色时统一改字色。 */
+    /** All extra-key buttons — text colour is changed in one place when re-colouring. */
     private val extraKeyButtons = ArrayList<Button>()
 
     private var ctrlBtn: Button? = null
@@ -1253,8 +1346,9 @@ class TerminalActivity : AppCompatActivity() {
     }
 
     /**
-     * 修饰键的按下态用「底色 + 加粗」表示,不再用半透明——透明度一压,字色本就
-     * 是配色的前景色(未必是亮白),读起来太浅。所有键一律全不透明。
+     * The modifier's pressed state is shown by "background colour + bold", no longer by translucency —
+     * applying alpha darkens the foreground (which is whatever the scheme foreground is, not necessarily bright white),
+     * making it too faint to read. All keys are fully opaque.
      */
     private fun markMod(btn: Button?, on: Boolean) {
         btn ?: return
@@ -1268,18 +1362,34 @@ class TerminalActivity : AppCompatActivity() {
             Button(this).apply {
                 text = label
                 isAllCaps = false
-                textSize = 12f
+                maxLines = 1
+                textSize = KEY_TEXT_SP
+                // A key cell is only ~45dp wide; the default button style spends 16dp of
+                // that on padding at each side and reserves an 88dp minWidth, so at a
+                // large system font scale "SHIFT"/"PGUP" get clipped. The gap between
+                // labels is spacing enough — give the whole cell to the label.
+                setPadding(0, 0, 0, 0)
+                minWidth = 0
+                minimumWidth = 0
+                minHeight = 0
+                minimumHeight = 0
                 setTextColor(TermColors.fg())
                 background = null
-                // 关键:不抢终端焦点,否则软键盘目标漂移、按键路由错乱
+                // Key: don't steal terminal focus, otherwise the soft keyboard's target drifts and key routing goes wrong
                 isFocusable = false
                 isFocusableInTouchMode = false
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-                setOnClickListener(onClick)
+                // Arrow keys auto-repeat when held (see HoldRepeat); it consumes touch itself, so no click listener
+                // can be attached, otherwise the click on release would add an extra key event after the long-press ends
+                if (label in REPEAT_KEYS) {
+                    HoldRepeat.install(this, main) { onClick(this) }
+                } else {
+                    setOnClickListener(onClick)
+                }
             }
 
-        // pending 修饰态只被软键盘经 readControlKey/... 消费;虚拟键得自己取用并清掉,
-        // 否则 SHIFT+TAB 这类组合永远发不出去
+        // pending modifier states are only consumed by the soft keyboard via readControlKey/...; virtual keys
+        // must take and clear them themselves, otherwise combinations like SHIFT+TAB would never go out
         fun takeMods(): Int {
             var m = 0
             if (ctrlPending) m = m or KeyHandler.KEYMOD_CTRL
@@ -1289,7 +1399,7 @@ class TerminalActivity : AppCompatActivity() {
             return m
         }
         fun sendKey(code: Int) {
-            if (b.terminal.mEmulator == null) return // 视图未就绪时避免空指针
+            if (b.terminal.mEmulator == null) return // avoid NPE when the view isn't ready yet
             b.terminal.handleKeyCode(code, takeMods())
         }
         fun sendBytes(str: String) {
@@ -1342,22 +1452,52 @@ class TerminalActivity : AppCompatActivity() {
         }
         addRow(row1)
         addRow(row2)
+        // The cell width is only known after layout, and it changes on rotation.
+        b.extraKeys.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitExtraKeyText() }
+    }
+
+    /**
+     * Give every key the one text size at which the widest label still fits its cell
+     * (see [TermKeyFit]). Called from layout, so it must be a no-op once it has settled:
+     * the size does not change the cells, so the next pass computes the same value.
+     */
+    private fun fitExtraKeyText() {
+        val cell = extraKeyButtons.firstOrNull()?.width ?: return
+        val dm = resources.displayMetrics
+        fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, dm)
+        fun dp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, dm)
+        // Measure bold: a modifier key turns bold while armed, which is its widest state.
+        val probe = TextPaint(extraKeyButtons[0].paint)
+        probe.typeface = Typeface.create(extraKeyButtons[0].typeface, Typeface.BOLD)
+        val size = TermKeyFit.textSize(
+            cell, extraKeyButtons.map { it.text }, probe,
+            fullPx = sp(KEY_TEXT_SP), minPx = dp(KEY_TEXT_MIN_DP), padPx = dp(2f),
+        )
+        for (btn in extraKeyButtons) {
+            if (kotlin.math.abs(btn.textSize - size) > 0.5f) {
+                btn.setTextSize(TypedValue.COMPLEX_UNIT_PX, size)
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (Prefs.terminalFont(this) != appliedFont) applyFont() // 设置页刚换过字体
+        if (Prefs.terminalFont(this) != appliedFont) applyFont() // font was just changed on the settings page
+        scheduleThaw(restart = true)
     }
 
     override fun onPause() {
         super.onPause()
-        // 缩放过程中每帧都写 SharedPreferences 没必要,离开页面时落一次
+        // Leaving the foreground (screen off, another app): stop letting layout resize
+        // the emulator until we are back and the window has settled. See [thawSize].
+        freezeSize("pause")
+        // Writing to SharedPreferences on every frame during zoom is unnecessary; commit once when leaving the page
         if (textSizePx > 0) Prefs.setTerminalTextSize(this, textSizePx)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // 会话保留在 TermManager;只解除对本界面的引用
+        // Sessions stay in TermManager; only drop the references held by this UI
         displayed?.onOutput = null
     }
 
@@ -1368,6 +1508,21 @@ class TerminalActivity : AppCompatActivity() {
         private const val EXTRA_CMD = "cmd"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_PRIV = "priv"
+        /** Layout must be quiet this long after a resume before the size is applied. */
+        private const val THAW_SETTLE_MS = 250L
+
+        /** …but never wait longer than this, however restless the layout is. */
+        private const val THAW_MAX_MS = 1500L
+
+        /** Normal font size for extra-key labels (sp, follows system font scaling; [fitExtraKeyText] shrinks them uniformly when they don't fit). */
+        private const val KEY_TEXT_SP = 12f
+
+        /** Lower bound (dp, no longer following font scaling) — won't shrink below this. */
+        private const val KEY_TEXT_MIN_DP = 8f
+
+        /** Keys that auto-repeat when held: arrow keys. Other extra keys are either modifiers or have no meaning when repeated. */
+        private val REPEAT_KEYS = setOf("▲", "▼", "◀", "▶")
+
         private const val MENU_NEW = 1
         private const val MENU_KEYBOARD = 2
         private const val MENU_END_CURRENT = 3
@@ -1378,27 +1533,26 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_NEW_LOCAL = 8
         private const val MENU_NEW_PRIV = 9
 
-        /** 起来不到这个时长就退出的本地会话,当作"没起来"而不是"用户退出"。 */
+        /** A local session that exits within this duration is treated as "failed to start", not "user exited". */
         private const val QUICK_EXIT_MS = 3000L
 
-        /** 与 Privileged 同一个 tag,特权相关的事一条命令看全。 */
+        /** Same tag as Privileged — privileged-related events show up under one filter. */
         private const val PRIV_TAG = "twig-priv"
 
         /**
-         * 从本进程原样传下去的运行时环境变量。
+         * Runtime environment variables passed through from this process as-is.
          *
-         * ★ [localEnv] 是**整套替换**环境的,不是在现有环境上追加 —— 只给 TERM/HOME/PATH
-         * 那几个的话,**任何要启动 ART 的东西都会零输出秒退**:`app_process` 找不到
-         * `ANDROID_ROOT`/`ANDROID_DATA`/`ANDROID_ART_ROOT`/`BOOTCLASSPATH` 就直接死,
-         * 而且**一个字都不打**(2026-08-16 实测:同一条命令带完整环境能跑,精简环境
-         * 退出码 0、无输出)。屏幕上只剩 termux 那句 "[Process completed]",看着像
-         * "命令不存在"。
+         * ★ [localEnv] **replaces** the entire environment, not appends to it — only setting TERM/HOME/PATH means
+         * **anything that has to launch ART exits silently within a second with no output**: `app_process` can't find
+         * `ANDROID_ROOT` / `ANDROID_DATA` / `ANDROID_ART_ROOT` / `BOOTCLASSPATH` and dies immediately, **without printing
+         * a single character** (verified 2026-08-16: same command with full env runs, with a stripped env exits 0 with no
+         * output). The screen just shows termux's "[Process completed]", looking like "command not found".
          *
-         * 受影响的远不止 rish:`am` / `pm` / `dumpsys` / `settings` 全都是
-         * `app_process` 的包装脚本,少了这些变量它们在本地终端里一直是静默失败的。
+         * It's not just rish that's affected: `am` / `pm` / `dumpsys` / `settings` are all `app_process` wrapper scripts,
+         * and without these variables they fail silently in the local terminal.
          *
-         * 只白名单这几个、不整套继承:`ANDROID_SOCKET_*` 这类是父进程的私有 fd 约定,
-         * 传给子进程没有意义还可能被误用。
+         * Whitelist only these, don't inherit the full set: `ANDROID_SOCKET_*` etc. are the parent process's private
+         * fd conventions, passing them to children is pointless and risks misuse.
          */
         private val RUNTIME_ENV = listOf(
             "ANDROID_ROOT",
@@ -1413,11 +1567,11 @@ class TerminalActivity : AppCompatActivity() {
             "SYSTEMSERVERCLASSPATH",
         )
 
-        /** 系统自带 shell(mksh);toybox 的命令都在 /system/bin 下。 */
+        /** The system shell (mksh); toybox commands all live under /system/bin. */
         private const val MIN_TEXT_PX = 18
         private const val MAX_TEXT_PX = 96
 
-        /** "/D:"、"/D:/bin" 这类被 join() 强加了开头斜杠的 Windows 盘符路径。 */
+        /** Windows drive-letter paths where `join()` has forced a leading slash: "/D:", "/D:/bin", etc. */
         private val WINDOWS_PATH = Regex("^/[A-Za-z]:(/|$)")
 
         private fun shq(s: String) = "'" + s.replace("'", "'\\''") + "'"
@@ -1440,8 +1594,8 @@ class TerminalActivity : AppCompatActivity() {
         }
 
         /**
-         * 以某个本地目录为工作目录开一条本地 shell(本地目录长按菜单用)。
-         * [priv] 非 [Privileged.OFF] 时这条会话跑在特权身份上(su / rish)。
+         * Open a local shell with the given local directory as cwd (used by the local-dir long-press menu).
+         * When [priv] is not [Privileged.OFF] the session runs under that privileged identity (su / rish).
          */
         fun startLocal(context: Context, dir: String?, priv: Int = Privileged.OFF) {
             context.startActivity(
@@ -1453,7 +1607,7 @@ class TerminalActivity : AppCompatActivity() {
             )
         }
 
-        /** 不带 scheme:回到已有会话(没有则新建一条本地),供文管顶部的终端入口用。 */
+        /** No scheme: return to an existing session (or create a local one if none), for the file manager's top-bar Terminal entry. */
         fun resume(context: Context) {
             context.startActivity(
                 Intent(context, TerminalActivity::class.java)

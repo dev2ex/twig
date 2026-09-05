@@ -1,8 +1,10 @@
 package com.twig.app
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
@@ -21,8 +23,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
+import com.twig.app.ui.ShortcutIcons
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -44,23 +46,28 @@ import com.twig.app.ui.TerminalActivity
 import com.twig.app.ui.sizeIconsLikeRows
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * X-plore 式双面板:
- * - 竖屏:单面板全屏,操作列在"对侧"(左面板→右列,右面板→左列),横向滑动切换面板;
- * - 横屏:双面板并排,操作列居中,触摸决定活动面板。
+ * X-plore-style dual pane:
+ * - Portrait: single pane full-screen, action strip on the "opposite" side (left pane → right column,
+ *   right pane → left column), swipe horizontally to switch panes;
+ * - Landscape: two panes side-by-side, action strip in the middle, touch determines the active pane.
  */
 class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     private lateinit var b: ActivityMainBinding
     private var activeIndex = 0
-    /** 布局相关偏好快照;onResume 时变了(设置页改过)就 recreate。 */
+    /** Snapshot of layout-affecting preferences; when changed in onResume (after settings edit), recreate. */
     private var uiSig = ""
 
     companion object {
-        /** 操作列单列宽(dp),与 activity_main.xml 里 include 的默认宽度一致 */
+        /** Width (dp) of one action-strip column; matches the include's default width in activity_main.xml */
         private const val STRIP_COL_DP = 52
+
+        /** Disabled-state alpha: visible but clearly grey, so users don't think the button has disappeared. */
+        private const val DISABLED_ALPHA = 0.35f
 
         private const val MENU_TERMINAL = 1
         private const val MENU_SWAP_PANE = 2
@@ -77,10 +84,15 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         private const val EXTRA_SHOW_TRANSFER = "show_transfer"
         private const val EXTRA_SHOW_SHARE = "show_share"
 
+        /** Interval (ms) for polling removable volumes while in the foreground (see [pollVolumes]). */
+        private const val VOLUME_POLL_MS = 3000L
+
+
         /**
-         * 「用 Twig 打开」一个压缩包([ui.ViewIntentActivity]):在当前面板顶部把它挂成
-         * 一行就地展开。★ 不加 FLAG_ACTIVITY_NEW_TASK —— content:// 的临时读权限跟着
-         * 接收方任务栈走,丢到新栈里读不到(见 ViewIntentActivity 类注释)。
+         * "Open with Twig" for an archive ([ui.ViewIntentActivity]): mount it at the top of
+         * the current pane as a row that expands in place. ★ Don't add FLAG_ACTIVITY_NEW_TASK
+         * — the temporary read grant on a content:// follows the receiving task stack, so
+         * a new stack wouldn't be able to read it (see ViewIntentActivity's class comment).
          */
         fun mountIntent(ctx: Context, file: XFile): Intent =
             Intent(ctx, MainActivity::class.java).apply {
@@ -92,9 +104,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             }
 
         /**
-         * 跳转到文件管理并在树中定位到某目录(音乐播放页/列表页"跳转到所在目录"用)。
-         * [file] 给出时(与 [path] 同一 scheme 的文件全路径)展开后滚动到这一行,
-         * 让"跳转到所在目录"能直接看到那个文件,而不是只停在目录上。
+         * Jump to the file manager and locate a directory in the tree (used by the music
+         * player page / listing page's "go to containing directory").
+         * When [file] is given (a full path on the same scheme as [path]), scroll to that
+         * row after expanding so "go to containing directory" lands you directly on the file
+         * rather than stopping at the directory.
          */
         fun revealIntent(ctx: Context, scheme: String, path: String, file: String? = null): Intent =
             Intent(ctx, MainActivity::class.java).apply {
@@ -105,8 +119,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             }
 
         /**
-         * 点通知栏那条传输进度条:回到文件管理并重新挂上进度框
-         * (见 [ui.TransferService])。带 NEW_TASK 是因为从通知发起时没有任务栈。
+         * Tap the transfer progress notification: return to the file manager and re-attach
+         * the progress dialog (see [ui.TransferService]). NEW_TASK is needed because a
+         * notification launch has no task stack.
          */
         fun transferIntent(ctx: Context): Intent =
             Intent(ctx, MainActivity::class.java).apply {
@@ -115,7 +130,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                 putExtra(EXTRA_SHOW_TRANSFER, true)
             }
 
-        /** 点通知栏那条「正在共享」:回到文件管理并弹出共享状态框(地址/停止)。 */
+        /** Tap the "Sharing" notification: return to the file manager and pop up the share status dialog (address / stop). */
         fun shareIntent(ctx: Context): Intent =
             Intent(ctx, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -124,13 +139,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             }
     }
 
-    // 待定位目录:意图携带 scheme+path 时先记下,面板就绪(可能要等权限/异步初始化)后再展开定位
+    // Pending target directory: when the intent carries scheme+path, record it first, then expand once the pane is ready (may have to wait for permission / async init)
     private var pendingReveal: XFile? = null
-    /** 待定位目录里要滚动到的文件(可选,见 [revealIntent])。 */
+    /** File inside the pending target to scroll to (optional, see [revealIntent]). */
     private var pendingRevealFile: XFile? = null
-    /** 待挂载的外部压缩包(见 [mountIntent]),同样等面板就绪后再挂。 */
+    /** External archive waiting to mount (see [mountIntent]); same — wait until the pane is ready before mounting. */
     private var pendingMount: XFile? = null
-    /** 从通知栏点回来:面板就绪后重新挂上传输进度框(见 [transferIntent])。 */
+    /** Returning from a notification tap: re-attach the transfer progress dialog once the pane is ready (see [transferIntent]). */
     private var pendingShowTransfer = false
 
     private val legacyPermLauncher =
@@ -143,7 +158,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             if (hasStoragePermission()) initPanesIfNeeded() else showPermissionRationale()
         }
 
-    /** SFTP 私钥选取:SAF 选文件后拷入应用私有目录(免跨应用权限失效),路径填回对话框。 */
+    /** SFTP private-key picker: after SAF selection, copy the file into the app's private dir (so cross-app permissions don't expire) and fill the path back into the dialog. */
     private var keyPathTarget: android.widget.EditText? = null
     private val keyPickerLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
@@ -186,9 +201,16 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         if (Prefs.rememberLocation(this)) activeIndex = Prefs.activePane(this)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
+        com.twig.app.ui.NavBarTint.surface(this) // tint the nav bar to the pane's background, no longer a black strip at the bottom
         setSupportActionBar(b.toolbar)
+        // Portrait's "up" on the left of the title bar: same action as the strip's as_up
+        // (landscape has no Toolbar, see applyLayoutMode) — placed here because one-handed
+        // use reaches the top-left more easily than the right-side action strip
+        b.toolbar.setNavigationIcon(R.drawable.ic_up)
+        b.toolbar.setNavigationContentDescription(R.string.strip_up)
+        b.toolbar.setNavigationOnClickListener { activePane()?.actionUp() }
 
-        TwigApp.registerBaseFs(this) // 基础来源(本地/压缩包/SAF/应用/content://)
+        TwigApp.registerBaseFs(this) // Base sources (local / archive / SAF / apps / content://)
 
         uiSig = Prefs.uiSignature(this)
         wireStrip(b.stripLeft)
@@ -199,12 +221,20 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         applyLayoutMode()
         applyFullscreen()
 
+        // Desktop long-press menu: re-publish every time we enter the main UI, so language changes follow too (see Shortcuts)
+        com.twig.app.ui.Shortcuts.publish(this)
+
         readRevealExtras(intent)
         readMountExtras(intent)
         readTransferExtra(intent)
         readShareExtra(intent)
-        ensurePermissionThenInit()
+        // ★ Unlocking must happen before the panes initialise: as soon as the panes exist, they
+        // reconnect to the server last expanded (via "remember last location") — if still
+        // locked, the "password" read back then is still ciphertext, and the resulting
+        // FileSystem instance keeps carrying it (see that note in Connections.ensure).
+        com.twig.app.ui.SecurityUi.gate(this) { ensurePermissionThenInit() }
     }
+
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -229,12 +259,14 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     /**
-     * 从「正在共享」通知点回来:直接弹状态框。不像传输进度框那样要等面板就绪——
-     * 共享对话框不依赖任何面板状态,post 一下只是为了别在 onCreate 里就 show 窗口。
+     * Returning from the "Sharing" notification: directly pop the status dialog. Unlike
+     * the transfer progress dialog, this doesn't wait for pane readiness — the share
+     * dialog depends on no pane state; the post() is just to avoid show()ing a window
+     * inside onCreate.
      */
     private fun readShareExtra(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_SHOW_SHARE, false) != true) return
-        intent.removeExtra(EXTRA_SHOW_SHARE) // 别让配置变更后的重建再弹一次
+        intent.removeExtra(EXTRA_SHOW_SHARE) // don't let the post-config-change recreate pop it again
         window.decorView.post { if (!isFinishing && !isDestroyed) ShareDialogs.show(this) }
     }
 
@@ -249,7 +281,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun applyPendingReveal() {
-        if (activePane() == null) return // 面板还没就绪(权限/初始化未完成),initPanesIfNeeded 后再试
+        if (activePane() == null) return // pane not ready yet (permission / init not done); try again after initPanesIfNeeded
         if (pendingShowTransfer) {
             pendingShowTransfer = false
             activePane()?.showTransferBox()
@@ -267,38 +299,92 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (activePane()?.handleBack() == true) return // 占用图内:回上级/退出占用图
+        if (activePane()?.handleBack() == true) return // inside a takeover view: go up a level / exit the takeover view
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyFullscreen() // 系统可能在切换后恢复状态栏,重新应用
+        if (hasFocus) applyFullscreen() // the system may restore the status bar after switching; re-apply
     }
 
     override fun onResume() {
         super.onResume()
-        // 从设置页回来:行高/缩略图等布局相关偏好变了就重建生效
+        ContextCompat.registerReceiver(this, volumeReceiver, volumeFilter(), ContextCompat.RECEIVER_NOT_EXPORTED)
+        // After locking and switching back (or locking elsewhere) must re-enter — onCreate only handles cold start
+        if (com.twig.app.secure.Secrets.locked(this)) {
+            com.twig.app.ui.SecurityUi.gate(this) { }
+            return
+        }
+        // Returning from settings: if layout-affecting prefs changed (row height / thumbnails etc.), recreate
         if (uiSig.isNotEmpty() && uiSig != Prefs.uiSignature(this)) {
             uiSig = Prefs.uiSignature(this)
             recreate()
             return
         }
-        // 传输在界面不在场时跑完了:回来补上收尾(清选中/刷两侧/提示结果)。
-        // 面板还没就绪时先不取——取走就没人处理了,下次 onResume 再说
+        // A transfer finished while the UI wasn't around: come back and catch up (clear selection / refresh both sides / announce result).
+        // Don't consume if the pane isn't ready — taken too early nothing will handle it, defer to next onResume
         activePane()?.let { p -> com.twig.app.ui.Transfers.consumeFinished()?.let { p.finishTransfer(it) } }
-        invalidateOptionsMenu() // 终端会话可能在别的 Activity 里增删,回来刷新入口显隐
+        invalidateOptionsMenu() // terminal sessions may have been added/removed in another Activity; refresh the entry's visibility
         val land = isLandscape()
         for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) applyStripTop(s, land)
-        // 共享可能是从通知栏那个「停止」按钮关掉的(界面根本没参与),回前台对一次状态
+        // Sharing may have been turned off via the notification bar's "stop" button (the UI wasn't even present); sync once on returning to foreground
         syncShareIcon()
         WebShare.onStateChanged = { runOnUiThread { syncShareIcon() } }
+        // SD cards / USB drives are usually inserted/removed while the app isn't in the foreground; rescan on return — only refresh the tree if something changed
+        rescanVolumes()
+        pollVolumes()
     }
 
     override fun onPause() {
         super.onPause()
-        // 摘掉回调:它捕获了这个 Activity,留着就是一条通往已销毁界面的引用
+        // Drop the callback: it captures this Activity, leaving it in place is a reference to an already-destroyed UI
         WebShare.onStateChanged = null
+        runCatching { unregisterReceiver(volumeReceiver) }
+    }
+
+    /** Rescan removable volumes, refresh the volume row on both trees when something changed. One binder IPC, done on the main thread. */
+    private fun rescanVolumes() {
+        if (StorageVolumes.refresh(this)) refreshTrees()
+    }
+
+    /** Plug/unplug while in foreground: refresh the volume row on both trees when something changed.
+     *  ★ Registration goes at the very top of onResume: several paths below early-return (locked / recreate on layout change) but still walk into onPause, so a missed registration would unregister a never-registered receiver there. */
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) = rescanVolumes()
+    }
+
+    /**
+     * When in the foreground, poll removable volumes every few seconds so a freshly
+     * plugged-in USB drive / SD card shows up without the user leaving and returning.
+     *
+     * ★ **Polling is the only reliable option**: in testing (Sony Android 16 with a USB
+     * drive), the system mounted the volume as "invisible to the app", neither firing
+     * ACTION_MEDIA_MOUNTED nor calling `StorageManager.StorageVolumeCallback` — both
+     * event paths were tried, none fired once, while `getStorageVolumes()` does return
+     * that volume. So those two channels stay to cover ordinary SD cards; the actual
+     * fallback for "plug-in shows up immediately" is here.
+     * Cost is one binder IPC, and it auto-stops outside RESUMED.
+     */
+    private fun pollVolumes() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    delay(VOLUME_POLL_MS)
+                    rescanVolumes()
+                }
+            }
+        }
+    }
+
+    /** ★ `addDataScheme("file")` cannot be omitted — these broadcasts all carry file:// data; without it, none of them arrive. */
+    private fun volumeFilter() = IntentFilter().apply {
+        addAction(Intent.ACTION_MEDIA_MOUNTED)
+        addAction(Intent.ACTION_MEDIA_UNMOUNTED)
+        addAction(Intent.ACTION_MEDIA_EJECT)
+        addAction(Intent.ACTION_MEDIA_REMOVED)
+        addAction(Intent.ACTION_MEDIA_BAD_REMOVAL)
+        addDataScheme("file")
     }
 
     private fun applyFullscreen() {
@@ -306,13 +392,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         if (Prefs.fullscreen(this)) {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.statusBars()) // 只隐藏状态栏
+            controller.hide(WindowInsetsCompat.Type.statusBars()) // hide only the status bar
         } else {
             controller.show(WindowInsetsCompat.Type.statusBars())
         }
     }
 
-    // ---- 侧边操作列 ----
+    // ---- Side action row ----
 
     private fun wireStrip(s: ActionStripBinding) {
         s.sizeIconsLikeRows(this)
@@ -329,13 +415,15 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         s.asMap.setOnClickListener { activePane()?.actionTreemap() }
         s.asSearch.setOnClickListener { activePane()?.actionSearch() }
         s.asHistory.setOnClickListener { activePane()?.actionHistory() }
-        // 共享范围默认就是绿框选中的那个目录([PaneViewModel.currentDir]),
-        // 对话框里不再另做目录选择——入口本来就长在文件树旁边,位置早就指定过了
+        // Shared scope defaults to the green-highlighted directory ([PaneViewModel.currentDir]),
+        // the dialog no longer offers a separate directory picker — the entry point is
+        // next to the file tree, and the location was already chosen before the dialog opened
         s.asShare.setOnClickListener {
             ShareDialogs.show(this, activePane()?.viewModel?.currentDir)
         }
 
-        // 顶部固定区(横屏没有 Toolbar 时才显示):原标题栏右侧那几个入口
+        // Top pinned row (only shown in landscape when there's no Toolbar): the entries that
+        // used to live on the right of the title bar
         s.asTerm.setOnClickListener { TerminalActivity.resume(this) }
         s.asMusic.setOnClickListener {
             startActivity(Intent(this, com.twig.app.ui.MusicPlayerActivity::class.java))
@@ -344,7 +432,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         s.asMenu.setOnClickListener { showStripOverflow(it) }
     }
 
-    /** 横屏没有 Toolbar,溢出菜单改成锚在操作列「菜单」按钮上的 PopupMenu(项与处理都复用 R.menu.main)。 */
+    /** Landscape has no Toolbar; the overflow menu becomes a PopupMenu anchored on the action strip's "menu" button (items and handling both reuse R.menu.main). */
     private fun showStripOverflow(anchor: View) {
         val popup = PopupMenu(this, anchor)
         popup.inflate(R.menu.main)
@@ -354,14 +442,16 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     /**
-     * 顶部固定区的显隐与状态:横屏隐藏 Toolbar 后才出现;终端入口按会话有无显示,
-     * 切面板图标跟着活动面板换方向(与 Toolbar 上的那颗一致)。
+     * Top pinned row visibility and state: only appears in landscape after the Toolbar is
+     * hidden; the terminal entry appears only when there are sessions; the pane-swap icon
+     * flips direction with the active pane (matching the one on the Toolbar).
      */
     /**
-     * 共享开着时把操作列那个图标换成实心扇形。
+     * When sharing is on, swap the action strip's icon to a filled fan.
      *
-     * 共享一开可能几小时没人管,只靠通知栏很容易忘了它还开着——主界面上得有个
-     * 余光扫过就能看见的状态。三条操作列(横屏中列 + 竖屏左右列)都要刷。
+     * Sharing can stay on for hours unattended, and a notification alone is easy to forget —
+     * the main UI needs a status that's visible at a glance. All three action strips
+     * (landscape middle + portrait left/right) need to be refreshed.
      */
     private fun syncShareIcon() {
         val res = if (WebShare.isRunning) R.drawable.ic_share_wifi_on else R.drawable.ic_share_wifi
@@ -372,7 +462,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         s.asTop.visibility = if (land) View.VISIBLE else View.GONE
         s.asTopDivider.visibility = if (land) View.VISIBLE else View.GONE
         if (!land) return
-        // GridLayout 会给 GONE 的子 view 留空单元格,所以终端入口是整个摘掉/插回,不是设 GONE
+        // GridLayout reserves a cell for GONE children, so the terminal entry is removed/added in full rather than just set to GONE
         val wantTerm = TermManager.list().isNotEmpty()
         val hasTerm = s.asTerm.parent != null
         if (wantTerm && !hasTerm) s.asTop.addView(s.asTerm, 0)
@@ -382,11 +472,12 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         )
     }
 
-    // ---- 剪贴板栏(横跨整个窗口,不属于某一侧面板) ----
+    // ---- Clipboard bar (spans the whole window, doesn't belong to either pane) ----
 
     /**
-     * 内容与「移动」勾选来自全局 [FileClipboard],**粘贴目标是活动面板的当前目录**——
-     * 栏放在两个面板下方通栏,切面板即换目标,不必在两侧各摆一条。
+     * Content and "Move" check come from the global [FileClipboard]; **the paste target is
+     * the active pane's current directory** — the bar spans the area beneath both panes,
+     * so switching the pane switches the target, no need for one bar per side.
      */
     private fun installClipboardBar() {
         b.cbClipMove.setOnCheckedChangeListener { _, checked -> FileClipboard.setMove(checked) }
@@ -406,7 +497,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         b.tvClip.text =
             if (s.items.size == 1) getString(R.string.clip_bar_one, s.items[0].name)
             else getString(R.string.clip_bar_n, s.items.size)
-        // 粘贴不再有确认框,这行就是唯一的落点提示;落不下去时把原因写在这儿并置灰按钮
+        // Paste no longer has a confirmation dialog, this line is the only landing-point hint; when it can't land, write the reason here and grey out the button
         val target = activePane()?.clipTarget()
         val block = FileClipboard.pasteBlockReason(target)
         b.tvClipDest.text = when {
@@ -417,11 +508,15 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         val canPaste = target != null && block == null
         b.btnPaste.isEnabled = canPaste
         b.btnPaste.alpha = if (canPaste) 1f else 0.4f
-        // 值相同就不回写,避免和 setOnCheckedChangeListener 来回打转
+        // Don't write back when the value is the same; avoids bouncing with setOnCheckedChangeListener
         if (b.cbClipMove.isChecked != s.move) b.cbClipMove.isChecked = s.move
+        // Sources that can't be moved (the document tree root grant, "Apps" entries) don't get a "Move" toggle; FileClipboard.put already judged this, here it's just shown on the bar
+        val movable = FileClipboard.movable(s.items)
+        b.cbClipMove.isEnabled = movable
+        b.cbClipMove.alpha = if (movable) 1f else DISABLED_ALPHA
     }
 
-    /** 点栏上的内容摘要:列出全部条目,确认放进去的到底是哪些。 */
+    /** Tap the content summary on the bar: list every entry to confirm exactly what was put in. */
     private fun showClipContents() {
         val items = FileClipboard.items
         if (items.isEmpty()) return
@@ -432,7 +527,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .show()
     }
 
-    // ---- 布局模式 ----
+    // ---- Layout mode ----
 
     private fun isLandscape() =
         resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -444,21 +539,21 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         b.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
         b.stripLeft.root.visibility = if (!land && activeIndex == 1) View.VISIBLE else View.GONE
         b.stripRight.root.visibility = if (!land && activeIndex == 0) View.VISIBLE else View.GONE
-        // 横屏没有 Toolbar(纵向空间宝贵),它右侧的按钮挪进操作列顶部固定区
+        // Landscape has no Toolbar (vertical space is precious); its right-side buttons move into the strip's top pinned row
         b.toolbar.visibility = if (land) View.GONE else View.VISIBLE
-        // 横屏高度不够放下一整列,操作列改双列(宽度跟着翻倍)
+        // Landscape's height can't fit a full single column, so the strip becomes two columns (width doubles)
         for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) {
             applyStripColumns(s, land)
             applyStripTop(s, land)
         }
         paneAt(0)?.setActive(activeIndex == 0)
         paneAt(1)?.setActive(activeIndex == 1)
-        renderClipBar() // 活动面板换了,粘贴目标跟着换
+        renderClipBar() // active pane changed, the paste target follows
     }
 
-    /** 操作列列数:竖屏 1 列(高度够),横屏 2 列;列宽固定 [STRIP_COL_DP],总宽跟着列数走。 */
+    /** Strip column count: 1 column in portrait (height is enough), 2 in landscape; column width is fixed at [STRIP_COL_DP], total width scales with column count. */
     private fun applyStripColumns(s: ActionStripBinding, land: Boolean) {
-        val on = Prefs.rowDivider(this) // 与列表行间分割线同一个开关
+        val on = Prefs.rowDivider(this) // shares the switch with list row dividers
         s.asGrid.dividers = on
         s.asTop.dividers = on
         val cols = if (land) 2 else 1
@@ -476,13 +571,16 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             activeIndex = i
             Prefs.setActivePane(this, i)
             applyLayoutMode()
-            invalidateOptionsMenu() // 切换图标方向跟着活动面板走(含滑动/触摸切换)
+            invalidateOptionsMenu() // the swap icon direction follows the active pane (including swipe / touch switch)
+            // The two panes can land on sources with different capabilities (one local, one a media server); switching active pane means recomputing the action strip — ★ must happen **after** activeIndex updates, otherwise we still read the previous pane
+            syncStripEnabled()
         }
     }
 
     /**
-     * 用两个面板的当前目录开对比页。两侧都得先选中一个目录——刚启动还没点过任何目录时
-     * `currentDir` 是 null,这时给提示而不是拿根目录硬凑。
+     * Open the comparison page with the current directories of the two panes. Both sides
+     * need a selected directory first — right after launch, before any directory has been
+     * tapped, `currentDir` is null, so we prompt instead of forcing the root.
      */
     private fun startCompare() {
         val l = paneAt(0)?.viewModel?.currentDir
@@ -492,6 +590,44 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             return
         }
         com.twig.app.ui.CompareActivity.start(this, l, r)
+    }
+
+    /**
+     * Exit confirmation.
+     *
+     * **If nothing is running, don't ask** (just exit) — at that point the confirmation
+     * dialog prevents no real loss, it's just one extra step. If music is playing, a
+     * terminal session is open, sharing is on, or files are transferring, list them
+     * so the user can see exactly what's about to be lost, and offer the "lock instead"
+     * exit, which doesn't interrupt any of that.
+     */
+    private fun confirmExit() {
+        val running = com.twig.app.ui.AppExit.running(this)
+        if (running.isEmpty()) {
+            com.twig.app.ui.AppExit.quit(this)
+            return
+        }
+        val canLock = com.twig.app.secure.Secrets.hasMasterPassword(this)
+        val msg = buildString {
+            append(getString(R.string.exit_note))
+            running.forEach { append("\n  • ").append(it) }
+            if (canLock) append("\n\n").append(getString(R.string.exit_lock_hint))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.exit_title)
+            .setMessage(msg)
+            .setPositiveButton(R.string.exit_confirm) { _, _ -> com.twig.app.ui.AppExit.quit(this) }
+            .apply {
+                // "Lock instead" is the "don't interrupt anything" path; it's only available when
+// a master password has been set.
+                if (canLock) {
+                    setNeutralButton(R.string.exit_lock_instead) { _, _ ->
+                        com.twig.app.ui.AppExit.lock(this@MainActivity)
+                    }
+                }
+            }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
     }
 
     private fun paneAt(i: Int): PaneFragment? =
@@ -507,7 +643,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                 .commit()
         }
         applyLayoutMode()
-        // 等 fragment 事务落地、面板就绪
+        // Wait for the fragment transaction to land and the panes to be ready.
         if (pendingReveal != null || pendingMount != null) b.root.post { applyPendingReveal() }
     }
 
@@ -524,12 +660,53 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     override fun onPaneSwipe(velocityX: Float) {
-        // 向左滑(负速度)→ 显示右面板;向右滑 → 左面板
+        // Swipe left (negative velocity) → show right pane; swipe right → left pane
         if (!isLandscape()) setActiveIndex(if (velocityX < 0) 1 else 0)
     }
 
     override fun onClipTargetChanged() {
         if (b.clipBar.visibility == View.VISIBLE) renderClipBar()
+        syncStripEnabled()
+    }
+
+    /**
+     * The action strip's **write** entries follow the active pane's capability toggles.
+     *
+     * On read-only sources (media servers, restic, 7z/RAR, the git view, "Apps"), create /
+     * move / rename / delete are all greyed out — not "tap and get an error toast".
+     * Copy / compress / share are **pure read source**, always available on any source.
+     *
+     * All three action strips (landscape middle + portrait left/right) need refreshing,
+     * same as [syncShareIcon]. The trigger is [onClipTargetChanged] — PaneFragment.render
+     * calls it on every state refresh, so directory switches, ticks, pane switches all
+     * update it as a side effect.
+     */
+    private fun syncStripEnabled() {
+        // ★ Don't ask the pane before it's ready: the two panes' views come up one at a time,
+        // and the first one to come up may fire its first frame before the other has reached
+        // onViewCreated (see PaneFragment.isReady)
+        val pane = activePane()?.takeIf { it.isReady() }
+        val modify = pane?.canModify() ?: false
+        val create = pane?.canCreateHere() ?: false
+        for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) {
+            setStripEnabled(s.asNewFolder, create)
+            setStripEnabled(s.asMove, modify)
+            setStripEnabled(s.asRename, modify)
+            setStripEnabled(s.asDelete, modify)
+        }
+        b.btnPaste.isEnabled = create
+        b.btnPaste.alpha = if (create) 1f else DISABLED_ALPHA
+    }
+
+    /**
+     * ★ Setting `alpha` alone is not enough — looks grey, but a tap still fires the action.
+     * `isEnabled = false` makes `View.onTouchEvent` not dispatch clicks at all, and that
+     * works on `LinearLayout` too; both are required.
+     * Child views (icon / text) don't need to be touched, `alpha` is applied to the whole container.
+     */
+    private fun setStripEnabled(v: View, enabled: Boolean) {
+        v.isEnabled = enabled
+        v.alpha = if (enabled) 1f else DISABLED_ALPHA
     }
 
     override fun refreshTrees() {
@@ -543,16 +720,22 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         "sftp" -> showSftpDialog()
         "webdav" -> showWebdavDialog()
         "s3" -> showS3Dialog()
-        // 扫到的 Twig 共享存成 WebDAV 连接,所以入口放在 WebDAV 组里
+        "jellyfin", "emby" -> showMediaDialog(type)
+        // Scanned Twig shares are stored as WebDAV connections, so the entry lives in the WebDAV group
         "scan_twig" -> ShareDialogs.scanAndAdd(this) {
             refreshTrees()
             activePane()?.viewModel?.expandGroup("dav")
         }
-        "saf" -> runCatching { safPickerLauncher.launch(null) }
+        "saf" -> openSafPicker(null)
+        else -> Unit
+    }
+
+    /** When [initial] is non-null, the system picker opens straight at that location (used by the removable volume's "Authorise this volume with SAF" entry). */
+    override fun openSafPicker(initial: Uri?) {
+        runCatching { safPickerLauncher.launch(initial) }
             .onFailure {
                 Toast.makeText(this, getString(R.string.saf_failed, it.message ?: ""), Toast.LENGTH_LONG).show()
-            }.let { }
-        else -> Unit
+            }
     }
 
     override fun onEditServer(conn: SavedConnection) = when (conn.type) {
@@ -561,12 +744,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         "sftp" -> showSftpDialog(conn)
         "webdav" -> showWebdavDialog(conn)
         "s3" -> showS3Dialog(conn)
+        "jellyfin", "emby" -> showMediaDialog(conn.type, conn)
         else -> Unit
     }
 
-    // ---- 添加/编辑服务器(仅保存配置,展开节点时才连接) ----
+    // ---- Add / edit server (only save the config; connect on node expand) ----
 
-    /** 保存(编辑时先移除旧条目并丢弃已建立的连接缓存)。 */
+    /** Save (on edit, remove the old entry first and drop any cached connection). */
     private fun saveServer(edit: SavedConnection?, conn: SavedConnection, group: String) {
         if (edit != null) {
             ConnectionStore.remove(this, edit)
@@ -590,8 +774,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 val host = d.etHost.text.toString().trim()
-                val share = d.etShare.text.toString().trim()
-                if (host.isEmpty() || share.isEmpty()) return@setPositiveButton
+                // Optional, and it doubles as the start path: empty mounts the whole
+                // server (the root lists every share), "Public/Photos" roots the
+                // connection at that directory. See SmbFileSystem.
+                val share = d.etShare.text.toString().trim().trim('/')
+                if (host.isEmpty()) return@setPositiveButton
                 saveServer(
                     edit,
                     SavedConnection(
@@ -611,6 +798,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         val d = DialogFtpBinding.inflate(layoutInflater)
         edit?.let {
             d.etName.setText(it.name); d.etHost.setText(it.host); d.etPort.setText(it.port.toString())
+            d.etPath.setText(it.share)
             d.etUser.setText(it.user); d.etPass.setText(it.password)
         }
         AlertDialog.Builder(this)
@@ -625,6 +813,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                     SavedConnection(
                         "ftp", host,
                         port = d.etPort.text.toString().toIntOrNull() ?: 21,
+                        share = d.etPath.text.toString().trim().trim('/'),
                         user = d.etUser.text.toString().trim().ifEmpty { "anonymous" },
                         password = d.etPass.text.toString(),
                         name = d.etName.text.toString().trim(),
@@ -639,6 +828,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         val d = com.twig.app.databinding.DialogSftpBinding.inflate(layoutInflater)
         edit?.let {
             d.etName.setText(it.name); d.etHost.setText(it.host); d.etPort.setText(it.port.toString())
+            d.etPath.setText(it.share)
             d.etUser.setText(it.user); d.etPass.setText(it.password); d.etKey.setText(it.keyPath)
         }
         d.btnPickKey.setOnClickListener {
@@ -662,12 +852,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                     SavedConnection(
                         "sftp", host,
                         port = d.etPort.text.toString().toIntOrNull() ?: 22,
+                        share = d.etPath.text.toString().trim().trim('/'),
                         user = user,
                         password = d.etPass.text.toString(),
                         name = d.etName.text.toString().trim(),
                         keyPath = d.etKey.text.toString().trim(),
-                        // 保留已记住的主机密钥:改个显示名不该把信任一起清掉。
-                        // 要重置走服务器长按菜单里的「忘记主机密钥」。
+                        // Keep the remembered host key: changing a display name should not also wipe trust.
+                        // To reset, use "Forget host key" in the server's long-press menu.
                         hostKey = edit?.hostKey.orEmpty(),
                     ),
                     "sftp",
@@ -735,20 +926,68 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .show()
     }
 
-    // ---- 菜单 ----
+    /**
+     * Jellyfin / Emby add / edit dialog. The two server endpoints share the same source and
+     * identical fields, so they reuse one dialog; [type] only decides the title and the
+     * persisted type.
+     *
+     * On edit we **don't prefill token / userId, nor clear them** — they're credentials
+     * obtained from login, not fields the user filled in. If the address or user changed,
+     * we invalidate them below (a new identity makes the old token meaningless).
+     */
+    private fun showMediaDialog(type: String, edit: SavedConnection? = null) {
+        val d = com.twig.app.databinding.DialogJellyfinBinding.inflate(layoutInflater)
+        edit?.let {
+            d.etName.setText(it.name); d.etUrl.setText(it.host)
+            d.etUser.setText(it.user); d.etPass.setText(it.password)
+            d.etApiKey.setText(it.apiKey)
+        }
+        val title =
+            if (type == "emby") R.string.action_connect_emby else R.string.action_connect_jellyfin
+        AlertDialog.Builder(this)
+            .setTitle(if (edit == null) getString(title) else getString(R.string.server_edit))
+            .setView(d.root)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                val url = d.etUrl.text.toString().trim().trimEnd('/')
+                if (!url.startsWith("http")) return@setPositiveButton
+                val user = d.etUser.text.toString().trim()
+                val apiKey = d.etApiKey.text.toString().trim()
+                // Address or user changed = new identity; invalidate token/userId together, otherwise
+                // we'd list the new user's "Continue watching" using the old user's token
+                val same = edit != null && edit.host == url && edit.user == user
+                saveServer(
+                    edit,
+                    SavedConnection(
+                        type, url,
+                        user = user,
+                        password = d.etPass.text.toString(),
+                        name = d.etName.text.toString().trim(),
+                        apiKey = apiKey,
+                        token = if (same) edit!!.token else "",
+                        userId = if (same) edit!!.userId else "",
+                    ),
+                    "media",
+                )
+            }
+            .show()
+    }
 
-    /** R.menu.main 里几个开关项的勾选状态;Toolbar 菜单与横屏的操作列 PopupMenu 共用。 */
+    // ---- Menu ----
+
+    /** Checked states of the toggle items in R.menu.main; shared between the Toolbar menu and the landscape strip's PopupMenu. */
     private fun syncMenuChecks(menu: Menu) {
         menu.findItem(R.id.action_remember_location)?.isChecked = Prefs.rememberLocation(this)
         menu.findItem(R.id.action_fullscreen)?.isChecked = Prefs.fullscreen(this)
         menu.findItem(R.id.action_thumbs)?.isChecked = Prefs.thumbs(this)
-        menu.findItem(R.id.action_show_hidden)?.isChecked = Prefs.showHidden(this)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main, menu)
         syncMenuChecks(menu)
-        // 终端入口常驻:没有会话时点进去会新建一条本地 shell(见 TerminalActivity.handleIntent)
+        // Without a master password, "Lock" is meaningless (locking wouldn't require a password to come back)
+        menu.findItem(R.id.action_lock)?.isVisible = com.twig.app.secure.Secrets.hasMasterPassword(this)
+        // Terminal entry is always present: tapping with no sessions creates a fresh local shell (see TerminalActivity.handleIntent)
         menu.add(0, MENU_TERMINAL, 0, getString(R.string.terminal_menu)).apply {
             icon = ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_terminal)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
@@ -757,7 +996,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             icon = ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_music_note)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
-        // 切到另一面板:当前面板实心、目标空心,箭头指向要切去的一侧
+        // Swap to the other pane: current pane filled, target hollow, arrow points to the side you're switching to
         menu.add(0, MENU_SWAP_PANE, 1, getString(R.string.menu_swap_pane)).apply {
             icon = ContextCompat.getDrawable(
                 this@MainActivity,
@@ -779,9 +1018,6 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         MENU_SWAP_PANE -> {
             setActiveIndex(1 - activeIndex); true
         }
-        R.id.action_density -> {
-            showDensityDialog(); true
-        }
         R.id.action_view_mode -> {
             showViewModeDialog(); true
         }
@@ -791,14 +1027,14 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             recreate()
             true
         }
-        R.id.action_show_hidden -> {
-            Prefs.setShowHidden(this, !item.isChecked)
-            uiSig = Prefs.uiSignature(this)
-            recreate()
-            true
-        }
         R.id.action_settings -> {
             startActivity(Intent(this, com.twig.app.ui.SettingsActivity::class.java)); true
+        }
+        R.id.action_lock -> {
+            com.twig.app.ui.AppExit.lock(this); true
+        }
+        R.id.action_exit -> {
+            confirmExit(); true
         }
         R.id.action_remember_location -> {
             val on = !item.isChecked
@@ -816,9 +1052,6 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         R.id.action_theme -> {
             showThemeDialog(); true
         }
-        R.id.action_language -> {
-            showLanguageDialog(); true
-        }
         R.id.action_pin_music_shortcut -> {
             pinMusicShortcut(); true
         }
@@ -832,9 +1065,10 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         val intent = Intent(this, com.twig.app.ui.MusicPlayerActivity::class.java).setAction(Intent.ACTION_VIEW)
         val shortcut = ShortcutInfoCompat.Builder(this, "music_pinned")
+            // On the desktop it's just called "Music": a long label (e.g. "Music Player") would push out the short name on launchers
             .setShortLabel(getString(R.string.music_menu))
-            .setLongLabel(getString(R.string.music_title))
-            .setIcon(IconCompat.createWithResource(this, R.drawable.ic_music_note))
+            .setLongLabel(getString(R.string.music_menu))
+            .setIcon(ShortcutIcons.of(this, R.drawable.ic_shortcut_music))
             .setIntent(intent)
             .build()
         ShortcutManagerCompat.requestPinShortcut(this, shortcut, null)
@@ -885,7 +1119,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .show()
     }
 
-    /** 视图快速切换:网格三态(独立于缩略图开关,细项在设置页)。 */
+    /** Quick view-mode switch: three grid states (independent of the thumbnail switch; details on the settings page). */
     private fun showViewModeDialog() {
         val labels = arrayOf(
             getString(R.string.view_mode_grid_off),
@@ -898,23 +1132,6 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                 Prefs.setThumbsGrid(this, which)
                 dlg.dismiss()
                 uiSig = Prefs.uiSignature(this)
-                recreate()
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
-    }
-
-    private fun showDensityDialog() {
-        val labels = arrayOf(
-            getString(R.string.density_compact),
-            getString(R.string.density_normal),
-            getString(R.string.density_large),
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_density)
-            .setSingleChoiceItems(labels, Prefs.density(this)) { dlg, which ->
-                Prefs.setDensity(this, which)
-                dlg.dismiss()
                 recreate()
             }
             .setNegativeButton(R.string.dialog_cancel, null)
@@ -943,36 +1160,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .show()
     }
 
-    /**
-     * 语言:跟随系统 / 中文 / English。用 AppCompatDelegate 的按应用语言 API(1.6+),
-     * 不用自己在每个 Activity 的 attachBaseContext 里套 Locale/Configuration——
-     * 它会自动让所有存活的 Activity 按新语言 recreate,并且(靠 manifest 里声明的
-     * AppLocalesMetadataHolderService)API 33 以下也能持久化 + 冷启动早期应用,不闪一下系统语言。
-     */
-    private fun showLanguageDialog() {
-        val tags = arrayOf("", "zh", "en")
-        val labels = arrayOf(
-            getString(R.string.language_system),
-            getString(R.string.language_zh),
-            getString(R.string.language_en),
-        )
-        val current = tags.indexOf(AppCompatDelegate.getApplicationLocales().toLanguageTags().substringBefore('-'))
-            .let { if (it < 0) 0 else it }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_language)
-            .setSingleChoiceItems(labels, current) { dlg, which ->
-                val tag = tags[which]
-                AppCompatDelegate.setApplicationLocales(
-                    if (tag.isEmpty()) androidx.core.os.LocaleListCompat.getEmptyLocaleList()
-                    else androidx.core.os.LocaleListCompat.forLanguageTags(tag),
-                )
-                dlg.dismiss()
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
-    }
-
-    // ---- 权限 ----
+    // ---- Permission ----
 
     private fun hasStoragePermission(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

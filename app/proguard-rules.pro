@@ -1,17 +1,18 @@
-# Twig — R8/ProGuard 规则
-# core-fs / fs-local 是纯 Kotlin 模型层,被反射处不多;如后续用到序列化再补 keep。
+# Twig — R8/ProGuard rules
+# core-fs / fs-local are pure Kotlin model layers with few reflective touchpoints;
+# add more keep rules here only if/when we serialise things.
 
-# 保留行号便于崩溃定位(体积影响极小)
+# Preserve line numbers for crash localisation (negligible size impact)
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
 
-# Kotlin 协程的常见 keep(R8 已基本内置,这里兜底)
+# Kotlin coroutines common keeps (R8 handles most of these already; this is the safety net)
 -dontwarn kotlinx.coroutines.**
 
-# junrar/sshj 通过 slf4j-api 记日志,运行期无 binder;忽略可选实现类
+# junrar/sshj log via slf4j-api at runtime with no binder; ignore the optional impl classes
 -dontwarn org.slf4j.**
 
-# SSHJ / BouncyCastle:JCE Provider 以类名字符串反射实例化算法类,必须整体保留
+# SSHJ / BouncyCastle: JCE Providers reflect algorithm classes by string name, must be kept wholesale
 -keep class org.bouncycastle.jcajce.provider.** { <init>(...); }
 -keep class org.bouncycastle.jce.provider.** { <init>(...); }
 -dontwarn org.bouncycastle.**
@@ -19,33 +20,36 @@
 -dontwarn com.hierynomus.**
 -dontwarn net.schmizz.**
 
-# OkHttp 的可选平台类
+# OkHttp's optional platform classes
 -dontwarn okhttp3.internal.platform.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
 
-# 保留 JNI native 方法名与所在类名(libsmb2 按名称绑定,混淆会失配)
+# Preserve JNI native method names and their declaring classes (libsmb2 binds by name; obfuscation would break it)
 -keepclasseswithmembernames class * {
     native <methods>;
 }
 -keep class com.twig.fs.smb.NativeSmbClient { *; }
 
-# media3 通过反射加载 ffmpeg 扩展渲染器(DefaultRenderersFactory)
+# media3 loads the ffmpeg extension renderer reflectively (DefaultRenderersFactory)
 -keep class androidx.media3.decoder.ffmpeg.** { *; }
 
-# Termux 终端:反射访问 TerminalSession 内部字段(mEmulator/mShellPid/队列),不可混淆
+# Termux terminal: reflectively accesses TerminalSession's internal fields (mEmulator / mShellPid / queue), cannot be obfuscated
 -keep class com.termux.** { *; }
 -dontwarn com.termux.**
 
-# Shizuku:binder 那一头按名字查 AIDL 接口(IShizukuService.Stub.asInterface 与
-# ShizukuProvider 的跨进程握手),混淆掉类名/方法名就对不上,表现为"服务在跑却连不上"。
+# Shizuku: the binder side looks up AIDL interfaces by name
+# (IShizukuService.Stub.asInterface and ShizukuProvider's cross-process handshake);
+# obfuscate the class/method names and they won't match — symptoms look like
+# "the service is running but nothing connects".
 -keep class rikka.shizuku.** { *; }
 -keep class moe.shizuku.** { *; }
 -keep interface rikka.shizuku.** { *; }
 -dontwarn rikka.shizuku.**
 -dontwarn moe.shizuku.**
 
-# 特权助手:Shizuku 在**另一个进程**里按类名反射实例化 TwigPrivService(classpath 是
-# 我们自己的 APK),AIDL 的 Stub/Proxy 也按名字绑定;混淆掉就是 ClassNotFound。
-# Pty 的 native 方法按 类名+方法名 绑定到 libtwigpty.so,同样不能改名。
+# Privileged helper: Shizuku reflectively instantiates TwigPrivService **in another process**
+# (classpath is our own APK), and AIDL's Stub/Proxy also bind by name;
+# obfuscate and you get ClassNotFound.
+# The pty native methods bind to libtwigpty.so by class name + method name; same rule.
 -keep class com.twig.app.priv.** { *; }

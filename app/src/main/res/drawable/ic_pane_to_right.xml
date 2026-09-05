@@ -1,4 +1,4 @@
-<!-- 切到右面板:左面板实心(当前)、右面板空心(目标),箭头指右 -->
+<!-- Switch to the right pane: left pane solid (current), right pane hollow (target), arrow points right -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

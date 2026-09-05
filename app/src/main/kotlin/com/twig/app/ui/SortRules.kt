@@ -3,25 +3,27 @@ package com.twig.app.ui
 import com.twig.core.XFile
 
 /**
- * 列表的**分组排序规则**。
+ * The list's **grouped sorting rules**.
  *
- * 从 [PaneViewModel.sortList] 里抽出来,是为了能用纯 JVM 单测覆盖:原来那段会现读
- * `Prefs`(SharedPreferences)、调 `Thumbs.canThumb`(`Thumbs` 这个 object 的初始化
- * 里有 `android.util.LruCache`),在 :app 的纯 JVM 测试里一 load 就 `Stub!`。
- * 这里把"要不要分组""是不是可展开归档""能不能出缩略图"全部变成**入参**,
- * 决策逻辑就跟 Android 脱钩了;去哪儿问这些开关仍由 [PaneViewModel] 决定。
+ * Extracted from [PaneViewModel.sortList] so it can be covered by plain JVM unit
+ * tests: the original would read `Prefs` (SharedPreferences) and call
+ * `Thumbs.canThumb` (the `Thumbs` object has an `android.util.LruCache` in its
+ * initialization, so a plain JVM test in :app loads as `Stub!`).
+ * Here "should we group" / "is it an expandable archive" / "can it produce a
+ * thumbnail" are all turned into **parameters**, so the decision logic has no
+ * Android dependency; [PaneViewModel] still decides where to ask those switches.
  */
 object SortRules {
 
     /**
-     * 一个条目属于哪一组,数字越小越靠前:
+     * Which group an entry belongs to. Lower number sorts earlier:
      *
-     * | 组 | 内容 | 为什么 |
+     * | Group | Contents | Why |
      * |---|---|---|
-     * | 0 | 目录 | 文件管理器的常规 |
-     * | 1 | 可展开的压缩包(仅 [archivesFirst]) | 网格「全部文件」下它渲染成整行,夹在格子中间会把网格切断 |
-     * | 2 | 能出缩略图的文件 | 缩略图开着时图文混排很难扫,聚在一起才像相册 |
-     * | 3 | 其余 | |
+     * | 0 | Directories | Standard for a file manager. |
+     * | 1 | Expandable archives (only when [archivesFirst]) | They render as full rows in grid "All files"; wedged between cells, they would split the grid. |
+     * | 2 | Files that can produce a thumbnail | With thumbnails on, mixed image/text rows are hard to scan; grouping them feels more like a gallery. |
+     * | 3 | Everything else | |
      */
     fun groupOf(
         isDir: Boolean,
@@ -36,12 +38,15 @@ object SortRules {
     }
 
     /**
-     * 按 [cmp] 排序;[groupOf] 非空时先按组再按 [cmp](传 null = 不分组,
-     * 与"缩略图和网格都关着"时历来的行为一致)。
+     * Sort by [cmp]; when [groupOf] is non-null, group first then sort within group
+     * by [cmp] (pass null for no grouping, matching the long-standing behavior when
+     * both thumbnails and the grid are off).
      *
-     * **每项的分组只算一次**。原来是在 Comparator 里现算的,那是 O(n log n) 次,
-     * 而分组结果只跟条目自己有关、跟拿它跟谁比毫无关系——`canThumb` 里还带一次
-     * `split('/')`,几千条目的目录白白多跑上万次。
+     * **Each entry's group is computed exactly once.** The old version computed it
+     * inside the Comparator — that's O(n log n) times, while the group only depends
+     * on the entry itself and has nothing to do with who it's compared against.
+     * `canThumb` even contains a `split('/')`, so a directory of a few thousand
+     * entries paid for ten thousand extra splits.
      */
     fun sorted(list: List<XFile>, cmp: Comparator<XFile>, groupOf: ((XFile) -> Int)?): List<XFile> {
         if (groupOf == null) return list.sortedWith(cmp)

@@ -13,10 +13,10 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 
 dependencies {
     implementation(project(":core-fs"))
-    // zip 用 JDK 自带 java.util.zip;7z/rar 用以下纯 Java 库(无 .so)。
+    // zip uses the JDK's built-in java.util.zip; 7z uses the pure-Java library below (no .so).
+    // rar lives in :fs-archive-rar — split off purely for licensing, see the comment there.
     implementation(libs.commons.compress) // 7z
-    implementation(libs.xz)               // 7z 的 LZMA/LZMA2 解码
-    implementation(libs.junrar)           // rar(仅 RAR4)
+    implementation(libs.xz)               // 7z LZMA/LZMA2 decode
 
     testImplementation(project(":fs-local"))
     testImplementation("junit:junit:4.13.2")

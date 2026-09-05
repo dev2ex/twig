@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -30,13 +31,16 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 「展开一个 zip,它就成为对侧复制的目标目录」这条交互。
+ * The interaction "expanding a zip makes it the copy target for the other pane".
  *
- * 底层早就支持往包里写(`ZipFileSystem.openOutput` → 追加),缺的一直是**当前目录
- * 落不到包根**:树上那一行的 XFile 是宿主文件(`isDir=false`),而 [PaneViewModel.toggleFile]
- * 只在 `isDir` 时才更新 `currentDir` —— 于是绿框停在 zip 那一行、粘贴目标却还是外面的
- * 目录,展开了包也没法往里复制。只有再点包内的**子目录**才行(包根、以及根本没有子目录的
- * 包,就完全没有入口)。
+ * The lower layer has long supported writing into an archive (`ZipFileSystem.openOutput`
+ * -> append), what was always missing was that **the current directory never lands on the
+ * archive's root**: the tree row's XFile is the host file (`isDir=false`), and
+ * [PaneViewModel.toggleFile] only updates `currentDir` when `isDir` is true -- so the
+ * green highlight stops on the zip's own row while the paste target is still the outer
+ * directory, and expanding the archive gets you nowhere to copy into. The only way in was
+ * tapping a **subdirectory** inside the archive (an archive with no subdirectories, or
+ * the archive root itself, had no entry point at all).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -80,7 +84,7 @@ class PaneViewModelArchiveTargetTest {
     }
 
     @Test
-    fun `展开 zip 后当前目录就是包根,可以当复制目标`() = runTest(dispatcher) {
+    fun `after expanding a zip, the current directory is the archive root, usable as a copy target`() = runTest(dispatcher) {
         openTree()
         advanceUntilIdle()
         val outside = vm.state.value.currentDir
@@ -91,12 +95,12 @@ class PaneViewModelArchiveTargetTest {
         val dir = vm.state.value.currentDir
         assertEquals(ZipFileSystem.SCHEME, dir?.scheme)
         assertEquals("${archive.path}${ArchiveFileSystem.SEP}", dir?.path)
-        assertTrue("包根得是个能写进去的目录,否则复制按钮直接拦下", dir!!.isWritableDir())
-        assertTrue("展开前后不该是同一个目录", outside?.path != dir.path)
+        assertTrue("the archive root must be a writable directory, otherwise the copy button blocks it outright", dir!!.isWritableDir())
+        assertTrue("before and after expanding must not be the same directory", outside?.path != dir.path)
     }
 
     @Test
-    fun `收起 zip 后目标退回它所在的目录,不停在收起来的包里`() = runTest(dispatcher) {
+    fun `collapsing the zip returns the target to its containing directory, not stuck inside the collapsed archive`() = runTest(dispatcher) {
         openTree()
         advanceUntilIdle()
         vm.toggle(nodeFor(archive.path))
@@ -111,15 +115,15 @@ class PaneViewModelArchiveTargetTest {
     }
 
     @Test
-    fun `第二次展开吃的是缓存,当前目录照样落到包根`() = runTest(dispatcher) {
+    fun `expanding it a second time uses the cache, and the current directory still lands on the archive root`() = runTest(dispatcher) {
         openTree()
         advanceUntilIdle()
         vm.toggle(nodeFor(archive.path))
         advanceUntilIdle()
-        vm.toggle(nodeFor(archive.path)) // 收起
+        vm.toggle(nodeFor(archive.path)) // collapse
         advanceUntilIdle()
 
-        vm.toggle(nodeFor(archive.path)) // 再展开:走 children 缓存那条分支
+        vm.toggle(nodeFor(archive.path)) // expand again: goes through the children-cache branch
         advanceUntilIdle()
 
         assertEquals(ZipFileSystem.SCHEME, vm.state.value.currentDir?.scheme)
@@ -127,7 +131,7 @@ class PaneViewModelArchiveTargetTest {
     }
 
     @Test
-    fun `包内子目录仍然照常能选中`() = runTest(dispatcher) {
+    fun `a subdirectory inside the archive can still be selected as usual`() = runTest(dispatcher) {
         openTree()
         advanceUntilIdle()
         vm.toggle(nodeFor(archive.path))
@@ -142,11 +146,60 @@ class PaneViewModelArchiveTargetTest {
     }
 
     @Test
-    fun `只读格式的包根不会被当成可写目标`() = runTest(dispatcher) {
-        // 7z 整个来源只读(FileSystem.writable() == false),包根即使成了当前目录也复制不进去
+    fun `a read-only format's archive root is never treated as a writable target`() = runTest(dispatcher) {
+        // the entire 7z source is read-only (FileSystem.writable() == false); even if its root becomes the current directory, nothing can be copied into it
         val sevenZ = FsRegistry.of(SevenZFileSystem.SCHEME)
         val fake = XFile(SevenZFileSystem.SCHEME, "/x.7z${ArchiveFileSystem.SEP}", isDir = true, canWrite = true)
         assertFalse(sevenZ.writable())
         assertFalse(fake.isWritableDir())
+    }
+
+    /**
+     * Regression: after expanding an archive, tapping "up" made the green highlight
+     * disappear entirely.
+     *
+     * The archive root's path is `<host>!/`; slicing it with `parentPath` yields the path
+     * of the host file's containing directory -- but **the scheme is still zip**, so
+     * currentKey ends up pointing at something like `f:zip...:/sdcard`, a row that does
+     * not exist at all in the tree. The archive root does not sit at the top of the tree,
+     * it hangs off the host file, so "up" should land on the host file's own containing
+     * directory (matching what happens when the archive is collapsed).
+     */
+    @Test
+    fun `after expanding a zip, tapping up returns the green highlight to the archive's containing directory instead of vanishing`() = runTest(dispatcher) {
+        openTree()
+        advanceUntilIdle()
+        vm.toggle(nodeFor(archive.path))
+        advanceUntilIdle()
+
+        vm.up()
+        advanceUntilIdle()
+
+        val st = vm.state.value
+        assertEquals(ext.path, st.currentDir?.path)
+        assertEquals("file", st.currentDir?.scheme)
+        assertEquals("the green highlight should land on the storage row", "f:file:${ext.path}", st.currentKey)
+    }
+
+    /**
+     * The top-level rows (internal storage / volumes / root directory / apps) have
+     * nowhere further up than the top of the tree, and going further up should simply
+     * clear the selection -- the old logic would concatenate `parentPath` into something
+     * like `/storage/emulated`, a row the tree does not have either, and on screen it also
+     * looked like "the green highlight disappears", just for a more deeply hidden reason.
+     */
+    @Test
+    fun `going up from internal storage reaches the top, without pointing at a nonexistent row`() = runTest(dispatcher) {
+        openTree()
+        advanceUntilIdle()
+        vm.toggle(nodeFor(ext.path)) // tap the internal-storage row, the green highlight lands on it
+        advanceUntilIdle()
+        assertEquals("f:file:${ext.path}", vm.state.value.currentKey)
+
+        vm.up()
+        advanceUntilIdle()
+
+        assertNull(vm.state.value.currentKey)
+        assertNull(vm.state.value.currentDir)
     }
 }

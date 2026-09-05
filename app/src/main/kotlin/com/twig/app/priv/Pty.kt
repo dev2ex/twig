@@ -1,23 +1,28 @@
 package com.twig.app.priv
 
 /**
- * `libtwigpty.so` 的绑定:分配一个伪终端并在从属端起进程。
+ * Binding for `libtwigpty.so`: allocates a pseudo-terminal and starts a
+ * process on the slave side.
  *
- * ★ **没有静态初始化块**,加载由调用方显式做([load])。这一点是故意的:
- * 特权进程里没有 app context,而我们的 native 库是**不解压**地存在 APK 内
- * (`extractNativeLibs=false`,`lib/arm64/` 是空目录),`System.loadLibrary` 找不到它;
- * 只能先把 .so 抠出来再按绝对路径 `System.load`。termux 的 `JNI` 类恰恰相反——
- * 静态块里写死 `loadLibrary("termux")`,一旦失败这个类就永久损坏、没有重试机会,
- * 这就是不复用它的原因。
+ * ★ **There is no static init block** — loading is done explicitly by the
+ * caller ([load]). This is deliberate: the privileged process has no app
+ * Context, and our native library lives **uncompressed** inside the APK
+ * (`extractNativeLibs=false`, `lib/arm64/` is an empty directory), so
+ * `System.loadLibrary` cannot find it; the only option is to extract the
+ * .so and `System.load` it by absolute path. Termux's `JNI` class is the
+ * opposite — its static block hard-codes `loadLibrary("termux")`, and if it
+ * fails the class is permanently broken with no chance to retry, which is
+ * exactly why we do not reuse it.
  *
- * app 进程里正常走 `loadLibrary`(那边 classloader 知道 APK 里的 lib 路径)。
+ * The app process uses `loadLibrary` normally (the classloader there knows
+ * the lib path inside the APK).
  */
 object Pty {
 
     @Volatile
     private var loaded = false
 
-    /** app 进程内加载(有 classloader 兜底)。 */
+    /** Load inside the app process (the classloader handles the path). */
     @Synchronized
     fun loadInApp() {
         if (loaded) return
@@ -25,7 +30,7 @@ object Pty {
         loaded = true
     }
 
-    /** 特权进程内按绝对路径加载。 */
+    /** Load in the privileged process by absolute path. */
     @Synchronized
     fun load(soPath: String) {
         if (loaded) return
@@ -34,8 +39,9 @@ object Pty {
     }
 
     /**
-     * 返回 PTY 主设备端 fd(失败 -1),子进程 pid 写进 [pidOut]。
-     * [args] 不含 argv[0],由 native 侧用 [cmd] 补上。
+     * Returns the fd of the PTY master end (-1 on failure); the child pid is
+     * written into [pidOut]. [args] does not include argv[0]; the native side
+     * fills it in from [cmd].
      */
     external fun nativeOpen(
         cmd: String,
@@ -47,7 +53,7 @@ object Pty {
         cols: Int,
     ): Int
 
-    /** 改窗口大小并给前台进程组发 SIGWINCH(全屏程序靠它重排)。 */
+    /** Resize the window and send SIGWINCH to the foreground process group (full-screen programs use it to relayout). */
     external fun nativeSetWinSize(fd: Int, rows: Int, cols: Int)
 
     external fun nativeWaitFor(pid: Int): Int

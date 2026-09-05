@@ -29,10 +29,13 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /**
- * 展开加密压缩包这条控制流:要密码 → UI 弹框 → 校验 → 展开 → (可选)记住密码。
+ * The control flow for expanding an encrypted archive: needs a password -> UI prompts ->
+ * validates -> expands -> (optionally) remembers the password.
  *
- * `fs-archive` 那边的测试只管"给了密码能不能解出字节",管不到这里:密码是从哪儿来的、
- * 密码错了界面怎么知道、保存过的密码下次还认不认——全是 VM 的控制流。
+ * `fs-archive`'s own tests only cover "given a password, can the bytes be decrypted" --
+ * they do not reach this layer: where the password comes from, how the UI learns it was
+ * wrong, whether a saved password is still trusted next time -- all of that is the VM's
+ * control flow.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -59,7 +62,7 @@ class PaneViewModelArchivePasswordTest {
             }
         }
         vm = PaneViewModel(app).apply { io = dispatcher }
-        // 上一个用例可能已经把密码留在了单例 FileSystem 上
+        // a previous test case may have left a password sitting on the singleton FileSystem
         zipFs().setPassword(archive.path, null)
         Prefs.setArchivePassword(app, "file:${archive.path}", null)
     }
@@ -72,7 +75,7 @@ class PaneViewModelArchivePasswordTest {
 
     private fun zipFs() = FsRegistry.of(ZipFileSystem.SCHEME) as ArchiveFileSystem
 
-    /** 展开外部存储,找到那个包对应的行。 */
+    /** Expands external storage and finds the row for that archive. */
     private fun archiveNode(): PaneViewModel.FileNode =
         vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
             .first { it.file.path == archive.path }
@@ -81,7 +84,7 @@ class PaneViewModelArchivePasswordTest {
         .map { it.file.name }
 
     @Test
-    fun `展开加密包会请求密码,而不是弹一句英文报错`() = runTest(dispatcher) {
+    fun `expanding an encrypted archive requests a password instead of popping up an English error`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
 
@@ -90,12 +93,12 @@ class PaneViewModelArchivePasswordTest {
 
         val st = vm.state.value
         assertEquals(archive.path, st.passwordFor?.path)
-        assertNull("第一次问密码不该同时报错", st.error)
-        assertFalse("没解开就不该露出包里的东西", innerNames().contains("inside.txt"))
+        assertNull("asking for the password the first time should not also report an error", st.error)
+        assertFalse("without unlocking it, the archive's contents should not be exposed", innerNames().contains("inside.txt"))
     }
 
     @Test
-    fun `密码不对时告诉界面重来,对了就展开`() = runTest(dispatcher) {
+    fun `a wrong password tells the UI to try again, a correct one expands it`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
         val node = archiveNode()
@@ -111,11 +114,11 @@ class PaneViewModelArchivePasswordTest {
         vm.unlockArchive(node.file, PASSWORD, save = false) { result = it }
         advanceUntilIdle()
         assertEquals(true, result)
-        assertTrue("解开后包内条目应该就地展开", innerNames().contains("inside.txt"))
+        assertTrue("once unlocked, the archive's entries should expand in place", innerNames().contains("inside.txt"))
     }
 
     @Test
-    fun `勾了保存的密码下次直接用,不再弹框`() = runTest(dispatcher) {
+    fun `a password saved with the checkbox is reused next time, with no prompt`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
         val node = archiveNode()
@@ -125,7 +128,7 @@ class PaneViewModelArchivePasswordTest {
         advanceUntilIdle()
         assertNotNull(Prefs.archivePassword(app, "file:${archive.path}"))
 
-        // 换一个 VM,并且把进程内已解锁的状态清掉——只剩"保存过的密码"这一条线索
+        // switch to a fresh VM, and wipe the in-process unlocked state -- leaving only "a saved password" as the one remaining clue
         zipFs().setPassword(archive.path, null)
         val vm2 = PaneViewModel(app).apply { io = dispatcher }
         vm2.bootstrap(listOf("file\t${ext.path}"))
@@ -135,7 +138,7 @@ class PaneViewModelArchivePasswordTest {
         vm2.toggle(n2)
         advanceUntilIdle()
 
-        assertNull("有保存的密码就不该再问", vm2.state.value.passwordFor)
+        assertNull("with a saved password present, it should not ask again", vm2.state.value.passwordFor)
         assertTrue(
             vm2.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
                 .any { it.file.name == "inside.txt" },
@@ -143,7 +146,7 @@ class PaneViewModelArchivePasswordTest {
     }
 
     @Test
-    fun `保存的密码失效时清掉并重新问`() = runTest(dispatcher) {
+    fun `when a saved password no longer works it is cleared and asked for again`() = runTest(dispatcher) {
         Prefs.setArchivePassword(app, "file:${archive.path}", "stale")
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
@@ -152,8 +155,8 @@ class PaneViewModelArchivePasswordTest {
 
         val st = vm.state.value
         assertEquals(archive.path, st.passwordFor?.path)
-        assertNotNull("这次要提示密码错", st.error)
-        assertNull("不能一直拿失效的密码去试", Prefs.archivePassword(app, "file:${archive.path}"))
+        assertNotNull("this time it should flag the password as wrong", st.error)
+        assertNull("it must not keep retrying with a password that no longer works", Prefs.archivePassword(app, "file:${archive.path}"))
     }
 
     private companion object {

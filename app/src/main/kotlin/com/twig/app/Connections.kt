@@ -5,6 +5,8 @@ import com.twig.core.FsRegistry
 import com.twig.fs.network.DavConfig
 import com.twig.fs.network.FtpConfig
 import com.twig.fs.network.FtpFileSystem
+import com.twig.fs.network.JellyfinConfig
+import com.twig.fs.network.JellyfinFileSystem
 import com.twig.fs.network.S3Config
 import com.twig.fs.network.S3FileSystem
 import com.twig.fs.network.SftpConfig
@@ -14,42 +16,90 @@ import com.twig.fs.smb.SmbConfig
 import com.twig.fs.smb.SmbFileSystem
 
 /**
- * 集中的"连接 → 已注册 scheme"解析,供播放服务等 PaneViewModel 之外的场景复用连接建立
- * 逻辑。scheme 名与 [ui.PaneViewModel.schemeForConn] 同一算法(确定性 hash),因此用户已在
- * 树上展开过的服务器,这里直接复用同一条已注册连接、不再重连。
+ * Centralised "connection → registered scheme" resolution, so places outside PaneViewModel
+ * (e.g. the playback service) can reuse the connection-establishment logic. The scheme
+ * name uses the same algorithm as [ui.PaneViewModel.schemeForConn] (deterministic hash),
+ * so a server the user already expanded in the tree reuses the same registered connection
+ * here, without reconnecting.
  */
 object Connections {
 
-    /** 某连接对应的确定性 scheme。 */
+    /** Deterministic scheme for a given connection. */
     fun schemeOf(conn: SavedConnection): String =
         conn.type + Integer.toHexString(conn.label().hashCode())
 
     private val byScheme = java.util.concurrent.ConcurrentHashMap<String, SavedConnection>()
 
     /**
-     * scheme → 连接的**全进程**反查([ensure] 里登记,浏览过的服务器必然登记过)。
+     * **Process-wide** reverse lookup from scheme to connection (registered in [ensure],
+     * so any server the user has browsed must already be registered).
      *
-     * `PaneViewModel` 自己也有一份 `schemeToConn`,但只记**本面板**展开过的服务器:
-     * 复制/压缩确认框显示的是**对侧**面板的目标目录,查自己那份必然落空,服务器名
-     * 就没了——路径退化成 `sftp:/backup`,与最近位置的 `sftp:/nas/backup` 对不上。
+     * `PaneViewModel` keeps its own `schemeToConn`, but that only records servers
+     * **this pane** has expanded: copy / archive confirmation dialogs show the **other**
+     * pane's destination directory, so looking up our own map necessarily misses, and
+     * the server name disappears — paths degrade to `sftp:/backup` instead of matching
+     * the recent-location entry `sftp:/nas/backup`.
      */
     fun ofScheme(scheme: String): SavedConnection? = byScheme[scheme]
 
     /**
-     * 确保该连接已注册进 FsRegistry 并返回其 scheme;已注册则复用不重连。
-     * 阻塞 IO,须在工作线程。
+     * Fields used to decide "do we need to rebuild the connection".
      *
-     * **建立连接的逻辑只有这一份**。以前 [ui.PaneViewModel.schemeForConn] 还有一份
-     * 几乎一样的拷贝,两边靠注释约定 scheme 算法保持一致,而且已经开始分叉了
-     * (那份多记一次 SMB 方言)。新增一种连接类型只该改这里。
+     * **Excludes token / userId / hostKey — these three are learned after connecting,
+     * they are not input for establishing it** (Jellyfin writes back the token after
+     * login, SFTP remembers the host key on first connect). If they took part in the
+     * comparison, every writeback would make the next ensure think "config changed",
+     * disconnect and reconnect, then write back again — a loop.
+     * Backup export excludes the same set of fields for the same reason.
+     */
+    private fun connKey(c: SavedConnection) = c.copy(token = "", userId = "", hostKey = "")
+
+    /**
+     * Unregister and disconnect the connection for a scheme. If the socket is not closed
+     * explicitly it leaks, which is especially visible with SMB (libsmb2 still has a
+     * context attached).
+     */
+    fun drop(scheme: String) {
+        when (val fs = FsRegistry.unregister(scheme)) {
+            is SmbFileSystem -> runCatching { fs.disconnect() }
+            is SftpFileSystem -> runCatching { fs.disconnect() }
+            else -> Unit
+        }
+    }
+
+    /**
+     * Ensure the connection is registered in FsRegistry and return its scheme; if already
+     * registered, reuse without reconnecting. Blocking I/O, must run on a worker thread.
      *
-     * @param onInfo 连上后拿到的补充信息(目前只有 SMB 协商的方言,如 "SMB3.1.1"),
-     *   供树上的服务器行显示;不关心就不传。
+     * **The connection-establishment logic lives here only**. There used to be a near
+     * duplicate in [ui.PaneViewModel.schemeForConn], and the two sides relied on comments
+     * to keep the scheme algorithm in sync — they had already started to drift (the
+     * other side also recorded the SMB dialect). Adding a new connection type means
+     * changing only here.
+     *
+     * @param onInfo supplementary information obtained after connecting (currently only
+     *   the SMB negotiated dialect, e.g. "SMB3"), shown on the server row in the tree;
+     *   pass nothing if you don't care.
      */
     fun ensure(ctx: Context, conn: SavedConnection, onInfo: (String) -> Unit = {}): String {
         val s = schemeOf(conn)
-        byScheme[s] = conn // 反查表:已注册的直接返回,登记要放在这之前
-        if (FsRegistry.all().any { it.scheme == s }) return s
+        val prev = byScheme.put(s, conn) // reverse-lookup table: register before the "reuse if registered" check
+        if (FsRegistry.all().any { it.scheme == s }) {
+            // ★ Only reuse when the config has **not** changed. The scheme is derived
+            // from the connection label, and changing the password doesn't change the
+            // label, so the scheme is unchanged — an unconditional reuse would hand
+            // back the instance built with the **old** config.
+            //
+            // With master password enabled this surfaces in its most inscrutable way:
+            // if a pane has expanded the server before unlocking, the "password" read
+            // back then was still ciphertext, the constructed instance keeps carrying
+            // it, and the symptom is "login fails, but editing without changing anything
+            // and saving fixes it" (the save goes through forgetServer, which unregisters
+            // the bad instance as a side effect). The timing issue is fixed too, but
+            // the criterion belongs here, not depending on the caller.
+            if (prev == null || connKey(prev) == connKey(conn)) return s
+            drop(s)
+        }
         when (conn.type) {
             "smb" -> {
                 val fs = SmbFileSystem(
@@ -63,13 +113,29 @@ object Connections {
                 SftpFileSystem(
                     SftpConfig(
                         conn.host, conn.port, conn.user, conn.password, keyPath = conn.keyPath,
-                        knownHostKey = conn.hostKey,
+                        knownHostKey = conn.hostKey, path = conn.share,
                         onLearnHostKey = { fp -> rememberHostKey(ctx, conn, fp) },
                     ),
                     s,
                 ),
             )
             "webdav" -> FsRegistry.register(WebDavFileSystem(DavConfig(conn.host, conn.user, conn.password), s))
+            "jellyfin", "emby" -> FsRegistry.register(
+                JellyfinFileSystem(
+                    JellyfinConfig(
+                        baseUrl = conn.host,
+                        user = conn.user, password = conn.password, apiKey = conn.apiKey,
+                        emby = conn.type == "emby",
+                        deviceId = Prefs.deviceId(ctx),
+                        deviceName = android.os.Build.MODEL ?: "Android",
+                        clientVersion = appVersion(ctx),
+                        token = conn.token, userId = conn.userId,
+                        onAuth = { t, u -> rememberAuth(ctx, conn, t, u) },
+                        labels = MediaLabels.of(ctx),
+                    ),
+                    s,
+                ),
+            )
             "s3" -> FsRegistry.register(
                 S3FileSystem(
                     S3Config(
@@ -79,21 +145,61 @@ object Connections {
                     s,
                 ),
             )
-            else -> FsRegistry.register(FtpFileSystem(FtpConfig(conn.host, conn.port, conn.user, conn.password), s))
+            else -> FsRegistry.register(
+                FtpFileSystem(
+                    FtpConfig(conn.host, conn.port, conn.user, conn.password, path = conn.share),
+                    s,
+                ),
+            )
         }
         return s
     }
 
     /**
-     * 首次连上某台 SFTP 时把主机密钥指纹记下来(TOFU)。
-     * 从 store 里重新读一份再改,别拿手上这份可能已经过期的快照去覆盖用户
-     * 中途改过的其它字段。由 SSH 握手线程回调,SharedPreferences.apply() 任意线程安全。
+     * Record the host key fingerprint on first successful SFTP connect (TOFU).
+     * Re-read from the store and modify that, not the potentially stale snapshot in hand —
+     * which could otherwise clobber other fields the user has since edited. Called from
+     * the SSH handshake thread; SharedPreferences.apply() is safe from any thread.
      */
     private fun rememberHostKey(ctx: Context, conn: SavedConnection, fp: String) {
         val cur = ConnectionStore.all(ctx).firstOrNull { it.label() == conn.label() } ?: return
         if (cur.hostKey == fp) return
         ConnectionStore.save(ctx, cur.copy(hostKey = fp))
     }
+
+    /**
+     * This app's version, used in Jellyfin's auth header (it records Client/Device/Version
+     * as session info and 400s outright when they're missing). Goes through PackageManager
+     * instead of `BuildConfig` — the latter requires enabling `buildFeatures.buildConfig`
+     * and generating an entire class, not worth it for one string.
+     */
+    private fun appVersion(ctx: Context): String = runCatching {
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "1.0"
+    }.getOrDefault("1.0")
+
+    /**
+     * After a successful Jellyfin / Emby login, record the token and userId to skip logging
+     * in next time. Same as [rememberHostKey]: re-read from the store and modify that, not
+     * the possibly stale snapshot in hand — which could otherwise clobber other fields the
+     * user has since edited. Called from the network thread; `apply()` is safe from any thread.
+     */
+    private fun rememberAuth(ctx: Context, conn: SavedConnection, token: String, userId: String) {
+        val cur = ConnectionStore.all(ctx).firstOrNull { it.label() == conn.label() } ?: return
+        if (cur.token == token && cur.userId == userId) return
+        ConnectionStore.save(ctx, cur.copy(token = token, userId = userId))
+    }
+
+    /**
+     * The path to use when a path leaves the file tree and enters a **shell** on the same
+     * server: `git -C <dir>`, the terminal's `cd`, a remote command's workdir.
+     *
+     * An SFTP connection can be rooted below the server root, and then the path the UI
+     * shows is not the path a command needs — [com.twig.fs.network.SftpFileSystem.serverPath]
+     * translates it back. For every other scheme the visible path is already the real one,
+     * so this is the identity.
+     */
+    fun shellPath(scheme: String, path: String): String =
+        (runCatching { FsRegistry.of(scheme) }.getOrNull() as? SftpFileSystem)?.serverPath(path) ?: path
 
     fun find(ctx: Context, label: String): SavedConnection? =
         ConnectionStore.all(ctx).firstOrNull { it.label() == label }

@@ -41,11 +41,14 @@ class PrivilegedShell(
     private val lock = Any()
 
     /**
-     * ★ stderr 的缓冲区**不能**用 [lock] 保护。排空线程每读到一行就要上一次锁,而
-     * [exec] 是**握着 [lock] 等命令跑完的** —— 两者用同一把锁的话:排空线程卡在锁上
-     * → 没人读 stderr → 管道(64KB)写满 → 命令阻塞在写 stderr 上 → 永远不结束 →
-     * stdout 上的结束标记永远等不到,只能等超时。一条输出超过 64KB 错误的命令
-     * (`find /` 满屏 Permission denied 就够了)必然踩中。
+     * ★ The stderr buffer **cannot** be guarded by [lock]. The drain thread takes
+     * the lock for every line it reads, while [exec] is **holding [lock]
+     * waiting for the command to finish**. If they shared the same lock: drain
+     * thread stuck on the lock -> nobody reads stderr -> the pipe (64 KB) fills
+     * -> command blocks writing to stderr -> never ends -> the end marker on
+     * stdout is never seen, so we just wait for the timeout. Any command whose
+     * error output exceeds 64 KB (`find /` full of Permission denied is enough)
+     * is guaranteed to hit this.
      */
     private val errLock = Any()
 
@@ -286,11 +289,14 @@ class PrivilegedShell(
 
     companion object {
         /**
-         * 诊断输出钩子。纯 JVM 模块没有 `android.util.Log`,由 `:app` 装上
-         * (与 [com.twig.fs.local.LocalFileSystem.changed] 同一套路)。
+         * Diagnostic output hook. The pure JVM module has no `android.util.Log`,
+         * so `:app` installs it (same pattern as
+         * [com.twig.fs.local.LocalFileSystem.changed]).
          *
-         * 只报失败,不报每条命令 —— 提权路径上一条命令都可能被跑成千上万次
-         * (列目录、判存在),全打出来会把 logcat 冲垮,真正的错误反而看不见。
+         * Only failures are reported, not every command — on the privileged
+         * path any one command may be invoked thousands of times (list
+         * directory, check existence); logging all of them would flood logcat
+         * and bury the failures that actually mean something.
          */
         @Volatile
         @JvmStatic

@@ -4,9 +4,8 @@ import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.archive.ArchiveFileSystem
 import com.twig.fs.archive.Archives
-import com.twig.fs.archive.RarFileSystem
 
-/** 矩形树图的一个节点:目录含子项列表并累计大小,文件为叶子。 */
+/** A treemap node: directories hold a child list and accumulate size, files are leaves. */
 class TreemapEntry(
     val file: XFile,
     val isDir: Boolean,
@@ -18,9 +17,17 @@ class TreemapEntry(
 }
 
 /**
- * 全量扫描目录/压缩包成 [TreemapEntry] 树,FileSystem.list() 递归,任意来源同一套。
- * [scanned]/[bytes] 供 UI 轮询进度;[stop] 置位后尽快收尾(退出占用视图时)。
- * 阻塞 IO,须在工作线程调用。
+ * Thrown by [TreemapScanner] when a scan cannot proceed. The scanner is a pure class with
+ * no [android.content.Context], so message strings are kept here as plain English for logs;
+ * the UI layer ([PaneFragment]) catches these and substitutes a localised string.
+ */
+class TreemapException(message: String) : RuntimeException(message)
+
+/**
+ * Full recursive scan of a directory / archive into a [TreemapEntry] tree via
+ * FileSystem.list(); works the same for any source. [scanned]/[bytes] are polled
+ * by the UI for progress; set [stop] to wind down (e.g. when leaving the occupying
+ * view). Blocking IO — must be called from a worker thread.
  */
 class TreemapScanner(private val cacheDir: java.io.File) {
 
@@ -32,15 +39,15 @@ class TreemapScanner(private val cacheDir: java.io.File) {
 
     @Volatile var stop = false
 
-    /** 目录直接递归;压缩包先挂载(必要时物化,与面板共用 arc 缓存)再递归包根。 */
+    /** Directories recurse directly; archives are mounted first (materialised if needed, sharing the arc cache with the pane) then the archive root is recursed. */
     fun scanRoot(target: XFile): TreemapEntry {
         val rootFile = if (target.isDir) {
             target
         } else {
-            val scheme = Archives.schemeFor(target) ?: throw IllegalStateException("不支持的类型")
+            val scheme = Archives.schemeFor(target) ?: throw TreemapException("unsupported target: ${target.scheme}")
             val afs = FsRegistry.of(scheme) as ArchiveFileSystem
             val hostFs = runCatching { FsRegistry.of(target) }.getOrNull()
-            val needLocal = scheme == RarFileSystem.SCHEME ||
+            val needLocal = scheme == Archives.RAR_SCHEME ||
                 (hostFs is ArchiveFileSystem && !hostFs.fastRandom(target))
             afs.rootOf(if (needLocal) localArchive(target) else target)
         }
@@ -70,7 +77,7 @@ class TreemapScanner(private val cacheDir: java.io.File) {
         dir.children!!.sortByDescending { it.size }
     }
 
-    /** 与 PaneViewModel.localArchive 同一缓存目录/键,重复打开不重复下载。 */
+    /** Shares the cache directory/key with PaneViewModel.localArchive, so repeat opens don't redownload. */
     private fun localArchive(file: XFile): XFile {
         if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
         val dir = java.io.File(cacheDir, "arc").apply { mkdirs() }
@@ -81,12 +88,12 @@ class TreemapScanner(private val cacheDir: java.io.File) {
         if (!out.exists() || out.length() != file.size) {
             val tmp = java.io.File(dir, "$key.part")
             try {
-                // 1MB 缓冲(默认 8KB 会把网络往返延迟放大成大量小读,参照 CopyEngine)
+                // 1MB buffer (the default 8KB amplifies network round-trip latency into many small reads, see CopyEngine)
                 FsRegistry.of(file).openInput(file).use { ins ->
                     tmp.outputStream().use { ins.copyTo(it, 1 shl 20) }
                 }
                 out.delete()
-                if (!tmp.renameTo(out)) throw IllegalStateException("缓存归档失败")
+                if (!tmp.renameTo(out)) throw TreemapException("failed to materialise archive cache for ${file.path}")
             } finally {
                 tmp.delete()
             }

@@ -35,7 +35,8 @@
             android:layout_height="match_parent" />
     </LinearLayout>
 
-    <!-- 底部栏:提示 + 取消/确定(单选时点文件即返回,「确定」只用于多选) -->
+    <!-- Bottom bar: hint + cancel/confirm (in single-select mode tapping a file returns
+             immediately; "Confirm" is only for multi-select) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"

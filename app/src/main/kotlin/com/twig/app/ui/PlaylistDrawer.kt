@@ -15,9 +15,10 @@ import com.twig.app.R
 import com.twig.app.databinding.ItemPlaylistRowBinding
 
 /**
- * 播放列表侧边栏(播放页 [MusicPlayerActivity] 与列表页 [PlaylistActivity] 共用):
- * 列出 当前播放/我的最爱/用户列表 + "新建";点开对应列表页,长按 恢复播放/重命名/删除;
- * [exitRow] 为底部"退出播放器"行。
+ * Playlist side drawer (shared by the player page [MusicPlayerActivity] and the list page
+ * [PlaylistActivity]): lists Now Playing / Favorites / user playlists + "New"; tapping opens the
+ * corresponding list page, long-press to resume / rename / delete; [exitRow] is the bottom "Exit
+ * player" row.
  */
 @UnstableApi
 class PlaylistDrawer(
@@ -37,7 +38,7 @@ class PlaylistDrawer(
     fun reload() = adapter.reload()
 
     private inner class Adapter : RecyclerView.Adapter<VH>() {
-        private var rows: List<Playlist?> = emptyList() // null = "新建列表" 行
+        private var rows: List<Playlist?> = emptyList() // null = "new playlist" row
 
         fun reload() {
             val now = PlaylistStore.get(activity, Playlist.NOW)
@@ -83,7 +84,7 @@ class PlaylistDrawer(
     private fun rowMenu(pl: Playlist) {
         val opts = ArrayList<Pair<String, () -> Unit>>()
         opts += activity.getString(R.string.music_resume) to { resume(pl) }
-        // 「当前播放」是临时列表,改名即「保存」为普通列表——菜单文案随之显示为保存。
+        // "Now Playing" is a temporary list; renaming it means "save" it as a normal list — the menu label changes accordingly.
         if (!pl.isFav) opts += activity.getString(if (pl.isNow) R.string.music_save else R.string.music_rename) to { rename(pl) }
         if (!pl.fixed) opts += activity.getString(R.string.music_delete) to { confirmDelete(pl) }
         AlertDialog.Builder(activity)
@@ -108,8 +109,10 @@ class PlaylistDrawer(
                 val name = input.text.toString().trim()
                 if (name.isNotEmpty()) {
                     val promoted = PlaylistStore.rename(activity, pl.id, name)
-                    // 改名的若正是当前播放队列(尤其 NOW 被提升成新 uuid、原 "now" 已从 store 移除),
-                    // 把 queueId 同步到新 id,否则播放页「当前播放列表」按钮拿旧 id 取不到列表打不开。
+                    // If the renamed list is the current playback queue (especially when NOW gets
+                    // promoted to a new uuid and the original "now" is removed from the store),
+                    // sync queueId to the new id, otherwise the player page's "current playlist"
+                    // button would look up the list with the old id and fail to open it.
                     if (promoted != null) MusicEngine.onQueueRenamed(pl.id, promoted.id)
                     reload()
                 }

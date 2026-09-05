@@ -5,18 +5,20 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 一条"最近位置"。记的是**目录**而不是文件——在某个目录里打开过文件、或进入过它的 Git
- * 虚拟节点,就把这个目录记下来,下次一键跳回去。
+ * A "recent location" entry. Records a **directory** rather than a file — opening a file
+ * inside a directory, or entering one of its Git virtual nodes, records that directory so
+ * you can jump back in one tap.
  *
- * 与 [Favorite] 同理:存"如何到达"(本地路径 / 连接标签 + 路径)而不是会话内动态生成的
- * scheme,跨会话/重连后仍能定位。
- * - kind = "dir":跳到该目录本身
- * - kind = "git":跳到该目录并展开它下面的 Git 虚拟节点
+ * Same rationale as [Favorite]: store "how to reach it" (local path / connection label +
+ * path) rather than the session-scoped dynamic scheme, so it stays locatable across
+ * sessions and reconnects.
+ * - kind = "dir": jump to that directory itself
+ * - kind = "git": jump to that directory and expand its Git virtual node
  */
 data class HistoryEntry(
     val kind: String,           // "dir" | "git"
     val path: String,
-    val connLabel: String = "", // 空 = 本地
+    val connLabel: String = "", // empty = local
 ) {
     val id: String get() = "$kind|$connLabel|$path"
 
@@ -33,7 +35,7 @@ data class HistoryEntry(
     }
 }
 
-/** 最近位置历史的持久化(SharedPreferences + JSON),最近的在前,只留 [MAX] 条。 */
+/** Persistence for recent-location history (SharedPreferences + JSON); most recent first, kept to [MAX] entries. */
 object HistoryStore {
     private const val FILE = "twig_history"
     private const val KEY = "list"
@@ -49,7 +51,7 @@ object HistoryStore {
         }.getOrDefault(emptyList())
     }
 
-    /** 记一条:同一位置去重后置顶,超出 [MAX] 的最旧几条丢弃。 */
+    /** Record one: dedupe the same location and put it on top; discard the oldest beyond [MAX]. */
     fun add(ctx: Context, e: HistoryEntry) {
         val list = (listOf(e) + all(ctx).filter { it.id != e.id }).take(MAX)
         persist(ctx, list)

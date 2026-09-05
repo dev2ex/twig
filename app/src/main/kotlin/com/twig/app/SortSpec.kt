@@ -3,14 +3,15 @@ package com.twig.app
 import android.content.Context
 import com.twig.core.XFile
 
-/** 文件排序键。 */
+/** File sort keys. */
 enum class FileSortKey { NAME, SIZE, EXT, DATE }
 
-/** 文件夹排序键(独立于文件,X-plore 式)。 */
+/** Folder sort keys (independent of file keys, X-plore style). */
 enum class FolderSortKey { NAME, DATE_OLD, DATE_NEW }
 
 /**
- * 排序规格:文件夹始终在前分组;文件按 [by](+[reversed])排;文件夹按 [folderBy] 排。
+ * Sort specification: folders always group first; files sort by [by] (+ [reversed]);
+ * folders sort by [folderBy].
  */
 data class SortSpec(
     val by: FileSortKey = FileSortKey.NAME,
@@ -32,7 +33,7 @@ data class SortSpec(
         }
         return Comparator { a, b ->
             when {
-                a.isDir != b.isDir -> if (a.isDir) -1 else 1 // 文件夹在前
+                a.isDir != b.isDir -> if (a.isDir) -1 else 1 // folders first
                 a.isDir -> folderCmp.compare(a, b)
                 else -> fileCmp.compare(a, b)
             }

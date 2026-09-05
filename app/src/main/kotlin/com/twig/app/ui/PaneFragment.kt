@@ -14,7 +14,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -24,6 +23,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.AppsFileSystem
+import com.twig.app.CompareStore
 import com.twig.app.ConnectionStore
 import com.twig.app.Connections
 import com.twig.app.HistoryEntry
@@ -34,11 +34,13 @@ import com.twig.app.MainActivity
 import com.twig.app.OpenFiles
 import com.twig.app.Prefs
 import com.twig.app.R
+import com.twig.app.SafFileSystem
 import com.twig.app.SavedConnection
 import com.twig.app.Format
 import com.twig.app.favoriteDisplayName
+import com.twig.app.isMovableSource
+import com.twig.app.favoriteFullPath
 import com.twig.app.formatLocationPath
-import com.twig.app.formatRawLocationPath
 import com.twig.app.databinding.DialogCompressBinding
 import com.twig.app.databinding.DialogConflictBinding
 import com.twig.app.databinding.DialogCopyConfirmBinding
@@ -51,6 +53,7 @@ import com.twig.fs.archive.ArchiveWriter
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.core.isMutable
 import com.twig.core.isWritableDir
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -58,8 +61,10 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
- * 单个面板:路径栏 + 整棵树。操作按钮在 MainActivity 的侧边操作列,通过公开的 action* 方法调用。
- * 横向快速滑动 → 通知宿主切换面板(竖屏);触摸 → 通知宿主本面板为活动面板(横屏)。
+ * A single pane: path bar + the whole tree. The action buttons live in MainActivity's side action
+ * column and are invoked through the public action* methods.
+ * Horizontal quick swipe → notifies the host to switch panes (portrait); touch → notifies the host
+ * that this pane is the active one (landscape).
  */
 class PaneFragment : Fragment() {
 
@@ -71,17 +76,20 @@ class PaneFragment : Fragment() {
         fun onPaneSwipe(velocityX: Float)
         fun refreshTrees()
         fun isPaneActive(self: PaneFragment): Boolean
-        /** 把某面板切为当前显示(矩形树图"在另一面板显示"后聚焦目标面板)。 */
+        /** Make a pane the currently-shown one (e.g. the treemap's "Show on the other side" then focus the target pane). */
         fun focusPane(pane: PaneFragment)
-        /** 本面板的当前目录(= 剪贴板栏的粘贴目标)变了,让宿主刷新栏上那行。
-         *  只有 MainActivity 有这条栏,分享目标页那种嵌面板的宿主不用管。 */
+        /** This pane's current directory (= the clipboard bar's paste target) changed; let the host refresh that line on the bar.
+         *  Only MainActivity has this bar; hosts with embedded panes like the share-target page don't need to react. */
         fun onClipTargetChanged() {}
 
-        /** 文件选择器模式:宿主拿走这次点击(返回 true)则不再走打开/查看器。 */
+        /** File-picker mode: if the host takes the click (returns true), don't proceed to open / viewer. */
         fun onPickFile(file: XFile): Boolean = false
 
-        /** 传输收尾后通知宿主(分享目标页复制完就该关掉自己);主界面不用管。 */
+        /** Notify the host when a transfer finishes (the share-target page should close itself after copying); the main UI ignores this. */
         fun onTransferFinished(session: Transfers.Session) {}
+
+        /** Open the SAF folder-grant picker (jumps straight there if [initial] is non-null); only the main UI accepts this. */
+        fun openSafPicker(initial: android.net.Uri?) {}
     }
 
 
@@ -90,14 +98,14 @@ class PaneFragment : Fragment() {
 
     val viewModel: PaneViewModel by viewModels()
     private lateinit var adapter: FileAdapter
-    private var pendingScrollToCurrent = false // 恢复上次位置后一次性滚动到当前目录
+    private var pendingScrollToCurrent = false // Scroll once to the current directory after restoring the previous position.
 
-    // 已展开本地目录的 inotify 监听(外部应用增删文件时实时同步)
+    // inotify watches on already-expanded local directories (real-time sync when external apps add/remove files).
     private val observers = HashMap<String, android.os.FileObserver>()
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile private var refreshQueued = false
 
-    /** 面板序号:0=左,1=右。 */
+    /** Pane index: 0=left, 1=right. */
     val paneIndex: Int get() = arguments?.getInt(ARG_INDEX, 0) ?: 0
 
     private val host get() = activity as? Host
@@ -112,6 +120,7 @@ class PaneFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
+            textSize = Prefs.textSize(requireContext()),
             thumbs = Prefs.thumbs(requireContext()),
             gridMode = Prefs.thumbsGrid(requireContext()),
             gridNames = Prefs.thumbsGridNames(requireContext()),
@@ -122,7 +131,7 @@ class PaneFragment : Fragment() {
                     is PaneViewModel.ActionNode ->
                         if (node.id.startsWith("add_")) host?.onAddServer(node.id.removePrefix("add_"))
                     is PaneViewModel.ResticNode -> when {
-                        node.connecting -> Unit // 正在解锁,别再弹一次密码框/再叠一次解锁
+                        node.connecting -> Unit // Unlocking in progress — don't show the password dialog again / don't stack another unlock.
                         node.unlocked -> viewModel.toggleRestic(node)
                         else -> unlockRestic(node)
                     }
@@ -133,12 +142,12 @@ class PaneFragment : Fragment() {
                 }
             },
             onLongClick = { node -> onLongClick(node) },
-            onSelectionChanged = { /* 预留:选中计数 */ },
+            onSelectionChanged = { /* Reserved: selection count */ },
             onInfoTab = { node, idx -> viewModel.selectInfoTab(node, idx) },
             onInfoHash = { node -> viewModel.computeHash(node) },
         )
-        // GridLayoutManager 统一承载:普通行占满整行,缩略图网格格子占 1 列;
-        // 列数按面板实际宽度自适应(双面板/横竖屏宽度不同)
+        // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
+        // the column count adapts to the pane's actual width (dual-pane / portrait-vs-landscape widths differ).
         val glm = GridLayoutManager(requireContext(), 4)
         glm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int =
@@ -150,12 +159,12 @@ class PaneFragment : Fragment() {
             if (w > 0) updateSpan(glm, w)
         }
         b.list.adapter = adapter
-        b.list.itemAnimator = null // 树即点即变;条目动画会让高亮框跟着过渡位置乱跳
+        b.list.itemAnimator = null // The tree changes instantly on tap; item animations would make the highlight frame drift through the transition.
         if (Prefs.rowDivider(requireContext())) b.list.addItemDecoration(RowDivider(requireContext()))
         b.list.addItemDecoration(CurrentDirFrame(requireContext()))
 
         installGestures()
-        // 占用图上的滑动/触摸与树列表同一交互:横滑切面板、触摸上报活动面板
+        // The map's swipes / touches share the same interaction as the tree list: horizontal swipe switches panes, touch reports the active pane.
         b.map.onTouchDown = { host?.onPaneTouched(this) }
         b.map.onSwipe = { dx -> host?.onPaneSwipe(dx) }
 
@@ -168,7 +177,7 @@ class PaneFragment : Fragment() {
         setActive(host?.isPaneActive(this) ?: (paneIndex == 0))
         val lockScheme = arguments?.getString(ARG_LOCK_SCHEME)
         if (lockScheme != null) {
-            // 锁定单一来源(选择器):不做位置恢复——那会把别的根展开出来
+            // Lock to a single source (picker mode): don't restore position — that would expand a different root.
             if (viewModel.state.value.rows.isEmpty()) {
                 viewModel.lockLabel = arguments?.getString(ARG_LOCK_LABEL)
                 viewModel.lockRoot = XFile(lockScheme, "/", isDir = true)
@@ -183,21 +192,21 @@ class PaneFragment : Fragment() {
                 }
             }
         } else if (viewModel.state.value.rows.isNotEmpty()) {
-            // 设置变更触发的 recreate:VM 仍在,按新设置(媒体前置等)重排即可
+            // recreate triggered by a settings change: the VM survives; just re-sort by the new settings (e.g. media-first).
             viewModel.resortAll()
         } else if (Prefs.rememberLocation(requireContext())) {
             val cur = Prefs.locationCurrent(requireContext(), paneIndex)
-            pendingScrollToCurrent = cur != null // 恢复完成后滚动到上次的目录
+            pendingScrollToCurrent = cur != null // Scroll to the previous directory once restoration finishes.
             viewModel.bootstrap(Prefs.locationExpanded(requireContext(), paneIndex), cur)
         } else {
             viewModel.bootstrap()
         }
     }
 
-    /** 网格列数 ≈ 面板宽 / 96dp;格子边长回填给适配器保持方形。
-     * 扣的是 `item_thumb_cell` 自己那圈 2dp padding(左右各一份 = 4dp),缩略图框的
-     * 实测宽度正好是它——原来扣 8dp,框就比宽度矮 4dp,方形的应用图标被 CENTER_CROP
-     * 削掉上下两条。 */
+    /** Grid column count ≈ pane width / 96dp; the cell edge length is fed back to the adapter so cells stay square.
+     * The deduction is the 2dp padding on `item_thumb_cell` itself (one on each side = 4dp total), which is the measured
+     * width of the thumbnail frame — earlier we deducted 8dp, which made the frame 4dp shorter than the width and
+     * CENTER_CROP chopped a strip off the top and bottom of square app icons. */
     private fun updateSpan(glm: GridLayoutManager, width: Int) {
         val cell = (96 * resources.displayMetrics.density).toInt()
         val n = (width / cell).coerceIn(2, 8)
@@ -209,8 +218,9 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 触摸上报活动面板;横向拖动切换面板——按"抬起时的净水平位移"判定,
-     * 慢速/斜向也能触发(阈值较小、只要水平位移大于竖直即可),不影响列表纵向滚动与点击。
+     * Touch reports the active pane; horizontal drag switches panes — judged by the net horizontal
+     * displacement at lift; slow / diagonal motions also work (low threshold, only requires horizontal
+     * > vertical), without breaking the list's vertical scrolling and tap.
      */
     private fun installGestures() {
         val threshold = (48 * resources.displayMetrics.density) // 48dp
@@ -222,8 +232,8 @@ class PaneFragment : Fragment() {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         host?.onPaneTouched(this@PaneFragment)
-                        // 恢复期间(网络位置可能要连好几秒)用户一碰列表就交还控制权,
-                        // 别在他自己滚动/展开时再把列表拽回上次的位置
+                        // While restoring (a network location might take seconds to connect) the moment the user touches the list,
+                        // give control back — don't keep yanking the list to the previous position while they're scrolling / expanding.
                         pendingScrollToCurrent = false
                         downX = e.x; downY = e.y; swiped = false
                     }
@@ -233,7 +243,7 @@ class PaneFragment : Fragment() {
                             val dy = e.y - downY
                             if (abs(dx) > threshold && abs(dx) > abs(dy)) {
                                 swiped = true
-                                host?.onPaneSwipe(dx) // dx>0 右滑→左面板;dx<0 左滑→右面板
+                                host?.onPaneSwipe(dx) // dx>0 swipe right → left pane; dx<0 swipe left → right pane.
                             }
                         }
                     }
@@ -246,17 +256,17 @@ class PaneFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         takeImageViewerResult()
-        // 用户可能刚在系统解析器里选了"始终":清关联图标缓存并重绘,让文件图标跟上
+        // The user may have just picked "Always" in the system resolver: clear the file-association icon cache and redraw so the icon follows.
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) adapter.notifyDataSetChanged()
-        // 外部应用可能改动了本地文件:重列已展开的本地目录,并恢复 inotify 监听
+        // External apps may have changed local files: re-list already-expanded local directories and restore inotify watches.
         viewModel.refreshLocal()
         syncObservers(viewModel.state.value.rows)
     }
 
     /**
-     * 活动面板路径栏高亮,非活动变暗。深色主题下只降 alpha 会跟面板底色糊成一片,
-     * 所以两态换的是背景色([R.color.path_bar_active] / [R.color.path_bar])。
+     * The active pane's path bar is highlighted, inactive ones dim. In dark theme just lowering alpha blends into the
+     * pane background, so the two states swap background color instead ([R.color.path_bar_active] / [R.color.path_bar]).
      */
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
@@ -272,11 +282,11 @@ class PaneFragment : Fragment() {
         adapter.currentKey = s.currentKey
         adapter.submitList(s.rows) {
             val bb = _b ?: return@submitList
-            bb.list.invalidate() // 高亮框随 currentKey 变化重绘
+            bb.list.invalidate() // The highlight frame redraws as currentKey changes.
             if (pendingScrollToCurrent) {
-                // 恢复是逐个目录异步展开的,行数一路在变:每版都重新锚定到目标行,
-                // 直到 restoring 落下来才收手——只锚一次会停在半成品那一版的位置上。
-                // "跳转到所在目录"指定的文件行优先;没有(或那一行不在)就定位当前目录
+                // Restoration expands directories asynchronously, so the row count keeps shifting: re-anchor to the target row on every
+                // version until restoring drops — only anchoring once stops at the half-built version's position.
+                // The file row requested by "jump to containing directory" wins; if that's not (yet) there, fall back to the current directory.
                 val idx = listOfNotNull(s.scrollKey, s.currentKey)
                     .firstNotNullOfOrNull { k ->
                         s.rows.indexOfFirst { it.key == k }.takeIf { it >= 0 }
@@ -289,13 +299,13 @@ class PaneFragment : Fragment() {
             }
         }
         b.tvEmpty.visibility = if (s.rows.isEmpty()) View.VISIBLE else View.GONE
-        host?.onClipTargetChanged() // 粘贴目标 = currentDir,跟着状态刷新栏上那行
+        host?.onClipTargetChanged() // Paste target = currentDir, refresh that line on the bar to follow.
         s.error?.let { toast(it) }
         s.passwordFor?.let { askArchivePassword(it) }
         syncObservers(s.rows)
     }
 
-    /** 让 inotify 监听集合与"已展开的本地目录"保持一致。 */
+    /** Keep the inotify watch set in sync with "expanded local directories". */
     private fun syncObservers(rows: List<PaneViewModel.Node>) {
         if (!isResumed) return
         val wanted = rows.filterIsInstance<PaneViewModel.FileNode>()
@@ -317,7 +327,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    /** 事件在 observer 线程触发,去抖 400ms 后回主线程刷新本地目录。 */
+    /** Events fire on the observer thread; debounce 400ms before going back to the main thread to refresh local dirs. */
     private fun scheduleLocalRefresh() {
         if (refreshQueued) return
         refreshQueued = true
@@ -333,59 +343,63 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 路径栏文本:本地是绝对路径,其余是 `类型:/路径`;网络来源在类型后插服务器名
-     * (自定义名优先,见 [SavedConnection.shortLabel]),与最近位置里的写法一致。
+     * Path-bar text: local is the absolute path; everything else is `type:/path`; network sources insert the server
+     * name after the type (custom label preferred, see [SavedConnection.shortLabel]), matching the "Recent" entries' style.
      */
     private fun pathLabel(f: XFile): String = when {
         f.scheme == "file" -> f.path
         f.scheme == "saf" -> f.name
         else -> {
-            // 本面板的反查表优先;查不到再问全局(复制/压缩的目标目录属于**对侧**面板,
-            // 本面板没展开过那台服务器,只查 VM 那份就丢了服务器名,见 [Connections.ofScheme])
+            // This pane's reverse lookup wins; otherwise ask the global (copy / compress target directories belong to the
+            // *other* pane — this pane hasn't expanded that server, so looking only at the VM would lose the server name; see [Connections.ofScheme]).
             val conn = viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme)
             val server = conn?.shortLabel().orEmpty()
             val path = if (f.path.startsWith("/")) f.path else "/${f.path}"
             val head = Format.schemeLabel(f.scheme)
-            // 非服务器来源(zip/git/restic…)没有服务器名,别多插一道斜杠
+            // Non-server sources (zip/git/restic…) have no server name; don't insert an extra slash.
             if (server.isEmpty()) "$head:$path" else "$head:/$server$path"
         }
     }
 
-    /** 供宿主(分享目标页)显示同样格式的路径。 */
+    /** For the host (share-target page) to display a path in the same format. */
     fun displayPath(f: XFile): String = pathLabel(f)
 
-    /** 路径栏的来源类型图标(与最近位置、复制/压缩目标行同一套,见 [FileIcons.sourceIconRes])。 */
+    /** Path-bar source-type icon (same set as Recent / copy / compress target rows; see [FileIcons.sourceIconRes]). */
     private fun pathIcon(f: XFile): Int = FileIcons.sourceIconRes(f.scheme)
 
-    // ---- 打开文件 ----
+    // ---- Open file ----
 
     private fun open(file: XFile) {
-        if (host?.onPickFile(file) == true) return // 选择器模式:点击即选中,不打开
+        if (host?.onPickFile(file) == true) return // Picker mode: tap selects, doesn't open.
         if (file.scheme.startsWith("git")) return openGitEntry(file)
-        viewModel.noteOpenedIn(file) // 最近位置记的是所在目录,不是文件本身
+        viewModel.noteOpenedIn(file) // Recent records the containing directory, not the file itself.
         when {
-            // 应用条目:点开=启动这个应用(点开"安装自己"没有意义,系统只会说已装同版本);
-            // 没有启动入口的(多数系统应用)退回应用信息页,总不至于点了没反应。
-            // 应用信息/卸载在长按菜单里
+            // App entry: tapping launches the app (tapping "install yourself" is meaningless — the system would only say the same version is installed);
+            // entries without a launch entry (most system apps) fall back to the app info page so a tap never does nothing.
+            // App info / uninstall lives in the long-press menu.
             file.scheme == AppsFileSystem.SCHEME -> launchApp(file, fallbackToInfo = true)
+            OpenFiles.canViewPdf(file) -> PdfViewerActivity.start(requireContext(), file)
             OpenFiles.isText(file) -> TextViewerActivity.start(requireContext(), file)
             OpenFiles.isImage(file) -> {
                 val (images, index) = viewModel.imageSiblings(file)
                 awaitingImageResult = true
                 ImageViewerActivity.start(requireContext(), images, index)
             }
+            // xapk/apks/apkm: base + splits in one zip, which the system installer cannot
+            // take. Streamed into a PackageInstaller session instead, see ApkBundleInstall.
+            OpenFiles.isApkBundle(file) -> ApkBundleInstall.start(requireContext(), file)
             OpenFiles.isAudio(file) -> openAudio(file)
             OpenFiles.isPlaylist(file) -> openM3u(file)
             OpenFiles.isVideo(file) ->
                 MediaPlayerActivity.start(requireContext(), file)
-            // 无内置查看器:直接弹系统解析器(带"仅此一次/始终");无应用可开时回退打开方式
+            // No built-in viewer: pop the system resolver directly (with "Just once / Always"); if nothing can open it, fall back to the open-with dialog.
             else -> if (!OpenFiles.openWith(requireContext(), file)) chooseOpen(file)
         }
     }
 
     /**
-     * 打开音频:同目录音频入"当前播放"(按面板排序),从点击曲目播放,启动后台服务 + 主界面。
-     * 不可持久化来源(zip/restic/saf 内的音频)退回旧的 MediaPlayerActivity 直接播。
+     * Open audio: same-directory audio files join "Now playing" (ordered by pane), start from the tapped track, launch the background service + main UI.
+     * Non-persistent sources (audio inside zip/restic/saf) fall back to the legacy MediaPlayerActivity for direct playback.
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openAudio(file: XFile) {
@@ -394,7 +408,7 @@ class PaneFragment : Fragment() {
         val (siblings, _) = viewModel.audioSiblings(file)
         val tracks = siblings.mapNotNull { viewModel.trackFrom(it) }
         val startIndex = tracks.indexOfFirst { it.id == self.id }.coerceAtLeast(0)
-        val dirName = file.parentPath.trimEnd('/').substringAfterLast('/').ifEmpty { "/" }
+        val dirName = viewModel.parentLabel(file)
         val ctx = requireContext()
         val now = com.twig.app.PlaylistStore.setNow(ctx, dirName, tracks.ifEmpty { listOf(self) })
         MusicEngine.play(ctx, now, startIndex, autoPlay = true)
@@ -402,8 +416,8 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 打开 m3u/m3u8 播放列表:后台解析(相对路径按 m3u 所在目录、同来源解析),把其中曲目
-     * 载入"当前播放"并从头播。可持久化的来源(本地/已连接服务器)才入列,其它来源的条目跳过。
+     * Open m3u/m3u8 playlist: parse in the background (relative paths resolve against the m3u's directory and same source),
+     * load its tracks into "Now playing" and play from the start. Only persistent sources (local / connected servers) join the queue; entries from other sources are skipped.
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openM3u(file: XFile) {
@@ -422,7 +436,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    /** git 虚拟条目:变更/提交内文件 → 双栏 diff;提交信息等其余 → 文本查看。 */
+    /** git virtual entries: files inside a change/commit → two-column diff; everything else (commit info, etc.) → text viewer. */
     private fun openGitEntry(file: XFile) {
         val p = file.path
         val diffable = !p.endsWith("/") && !p.endsWith("#info") &&
@@ -456,16 +470,16 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 系统分享:经 [com.twig.app.StreamProvider] 流式授权,SMB/压缩包内/S3 的文件
-     * **不落地成临时文件**也能直接发给别的应用。与目录那项「WiFi 共享」是两回事
-     * (那是让别人来连这台设备)。
+     * System share: via [com.twig.app.StreamProvider]'s streaming grant, files inside SMB / archives / S3 can be sent to other apps
+     * **without being materialized to a temp file**. This is a different thing from the per-directory "WiFi sharing" item
+     * (which is for letting other devices connect to this one).
      */
     private fun shareFile(file: XFile) {
         val r = runCatching { OpenFiles.share(requireContext(), file) }
         if (r.isFailure) toast(getString(R.string.open_no_app))
     }
 
-    // ---- 操作(由 MainActivity 侧边操作列调用) ----
+    // ---- Actions (called by MainActivity's side action column) ----
 
     fun actionUp() {
         if (mapMode) { handleBack(); return }
@@ -475,8 +489,8 @@ class PaneFragment : Fragment() {
     fun actionRefresh() = viewModel.refresh()
 
     /**
-     * 在树中展开并滚动定位到 [target](由对侧面板"对侧显示"触发)。
-     * [focus] 非空时滚到目录里的这个文件行("跳转到所在目录")。
+     * Expand in the tree and scroll to [target] (triggered by the other pane's "Show on the other side").
+     * If [focus] is non-null, scroll to this file's row inside the directory ("Jump to containing directory").
      */
     fun reveal(target: XFile, focus: XFile? = null) {
         if (mapMode) exitTreemap()
@@ -484,7 +498,7 @@ class PaneFragment : Fragment() {
         viewModel.revealPath(target, focus)
     }
 
-    /** 外部 App「用 Twig 打开」的压缩包:挂到树顶并展开(见 [PaneViewModel.mountExternal])。 */
+    /** Archive from external App "Open with Twig": mount at the top of the tree and expand (see [PaneViewModel.mountExternal]). */
     fun mountExternal(archive: XFile) {
         if (mapMode) exitTreemap()
         pendingScrollToCurrent = true
@@ -492,14 +506,14 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 最近位置:列出打开过文件/进过 Git 视图的目录(最近的在前,最多
-     * [HistoryStore.MAX] 条),点一条跳过去。长按删除单条。
+     * Recent: directories where files have been opened / Git views entered (most recent first, up to
+     * [HistoryStore.MAX] entries). Tap one to jump there. Long-press to delete a single entry.
      */
     fun actionHistory() {
         val ctx = requireContext()
         val list = HistoryStore.all(ctx)
         if (list.isEmpty()) { toast(getString(R.string.history_empty)); return }
-        // 连接一次性查出来:条目只存标签,显示要的类型/自定义名都从这里取
+        // Look up connections in one pass: entries only store the label, but display wants the type / custom name — both come from here.
         val conns = ConnectionStore.all(ctx).associateBy { it.label() }
         val adapter = object : android.widget.BaseAdapter() {
             override fun getCount() = list.size
@@ -520,7 +534,7 @@ class PaneFragment : Fragment() {
             .setNeutralButton(R.string.history_clear) { _, _ -> HistoryStore.clear(ctx) }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
-        // 内部 ListView 没有长按回调入口,拿到后自己挂:长按删这一条并重开
+        // The inner ListView has no long-click callback entry point; once we have it, hook one ourselves: long-press deletes that entry and reopens the dialog.
         dlg.listView?.setOnItemLongClickListener { _, _, pos, _ ->
             HistoryStore.remove(ctx, list[pos])
             dlg.dismiss()
@@ -533,15 +547,15 @@ class PaneFragment : Fragment() {
         if (mapMode) exitTreemap()
         pendingScrollToCurrent = true
         if (!viewModel.revealHistory(e)) {
-            pendingScrollToCurrent = false // 没跳成,别留着待滚状态干扰后续操作
+            pendingScrollToCurrent = false // Didn't jump — don't leave the pending-scroll state messing up subsequent actions.
             toast(getString(R.string.history_conn_missing))
         }
     }
 
     /**
-     * 历史条目显示名:网络位置为 `类型:/服务器/路径`(如 `smb:/pi/docs/photos`,与路径栏
-     * 同一写法),本地就是绝对路径;git 项再加 Git 前缀。[conn] 为 null 表示该连接已被
-     * 删除,退回条目里冻结的标签,至少还认得出来(与收藏行一致)。
+     * History entry display name: network locations are `type:/server/path` (e.g. `smb:/pi/docs/photos`, same format as the path bar),
+     * local is the absolute path; git items get a "Git" prefix too. [conn] == null means the connection has been deleted —
+     * fall back to the label frozen in the entry, which is at least still recognizable (same as the Favorites row).
      */
     private fun historyLabel(e: HistoryEntry, conn: SavedConnection?): String {
         val head = formatLocationPath(e.connLabel, e.path, conn)
@@ -549,8 +563,8 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 来源类型图标,与路径栏/复制目标行同一套([FileIcons.sourceIconRes]);git 项用 git 图标。
-     * 条目里只存了连接标签(`smb://host`)不存 scheme,连接被删时从标签头部退回类型。
+     * Source-type icon, same set as the path bar / copy-target row ([FileIcons.sourceIconRes]); git items use the git icon.
+     * Entries only store the connection label (`smb://host`), not the scheme; if the connection has been deleted, fall back to the type from the label's head.
      */
     private fun historyIcon(e: HistoryEntry, conn: SavedConnection?): Int = when {
         e.kind == "git" -> R.drawable.ic_git
@@ -558,16 +572,16 @@ class PaneFragment : Fragment() {
         else -> FileIcons.sourceIconOfType(conn?.type ?: e.connLabel.substringBefore("://"))
     }
 
-    // ---- 空间占用矩形树图(就地替换树显示) ----
+    // ---- Space-usage treemap (replaces the tree view in place) ----
 
     private var mapMode = false
     private var mapJob: kotlinx.coroutines.Job? = null
     private var mapScanner: TreemapScanner? = null
     private val mapStack = ArrayList<TreemapEntry>()
-    /** 占用图内的多选(菜单"选择"切换);侧栏复制/移动/删除/重命名优先取它。 */
+    /** Multi-selection inside the treemap (toggled via the menu's "Select"); side-bar copy/move/delete/rename prefer it. */
     private val mapSelected = LinkedHashSet<TreemapEntry>()
 
-    /** 操作栏「占用」开关:对绿色框选的目录/压缩包(未框选时当前目录)。 */
+    /** Action bar "Treemap" toggle: for the green-highlighted directory / archive (current directory when nothing is highlighted). */
     fun actionTreemap() {
         if (mapMode) { exitTreemap(); return }
         val t = viewModel.currentSelection() ?: viewModel.currentDir
@@ -647,10 +661,10 @@ class PaneFragment : Fragment() {
         bb.mapStatus.visibility = View.GONE
         bb.list.visibility = View.VISIBLE
         host?.onClipTargetChanged()
-        render(viewModel.state.value) // 恢复路径栏/空态
+        render(viewModel.state.value) // Restore path bar / empty state.
     }
 
-    /** 返回键路由:占用图内先回上级,到根再退出占用图;非占用图不消费。 */
+    /** Back-key routing: inside the treemap, go up a level first, then exit treemap at the root; outside the treemap, don't consume it. */
     fun handleBack(): Boolean {
         if (!mapMode) return false
         if (mapStack.size > 1) {
@@ -673,12 +687,16 @@ class PaneFragment : Fragment() {
         _b?.map?.selectedKeys = emptySet()
     }
 
-    /** 块菜单 = 选择 + 树的目录/文件长按菜单(共用)+ 删除。 */
+    /** Tile menu = Select + tree's directory/file long-press menu (shared) + Delete. */
     private fun treemapMenu(e: TreemapEntry) {
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.action_select), R.drawable.ic_sel_check) { toggleMapSelection(e) }
         actions += commonFileActions(e.file, includeDelete = false)
-        actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { confirmDeleteEntry(e) }
+        // The tile menu's own Delete (with the size confirmation dialog) also has to check whether the source is mutable — the common
+        // delete in commonFileActions has already checked it; this one is a separate path, missing the check leaves a delete entry on read-only sources.
+        if (e.file.isMutable()) {
+            actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { confirmDeleteEntry(e) }
+        }
         showActionMenu(requireContext(), e.name, actions)
     }
 
@@ -688,7 +706,7 @@ class PaneFragment : Fragment() {
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 runIo({ FsRegistry.of(e.file).delete(e.file) }) {
-                    // 从图里摘掉并向上扣减大小,原地刷新;树那边照常重列
+                    // Pull it out of the map and decrement size upward; refresh in place; the tree side re-lists as usual.
                     e.parent?.children?.remove(e)
                     var p = e.parent
                     while (p != null) { p.size -= e.size; p = p.parent }
@@ -702,12 +720,12 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    // ---- 文件搜索(递归通配符,结果挂成树上的虚拟目录) ----
+    // ---- File search (recursive glob, results attached as a virtual directory on the tree) ----
 
-    /** 上次输入的通配符,弹框预填,连续多次搜索不用重新打字。 */
+    /** Last-entered glob; pre-filled in the dialog so consecutive searches don't re-type. */
     private var lastSearchPattern = ""
 
-    /** 操作栏「搜索」:对绿色框选的目录(未框选时当前目录)发起递归搜索。 */
+    /** Action bar "Search": recursive search starting at the green-highlighted directory (current directory when nothing is highlighted). */
     fun actionSearch() {
         val t = viewModel.currentSelection() ?: viewModel.currentDir
         if (t == null || !t.isDir) {
@@ -716,7 +734,7 @@ class PaneFragment : Fragment() {
         promptSearch(t)
     }
 
-    /** 弹框输入通配符(如 `*.jpg`;不含通配符则退化为子串搜索),确认后对 [dir] 递归发起搜索。 */
+    /** Dialog inputs the glob (e.g. `*.jpg`; without wildcards it degrades to a substring search); on confirm, recursive search starts at [dir]. */
     private fun promptSearch(dir: XFile) {
         val input = EditText(requireContext()).apply {
             hint = getString(R.string.search_hint)
@@ -736,7 +754,34 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    /** 搜索虚拟目录长按菜单:对侧显示(被搜索的目录)+ 属性(统计,点了才弹,不再长按直接弹)。 */
+    /**
+     * "Go to path": type a path under this root and jump straight there — every level
+     * on the way is expanded, a trailing file scrolls the list to its row. Accepts a
+     * pasted absolute path too (see [PaneViewModel.revealUnder]).
+     *
+     * [root] is null only for a server that has not been connected yet — the jump
+     * connects it on the way.
+     */
+    private fun promptGoto(rootKey: String, root: XFile?) {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.goto_hint)
+            setSingleLine()
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.action_goto_path)
+            .setView(input)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                val path = input.text.toString().trim()
+                if (path.isEmpty()) return@setPositiveButton
+                if (mapMode) exitTreemap()
+                pendingScrollToCurrent = true
+                viewModel.revealUnder(rootKey, root, path)
+            }
+            .show()
+    }
+
+    /** Search virtual directory's long-press menu: show on other side (the directory being searched) + Properties (stats; only shows on tap, no longer pops on long-press). */
     private fun searchNodeMenu(node: PaneViewModel.SearchNode) {
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.treemap_reveal), R.drawable.ic_pane_to_right) {
@@ -750,7 +795,7 @@ class PaneFragment : Fragment() {
         )
     }
 
-    /** 统计弹框:匹配文件/目录分别计数,扫描未完成时附加提示。 */
+    /** Stats dialog: matching files / directories are counted separately; an extra note is appended while the scan is still running. */
     private fun showSearchStats(node: PaneViewModel.SearchNode) {
         val msg = getString(
             R.string.search_stats, pathLabel(node.root), node.pattern, node.matchedFiles, node.matchedDirs,
@@ -767,7 +812,7 @@ class PaneFragment : Fragment() {
         performNewFolder(dir)
     }
 
-    /** 直接对 [dir] 建文件夹,不依赖 currentDir——目录长按菜单用,未展开/未点选过也能建。 */
+    /** Create a folder directly inside [dir], independent of currentDir — used by the directory long-press menu; works even if the directory hasn't been expanded or selected. */
     private fun performNewFolder(dir: XFile) {
         val input = EditText(requireContext()).apply { hint = getString(R.string.hint_name) }
         AlertDialog.Builder(requireContext())
@@ -785,9 +830,9 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 在 [dir] 下建一个空文本文件,建完直接进编辑态——新建一个空文件本身没什么用,
-     * 用户要的是马上开始写。默认名的扩展名不自动补:.md/.sh/.json 都常见,预选中
-     * 主名部分让用户直接改掉更省事。
+     * Create an empty text file inside [dir], then jump straight into editing — creating an empty file is itself useless,
+     * what the user wants is to start writing immediately. The default name's extension is not auto-completed: .md/.sh/.json are all common,
+     * and pre-selecting just the stem part lets the user replace it directly.
      */
     private fun performNewTextFile(dir: XFile) {
         val preset = getString(R.string.new_text_default)
@@ -806,11 +851,11 @@ class PaneFragment : Fragment() {
                 var created: XFile? = null
                 runIo({
                     val fs = FsRegistry.of(dir)
-                    // createFile 对多数实现只是拼路径,但 SAF 那种会真的建文档,
-                    // 所以只调一次,拿到的 target 一路用到底。
+                    // For most implementations createFile is just path concatenation, but SAF really does create a document,
+                    // so call it once and use the resulting target all the way down.
                     val target = fs.createFile(dir, name)
                     if (fs.exists(target)) throw FsException(getString(R.string.new_text_exists, name))
-                    fs.openOutput(target).use { } // 建成 0 字节
+                    fs.openOutput(target).use { } // Create 0-byte file.
                     created = target
                 }) {
                     viewModel.invalidate(dir); viewModel.refresh()
@@ -820,14 +865,42 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    /** 当前勾选的文件(供选择器宿主取多选结果);没勾选则为空。 */
-    fun checkedFiles(): List<XFile> = adapter.selectedItems()
+    /** Currently-checked files (for picker hosts to grab multi-selection results); empty when nothing is checked. */
+    fun checkedFiles(): List<XFile> = if (::adapter.isInitialized) adapter.selectedItems() else emptyList()
 
-    /** 勾选项(占用图内优先取图上选中的块);未勾选时退回"绿色框选"的当前节点。 */
+    /**
+     * Whether this side's view has been built yet.
+     *
+     * ★ The host ([MainActivity]) will come asking this side for state when the *other* pane refreshes
+     * (`render → onClipTargetChanged → syncStripEnabled`), and the two panes' `onViewCreated` runs **one at a time** —
+     * when the first one built emits its first frame, the other's [adapter] hasn't been assigned yet. The
+     * old setup didn't hit this because the panes were committed in `Activity.onCreate`, so by the time there was
+     * state to render both sides were ready; the master-password unlock dialog pushes initialization past RESUMED,
+     * and that's when this race surfaces (symptom: crash the moment you finish typing the master password, `lateinit property adapter`).
+     */
+    fun isReady(): Boolean = view != null && ::adapter.isInitialized
+
+    /** Checked items (in treemap mode, prefer the selected tiles on the map); when nothing is checked, fall back to the green-highlighted current node. */
     private fun selectionOrCurrent(): List<XFile> = when {
         mapMode && mapSelected.isNotEmpty() -> mapSelected.map { it.file }
+        // When the view isn't built yet we can only ask the VM — the check state lives in the adapter, and there can't be any checks at that point.
+        !::adapter.isInitialized -> listOfNotNull(viewModel.currentSelection())
         else -> adapter.selectedItems().ifEmpty { listOfNotNull(viewModel.currentSelection()) }
     }
+
+    /**
+     * Whether the action bar's **write actions** should be tappable — on read-only sources (media servers, restic, 7z/RAR,
+     * git view, "Apps") they're all greyed out, instead of letting a tap hit them and pop up an error.
+     *
+     * Two questions, matching [com.twig.core.isMutable] / [isWritableDir] one-to-one:
+     * - [canModify]: whether the rename/move/delete **sources** are all mutable
+     * - [canCreateHere]: whether the **target directory** for new folder / new text file / paste is writable
+     *
+     * Copy / compress / share are pure read-source operations, never disabled on any source.
+     */
+    fun canModify(): Boolean = selectionOrCurrent().let { it.isNotEmpty() && it.all { f -> f.isMutable() } }
+
+    fun canCreateHere(): Boolean = viewModel.currentDir?.isWritableDir() == true
 
     fun actionRename() {
         val sel = selectionOrCurrent()
@@ -865,8 +938,7 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 删除。应用条目的"删除"语义是**卸载**,交给系统卸载界面(自带确认框,所以不叠我们
-     * 这一层确认);跨来源混选时应用走卸载、其余照常删。
+     * Delete. For app entries, "delete" means **uninstall** and is delegated to the system uninstall UI (which has its own confirmation, so we don't layer ours on top); for a mixed selection across sources, apps go to uninstall and the rest are deleted as usual.
      */
     private fun performDelete(sel: List<XFile>) {
         val apps = sel.filter { it.scheme == AppsFileSystem.SCHEME }
@@ -884,12 +956,12 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    // ---- 应用管理(scheme=apps) ----
+    // ---- App management (scheme=apps) ----
 
-    /** 待卸载的包名队列:系统卸载界面一次只接一个,批量得排队(见 [uninstallNext])。 */
+    /** Pending uninstall package-name queue: the system uninstall UI only accepts one at a time, batches must line up (see [uninstallNext]). */
     private val uninstallQueue = ArrayDeque<String>()
 
-    /** 卸载完成(或用户取消)后回来:队列里还有就接着起下一个,空了才刷树。 */
+    /** Returned from uninstall (whether completed or user-cancelled): if the queue still has items, start the next one; only when it's empty do we refresh the tree. */
     private val uninstallLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) {
             if (!uninstallNext()) {
@@ -901,11 +973,11 @@ class PaneFragment : Fragment() {
         runCatching { FsRegistry.of(AppsFileSystem.SCHEME) }.getOrNull() as? AppsFileSystem
 
     /**
-     * 起系统卸载界面(每个应用一次,系统自己弹确认)。系统应用卸载不掉——只在"已安装"
-     * 分类给卸载入口,这里再兜一次底,免得从占用图/多选等别的路径漏过来。
+     * Launch the system uninstall UI (one per app; the system itself shows the confirmation). System apps can't be uninstalled — we only
+     * expose the uninstall entry in the "Installed" category, and this catch-all here is a safety net so paths like the treemap / multi-select don't sneak one through.
      *
-     * 多选时**必须排队**:连着 launch 几个卸载 intent,系统只会显示最后一个,前面的
-     * 静默丢掉。入队后由 [uninstallNext] 一个一个起,前一个回来了才起下一个。
+     * Multi-select **must queue**: launching several uninstall intents in a row, the system only displays the last one and silently drops the earlier ones.
+     * After queueing, [uninstallNext] launches them one at a time — only the previous one returning triggers the next.
      */
     private fun uninstallApps(files: List<XFile>) {
         val fs = appsFs() ?: return
@@ -920,9 +992,9 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 起队首那个包的系统卸载界面;队列空了返回 false(调用方据此收尾刷树)。
-     * ★ 这个 intent 要求 manifest 声明 `REQUEST_DELETE_PACKAGES`(Android 8+),
-     * 否则系统卸载界面直接 finish,表现为「点了没反应」。
+     * Launch the system uninstall UI for the head of the queue; returns false when the queue is empty (caller finishes up by refreshing the tree).
+     * ★ This intent requires the manifest to declare `REQUEST_DELETE_PACKAGES` (Android 8+); otherwise the system uninstall UI just calls finish,
+     * which looks like "tap does nothing".
      */
     private fun uninstallNext(): Boolean {
         while (true) {
@@ -932,13 +1004,13 @@ class PaneFragment : Fragment() {
             val ok = runCatching { uninstallLauncher.launch(intent) }
                 .onFailure { toast(it.message ?: "") }
                 .isSuccess
-            // 起失败的(设备没有卸载界面等)直接跳过它继续下一个,别把整队卡死
+            // If launching fails (device has no uninstall UI, etc.) just skip it and continue — don't deadlock the whole queue.
             uninstallQueue.removeFirst()
             if (ok) return true
         }
     }
 
-    /** 系统设置里的「应用信息」页(权限/存储/停用,系统应用的"卸载更新"也在那里)。 */
+    /** The system Settings "App info" page (permissions / storage / disable; system apps' "Uninstall updates" lives there too). */
     private fun openAppInfo(file: XFile) {
         val pkg = appsFs()?.packageOf(file) ?: return
         val intent = Intent(
@@ -948,7 +1020,7 @@ class PaneFragment : Fragment() {
         runCatching { startActivity(intent) }.onFailure { toast(it.message ?: "") }
     }
 
-    /** [fallbackToInfo]:没有启动入口时改开应用信息页(点击行走这条,菜单项只提示)。 */
+    /** [fallbackToInfo]: when there's no launch entry, open the app info page instead (a tap walks this path; the menu item only hints at it). */
     private fun launchApp(file: XFile, fallbackToInfo: Boolean = false) {
         val pkg = appsFs()?.packageOf(file) ?: return
         val intent = requireContext().packageManager.getLaunchIntentForPackage(pkg)
@@ -959,14 +1031,14 @@ class PaneFragment : Fragment() {
         runCatching { startActivity(intent) }.onFailure { toast(it.message ?: "") }
     }
 
-    /** 应用条目是否在「系统」分类下(路径形如 apps:/system/<包名>)。 */
+    /** Whether the app entry is in the "System" category (path shape: apps:/system/<package>). */
     private fun isSystemApp(file: XFile): Boolean =
         file.scheme == AppsFileSystem.SCHEME && file.path.startsWith("/system/")
 
-    // ---- 剪贴板(跨面板暂存 + 粘贴) ----
-    // 栏本身在 MainActivity(横跨整个窗口),这里只提供"目标目录"和真正的搬运。
+    // ---- Clipboard (cross-pane stash + paste) ----
+    // The bar itself is in MainActivity (spanning the whole window); here we only provide the "target directory" and the actual move.
 
-    /** 覆盖式放入剪贴板(不追加),栏由 [FileClipboard] 的 flow 自己刷新。 */
+    /** Replace-mode put into the clipboard (no append); the bar refreshes itself via [FileClipboard]'s flow. */
     private fun addToClipboard(files: List<XFile>) {
         if (files.isEmpty()) return
         FileClipboard.put(files)
@@ -974,17 +1046,17 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 本面板作为粘贴目标时的落点 = "绿色框选"的当前目录。占用图模式下绿框看不见,
-     * 返回 null 让栏上提示先选目录,免得粘到一个用户此刻根本看不到的地方。
+     * This pane's paste target = the green-highlighted current directory. In treemap mode the green frame is invisible,
+     * so return null and let the bar prompt to pick a directory — otherwise we'd paste to somewhere the user can't see right now.
      */
     fun clipTarget(): XFile? = if (mapMode) null else viewModel.currentDir
 
-    /** 粘贴目标的显示文案(栏上那行);无目标返回 null。 */
+    /** Paste-target display text (the line on the bar); null when there is no target. */
     fun clipTargetLabel(): String? = clipTarget()?.let { pathLabel(it) }
 
     /**
-     * 粘贴到本面板的当前目录:**不弹确认框**直接开搬——目标和复制/移动模式都写在剪贴板栏
-     * 上,点粘贴前就看得见,再确认一次纯属多余。进度框和同名冲突处理照旧。
+     * Paste into this pane's current directory: **no confirmation dialog** — go straight to the move. The target and copy/move mode are both written on the clipboard bar
+     * and visible before pressing paste, so confirming again would be pure overhead. The progress dialog and same-name-conflict handling are unchanged.
      */
     fun pasteFromClipboard() {
         val items = FileClipboard.items
@@ -996,12 +1068,13 @@ class PaneFragment : Fragment() {
         if (!dest.isWritableDir()) {
             toast(getString(R.string.msg_dest_not_writable)); return
         }
-        // 栏上的按钮已按这个理由置灰,这里兜底:绿框刚动、栏还没重绘的一瞬也点不成
+        // The bar's button is already greyed out for this reason; this is the safety net: if the green frame just moved and the bar hasn't redrawn yet, the tap shouldn't take effect either.
         FileClipboard.pasteBlockReason(dest)?.let { toast(getString(it)); return }
+        // "move" was already determined when the clipboard was filled (see FileClipboard.put), so just reuse it.
         startTransfer(items, dest, FileClipboard.move, plan0 = null, fromClipboard = true)
     }
 
-    /** 把勾选项(未勾选时为绿色框选的当前节点)复制/移动到另一面板的当前目录。 */
+    /** Copy/move the checked items (or the green-highlighted current node when nothing is checked) to the other pane's current directory. */
     fun actionCopy(move: Boolean) {
         val sel = selectionOrCurrent()
         if (sel.isEmpty()) {
@@ -1011,10 +1084,18 @@ class PaneFragment : Fragment() {
     }
 
     private fun performCopy(sel: List<XFile>, move: Boolean) {
-        // 移动 = 复制 + 删源,而应用删不掉(卸载是另一回事);操作栏的「移动」绕过菜单,
-        // 在这里兜底,免得复制完了才在删源那步失败
-        if (move && sel.any { it.scheme == AppsFileSystem.SCHEME }) {
-            toast(getString(R.string.apps_read_only)); return
+        // Move = copy + delete source. Apps can't be deleted (uninstall is a different thing), and the document tree root
+        // can't be deleted (it's a grant, see [isMovableSource]); the action bar's "Move" and batch-after-check bypass the menu,
+        // so we catch the failure here rather than failing after the copy completes.
+        val movable = sel.all { it.isMovableSource() }
+        if (move && !movable) {
+            toast(
+                getString(
+                    if (sel.any { it.scheme == AppsFileSystem.SCHEME }) R.string.apps_read_only
+                    else R.string.saf_root_no_move,
+                ),
+            )
+            return
         }
         val sibling = host?.siblingOf(this)
         val dest = sibling?.viewModel?.currentDir
@@ -1025,13 +1106,15 @@ class PaneFragment : Fragment() {
             toast(getString(R.string.msg_dest_not_writable)); return
         }
 
-        // ---- 确认框:源 + 大小(后台统计)+ 目标 + 移动模式 ----
+        // ---- Confirmation dialog: source + size (background tally) + destination + move mode ----
         val cb = DialogCopyConfirmBinding.inflate(layoutInflater)
         cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
         cb.tvSize.text = "…"
         cb.tvDest.text = pathLabel(dest)
         cb.ivDest.setImageResource(pathIcon(dest))
         cb.cbMove.isChecked = move
+        // When the sources can't be moved there's no "move mode" to speak of — better to hide the row entirely than show a checkbox that would error on click.
+        cb.cbMove.visibility = if (movable) View.VISIBLE else View.GONE
         var plan: CopyEngine.Plan? = null
         viewLifecycleOwner.lifecycleScope.launch {
             val p = runCatching { withContext(Dispatchers.IO) { CopyEngine.plan(sel) } }.getOrNull()
@@ -1043,12 +1126,12 @@ class PaneFragment : Fragment() {
             .setView(cb.root)
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                startTransfer(sel, dest, cb.cbMove.isChecked, plan)
+                startTransfer(sel, dest, movable && cb.cbMove.isChecked, plan)
             }
             .show()
     }
 
-    /** 交给后台会话搬运,并挂上进度框(见 [Transfers])。 */
+    /** Hand the move to the background session, and attach the progress dialog (see [Transfers]). */
     private fun startTransfer(
         sel: List<XFile>,
         dest: XFile,
@@ -1065,7 +1148,7 @@ class PaneFragment : Fragment() {
         )
     }
 
-    /** 起会话 + 弹进度框;已有传输在跑时不抢(会话是单例,见 [Transfers.start])。 */
+    /** Start the session + pop the progress dialog; if a transfer is already running, don't steal the session (it's a singleton, see [Transfers.start]). */
     private fun launchSession(session: Transfers.Session) {
         val started = runCatching { Transfers.start(requireContext().applicationContext, session) }
             .getOrElse { toast(it.message ?: getString(R.string.err_failed)); return }
@@ -1074,11 +1157,11 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 把进度框挂到正在跑的会话上(新起任务、或从通知栏点回来时)。
-     * 会话不在了/框已经开着就什么都不做。
+     * Attach the progress dialog to the running session (starting a new task, or returning from the notification).
+     * If the session is gone / the dialog is already up, do nothing.
      */
     fun showTransferBox() {
-        // active 由传输线程置空(跑完那一刻),先取到本地再判,别在 !! 上撞空
+        // `active` is cleared by the transfer thread (right at completion); copy it locally before checking, don't crash on `!!`.
         val session = Transfers.active ?: return
         if (_b == null || Transfers.ui != null) return
         progressBox = TransferBox(
@@ -1096,13 +1179,13 @@ class PaneFragment : Fragment() {
     private var progressBox: TransferBox? = null
 
     /**
-     * 传输收尾:清选中、刷两侧面板、提示结果。会话可能在界面不在场时跑完,那时由
-     * [MainActivity] 回到前台后调这里补上(所以不能只写在进度框里)。
+     * Transfer finished: clear selection, refresh both panes, surface the result. The session can finish while the UI is away;
+     * [MainActivity] calls back into here after returning to the foreground to cover that case (so it can't live only in the progress dialog).
      */
     fun finishTransfer(s: Transfers.Session) {
         adapter.clearSelection()
         clearMapSelection()
-        // 粘贴完就收工:移动过的源头已不在,复制完这一趟也算办完了(要再粘一次重新放)
+        // Once paste finishes, we're done: moved sources no longer exist, and after a copy this round is also over (re-paste = re-stash).
         if ((s.work as? Transfers.Work.Copy)?.fromClipboard == true) FileClipboard.clear()
         viewModel.refresh()
         host?.siblingOf(this)?.viewModel?.refresh()
@@ -1121,7 +1204,7 @@ class PaneFragment : Fragment() {
         host?.onTransferFinished(s)
     }
 
-    /** Android 13+ 通知要运行时授权;转后台那一刻才问——之前通知只是个附带展示。 */
+    /** Android 13+ requires runtime permission for notifications; only ask the moment we go to background — before that the notification is just a side effect. */
     private fun requestNotifPermission() {
         val act = activity ?: return
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -1134,9 +1217,9 @@ class PaneFragment : Fragment() {
         }
     }
 
-    // ---- 压缩(打包到对侧当前目录) ----
+    // ---- Compress (pack into the other pane's current directory) ----
 
-    /** 操作栏「压缩」:勾选项(未勾选时为绿色框选的当前节点)打包到对侧当前目录。 */
+    /** Action bar "Compress": pack the checked items (or the green-highlighted current node when nothing is checked) into the other pane's current directory. */
     fun actionCompress() {
         val sel = selectionOrCurrent()
         if (sel.isEmpty()) {
@@ -1146,11 +1229,11 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 压缩确认框:文件名(默认见下)+ 格式(zip/7z)+ 移动模式;目标固定为对侧当前目录,
-     * 与操作栏复制/移动一致。
+     * Compress confirmation dialog: file name (default below) + format (zip/7z) + move mode; the destination is fixed to the other pane's current directory,
+     * same as the action bar's copy/move.
      *
-     * 默认名:只有一项(从文件/目录菜单点进来也是这种)时用该项的名字——文件去掉扩展名;
-     * 多项时用它们所在目录的名字。扩展名跟着格式走,切格式即改写。
+     * Default name: with a single item (the case when the file/directory menu enters) use that item's name — files strip the extension;
+     * for multiple items use their containing directory's name. The extension follows the format and is rewritten whenever the format changes.
      */
     private fun performCompress(sel: List<XFile>) {
         val sibling = host?.siblingOf(this)
@@ -1169,9 +1252,9 @@ class PaneFragment : Fragment() {
         cb.rgFormat.setOnCheckedChangeListener { _, id ->
             val stem = stripArchiveExt(cb.etName.text.toString())
             cb.etName.setText("$stem.${formatOf(id).ext}")
-            cb.etName.setSelection(stem.length) // setText 会把光标弹回开头,放回名字末尾接着打
+            cb.etName.setSelection(stem.length) // setText sends the cursor back to the start; move it back to the end of the name to keep typing.
         }
-        // 「加密包只能读不能改」这条只在真要加密时才提,平时不占版面
+        // "Encrypted archives are read-only" — only mention it when actually encrypting; don't take up space otherwise.
         cb.etPassword.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) = Unit
             override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit
@@ -1200,8 +1283,8 @@ class PaneFragment : Fragment() {
                 )
             }
             .create()
-        // 开框即改名:键盘直接弹出(ALWAYS_ 无视"用户上次手动收起键盘"的状态,必须 show 前设),
-        // 焦点落在名字上并**只选中扩展名之前的部分**——直接打字换掉名字,.zip/.7z 留着
+        // Rename as soon as the dialog opens: keyboard pops up directly (ALWAYS_ ignores the "user manually hid the keyboard last time" state, must be set before show),
+        // focus lands on the name field and **selects only the stem, not the extension** — typing replaces the name straight away while .zip/.7z is preserved.
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         dialog.show()
         cb.etName.requestFocus()
@@ -1211,7 +1294,7 @@ class PaneFragment : Fragment() {
     private fun formatOf(checkedId: Int): ArchiveWriter.Format =
         if (checkedId == R.id.rb_7z) ArchiveWriter.Format.SEVEN_Z else ArchiveWriter.Format.ZIP
 
-    /** 去掉已有的归档扩展名(切换格式时换扩展名用),其他扩展名原样保留。 */
+    /** Strip any existing archive extension (used when switching format); other extensions are preserved. */
     private fun stripArchiveExt(name: String): String {
         val lower = name.lowercase()
         for (f in ArchiveWriter.Format.entries) {
@@ -1220,7 +1303,7 @@ class PaneFragment : Fragment() {
         return name
     }
 
-    /** 单项 → 该项名字(文件去扩展名);多项 → 所在目录名。 */
+    /** Single item → that item's name (file strips extension); multiple items → containing directory name. */
     private fun defaultArchiveName(sel: List<XFile>): String {
         if (sel.size == 1) {
             val f = sel[0]
@@ -1231,7 +1314,7 @@ class PaneFragment : Fragment() {
         return parent.ifEmpty { viewModel.currentDir?.name?.trimEnd('/') ?: "" }.ifEmpty { "archive" }
     }
 
-    /** 目标同名先问覆盖,再进 [runCompress]。 */
+    /** If the destination name already exists, ask about overwriting first, then go to [runCompress]. */
     private fun startCompress(
         sel: List<XFile>,
         dest: XFile,
@@ -1263,7 +1346,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    /** 打包同样交给后台会话(复制/压缩共用一个进度框与一条前台服务)。 */
+    /** Packing also goes through the background session (copy / compress share one progress dialog and one foreground service). */
     private fun runCompress(
         sel: List<XFile>,
         dest: XFile,
@@ -1283,11 +1366,10 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 加密压缩包的密码框。展开一个加密包时由 [PaneViewModel.State.passwordFor] 触发,
-     * 交互与 restic 解锁一致(可勾选保存)。密码不对就原地再问一次,不用重新点开包。
+     * Password dialog for encrypted archives. Triggered by [PaneViewModel.State.passwordFor] when expanding an encrypted archive,
+     * interaction mirrors the restic unlock (optional save). Wrong password just prompts again in place — no need to re-open the archive.
      *
-     * 同一个包只弹一个框:state 是 StateFlow,弹框期间任何一次 render 都会再看到
-     * 同一个 passwordFor。
+     * Only one dialog for the same archive: state is a StateFlow, every render during the dialog's lifetime sees the same passwordFor again.
      */
     private var pwDialogFor: String? = null
 
@@ -1319,14 +1401,14 @@ class PaneFragment : Fragment() {
                 viewModel.unlockArchive(archive, text, save.isChecked) { ok ->
                     if (ok || _b == null) return@unlockArchive
                     toast(getString(R.string.archive_wrong_pw))
-                    askArchivePassword(archive) // 原地再问,不用重新点开这个包
+                    askArchivePassword(archive) // Ask again in place; no need to re-open this archive.
                 }
             }
             .setOnDismissListener { pwDialogFor = null }
             .show()
     }
 
-    /** 解锁 restic 仓库:有保存的密码则直接用,否则弹密码框(可勾选保存)。 */
+    /** Unlock a restic repository: if there's a saved password, use it directly; otherwise show a password dialog (with optional save). */
     private fun unlockRestic(node: PaneViewModel.ResticNode) {
         val ctx = requireContext()
         val saved = Prefs.resticPassword(ctx, node.repoDir.path)
@@ -1371,7 +1453,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    // ---- 长按上下文菜单 ----
+    // ---- Long-press context menu ----
 
     private fun onLongClick(node: PaneViewModel.Node) {
         when (node) {
@@ -1385,32 +1467,35 @@ class PaneFragment : Fragment() {
     }
 
     private fun longClickFile(node: PaneViewModel.FileNode) {
-        if (node.label != null) { rootNodeMenu(node); return } // 顶级存储节点走"不可改动的目录"那套
-        // 长按的是已勾选的多选项之一(且不止它自己)→ 走批量专属菜单;
-        // 否则(未勾选,或只有它自己被选中)按单文件正常菜单处理。
+        if (node.label != null) { rootNodeMenu(node); return } // Top-level storage nodes take the "non-mutable directory" path.
+        if (SafFileSystem.isTreeRoot(node.file)) { safRootMenu(node); return }
+        // Long-press hit one of the already-checked multi-selection items (and not just itself) → batch-specific menu;
+        // otherwise (not checked, or only it is selected) treat as a normal single-file menu.
         val selItems = adapter.selectedItems()
         if (adapter.isSelected(node) && selItems.size > 1) {
             showBatchMenu(selItems)
             return
         }
-        // 树节点专属项(选择/属性/刷新/以压缩包打开)+ 与占用图共用的通用项
+        // Tree-node-only items (Select / Properties / Refresh / Open as archive) + the generic items shared with the treemap.
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.action_select), R.drawable.ic_sel_check) { adapter.toggleSelection(node) }
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
         if (node.expandable) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
         }
-        if (!node.file.isDir && OpenFiles.isApk(node.file)) {
+        if (!node.file.isDir && OpenFiles.isInstallable(node.file)) {
             actions.item(getString(R.string.open_as_archive), R.drawable.ic_file_archive) {
                 viewModel.openAsArchive(node)
             }
         }
         if (node.file.isDir) {
-            // 直接对该目录操作,不依赖 currentDir——未展开/未点选过也能建/能占用分析
-            actions.item(getString(R.string.action_new_folder), R.drawable.ic_new_folder) {
-                performNewFolder(node.file)
-            }
+            // Operate directly on this directory, independent of currentDir — works even if not yet expanded / not yet selected (so we can create / run treemap analysis here).
+            // ★ Both "New" entries have to check writability: on read-only sources (media server / restic / archive / git view …) we currently
+            // still expose the entry and a tap only errors out. Previously only "New text file" had the check.
             if (node.file.isWritableDir()) {
+                actions.item(getString(R.string.action_new_folder), R.drawable.ic_new_folder) {
+                    performNewFolder(node.file)
+                }
                 actions.item(getString(R.string.action_new_text), R.drawable.ic_file_doc) {
                     performNewTextFile(node.file)
                 }
@@ -1423,9 +1508,9 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 多选(勾选数 > 1)专属菜单:只保留批量语义明确的操作(刷新缩略图/复制/移动/删除);
-     * 选择/属性/以压缩包打开/打开方式/重命名/收藏等单文件专属项在批量场景没有意义,不显示。
-     * 标题用勾选个数取代文件名。
+     * Multi-selection (> 1 checked) exclusive menu: keep only operations that make sense in bulk (refresh thumbnails / copy / move / delete);
+     * single-file-only items like Select / Properties / Open as archive / Open with / Rename / Favorite are meaningless in batch and hidden.
+     * The title uses the check count instead of a file name.
      */
     private fun showBatchMenu(targets: List<XFile>) {
         val actions = ArrayList<MenuAct>()
@@ -1435,22 +1520,29 @@ class PaneFragment : Fragment() {
             }
         }
         actions.item(getString(R.string.action_clip_add), R.drawable.ic_clipboard) { addToClipboard(targets) }
+        // Same as commonFileActions: copy / compress are pure read-source and always allowed; move / delete require *every* source to be mutable.
+        val mutable = targets.all { it.isMutable() }
         actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) { performCopy(targets, move = false) }
-        actions.item(getString(R.string.strip_move), R.drawable.ic_move) { performCopy(targets, move = true) }
+        if (targets.all { it.isMovableSource() }) {
+            actions.item(getString(R.string.strip_move), R.drawable.ic_move) { performCopy(targets, move = true) }
+        }
         actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompress(targets) }
-        actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { performDelete(targets) }
+        if (mutable) {
+            actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { performDelete(targets) }
+        }
         showActionMenu(requireContext(), getString(R.string.title_selected_count, targets.size), actions)
     }
 
     /**
-     * 树与占用图共用的菜单项:目录(对侧显示/幻灯片/Git/终端/桌面快捷方式)、文件(打开)、
-     * 收藏 + 中间操作栏同款 复制/移动/改名(+删除,占用图块菜单自带专属删除,由
-     * [includeDelete] 关掉这里的通用版避免重复)。始终只针对 [file] 单个文件——批量操作
-     * 走 [showBatchMenu],不复用这里。
-     * [includeEdit] 关掉整组 复制/移动/改名/删除,[includeFavorite] 关掉"添加到收藏"
-     * ——收藏行自己的菜单用([favoriteMenu]:改名/删除的是收藏所指的真实目录,语义上
-     * 太容易和"取消收藏"混淆;而它本来就已经是收藏了)。[includeShell] 关掉 SFTP 目录的
-     * 终端/命令快捷方式——服务器行自己给的那两项落在 home 而不是根路径,见 [serverMenu]。
+     * Menu items shared between the tree and the treemap: directory (show on other side / slideshow / Git / terminal / desktop shortcut),
+     * file (open), favorite + the action bar's copy/move/rename (+ delete; the treemap tile menu already has its own dedicated delete,
+     * so [includeDelete] turns off the generic one here to avoid duplication). Always operates on a single [file] — batch operations
+     * go through [showBatchMenu], this is not reused.
+     * [includeEdit] turns off the whole copy/move/rename/delete group ([includeCopy] can bring just "copy" back,
+     * used by the document tree root), [includeFavorite] turns off "add to favorite" — the favorite row's own menu uses
+     * this ([favoriteMenu]: rename/delete target the real directory the favorite points to, which is semantically too easy
+     * to confuse with "unfavorite"; and it already is a favorite anyway). [includeShell] turns off the terminal/command shortcut
+     * entries for SFTP directories — those entries are given by the server row itself and land in $HOME rather than the root path, see [serverMenu].
      */
     private fun commonFileActions(
         file: XFile,
@@ -1458,6 +1550,7 @@ class PaneFragment : Fragment() {
         includeEdit: Boolean = true,
         includeFavorite: Boolean = true,
         includeShell: Boolean = true,
+        includeCopy: Boolean = includeEdit,
     ): ArrayList<MenuAct> {
         val actions = ArrayList<MenuAct>()
         if (file.isDir) {
@@ -1470,41 +1563,44 @@ class PaneFragment : Fragment() {
             if (file.scheme == "file" && com.twig.git.GitRepo.isRepo(java.io.File(file.path))) {
                 actions.item("Git", R.drawable.ic_git) { GitActivity.start(requireContext(), file.path) }
             }
-            // 本地目录:以此为工作目录开一条本地 shell(系统自带 mksh + toybox)
+            // Local directory: open a local shell at this working directory (system-provided mksh + toybox).
             if (includeShell && file.scheme == "file") {
                 actions.item(getString(R.string.terminal_here), R.drawable.ic_terminal) {
                     TerminalActivity.startLocal(requireContext(), file.path)
                 }
-                // 开着特权访问时**另起一项**,不改原来那条的行为 —— 把普通 shell 悄悄
-                // 换成 root,用户以为自己在应用 uid 下试命令,实际一条 rm 就是全盘。
-                // 身份写在菜单文案里,点之前就知道自己要进哪儿。
+                // When privileged access is on, **add a separate entry** instead of changing the existing one's behavior — silently
+                // swapping a plain shell for root lets the user think they're trying commands under the app's uid, when a single
+                // `rm` would be wiping the whole disk. The identity is in the menu text, so the user knows where they're going before tapping.
                 privTerminalLabel()?.let { (label, mode) ->
                     actions.item(label, R.drawable.ic_terminal) {
                         TerminalActivity.startLocal(requireContext(), file.path, mode)
                     }
                 }
             }
-            // SFTP 目录:以此为工作目录开终端
+            // SFTP directory: open a terminal with this working directory.
             if (includeShell &&
                 runCatching { FsRegistry.of(file) }.getOrNull() is com.twig.fs.network.SftpFileSystem
             ) {
+                // The shell needs the server's own path, which differs from the one on
+                // screen when the connection is rooted at a sub-directory (Connections.shellPath).
+                val shellDir = Connections.shellPath(file.scheme, file.path)
                 actions.item(getString(R.string.terminal_here), R.drawable.ic_terminal) {
-                    TerminalActivity.start(requireContext(), file.scheme, file.name, file.path)
+                    TerminalActivity.start(requireContext(), file.scheme, file.name, shellDir)
                 }
                 viewModel.connOf(file.scheme)?.let { conn ->
                     actions.item(getString(R.string.cmd_shortcut), R.drawable.ic_play) {
-                        showCommandDialog(conn, file.scheme, file.path, getString(R.string.cmd_title_dir, file.name))
+                        showCommandDialog(conn, file.scheme, shellDir, getString(R.string.cmd_title_dir, file.name))
                     }
                 }
             }
             actions.item(getString(R.string.action_pin_shortcut), R.drawable.ic_shortcut) { pinFileShortcut(file) }
-            // WiFi 共享这一个目录:范围直接带过去,不用再去主菜单里选
+            // WiFi sharing this directory: scope is passed straight through, no need to pick it in the main menu.
             actions.item(getString(R.string.share_dir_menu), R.drawable.ic_share_wifi) {
                 (activity as? androidx.appcompat.app.AppCompatActivity)
                     ?.let { ShareDialogs.show(it, file) }
             }
         } else if (file.scheme == AppsFileSystem.SCHEME) {
-            // 应用条目:打开/预览没有意义(点开就是装一遍自己),换成应用自己的三件事
+            // App entries: open/preview makes no sense (a tap would just reinstall itself), so swap in the app's own three actions.
             actions.item(getString(R.string.apps_launch), R.drawable.ic_play) { launchApp(file) }
             actions.item(getString(R.string.apps_app_info), R.drawable.ic_info) { openAppInfo(file) }
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFile(file) }
@@ -1535,16 +1631,20 @@ class PaneFragment : Fragment() {
                 refreshThumb(listOf(file))
             }
         }
-        // 只是暂存,不动源文件——收藏行那套(includeEdit=false)也给,收藏目录同样能被粘贴到别处
+        // Just stash, don't touch the source — the favorite row set (includeEdit=false) is included too, so a favorite directory can be pasted elsewhere too.
         actions.item(getString(R.string.action_clip_add), R.drawable.ic_clipboard) { addToClipboard(listOf(file)) }
-        if (includeEdit) {
-            // 应用条目只读:复制/打包(纯读源)照给,移动/改名/删除去掉——移动的"删源"
-            // 这一步在应用上不成立,删除的语义是卸载,已由上面的「卸载」项覆盖
-            val appEntry = file.scheme == AppsFileSystem.SCHEME
+        // ★ Copy / pack are **pure read-source** and always allowed; move (the "delete source" step) / rename / delete require the source
+        // to be mutable — media servers, restic, 7z/RAR, git view, "Apps" all have writable() == false. (App entries'
+        // "delete" semantics is uninstall, already covered by the "Uninstall" entry above.)
+        // Move has another rule: the document tree root can't be deleted (see [isMovableSource]), but copy is still allowed.
+        if (includeCopy) {
             actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) {
                 performCopy(listOf(file), move = false)
             }
-            if (!appEntry) {
+        }
+        if (includeEdit) {
+            val mutable = file.isMutable()
+            if (file.isMovableSource()) {
                 actions.item(getString(R.string.strip_move), R.drawable.ic_move) {
                     performCopy(listOf(file), move = true)
                 }
@@ -1552,7 +1652,7 @@ class PaneFragment : Fragment() {
             actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) {
                 performCompress(listOf(file))
             }
-            if (!appEntry) {
+            if (mutable) {
                 actions.item(getString(R.string.strip_rename), R.drawable.ic_rename) { performRename(file) }
                 if (includeDelete) {
                     actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) {
@@ -1564,17 +1664,20 @@ class PaneFragment : Fragment() {
         return actions
     }
 
-    /** 强制重新生成缩略图(可批量):清掉每个文件(目录则递归其下所有文件)的内存/磁盘
-     * 缓存及失败标记,再整屏 rebind 让列表拉取新图。目录遍历可能涉及网络 I/O,
-     * 异步执行,全部完成后才刷新列表一次。 */
+    /** Force-regenerate thumbnails (batchable): clear each item's in-memory / disk cache and failure marker (directories also recurse into all sub-items),
+     * then rebind the whole screen so the list fetches fresh images. Directory traversal can hit network I/O,
+     * so it runs asynchronously and refreshes the list once everything completes.
+     *
+     * ★ **The selected directories themselves need clearing too**: media-server shows/seasons/albums/photo-albums/collections/libraries are all
+     * directories, and their covers hang on the directory row. First clear them synchronously (purely local cache removal, no network),
+     * then refresh the list immediately so that row's cover swaps right away — otherwise the big library recursion takes dozens of seconds and
+     * it looks like "tapping did nothing" in the meantime. */
     private fun refreshThumb(targets: List<XFile>) {
         val ctx = requireContext()
         val dirs = targets.filter { it.isDir }
-        targets.filter { !it.isDir }.forEach { Thumbs.invalidate(ctx, it) }
-        if (dirs.isEmpty()) {
-            if (::adapter.isInitialized) adapter.notifyDataSetChanged()
-            return
-        }
+        targets.forEach { Thumbs.invalidate(ctx, it) }
+        if (::adapter.isInitialized) adapter.notifyDataSetChanged()
+        if (dirs.isEmpty()) return
         toast(getString(R.string.msg_thumbs_refreshing))
         var remaining = dirs.size
         dirs.forEach { dir ->
@@ -1584,7 +1687,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    /** 桌面单独图标:目录展开定位到自身(含内容);文件展开父目录并滚动到该文件那一行。 */
+    /** Standalone home-screen shortcut: directory → expand to itself (and its contents); file → expand parent and scroll to that file's row. */
     private fun pinFileShortcut(file: XFile) {
         val ctx = requireContext()
         if (!ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
@@ -1594,38 +1697,37 @@ class PaneFragment : Fragment() {
         val focus = if (file.isDir) null else file.path
         val intent = MainActivity.revealIntent(ctx, file.scheme, revealPath, focus)
             .setAction(Intent.ACTION_VIEW)
-        // id 按文件自身算:同目录下的两个文件现在定位到各自那一行,共用父目录算 id 会互相覆盖
+        // id is computed from the file itself: two files under the same directory now land on their own rows; sharing the parent id would overwrite each other.
         val id = "shortcut_" + (file.scheme + ":" + file.path).hashCode()
         val iconRes = if (file.isDir) R.drawable.ic_folder else FileIcons.baseIconRes(file)
         val shortcut = ShortcutInfoCompat.Builder(ctx, id)
             .setShortLabel(file.name.ifEmpty { revealPath })
-            .setIcon(IconCompat.createWithResource(ctx, iconRes))
+            .setIcon(ShortcutIcons.of(ctx, iconRes))
             .setIntent(intent)
             .build()
         ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null)
     }
 
-    /** 对侧显示:兄弟面板逐级展开定位到该目录并聚焦。 */
+    /** Show on other side: expand level by level in the sibling pane to locate and focus this directory. */
     private fun revealInSibling(dir: XFile) {
         val sib = host?.siblingOf(this) ?: return
         sib.reveal(dir)
         host?.focusPane(sib)
     }
 
-    /** 幻灯片:查看器自己后台递归扫描该目录(含子目录)的图片、边扫边播,见
-     * [ImageViewerActivity.startSlideshow]——不在这里预先收集整棵树,避免大目录/深层
-     * 网络路径卡住半天才显示第一张。 */
+    /** Slideshow: the viewer itself recursively scans this directory (including subdirectories) for images and plays as it scans — see
+     * [ImageViewerActivity.startSlideshow]; we don't pre-collect the whole tree here, to avoid stalling on large directories / deep network paths before the first image shows. */
     private fun startSlideshow(dir: XFile) {
         awaitingImageResult = true
         ImageViewerActivity.startSlideshow(requireContext(), dir)
     }
 
-    /** 本面板刚起过图片查看器,回来时该收它的结果(两个面板都会 onResume,别抢别人的)。 */
+    /** This pane just launched an image viewer; pick up its result on return (both panes hit onResume, don't steal the other pane's). */
     private var awaitingImageResult = false
 
     /**
-     * 收图片查看器的结果:里面勾的图同步成树上的多选,删过图则刷新。查看器里的勾选可能
-     * 跨目录(幻灯片是递归扫的),不在这里过滤——树上的多选本就允许跨目录(见 mapSelected)。
+     * Pick up the image viewer's result: the checked images there sync to multi-selection on the tree; if any were deleted, refresh. The viewer's
+     * selection can cross directories (slideshow scans recursively), we don't filter it here — multi-selection on the tree already allows cross-directory (see mapSelected).
      */
     private fun takeImageViewerResult() {
         if (!awaitingImageResult || !::adapter.isInitialized) return
@@ -1636,11 +1738,13 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * "不该被改名/删除的目录行"(收藏 / 服务器根 / 顶级存储节点)共用的菜单主体:
-     * 全选子项/属性/刷新/新建/占用图/搜索 + [commonFileActions](去掉 复制/移动/改名/删除
-     * ——对收藏所指的真实目录、服务器根、存储根动手要么语义混淆要么没有意义)。
-     * "选择"不选这一行本身(它不是可复制/删除的对象),而是全选/取消全选它下面的直接子项
-     * 两态,与搜索结果行一致。
+     * Shared menu body for "directory rows that shouldn't be renamed/deleted" (favorites / server roots / top-level storage nodes / document tree roots):
+     * select all children / properties / refresh / new / treemap / search + [commonFileActions] (minus copy/move/rename/delete —
+     * acting on the real directory the favorite points to, the server root, or the storage root is either semantically confusing or pointless).
+     * [includeCopy] brings "copy" back alone: copy is **read-source**, copying an entire document tree is a real need,
+     * but move/rename/delete act on the real directory the grant points to (see [safRootMenu]).
+     * "Select" doesn't pick this row itself (it isn't a copy/delete target); instead it's a two-state toggle: select-all / deselect-all direct children,
+     * same as the search-result row.
      */
     private fun dirRowActions(
         node: PaneViewModel.Node,
@@ -1648,6 +1752,7 @@ class PaneFragment : Fragment() {
         refresh: () -> Unit,
         includeFavorite: Boolean = true,
         includeShell: Boolean = true,
+        includeCopy: Boolean = false,
     ): ArrayList<MenuAct> {
         val actions = ArrayList<MenuAct>()
         if (adapter.hasChildren(node)) {
@@ -1665,27 +1770,75 @@ class PaneFragment : Fragment() {
         }
         actions.item(getString(R.string.strip_map), R.drawable.ic_treemap) { enterTreemap(target) }
         actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(target) }
+        if (supportsGoto(target, viewModel.connOf(target.scheme))) {
+            actions.item(getString(R.string.action_goto_path), R.drawable.ic_goto) {
+                promptGoto(node.key, target)
+            }
+        }
         actions += commonFileActions(
             target,
             includeEdit = false,
             includeFavorite = includeFavorite,
             includeShell = includeShell,
+            includeCopy = includeCopy,
         )
         return actions
     }
 
     /**
-     * 顶级存储节点(内部存储 / 根目录 / 应用管理 / 锁定根)的长按菜单:走 [dirRowActions]
-     * 那套。以前这里直接 return,一个菜单项都没有——但属性/搜索/占用图/新建对存储根一样成立。
+     * Long-press menu for top-level storage nodes (internal storage / root / Apps / locked root): uses the [dirRowActions] set.
+     * Previously this just `return`-ed with zero entries — but properties/search/treemap/new apply just as well to storage roots.
      */
     private fun rootNodeMenu(node: PaneViewModel.FileNode) {
         val actions = dirRowActions(node, node.file, refresh = { viewModel.refreshNode(node) })
+        // Removable volume: some ROMs don't let ordinary APIs read USB drives (MANAGE_EXTERNAL_STORAGE doesn't help either),
+        // then SAF is the only path — the system picker jumps straight to this card / this USB drive.
+        com.twig.app.StorageVolumes.of(node.file.path)?.initialUri?.let { uri ->
+            actions.item(getString(R.string.volume_grant_saf), R.drawable.ic_folder) {
+                host?.openSafPicker(uri)
+            }
+        }
         showActionMenu(requireContext(), node.label ?: node.file.name, actions)
     }
 
     /**
-     * 收藏行的长按菜单 = [dirRowActions] + "取消收藏",去掉"添加到收藏"(它本来就是)。
-     * 目录相关项要拿到真实目录才有意义,收藏还没展开过(没连上/没解锁)时只剩"取消收藏"。
+     * Long-press menu for the document-tree (SAF) root row = [dirRowActions] + "Remove document tree".
+     *
+     * This row looks like a directory but is actually **a grant**: rename/delete/move act on the real directory the grant points to,
+     * while what the user wants when long-pressing it is "remove this tree from the sidebar" — these two collide, and the consequence is the directory getting deleted.
+     * So it goes through the "non-mutable directory" path, with **copy** brought back alone (pure read-source; copying an entire tree is a real use case).
+     *
+     * There's also no per-grant revocation entry in system settings — without this entry the only way out is clearing the app's data.
+     */
+    private fun safRootMenu(node: PaneViewModel.FileNode) {
+        val actions = dirRowActions(
+            node, node.file,
+            refresh = { viewModel.refreshNode(node) },
+            includeCopy = true,
+        )
+        actions.item(getString(R.string.action_remove_saf), R.drawable.ic_close, DANGER) {
+            confirmRemoveSaf(node.file)
+        }
+        showActionMenu(requireContext(), node.file.name, actions)
+    }
+
+    private fun confirmRemoveSaf(file: XFile) {
+        AlertDialog.Builder(requireContext())
+            .setMessage(getString(R.string.confirm_remove_saf, file.name))
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                if (!SafFileSystem.release(requireContext(), file)) {
+                    toast(getString(R.string.saf_remove_failed)); return@setPositiveButton
+                }
+                viewModel.forgetSaf(file)
+                host?.refreshTrees() // The grant is global, so the row in the other pane has to vanish too.
+            }
+            .show()
+    }
+
+    /**
+     * Long-press menu for the favorite row = [dirRowActions] + "Remove favorite", minus "Add to favorite" (it already is one).
+     * Directory-related items only make sense once we have the real directory; if the favorite hasn't been expanded yet (not connected / not unlocked), only "Remove favorite" remains.
      */
     private fun favoriteMenu(node: PaneViewModel.FavoriteNode) {
         val actions = ArrayList<MenuAct>()
@@ -1715,7 +1868,7 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    /** 重命名对话框:收藏/对比收藏共用同一套交互,分别落到各自 Store。 */
+    /** Rename dialog: favorite / saved compare share the same interaction, writing to their respective Stores. */
     private fun promptRenameLabel(title: Int, current: String, onRenamed: (String) -> Unit) {
         val ctx = requireContext()
         val input = EditText(ctx).apply {
@@ -1739,17 +1892,30 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 对比收藏行的长按菜单:不像普通收藏那样能"展开看内容"(它是两个位置的引用,不是
-     * 单一可浏览目录),给"看两侧路径"代替 —— 重命名/取消收藏与普通收藏同一套交互。
+     * Long-press menu for a saved compare row: unlike favorites it can't be "expanded to see content" (it's two locations, not
+     * a single browsable directory), so it gets "Show both paths" instead — rename / delete share the favorite row's interaction.
      */
     private fun compareFavMenu(node: PaneViewModel.CompareNode) {
         val s = node.session
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.action_show_compare_paths), R.drawable.ic_compare) { showComparePaths(s) }
+        // Sync doesn't need to enter the compare page first: the direction is fixed in the menu, the background scans and goes straight to the confirmation dialog
+        // (see [syncFromSaved]). If the incremental switch is toggled in the dialog it's saved back to **this** favorite, not the global default.
+        for (to in 0..1) {
+            val toName = getString(if (to == 0) R.string.compare_side_left else R.string.compare_side_right)
+            actions.item(getString(R.string.compare_sync_to, toName), R.drawable.ic_sync, DANGER) {
+                syncFromSaved(
+                    requireContext(), viewLifecycleOwner.lifecycleScope, s, to,
+                    onOptions = { o -> CompareStore.updateOptions(requireContext(), s, o) },
+                    // Progress dialog pops up as usual, same set as paste/compress; the user can switch to background by tapping "Hide" themselves.
+                    onStarted = { showTransferBox() },
+                )
+            }
+        }
         actions.item(getString(R.string.action_rename_favorite), R.drawable.ic_rename) {
             promptRenameLabel(R.string.action_rename_favorite, s.label) { name -> viewModel.renameCompare(s, name) }
         }
-        actions.item(getString(R.string.action_remove_favorite), R.drawable.ic_star, DANGER) {
+        actions.item(getString(R.string.compare_remove), R.drawable.ic_delete, DANGER) {
             confirmRemoveCompare(s)
         }
         showActionMenu(requireContext(), s.label, actions)
@@ -1757,8 +1923,9 @@ class PaneFragment : Fragment() {
 
     private fun showComparePaths(s: com.twig.app.CompareSession) {
         val conns = ConnectionStore.all(requireContext()).associateBy { it.label() }
-        val left = formatRawLocationPath(s.left.connLabel, s.left.path, conns[s.left.connLabel])
-        val right = formatRawLocationPath(s.right.connLabel, s.right.path, conns[s.right.connLabel])
+        // Same as the line under the favorite row: use favoriteFullPath, so the SAF side doesn't spread out an entire document URI.
+        val left = favoriteFullPath(s.left, conns[s.left.connLabel])
+        val right = favoriteFullPath(s.right, conns[s.right.connLabel])
         AlertDialog.Builder(requireContext())
             .setTitle(s.label)
             .setMessage(getString(R.string.compare_paths_msg, left, right))
@@ -1768,20 +1935,20 @@ class PaneFragment : Fragment() {
 
     private fun confirmRemoveCompare(s: com.twig.app.CompareSession) {
         AlertDialog.Builder(requireContext())
-            .setMessage(getString(R.string.confirm_remove_favorite, s.label))
+            .setMessage(getString(R.string.compare_remove_confirm, s.label))
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(R.string.dialog_ok) { _, _ -> viewModel.removeCompare(s) }
             .show()
     }
 
-    /** 收藏点击:local/网络直接展开;restic 用已存密码,仅"无已存密码"时才弹框,失败则显示真实错误。 */
+    /** Favorite tap: local / network → expand directly; restic uses the saved password — only when there's no saved password does it prompt; failure shows the actual error. */
     private fun onFavoriteClick(node: PaneViewModel.FavoriteNode) {
         val saved = if (node.fav.kind == "restic") {
             Prefs.resticPassword(requireContext(), node.fav.repoPath)
         } else null
         viewModel.toggleFavorite(node, saved) { ok, err ->
             if (!ok) {
-                // 无已存密码的 restic → 弹框输入;否则(网络/已存密码)直接显示真实错误
+                // Restic without a saved password → prompt; otherwise (network / saved password) just show the actual error.
                 if (node.fav.kind == "restic" && saved == null) {
                     promptFavoriteRestic(node)
                 } else {
@@ -1827,21 +1994,28 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 服务器长按菜单 = 已连接时的目录那套([dirRowActions],针对服务器根目录)
-     * + 服务器自身的 编辑 / 移出(SFTP 另有 SSH 终端与命令快捷方式)。
-     * 目录组只在连接过一次(拿得到根目录)时才有;没连过就还是原来那几项。
-     * [dirRowActions] 的终端/命令项关掉:这里自己那两项落在登录后的默认目录(home),
-     * 比按根路径 "/" 开更合用,给两份只会重复。
+     * Server long-press menu = the directory set when connected ([dirRowActions], aimed at the server root)
+     * + the server's own Edit / Remove (SFTP additionally gets an SSH terminal and command shortcut).
+     * The directory group only exists once the server has been connected at least once (so we have its root); otherwise it's just the original entries.
+     * [dirRowActions]' terminal/command entries are turned off: the ones here land in the post-login default directory (home),
+     * which is more useful than opening at root "/", and offering both would just duplicate.
      */
     private fun serverMenu(node: PaneViewModel.ServerNode) {
         val conn = node.conn
         val actions = ArrayList<MenuAct>()
-        viewModel.serverTarget(node)?.let { target ->
+        val target = viewModel.serverTarget(node)
+        if (target != null) {
             actions += dirRowActions(
                 node, target,
                 refresh = { viewModel.refreshServer(node) },
                 includeShell = false,
             )
+        } else if (!conn.isMediaServer()) {
+            // Never connected in this session, so there is no root XFile yet — but the
+            // jump still holds: revealUnder connects the server on its way down.
+            actions.item(getString(R.string.action_goto_path), R.drawable.ic_goto) {
+                promptGoto(node.key, null)
+            }
         }
         actions.item(getString(R.string.server_edit), R.drawable.ic_edit) { host?.onEditServer(conn) }
         actions.item(getString(R.string.server_remove), R.drawable.ic_delete, DANGER) { confirmDeleteServer(conn) }
@@ -1859,16 +2033,16 @@ class PaneFragment : Fragment() {
         showActionMenu(requireContext(), conn.displayLabel(), actions)
     }
 
-    // ---- 远程命令 / 命令快捷方式 ----
+    // ---- Remote command / command shortcut ----
 
-    /** 「选择脚本…」回填的目标输入框(对话框存活期间有效,同私钥选取的路子)。 */
+    /** "Choose script…" backfill target input field (valid for the lifetime of the dialog, same approach as picking a private key). */
     private var scriptTarget: android.widget.EditText? = null
 
     private val scriptPicker =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
             val path = r.data?.getStringExtra(PickerActivity.EXTRA_PICKED_PATH) ?: return@registerForActivityResult
             val target = scriptTarget ?: return@registerForActivityResult
-            // 按扩展名补上解释器:脚本未必有 +x 权限,直接跑路径经常 Permission denied
+            // Add an interpreter based on extension: scripts don't necessarily have +x permission, running the path directly is often Permission denied.
             val q = com.twig.app.RemoteCmd.sq(path)
             target.setText(
                 when (path.substringAfterLast('.', "").lowercase()) {
@@ -1881,11 +2055,11 @@ class PaneFragment : Fragment() {
         }
 
     /**
-     * 配置一条远程命令:可「立即执行」,也可「添加到桌面」做成快捷方式(见 [RemoteCmd])。
+     * Configure a remote command: can either "Run now" or "Add to home screen" as a shortcut (see [RemoteCmd]).
      *
-     * [scheme] 是该服务器**本次会话内**已注册的 scheme,只用于「选择脚本」时把面板
-     * 展开到那台服务器;为 null(从服务器节点进来、还没连过)时选脚本要先连一下。
-     * 快捷方式本身存的是连接标签而不是 scheme——scheme 跨启动会变。
+     * [scheme] is the scheme registered for that server **in this session**; used only by "Choose script" to expand the pane to that server.
+     * If null (entered from the server node, never connected), picking a script has to connect first.
+     * The shortcut itself stores the connection label, not the scheme — the scheme changes across launches.
      */
     private fun showCommandDialog(
         conn: SavedConnection,
@@ -1895,7 +2069,7 @@ class PaneFragment : Fragment() {
     ) {
         val ctx = requireContext()
         val dp = resources.displayMetrics.density
-        // maxLines > 1 的框按内容自适应:默认仍是一行高,长命令自己长,到上限后内部滚动
+        // maxLines > 1 fields grow with content: default is still one line tall, long commands grow themselves, then scroll internally once the cap is hit.
         fun field(hint: String, text: String, maxLines: Int = 1) = android.widget.EditText(ctx).apply {
             this.hint = hint
             setText(text)
@@ -1915,7 +2089,7 @@ class PaneFragment : Fragment() {
         val etLabel = field(getString(R.string.cmd_label), conn.shortLabel())
         val etCommand = field(getString(R.string.cmd_command), "", maxLines = 4)
         val etWorkdir = field(getString(R.string.cmd_workdir), workdir)
-        // 登录 shell 只对静默执行有意义:终端里本来就是交互式登录 shell
+        // Login shell only makes sense for silent execution: the terminal is already an interactive login shell.
         val cbLogin = android.widget.CheckBox(ctx).apply {
             text = getString(R.string.cmd_login_shell)
             textSize = 14f
@@ -1923,7 +2097,7 @@ class PaneFragment : Fragment() {
         }
         val cbTerminal = android.widget.CheckBox(ctx).apply {
             text = getString(R.string.cmd_in_terminal)
-            isChecked = true // 默认可见地跑,静默是明确选择
+            isChecked = true // Default is to run visibly; silent is an explicit choice.
             textSize = 14f
             setOnCheckedChangeListener { _, on -> cbLogin.visibility = if (on) View.GONE else View.VISIBLE }
         }
@@ -1935,7 +2109,7 @@ class PaneFragment : Fragment() {
                 if (scheme != null) {
                     launchScriptPicker(scheme, etWorkdir.text.toString(), conn.shortLabel())
                 } else {
-                    // 还没连过这台服务器:先连,拿到 scheme 再开选择器
+                    // Haven't connected to this server yet: connect first, get the scheme, then open the picker.
                     toast(getString(R.string.ftp_connecting))
                     viewLifecycleOwner.lifecycleScope.launch {
                         val s = withContext(Dispatchers.IO) { viewModel.connSchemeBlocking(conn) }
@@ -1995,7 +2169,7 @@ class PaneFragment : Fragment() {
         )
     }
 
-    /** 立即跑一次(不建快捷方式):终端模式要 scheme,静默模式交给前台服务。 */
+    /** Run once immediately (no shortcut): terminal mode needs the scheme, silent mode goes to the foreground service. */
     private fun runCommandNow(conn: SavedConnection, scheme: String?, cmd: com.twig.app.RemoteCmd) {
         val ctx = requireContext()
         if (!cmd.inTerminal) {
@@ -2015,26 +2189,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    /** 打开 SSH 终端(必要时先建立连接,IO 线程)。 */
-    /**
-     * 当前能开哪种特权终端 → (菜单文案, 模式);开不了返回 null。
-     *
-     * 判据是**特权访问已经连上**([Privileged.active]),不是"设备上有没有 su" ——
-     * 没连上就给出这一项,点了只会得到一个错误,不如不显示。再叠一层
-     * [PrivShell.available] 是因为"文件访问能提权"不等于"终端能起来":
-     * Shizuku 那条还需要从它的 APK 里取到 rish 的 dex。
-     */
-    private fun privTerminalLabel(): Pair<String, Int>? {
-        val mode = Privileged.active
-        if (mode == Privileged.OFF) return null
-        if (!PrivShell.available(requireContext(), mode)) return null
-        val label = when (mode) {
-            Privileged.ROOT -> getString(R.string.terminal_here_root)
-            else -> getString(R.string.terminal_here_shizuku)
-        }
-        return label to mode
-    }
-
+    /** Open an SSH terminal (connect first if needed, on the IO thread). */
     private fun openTerminal(conn: SavedConnection, dir: String?) {
         toast(getString(R.string.ftp_connecting))
         viewLifecycleOwner.lifecycleScope.launch {
@@ -2048,10 +2203,29 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * 忘记已记住的主机密钥(TOFU 重置)。服务器重装/换机后指纹会变,那时连接会被
-     * 拒绝并提示走这里;清掉之后下次连上重新记一份。
-     * 顺带 forgetServer:注册表里那份 SftpFileSystem 还揣着旧的 knownHostKey,
-     * 不注销的话下次展开会直接复用它、照样连不上。
+     * Which privileged terminal can currently be opened → (menu text, mode); null if none can.
+     *
+     * The criterion is **privileged access has connected** ([Privileged.active]), not "is there su on the device" —
+     * showing this entry when it isn't connected just leads to a tap that errors out, better to not show it. The extra
+     * [PrivShell.available] layer is because "file access can elevate" doesn't equal "a terminal can launch":
+     * the Shizuku route also needs to fetch the rish dex from its APK.
+     */
+    private fun privTerminalLabel(): Pair<String, Int>? {
+        val mode = Privileged.active
+        if (mode == Privileged.OFF) return null
+        if (!PrivShell.available(requireContext(), mode)) return null
+        val label = when (mode) {
+            Privileged.ROOT -> getString(R.string.terminal_here_root)
+            else -> getString(R.string.terminal_here_shizuku)
+        }
+        return label to mode
+    }
+
+    /**
+     * Forget the remembered host key (TOFU reset). After a server reinstall / hardware swap the fingerprint changes and
+     * the connection gets refused, prompting to come here; after clearing, a new one is recorded on the next connect.
+     * Also forgetServer: the SftpFileSystem in the registry is still holding the old knownHostKey, and unless it's unregistered,
+     * the next expand will reuse it and still fail to connect.
      */
     private fun confirmForgetHostKey(conn: SavedConnection) {
         AlertDialog.Builder(requireContext())
@@ -2079,7 +2253,7 @@ class PaneFragment : Fragment() {
             .show()
     }
 
-    // ---- 工具 ----
+    // ---- Utilities ----
 
     private fun runIo(block: () -> Unit, onOk: () -> Unit) {
         viewLifecycleOwner.lifecycleScope.launch {
@@ -2104,7 +2278,7 @@ class PaneFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        progressBox?.detach() // 传输不受影响,只是没人看着了(通知栏还在)
+        progressBox?.detach() // The transfer itself isn't affected — just no one's watching anymore (the notification is still there).
         stopObservers()
         mainHandler.removeCallbacksAndMessages(null)
         _b = null
@@ -2121,8 +2295,8 @@ class PaneFragment : Fragment() {
         }
 
         /**
-         * 锁定到单一来源的面板(选择器用):树上只有 [scheme] 这一个根,
-         * 打开即展开到 [startPath]。
+         * Locked to a single source (for picker use): the tree has only [scheme] as its root,
+         * and opens already expanded to [startPath].
          */
         fun locked(scheme: String, startPath: String, label: String?) = PaneFragment().apply {
             arguments = Bundle().apply {

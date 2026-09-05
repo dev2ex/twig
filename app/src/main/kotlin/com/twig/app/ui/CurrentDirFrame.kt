@@ -9,11 +9,14 @@ import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.R
 
 /**
- * 当前选中节点高亮框:框住"最近选中的节点行(目录/服务器/分组/收藏等任意类型)
- * + 它展开的**直接一层子级**"。只到直接子级为止(底边落在最后一个直接子级),
- * 不再递归包住更深的孙级——否则展开一个根/分组(下面挂着深展开的服务器/目录)时,
- * 框会从头拉到整棵树的底,过高。焦点点进具体子级时,框会随 currentKey 转移到那一层。
- * 框的上/下边超出可见区时,对应边推到屏幕外,只画侧边。
+ * Highlight frame around the currently selected node: encloses "the most recently
+ * selected node row (directory / server / group / favorite — any kind) **plus its
+ * directly-expanded children**". Only down to direct children (bottom edge on the last
+ * direct child), not recursively wrapping deeper grandchildren — otherwise expanding a
+ * root / group (with deeply-expanded servers / directories under it) would pull the
+ * frame all the way down the tree, making it too tall. When focus moves into a specific
+ * child, the frame follows currentKey to that level. If the frame's top / bottom edges
+ * fall outside the visible area, that edge is pushed off-screen and only the side is drawn.
  */
 class CurrentDirFrame(context: Context) : RecyclerView.ItemDecoration() {
 
@@ -31,7 +34,8 @@ class CurrentDirFrame(context: Context) : RecyclerView.ItemDecoration() {
         val list = adapter.currentList
         val start = list.indexOfFirst { it.key == key }
         if (start < 0) return
-        // 底边只到"最后一个直接子级(depth+1)",跳过其展开的更深孙级
+        // The bottom edge stops at "the last direct child (depth+1)", skipping the deeper
+        // grandchildren that direct children may themselves have expanded
         val depth = list[start].depth
         var end = start
         var i = start + 1
@@ -43,10 +47,11 @@ class CurrentDirFrame(context: Context) : RecyclerView.ItemDecoration() {
         val firstPos = parent.getChildAdapterPosition(parent.getChildAt(0))
         val lastPos = parent.getChildAdapterPosition(parent.getChildAt(parent.childCount - 1))
         if (firstPos == RecyclerView.NO_POSITION || lastPos == RecyclerView.NO_POSITION) return
-        if (end < firstPos || start > lastPos) return // 子树完全在可见区外
+        if (end < firstPos || start > lastPos) return // Subtree is entirely outside the visible area
 
-        val off = paint.strokeWidth // 越界时把边推到屏幕外,只留侧边
-        // 用最终布局位置(top/bottom),不含动画过渡偏移,避免框随动画拉伸
+        val off = paint.strokeWidth // When out of bounds, push the edge off-screen, leaving only the side
+        // Use the final layout positions (top/bottom), excluding the animation transition
+        // offsets, so the frame does not stretch along with animations
         val top = if (start >= firstPos) {
             parent.findViewHolderForAdapterPosition(start)?.itemView?.top?.toFloat() ?: -off
         } else -off

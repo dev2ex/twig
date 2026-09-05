@@ -24,6 +24,7 @@
     <string name="restic_wrong_pw">Wrong password or unreadable: %1$s</string>
     <string name="restic_latest">Latest</string>
     <string name="action_density">Row height</string>
+    <string name="action_text_size">Text size</string>
     <string name="action_sort">Sort</string>
     <string name="action_remember_location">Remember last location</string>
     <string name="action_fullscreen">Fullscreen (hide status bar)</string>
@@ -39,6 +40,9 @@
     <string name="density_compact">Compact</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Relaxed</string>
+    <string name="text_size_small">Small</string>
+    <string name="text_size_normal">Normal</string>
+    <string name="text_size_large">Large</string>
     <string name="action_new_folder">New folder</string>
     <string name="action_new_text">New text file</string>
     <string name="new_text_default">untitled.txt</string>
@@ -67,7 +71,7 @@
     <string name="treemap_reveal">Show in other pane</string>
     <string name="menu_swap_pane">Switch to other pane</string>
     <string name="treemap_confirm_delete">Delete %1$s (%2$s)?</string>
-    <!-- 操作列顶部固定区的短标签(9sp 单行,长文案会被截断) -->
+    <!-- Short labels for the action strip's pinned top row (9sp, single line; long copy is truncated) -->
     <string name="strip_term">Term</string>
     <string name="strip_swap">Panes</string>
     <string name="strip_menu">Menu</string>
@@ -83,6 +87,11 @@
     <string name="search_result_title">Search results (%1$d)</string>
     <string name="search_stats">Folder: %1$s\nPattern: %2$s\nFiles matched: %3$d\nFolders matched: %4$d</string>
     <string name="search_scanning_suffix">\n(still scanning…)</string>
+    <!-- Go to path: descend by name from one root row (see PaneViewModel.revealUnder) -->
+    <string name="action_goto_path">Go to path…</string>
+    <string name="goto_hint">Path under this root, e.g. Download/notes.txt</string>
+    <string name="err_goto_missing">Not found: %1$s</string>
+    <string name="err_goto_not_dir">%1$s is not a folder</string>
     <string name="action_add_favorite">Add to favorites</string>
     <string name="action_remove_favorite">Remove from favorites</string>
     <string name="action_rename_favorite">Rename</string>
@@ -128,12 +137,13 @@
     <string name="s3_endpoint">Endpoint (https://s3.region.amazonaws.com)</string>
     <string name="s3_access_key">Access key ID</string>
     <string name="s3_secret_key">Secret access key</string>
-    <string name="s3_bucket">Bucket (leave empty to list all)</string>
+    <string name="s3_bucket">Bucket / prefix (optional, empty = list all)</string>
+    <string name="conn_path">Path (optional)</string>
     <string name="s3_region">Region (default us-east-1)</string>
     <string name="s3_path_style">Path-style addressing (needed for MinIO etc.)</string>
     <string name="webdav_url">Server URL (http(s)://…)</string>
     <string name="smb_host">Host (IP/name)</string>
-    <string name="smb_share">Share name</string>
+    <string name="smb_share">Share / path (optional, empty = list all shares)</string>
     <string name="smb_domain">Domain (default WORKGROUP)</string>
     <string name="action_saved">Connection saved</string>
     <string name="action_theme">Theme</string>
@@ -144,7 +154,6 @@
     <string name="action_settings">Settings</string>
     <string name="action_view_mode">View</string>
     <string name="action_thumbs">Thumbnails</string>
-    <string name="action_show_hidden">Show hidden files</string>
     <string name="view_mode_grid_off">List</string>
     <string name="view_mode_grid_media">Grid · Media only</string>
     <string name="view_mode_grid_all">Grid · All files</string>
@@ -165,6 +174,7 @@
     <string name="sftp_pick_key">Choose</string>
     <string name="sftp_key_copied">Private key imported: %1$s</string>
     <string name="sftp_key_failed">Private key import failed: %1$s</string>
+    <string name="shortcut_terminal">Terminal</string>
     <string name="terminal_menu">SSH terminal</string>
     <string name="terminal_here">Open terminal here</string>
     <string name="terminal_failed">Terminal connection failed</string>
@@ -186,8 +196,9 @@
     <string name="viewer_too_large">(File is large; showing the first %1$s only)</string>
     <string name="viewer_load_failed">Failed to read: %1$s</string>
     <string name="player_audio_disabled">Audio decoding failed (source may be corrupted); playing video muted</string>
-    <!-- 快进符号是 drawableEnd(ic_fast_forward),不写进文案:U+25B6 得回落到符号字体,
-         那里的三角是满 em 高的字形,和 x-height 只有半 em 的数字摆一起显得大一圈 -->
+    <!-- The fast-forward glyph is drawn by MediaPlayerActivity.fastForwardIcon and is not in the
+         copy: U+25B6 would fall back to the symbol font, where the triangle is a full em tall
+         and ends up looking bigger next to digits whose x-height is only half an em. -->
     <string name="player_speed">%1$s×</string>
     <string name="player_orientation">Lock screen orientation</string>
     <string name="player_orientation_locked">Orientation locked</string>
@@ -258,7 +269,7 @@
     <string name="diff_merge_down">Copy this block to the bottom</string>
     <string name="diff_undo">Undo</string>
     <string name="diff_merge_blocked_encoding">Not valid UTF-8; merging is disabled to avoid corrupting the file</string>
-    <!-- 目录对比 -->
+    <!-- Directory compare -->
     <string name="compare_title">Compare folders</string>
     <string name="strip_compare">Compare</string>
     <string name="compare_need_two">Pick a folder in each pane first</string>
@@ -292,6 +303,7 @@
     <string name="compare_content_hint">Only pairs of equal size are read. Network sources must download both copies, so this is off by default.</string>
     <string name="compare_text_diff">Text diff</string>
     <string name="compare_image_diff">Compare images</string>
+    <string name="compare_hex_diff">Hex compare</string>
     <string name="img_cmp_sync">Sync zoom</string>
     <string name="img_cmp_same_size">Same dimensions</string>
     <string name="img_cmp_bigger">%1$s side has more pixels</string>
@@ -306,17 +318,24 @@
     <string name="compare_pick_pair">Select a file that exists on both sides</string>
     <string name="compare_copy_confirm">Copy %1$d selected item(s) to the %2$s side?</string>
     <string name="compare_sync_confirm">Push %1$d differing item(s) to the %2$s side?</string>
+    <string name="compare_sync_section">Sync</string>
+    <string name="compare_sync_incremental_opt">Incremental sync (keep extra items on target)</string>
+    <string name="compare_sync_incremental_hint">Push only what is unique to the source side or differs on both sides; anything extra on the target side stays. Turn it off for a mirror sync — extra files and folders on the target side are deleted, leaving both sides identical.</string>
+    <string name="compare_sync_incremental">Incremental sync (keep %2$d extra item(s) on the %1$s side)</string>
+    <string name="compare_sync_overwrite_newer">Overwrite %2$d newer item(s) on the %1$s side</string>
+    <string name="compare_sync_scanning">Scanning… %1$d compared · %2$d differing</string>
+    <string name="compare_sync_delete_failed">%1$d item(s) could not be deleted</string>
+    <string name="compare_sync_wait_scan">Still scanning — wait for it to finish before syncing</string>
     <string name="compare_delete_confirm">Delete %1$d item(s) from the %2$s side? This cannot be undone.</string>
     <string name="compare_exclude_this">Exclude this item</string>
     <string name="compare_excludes">Exclude rules</string>
     <string name="compare_excludes_hint">One rule per line. Wildcards * and ? match whole names; a rule containing / matches the path relative to the root.</string>
     <string name="compare_excludes_presets">Add common rules…</string>
     <string name="compare_save">Save this comparison</string>
-    <string name="compare_saved">Saved comparisons</string>
+    <string name="compare_saved">Comparisons</string>
     <string name="compare_saved_ok">Saved</string>
-    <string name="compare_saved_empty">No saved comparisons yet</string>
-    <string name="compare_saved_delete">Delete a saved comparison</string>
-    <string name="compare_saved_deleted">Deleted</string>
+    <string name="compare_remove">Delete this comparison</string>
+    <string name="compare_remove_confirm">Delete the saved comparison %1$s?</string>
     <string name="compare_save_unsupported">This source can\'t be saved (restic snapshots and archives can\'t be reopened later)</string>
     <string name="compare_open_failed">Couldn\'t reach one of the two sides</string>
     <string name="open_how">Open with</string>
@@ -327,6 +346,7 @@
     <string name="open_as_archive">Open as archive</string>
     <string name="viewer_theme">Color scheme</string>
     <string name="viewer_wrap">Word wrap</string>
+    <string name="viewer_line_numbers">Line numbers</string>
     <string name="viewer_search">Search</string>
     <string name="viewer_text_bigger">Larger text</string>
     <string name="viewer_text_smaller">Smaller text</string>
@@ -334,6 +354,12 @@
     <string name="hex_search_hex">HEX</string>
     <string name="hex_search_hint_text">Search text</string>
     <string name="hex_search_hint_hex">Hex bytes, e.g. 4D 5A</string>
+    <string name="hex_cmp_opening">Opening…</string>
+    <string name="hex_cmp_scanning">Comparing bytes… %1$d%%</string>
+    <string name="hex_cmp_scan_failed">Byte comparison failed</string>
+    <string name="hex_cmp_identical">The two files are byte-for-byte identical</string>
+    <string name="hex_cmp_count">%1$d differences</string>
+    <string name="hex_cmp_count_more">Over %1$d differences</string>
     <string name="viewer_preview">Preview</string>
     <string name="viewer_edit">Edit</string>
     <string name="viewer_save">Save</string>
@@ -345,7 +371,10 @@
     <string name="viewer_discard_msg">This file has unsaved changes.</string>
     <string name="viewer_discard_ok">Discard</string>
     <string name="viewer_readonly_truncated">File too large; only the first %1$s is loaded, so it cannot be edited</string>
-    <string name="viewer_readonly_encoding">Text is not UTF-8; editing is disabled to avoid corrupting it</string>
+    <string name="viewer_readonly_encoding">Text encoding not recognized; editing is disabled to avoid corrupting it</string>
+    <string name="viewer_charset_failed_title">Can\'t save in %1$s</string>
+    <string name="viewer_charset_failed">%1$s can\'t represent these characters: %2$s\n\nSaving as UTF-8 keeps them, but the file\'s encoding changes — other programs may then read the rest of it as garbage.</string>
+    <string name="viewer_save_as_utf8">Save as UTF-8</string>
     <string name="share_confirm">Copy here</string>
     <string name="share_no_content">No shareable content received</string>
     <string name="share_add_server_hint">Please add this type of server connection on the main screen first</string>
@@ -381,6 +410,8 @@
     <string name="music_track_count">%1$d track(s)</string>
     <string name="music_load_failed">Could not open any track in this playlist — is the server connected?</string>
     <string name="music_pin_shortcut">Add "Music" shortcut to home screen</string>
+    <!-- Default display name for the always-present Favorites playlist (created on first access). -->
+    <string name="playlist_favorites">Favorites</string>
     <string name="music_pin_shortcut_unsupported">Current launcher doesn\'t support pinning shortcuts</string>
 
     <!-- Tree / root nodes (PaneViewModel) -->
@@ -389,6 +420,7 @@
     <string name="group_root">Root</string>
     <string name="group_lan">Local Network (SMB)</string>
     <string name="group_saf">Document Tree (SAF)</string>
+    <string name="volume_grant_saf">Grant access via SAF</string>
 
     <!-- Apps (AppsFileSystem) -->
     <string name="apps_root">Apps</string>
@@ -401,6 +433,14 @@
     <string name="apps_launch">Launch app</string>
     <string name="apps_uninstall_system">System apps cannot be uninstalled</string>
     <string name="apps_launch_failed">This app has no launcher entry</string>
+
+    <!-- Apk bundle install: xapk / apks / apkm (ApkBundleInstall) -->
+    <string name="install_title">Install app bundle</string>
+    <string name="install_no_apk">No apk inside this bundle</string>
+    <string name="install_failed">Install failed: %1$s</string>
+    <string name="install_done">Installed</string>
+    <string name="install_need_permission">Installing an app bundle needs the \"install unknown apps\" permission for Twig.</string>
+    <string name="install_settings">Go to settings</string>
     <string name="capacity_format">%1$s free / %2$s total</string>
     <string name="action_add_smb">Add SMB server…</string>
     <string name="action_add_ftp">Add FTP server…</string>
@@ -408,6 +448,10 @@
     <string name="action_add_webdav">Add WebDAV…</string>
     <string name="action_add_s3">Add S3 storage…</string>
     <string name="action_add_saf">Add document tree…</string>
+    <string name="action_remove_saf">Remove document tree</string>
+    <string name="confirm_remove_saf">Give up access to \"%1$s\"?\n\nOnly the grant is dropped — the folder and everything in it stays where it is, and it can be added again at any time.</string>
+    <string name="saf_remove_failed">Could not give up that access grant</string>
+    <string name="saf_root_no_move">A document tree root is an access grant, not an ordinary folder — it can be copied, but not moved</string>
     <string name="fav_hint">Long-press a folder to add it to favorites</string>
     <string name="err_reveal_unsupported">This source can\'t be located in the pane</string>
     <string name="err_conn_deleted">The matching connection was deleted</string>
@@ -452,6 +496,28 @@
     <string name="settings_thumbs_embedded">Prefer embedded file thumbnails</string>
     <string name="settings_thumbs_embedded_desc">Uses a jpg\'s EXIF-embedded thumbnail directly when available: faster, but usually only 160×120 and blurrier</string>
     <string name="settings_clear_thumbs_cache">Clear thumbnail cache</string>
+    <string name="settings_section_text">Text</string>
+    <string name="settings_text_charsets">Text encoding</string>
+    <string name="charsets_none">Unicode only</string>
+    <string name="charsets_dialog_note">When text is not Unicode, the checked encodings are tried in this order and the first one that decodes cleanly wins. Keep single-byte encodings (windows-125x, ISO-8859-x, KOI8-R) last — they accept almost any bytes, so nothing below them ever gets a turn.</string>
+    <string name="charset_item">%1$s \u00b7 %2$s</string>
+    <string name="charset_move_up">Move up</string>
+    <string name="charset_move_down">Move down</string>
+    <string name="charset_lang_zh_cn">Simplified Chinese</string>
+    <string name="charset_lang_zh_tw">Traditional Chinese</string>
+    <string name="charset_lang_ja">Japanese</string>
+    <string name="charset_lang_ko">Korean</string>
+    <string name="charset_lang_cyrillic">Cyrillic</string>
+    <string name="charset_lang_western">Western European</string>
+    <string name="charset_lang_arabic">Arabic</string>
+    <string name="charset_lang_zh_hk">Traditional Chinese (HK)</string>
+    <string name="charset_lang_thai">Thai</string>
+    <string name="charset_lang_greek">Greek</string>
+    <string name="charset_lang_turkish">Turkish</string>
+    <string name="charset_lang_hebrew">Hebrew</string>
+    <string name="charset_lang_baltic">Baltic</string>
+    <string name="charset_lang_central">Central European</string>
+
     <string name="settings_section_player">Video player</string>
     <string name="settings_longpress_speed">Press-and-hold speed</string>
     <string name="settings_speed_n">%1$.1f×</string>
@@ -471,7 +537,7 @@
     <string name="terminal_here_root">Open root terminal here</string>
     <string name="terminal_here_shizuku">Open Shizuku terminal here</string>
     <string name="terminal_new_priv">New privileged session</string>
-    <!-- 特权访问(root / Shizuku) -->
+    <!-- Privileged access (root / Shizuku) -->
     <string name="settings_section_privileged">Privileged access</string>
     <string name="settings_privileged">Elevated file access</string>
     <string name="settings_privileged_desc">Read and write directories the app cannot reach on its own, such as /data and Android/data</string>
@@ -509,6 +575,11 @@
     <string name="picker_hint_single">Tap a file to select it</string>
     <string name="picker_hint_multi">Tick the files, then tap Select</string>
     <string name="picker_none_checked">No file ticked yet</string>
+    <!-- StreamProvider messages surfaced to other apps via SecurityException / IllegalArgumentException. -->
+    <string name="stream_read_only">Stream is read-only</string>
+    <string name="stream_bad_uri">Malformed content URI</string>
+    <string name="stream_bad_token">Malformed stream token</string>
+
     <!-- Background transfers (copy / move / compress) -->
     <string name="transfer_channel">File transfers</string>
     <string name="transfer_background">Run in background</string>
@@ -691,4 +762,102 @@
     <string name="share_web_stats">%1$d folders · %2$d files · %3$s</string>
     <string name="share_web_error">Could not open: %s</string>
     <string name="share_web_net_error">Network error</string>
+    <string name="action_connect_jellyfin">Add Jellyfin server</string>
+    <string name="action_connect_emby">Add Emby server</string>
+    <string name="action_add_jellyfin">Add Jellyfin server…</string>
+    <string name="action_add_emby">Add Emby server…</string>
+    <string name="group_media">Media servers</string>
+    <string name="jf_url">Server URL (http(s)://host:8096)</string>
+    <string name="jf_user">Username</string>
+    <string name="jf_pass">Password</string>
+    <string name="jf_api_key">API key (optional; used instead of the password)</string>
+    <string name="jf_api_key_hint">With an API key, the username only selects whose watch state to use — leave it empty to take the first user.</string>
+    <string name="media_resume">Continue watching</string>
+    <string name="err_progress_sync">Failed to sync playback progress: %1$s</string>
+    <string name="media_playlists">Playlists</string>
+    <string name="media_collections">Collections</string>
+    <string name="media_latest">Latest</string>
+    <string name="media_folders">Folders</string>
+    <string name="media_albums">Albums</string>
+    <string name="media_album_artists">Album artists</string>
+    <string name="media_artists">Artists</string>
+    <string name="player_prev_episode">Previous episode</string>
+    <string name="player_next_episode">Next episode</string>
+    <string name="settings_auto_next">Auto-play next episode</string>
+    <string name="settings_auto_next_sum">When a video ends, continue with the next episode in the same series</string>
+
+    <!-- Security & backup -->
+    <string name="settings_section_security">Security &amp; backup</string>
+    <string name="settings_master_pw">Master password</string>
+    <string name="settings_master_pw_off">Off — passwords are protected by this device\'s hardware keystore</string>
+    <string name="settings_master_pw_on">On — required once per app start</string>
+    <string name="master_pw_note">Saved passwords are always encrypted: the key lives in this device\'s hardware keystore and never leaves it, so copying /data/data elsewhere reveals nothing.\n\nA master password goes one step further — the key is derived from what you type and is never stored, so it stays out of reach even on a rooted device. You will be asked for it once each time the app starts.</string>
+    <string name="master_pw_enable">Set a master password</string>
+    <string name="master_pw_change">Change master password</string>
+    <string name="master_pw_disable">Turn off master password</string>
+    <string name="master_pw_new">New password</string>
+    <string name="master_pw_repeat">Repeat password</string>
+    <string name="master_pw_current">Current password</string>
+    <string name="master_pw_unlock_title">Unlock Twig</string>
+    <string name="master_pw_unlock_note">Enter your master password to use saved server passwords.</string>
+    <string name="master_pw_mismatch">The two entries do not match</string>
+    <string name="master_pw_too_short">Use at least 6 characters</string>
+    <string name="master_pw_failed">Could not change the master password</string>
+    <string name="master_pw_wrong">Wrong password</string>
+    <string name="master_pw_enabled">Master password is on</string>
+    <string name="master_pw_disabled">Master password is off. Passwords stay encrypted by the device keystore.</string>
+    <string name="settings_master_pw_on_bio">On — fingerprint or master password at each app start</string>
+    <string name="master_pw_bio_enable">Turn on fingerprint unlock</string>
+    <string name="master_pw_bio_disable">Turn off fingerprint unlock</string>
+    <string name="master_pw_bio_enabled">Fingerprint unlock is on. The master password still works — you can switch to it any time.</string>
+    <string name="master_pw_bio_disabled">Fingerprint unlock is off</string>
+    <string name="master_pw_bio_unavailable">Cannot turn on fingerprint unlock — enrol a fingerprint in system settings first</string>
+    <string name="master_pw_use_pw">Use master password</string>
+    <string name="settings_backup_export">Export configuration</string>
+    <string name="settings_backup_export_desc">Connections, passwords, favourites and settings, as one .twigbak file</string>
+    <string name="settings_backup_import">Import configuration</string>
+    <string name="settings_backup_import_desc">Merge a .twigbak file into this device</string>
+    <string name="backup_export_title">Export configuration</string>
+    <string name="backup_export_note">Choose a password to encrypt the backup. Leave it empty to export as readable plain text.</string>
+    <string name="backup_export_warn">This file contains every server password and private key in the clear. Do not put it on cloud storage and do not send it through chat apps.</string>
+    <string name="backup_pw_hint">Password (empty = no encryption)</string>
+    <string name="backup_import_pw_title">This backup is encrypted</string>
+    <string name="backup_import_pw_note">Enter the password used when it was exported.</string>
+    <string name="backup_export_failed">Export failed: %1$s</string>
+    <string name="backup_imported">Imported %1$d connections, %2$d passwords, %3$d keys, %4$d settings</string>
+    <string name="backup_import_failed">Import failed: %1$s</string>
+    <string name="backup_bad_password">Wrong password, or the file has been altered</string>
+    <string name="backup_bad_format">Not a Twig backup file</string>
+    <string name="backup_restart_note">Restart Twig for all settings to take effect.</string>
+    <string name="backup_working">Working…</string>
+    <string name="backup_locked">Unlock with your master password first</string>
+    <string name="picker_hint_dir">Open the folder you want to save into, then tap OK</string>
+    <string name="backup_pick_dir">Save backup to</string>
+    <string name="backup_pick_file">Choose a backup file</string>
+    <string name="backup_exported_at">Exported to %1$s</string>
+    <string name="action_lock">Lock</string>
+    <string name="action_exit">Exit</string>
+    <string name="exit_title">Exit Twig</string>
+    <string name="exit_note">These will be stopped:</string>
+    <string name="exit_running_music">Playing: %1$s</string>
+    <string name="exit_running_share">Wi-Fi sharing is on</string>
+    <string name="exit_running_transfer">A file transfer is in progress</string>
+    <string name="exit_confirm">Exit</string>
+    <string name="exit_lock_instead">Lock only</string>
+    <string name="exit_lock_hint">Locking keeps all of this running — you just have to enter the master password to come back.</string>
+    <plurals name="exit_running_term">
+        <item quantity="one">%1$d terminal session</item>
+        <item quantity="other">%1$d terminal sessions</item>
+    </plurals>
+
+    <!-- About -->
+    <string name="settings_section_about">About</string>
+    <string name="settings_about">About Twig</string>
+    <string name="about_version">Version %1$s (%2$d)</string>
+    <string name="about_body">%1$s\nLicense: GPL-3.0-only\n\nSource code, issues and releases:\n%2$s</string>
+    <string name="about_open">Project page</string>
+    <string name="about_copy">Copy link</string>
+    <string name="about_no_browser">Nothing on this device can open a link — the address was copied to the clipboard instead</string>
+    <string name="pdf_page_mode">One page per screen</string>
+    <string name="pdf_open_failed">Cannot open this PDF</string>
 </resources>

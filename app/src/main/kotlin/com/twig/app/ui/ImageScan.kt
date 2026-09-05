@@ -11,10 +11,11 @@ import kotlinx.coroutines.flow.flowOn
 private const val MAX_DEPTH = 8
 
 /**
- * 递归扫描目录下的图片,BFS 逐层 [FileSystem.list],找到一张就 emit 一张——供幻灯片
- * "边扫边播"(不必等整棵树扫完才显示第一张,网络来源尤其明显)。单个目录 list() 失败
- * (权限/网络错误)跳过继续其它分支,不中断整体扫描。[maxImages] 防止超大目录树/深层网络
- * 路径无限扫描。
+ * Recursively scan a directory for images, BFS layer by layer via [FileSystem.list], emitting each image as it's
+ * found — for the slideshow's "scan and play simultaneously" (no need to wait for the whole tree to be scanned
+ * before showing the first image; the benefit is especially noticeable for network sources). If a single directory's
+ * list() fails (permissions / network error), skip it and continue other branches without aborting the whole scan.
+ * [maxImages] prevents endless scanning in huge directory trees / deeply nested network paths.
  */
 fun scanImages(root: XFile, maxImages: Int): Flow<XFile> = flow {
     val queue = ArrayDeque<Pair<XFile, Int>>()

@@ -8,9 +8,10 @@ import androidx.media3.datasource.DataSpec
 import com.twig.core.RandomSource
 
 /**
- * 把 [RandomSource] 适配成 media3 DataSource,供播放器/离屏抓帧共用。
- * ExoPlayer seek 时会 close+open 新位置——底层是共享的 pread 源,重开零成本;
- * close 不关底层连接(由调用方统一关)。
+ * Adapts [RandomSource] into a media3 DataSource, shared by the player / off-screen frame grabbing.
+ * ExoPlayer seek closes + opens at the new position — the underlying source is a shared pread
+ * source, reopen costs zero; close does not close the underlying connection (caller closes it
+ * centrally).
  */
 @UnstableApi
 class RandomSourceDataSource(private val src: RandomSource) : BaseDataSource(/* isNetwork = */ true) {

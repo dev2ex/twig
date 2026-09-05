@@ -1,0 +1,1 @@
+In Markdown preview, the navigation bar now follows the preview background rather than the code theme.

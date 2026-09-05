@@ -10,13 +10,14 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 本地存储文件系统,基于 java.io.File。
+ * Local storage file system, based on java.io.File.
  *
- * Phase 1 直接用 File API(需运行时存储权限)。
- * Phase 1.5 计划:Android 10+ 在无 MANAGE_EXTERNAL_STORAGE 时回退到 SAF/DocumentFile,
- * 届时只需新增一个 SafFileSystem 注册到另一 scheme,或在此内部分流,UI 无感知。
+ * Phase 1 uses the File API directly (requires runtime storage permission).
+ * Phase 1.5 plan: on Android 10+ without MANAGE_EXTERNAL_STORAGE, fall back to
+ * SAF / DocumentFile. When that lands, just add a new SafFileSystem registered
+ * under a different scheme, or split internally here; the UI won't notice.
  *
- * @param rootDir 该文件系统暴露的根目录(默认外部存储根)。
+ * @param rootDir the root directory this file system exposes (defaults to external storage root).
  */
 class LocalFileSystem(
     private val rootDir: File = File("/"),
@@ -51,7 +52,7 @@ class LocalFileSystem(
         return sorted(children.map { toXFile(it) })
     }
 
-    /** 目录在前、再按名称不区分大小写排序——文件管理器的常规排序 */
+    /** Directories first, then by name case-insensitively — the conventional file manager sort. */
     private fun sorted(items: List<XFile>): List<XFile> = items
         .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
 
@@ -63,10 +64,12 @@ class LocalFileSystem(
         }
 
     /**
-     * 写入的通知时机是**流关闭**,不是打开——媒体库要的是写完之后的那个文件
-     * (打开时长度还是 0,扫出来是一条无效记录)。
-     * `FilterOutputStream` 的 `write(ByteArray,Int,Int)` 默认逐字节转发,必须覆盖掉,
-     * 否则每次拷贝都退化成一字节一次系统调用。
+     * The notification moment for a write is **stream close**, not open — the
+     * media library needs the file as it is after writing (at open the length is
+     * still 0, and MediaStore would index an invalid record).
+     * `FilterOutputStream.write(ByteArray,Int,Int)` forwards byte by byte by
+     * default and must be overridden, otherwise every copy degrades to one
+     * syscall per byte.
      */
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         val f = File(file.path)
@@ -111,8 +114,10 @@ class LocalFileSystem(
     override fun rename(file: XFile, newName: String): XFile {
         val src = File(file.path)
         val dst = File(src.parentFile, newName)
-        // ★ POSIX rename(2) 会**原子地替换**已存在的目标,File.renameTo 直接映射到它——
-        // 不先判一次,把 a.txt 改名成同目录已有的 b.txt 就会无声吃掉 b.txt。
+        // ★ POSIX rename(2) atomically replaces the existing target, and
+        // File.renameTo maps straight to it — without the pre-check, renaming
+        // a.txt to b.txt when b.txt already exists in the same directory
+        // silently eats b.txt.
         if (dst.exists()) throw FsException("Target already exists: $newName")
         if (!src.renameTo(dst)) {
             val priv = elevation ?: throw FsException("Rename failed: ${file.path}")
@@ -124,7 +129,7 @@ class LocalFileSystem(
             changed?.invoke(dst.absolutePath)
             return XFile(SCHEME, dst.path, isDir = file.isDir)
         }
-        changed?.invoke(src.absolutePath) // 旧路径也报一次:媒体库那边要把它撤下来
+        changed?.invoke(src.absolutePath) // also report the old path: MediaStore needs to drop it
         changed?.invoke(dst.absolutePath)
         return toXFile(dst)
     }
@@ -137,12 +142,15 @@ class LocalFileSystem(
     }
 
     /**
-     * "不存在"这个答案**可能只是看不见**吗?
+     * Could the answer "does not exist" actually be "just invisible"?
      *
-     * `File.exists()` 分不出 ENOENT 和 EACCES,而 [exists] 是批量复制里的热路径
-     * (每个文件都要问一次目标在不在)。不加这道判断的话,往 `/sdcard` 拷一千个文件
-     * 就会白白多一千次 shell 往返 —— 而那些路径的父目录本来就读得动,答案是可信的。
-     * 父目录读不了才有必要提权再问一次。`canRead` 是一次 access(2),不起进程。
+     * `File.exists()` cannot distinguish ENOENT from EACCES, and [exists] is on
+     * the hot path of a batch copy (each file asks once whether the destination
+     * is there). Without this guard, copying a thousand files to `/sdcard`
+     * wastes a thousand extra shell round trips — and the parents of those
+     * paths are normally readable, so the answer there is trustworthy. Only
+     * when the parent itself is unreadable is it worth elevating and asking
+     * again. `canRead` is a single access(2); it doesn't fork a process.
      */
     private fun maybeHidden(f: File): Boolean {
         if (elevation == null) return false
@@ -154,12 +162,15 @@ class LocalFileSystem(
         File(file.path).setLastModified(time) || elevation?.setModifiedTime(file.path, time) == true
 
     override fun moveWithin(src: XFile, destDir: XFile, newName: String): Boolean {
-        // 同盘 rename 是 O(1) 的最优移动;跨盘 renameTo 会失败,返回 false 交给拷贝引擎
+        // Same-volume rename is the O(1) optimal move; cross-volume renameTo fails,
+        // return false to fall back to the copy engine.
         val from = File(src.path)
         val to = File(destDir.path, newName)
-        // 同 rename:renameTo 会静默替换已存在的目标。CopyEngine 只在无同名冲突时才调
-        // 这里,但它那份判断基于列目录的快照,期间目标目录可能已被外部改动——兜一次底,
-        // 返回 false 退回"拷贝 + 删源",那条路上有完整的冲突询问。
+        // Same as rename: renameTo silently replaces an existing target. CopyEngine
+        // only calls this when there is no same-name conflict, but its check is
+        // based on a directory listing snapshot — the destination dir may have been
+        // mutated externally in the meantime — so as a final safety net we bail
+        // back to "copy + delete source", where the full conflict prompt runs.
         if (to.exists()) return false
         val ok = runCatching { from.renameTo(to) }.getOrDefault(false)
         if (ok) {
@@ -170,10 +181,13 @@ class LocalFileSystem(
     }
 
     /**
-     * 递归删除。**符号链接只删链接本身,绝不跟进去删目标里的东西**——
-     * `File.isDirectory` 与 `listFiles()` 都跟随符号链接,不判一下的话,删一个内含
-     * "指向别处的目录符号链接"的目录,会先把**链接目标里的文件全删光**再删链接。
-     * 这在 Android 上不是理论问题:本地 shell 就能建链接,系统自己也到处是链接。
+     * Recursive delete. **Symlinks delete only the link itself, never into the
+     * target** — both `File.isDirectory` and `listFiles()` follow symlinks, so
+     * without this check, deleting a directory containing a "directory symlink
+     * pointing elsewhere" would first wipe out everything at the link's
+     * destination before removing the link itself. On Android this isn't a
+     * theoretical concern: a local shell can create such links, and the system
+     * is full of them already.
      */
     private fun deleteRecursively(f: File): Boolean {
         if (f.isDirectory && !isSymlink(f)) {
@@ -183,12 +197,14 @@ class LocalFileSystem(
     }
 
     /**
-     * 是不是符号链接。**先把父目录 canonical 化再比**,不能直接拿
-     * `f.canonicalFile != f.absoluteFile` —— 那样只要路径里**任何一级**是链接就会判真,
-     * 而 Android 上 `/sdcard` 本身就是指向 `/storage/emulated/0` 的链接,
-     * 于是 `/sdcard/任意目录` 全被误判成链接、递归删除直接失效。
-     * (与 Apache Commons IO `FileUtils.isSymlink` 同一套路;这里是纯 JVM 模块,
-     * 用不了 `android.system.Os.lstat`,`java.nio.file` 又要 API 26 而 minSdk 是 24。)
+     * Whether the path is a symlink. **Canonicalise the parent directory first
+     * before comparing**; you can't just do `f.canonicalFile != f.absoluteFile`
+     * — that fires when *any* level of the path is a link, and on Android
+     * `/sdcard` itself is a link to `/storage/emulated/0`, so every
+     * `/sdcard/anything` would be mis-flagged as a symlink and recursive delete
+     * would silently stop working. (Same approach as Apache Commons IO's
+     * `FileUtils.isSymlink`; this is a pure JVM module, so `android.system.Os.lstat`
+     * isn't available, and `java.nio.file` needs API 26 while minSdk is 24.)
      */
     private fun isSymlink(f: File): Boolean = runCatching {
         val parent = f.parentFile ?: return false
@@ -210,35 +226,51 @@ class LocalFileSystem(
         const val SCHEME = "file"
 
         /**
-         * 本地文件写入/删除/改名的通知钩子(路径为绝对路径,可能已不存在)。
+         * Notification hook for local file writes / deletes / renames (path is
+         * absolute and may already no longer exist).
          *
-         * 存在的理由只有一个:**告诉系统媒体库有东西变了**——不通知的话,复制进
-         * `DCIM/` 的图片在相册里根本不出现(MediaStore 只认自己扫过的东西,而
-         * `java.io` 写文件不会触发扫描)。所有本地写入都经过这里的 `openOutput`,
-         * 挂在这一层就等于一次覆盖复制/解压/编辑器保存/WiFi 共享上传所有入口。
+         * There is exactly one reason this exists: **to tell the system media
+         * library that something changed** — without notification, images
+         * copied into `DCIM/` never show up in the gallery (MediaStore only
+         * recognises what it has indexed itself, and writing files via
+         * `java.io` doesn't trigger a scan). All local writes go through
+         * `openOutput` here, so attaching at this layer covers every entry
+         * point: over-copy copy, archive extraction, editor save, WiFi share
+         * upload — all of them.
          *
-         * 这是纯 JVM 模块,不认识 Context 也不认识 MediaStore;由 `:app` 在启动时装上
-         * 具体实现(见 `com.twig.app.MediaScan`)。回调可能来自任意线程,实现方自理。
+         * This is a pure JVM module: it has no Context and no MediaStore; the
+         * concrete implementation is installed at startup by `:app` (see
+         * `com.twig.app.MediaScan`). Callbacks may arrive from any thread;
+         * the implementation handles that itself.
          */
         @Volatile
         @JvmStatic
         var changed: ((path: String) -> Unit)? = null
 
         /**
-         * 提权回落(root / Shizuku)。装上之后,**普通 API 失败的那一步**才改走特权 shell:
-         * 列不动的目录、读不了的文件、删不掉的条目。装不上就是 null,行为与从前一字不差。
+         * Privileged fallback (root / Shizuku). Once installed, only the steps
+         * where the normal API fails switch to the privileged shell:
+         * directories that can't be listed, files that can't be read, entries
+         * that can't be deleted. When nothing is installed it is null, and
+         * behaviour is identical to before this hook existed.
          *
-         * ★ 为什么是"回落"而不是独立的 scheme:用户要的是**「根目录」那棵树点得进去**,
-         * 而不是旁边多出一棵长得一模一样的特权树。走同一个 scheme,收藏夹里存的
-         * `file:` 路径、跨来源复制(`CopyEngine` 只认 openInput/openOutput)、
-         * 缩略图、搜索全部零改动就直接受益。
+         * ★ Why this is a "fallback" rather than an independent scheme: users
+         * want to be able to tap into **the root** tree, not have a separate
+         * privileged tree sitting next to it that looks identical. By sharing
+         * the scheme, every path with a stored `file:` favourite, every
+         * cross-source copy (which `CopyEngine` only knows via
+         * openInput / openOutput), thumbnails, and search — all of them benefit
+         * for free with zero changes.
          *
-         * ★ 也正因为是回落,**能自己读的一律不走特权**:每条命令都要 fork 一个进程,
-         * 拿它列 `/sdcard` 是白白慢几十倍;而且普通路径下权限位是真实的,
-         * 特权路径只能一律报 canWrite=true。
+         * ★ And precisely because it is a fallback, **paths we can read
+         * ourselves never go through it**: every command forks a process, and
+         * using it to list `/sdcard` is dozens of times slower for no reason;
+         * furthermore, permission bits on the normal path are real, whereas
+         * the privileged path can only report canWrite=true across the board.
          *
-         * 与 [changed] 同一套路:纯 JVM 模块给挂载点,`:app` 按用户开关装/卸
-         * (见 `com.twig.app.Privileged`)。回调可能来自任意线程。
+         * Same pattern as [changed]: pure JVM module provides the mount point,
+         * `:app` installs / uninstalls based on the user's toggle (see
+         * `com.twig.app.Privileged`). Callbacks may arrive from any thread.
          */
         @Volatile
         @JvmStatic

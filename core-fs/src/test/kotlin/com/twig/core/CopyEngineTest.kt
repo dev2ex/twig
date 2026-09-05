@@ -12,21 +12,23 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * [CopyEngine] 的行为契约。
+ * The behavior contract of [CopyEngine].
  *
- * 这是全项目**唯一会删用户源文件**的组件(`transfer(move = true)`),而它的冲突决策
- * 矩阵(覆盖/跳过/重命名/取消 × 文件/目录 × 同源/跨源)原先一个用例都没有。
- * 这里的每条断言对应一种"弄错了就丢数据"的情况:
+ * This is the **only component in the whole project that can delete the user's source
+ * files** (`transfer(move = true)`), and its conflict-decision matrix (overwrite/skip/
+ * rename/cancel x file/directory x same-source/cross-source) originally had zero test
+ * cases. Every assertion here corresponds to a "get this wrong and you lose data" case:
  *
- * - 跳过/取消/中止之后**绝不能删源**(复制没成,源就是唯一一份);
- * - 重命名不能覆盖已有条目;
- * - 目录同名要合并而不是询问。
+ * - after skip/cancel/abort the source must **never** be deleted (the copy did not
+ *   succeed, so the source is the only copy);
+ * - rename must not overwrite an existing entry;
+ * - a same-name directory must be merged, not prompted for.
  *
- * 用内存文件系统跑,不碰真实磁盘。
+ * Runs on an in-memory filesystem, never touches real disk.
  */
 class CopyEngineTest {
 
-    /** 一个支持读写、有真实目录概念的内存文件系统。 */
+    /** An in-memory filesystem that supports read/write and has a real notion of directories. */
     private class MemFs(override val scheme: String) : FileSystem {
         override val displayName get() = scheme
 
@@ -34,11 +36,11 @@ class CopyEngineTest {
         val dirs = linkedSetOf("/")
         val mtimes = HashMap<String, Long>()
 
-        /** 打开"同一文件系统内就地移动"的快路径(默认关,好走通用的拷贝+删源)。 */
+        /** Toggles the "in-place move within the same filesystem" fast path (off by default, so the generic copy+delete-source path runs). */
         var moveWithinSupported = false
         var moveWithinCalls = 0
 
-        /** 模拟"这个文件系统不支持设置时间"(如 WebDAV/SMB),校验 CopyEngine 不因此报错。 */
+        /** Simulates "this filesystem does not support setting timestamps" (e.g. WebDAV/SMB), to verify CopyEngine does not error out because of it. */
         var setModifiedTimeSupported = true
         var setModifiedTimeCalls = 0
 
@@ -54,7 +56,7 @@ class CopyEngineTest {
                 size = files.getValue(path).size.toLong(),
                 lastModified = mtimes[path] ?: 0L,
             )
-            else -> throw FsException("不存在: $path")
+            else -> throw FsException("does not exist: $path")
         }
 
         override fun list(dir: XFile): List<XFile> {
@@ -65,7 +67,7 @@ class CopyEngineTest {
         }
 
         override fun openInput(file: XFile): InputStream =
-            ByteArrayInputStream(files[file.path] ?: throw FsException("不存在: ${file.path}"))
+            ByteArrayInputStream(files[file.path] ?: throw FsException("does not exist: ${file.path}"))
 
         override fun openOutput(file: XFile, append: Boolean): OutputStream =
             object : ByteArrayOutputStream() {
@@ -89,7 +91,7 @@ class CopyEngineTest {
 
         override fun rename(file: XFile, newName: String): XFile {
             val to = join(file.parentPath, newName)
-            if (exists(XFile(scheme, to, isDir = false))) throw FsException("目标已存在: $newName")
+            if (exists(XFile(scheme, to, isDir = false))) throw FsException("target already exists: $newName")
             files.remove(file.path)?.let { files[to] = it }
             return XFile(scheme, to, file.isDir)
         }
@@ -147,7 +149,7 @@ class CopyEngineTest {
     private fun srcFile(path: String) = src.resolve(path)
     private fun dstRoot() = dst.root()
 
-    // ---- 基本 ----
+    // ---- Basics ----
 
     @Test
     fun copySingleFile() {
@@ -155,13 +157,13 @@ class CopyEngineTest {
         CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = false)
 
         assertEquals("hello", dst.text("/a.txt"))
-        assertEquals("hello", src.text("/a.txt")) // 复制不动源
+        assertEquals("hello", src.text("/a.txt")) // copy does not touch the source
     }
 
-    // ---- 修改时间(见 FileSystem.setModifiedTime) ----
+    // ---- Modification time (see FileSystem.setModifiedTime) ----
 
     @Test
-    fun `复制后把源的修改时间写回目标`() {
+    fun copyWritesBackSourceModifiedTimeToDestination() {
         src.put("/a.txt", "hello", time = 1_700_000_000_000L)
         CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = false)
 
@@ -169,18 +171,19 @@ class CopyEngineTest {
     }
 
     @Test
-    fun `目标不支持设置时间不影响复制成功`() {
+    fun destinationNotSupportingSetTimeDoesNotAffectCopySuccess() {
         dst.setModifiedTimeSupported = false
         src.put("/a.txt", "hello", time = 1_700_000_000_000L)
         CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = false)
 
-        // 复制本身照样成功,只是目标时间没被改——不该因为这一步失败就报错/回滚整个复制
+        // The copy itself still succeeds, only the destination time is not changed —
+        // this step failing must not error out / roll back the whole copy
         assertEquals("hello", dst.text("/a.txt"))
         assertEquals(1, dst.setModifiedTimeCalls)
     }
 
     @Test
-    fun `目录里的每个文件都单独写回时间`() {
+    fun everyFileInADirectoryGetsItsTimeWrittenBackIndividually() {
         src.put("/d/a.txt", "a", time = 1_000L)
         src.put("/d/b.txt", "b", time = 2_000L)
         CopyEngine.transfer(listOf(srcFile("/d")), dstRoot(), move = false)
@@ -206,10 +209,10 @@ class CopyEngineTest {
         CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = true)
 
         assertEquals("hello", dst.text("/a.txt"))
-        assertFalse("移动成功后源必须删掉", src.files.containsKey("/a.txt"))
+        assertFalse("source must be deleted once the move succeeds", src.files.containsKey("/a.txt"))
     }
 
-    /** 同一文件系统内的移动优先走 moveWithin 快路径,不做整份拷贝。 */
+    /** A move within the same filesystem prefers the moveWithin fast path over a full copy. */
     @Test
     fun moveWithinSameFsUsesFastPath() {
         src.moveWithinSupported = true
@@ -223,7 +226,7 @@ class CopyEngineTest {
         assertFalse(src.files.containsKey("/a.txt"))
     }
 
-    // ---- 冲突决策 ----
+    // ---- Conflict decisions ----
 
     @Test
     fun conflictOverwriteReplacesTarget() {
@@ -237,7 +240,7 @@ class CopyEngineTest {
         assertEquals("new", dst.text("/a.txt"))
     }
 
-    /** ★ 跳过时**不能删源**:什么都没复制过去,源就是唯一一份。 */
+    /** ★ On skip the source **must not be deleted**: nothing got copied over, so the source is the only copy. */
     @Test
     fun conflictSkipKeepsBothSides() {
         src.put("/a.txt", "new")
@@ -247,8 +250,8 @@ class CopyEngineTest {
             listOf(srcFile("/a.txt")), dstRoot(), move = true,
             resolver = { _, _ -> CopyEngine.Decision.SKIP },
         )
-        assertEquals("old", dst.text("/a.txt")) // 目标没被动
-        assertEquals("new", src.text("/a.txt")) // 源也没被删
+        assertEquals("old", dst.text("/a.txt")) // destination untouched
+        assertEquals("new", src.text("/a.txt")) // source not deleted either
     }
 
     @Test
@@ -264,7 +267,7 @@ class CopyEngineTest {
         assertEquals("new", dst.text("/a (1).txt"))
     }
 
-    /** 连续重命名要接着往下编号,不能覆盖上一个 (1)。 */
+    /** Consecutive renames must keep incrementing the number, not overwrite the previous (1). */
     @Test
     fun renameNumbersIncrement() {
         src.put("/a.txt", "new")
@@ -279,7 +282,7 @@ class CopyEngineTest {
         assertEquals("new", dst.text("/a (2).txt"))
     }
 
-    /** ★ 冲突框选"取消"(resolver 返回 null):整个任务中止,已排队的后续项不再处理,源全留着。 */
+    /** ★ Choosing "cancel" at a conflict prompt (resolver returns null): the whole task aborts, any queued follow-up items are not processed, and all sources are left in place. */
     @Test
     fun conflictAbortStopsTaskAndKeepsSources() {
         src.put("/a.txt", "A")
@@ -291,12 +294,12 @@ class CopyEngineTest {
             resolver = { _, _ -> null },
         )
         assertEquals("old", dst.text("/a.txt"))
-        assertFalse("中止后不该再复制后续条目", dst.files.containsKey("/b.txt"))
+        assertFalse("no further items should be copied after aborting", dst.files.containsKey("/b.txt"))
         assertTrue(src.files.containsKey("/a.txt"))
         assertTrue(src.files.containsKey("/b.txt"))
     }
 
-    /** 目录同名直接合并,不询问;两边的文件都在。 */
+    /** Same-name directories are merged outright, never prompted for; files from both sides end up present. */
     @Test
     fun sameNameDirectoriesMergeWithoutPrompting() {
         src.put("/d/new.txt", "n")
@@ -307,14 +310,14 @@ class CopyEngineTest {
             listOf(srcFile("/d")), dstRoot(), move = false,
             resolver = { _, _ -> asked++; CopyEngine.Decision.OVERWRITE },
         )
-        assertEquals("目录同名不该触发冲突询问", 0, asked)
+        assertEquals("a same-name directory must not trigger a conflict prompt", 0, asked)
         assertEquals("o", dst.text("/d/old.txt"))
         assertEquals("n", dst.text("/d/new.txt"))
     }
 
-    // ---- 取消 ----
+    // ---- Cancellation ----
 
-    /** ★ 取消后不能删源。 */
+    /** ★ The source must not be deleted after cancelling. */
     @Test
     fun cancelKeepsSource() {
         src.put("/a.txt", "hello")
@@ -322,14 +325,17 @@ class CopyEngineTest {
             listOf(srcFile("/a.txt")), dstRoot(), move = true,
             cancelled = { true },
         )
-        assertTrue("取消后源必须留着", src.files.containsKey("/a.txt"))
+        assertTrue("the source must remain after cancelling", src.files.containsKey("/a.txt"))
     }
 
     /**
-     * ★ 取消后目标那份半成品要删掉——留着就是个内容不全的坏文件。
+     * ★ The half-finished copy on the destination must be removed after cancelling —
+     * leaving it behind would be a corrupt, incomplete file.
      *
-     * 注意取消的时机:`cancelled = { true }` 在 copyRecursive 开头就返回了,目标压根
-     * 没建过,测不到这条。要在**第一个文件已经开搬之后**才取消,才走到 pump 里去。
+     * Note the timing of the cancellation: `cancelled = { true }` returning right at the
+     * top of copyRecursive means the destination was never even created, and this case
+     * would not be exercised. Cancellation must happen **after the first file has already
+     * started transferring** for it to reach the pump.
      */
     @Test
     fun cancelRemovesPartialTarget() {
@@ -342,10 +348,10 @@ class CopyEngineTest {
             },
             cancelled = { started },
         )
-        assertFalse("取消后目标不能留半成品", dst.files.containsKey("/a.txt"))
+        assertFalse("the destination must not keep a half-finished file after cancelling", dst.files.containsKey("/a.txt"))
     }
 
-    /** 覆盖模式下取消:原文件已被 openOutput 截断,同样不该留个坏文件。 */
+    /** Cancelling in overwrite mode: the original file has already been truncated by openOutput, and it must not be left corrupt either. */
     @Test
     fun cancelRemovesTargetEvenWhenOverwriting() {
         src.put("/a.txt", "hello")
@@ -359,10 +365,10 @@ class CopyEngineTest {
             cancelled = { started },
             resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
         )
-        assertFalse("覆盖时取消同样不留半成品", dst.files.containsKey("/a.txt"))
+        assertFalse("cancelling during overwrite must not leave a half-finished file either", dst.files.containsKey("/a.txt"))
     }
 
-    // ---- 统计与进度 ----
+    // ---- Counting and progress ----
 
     @Test
     fun planCountsRecursively() {
@@ -371,7 +377,7 @@ class CopyEngineTest {
         val plan = CopyEngine.plan(listOf(srcFile("/d")))
 
         assertEquals(2, plan.files)
-        assertEquals(2, plan.dirs) // /d 与 /d/sub
+        assertEquals(2, plan.dirs) // /d and /d/sub
         assertEquals(8L, plan.bytes)
     }
 
@@ -391,12 +397,12 @@ class CopyEngineTest {
         assertEquals(2, dirs)
     }
 
-    // ---- 流水线 ----
+    // ---- Pipeline ----
 
-    /** pipe 要能原样搬运(含跨块边界的大数据),并在取消时返回 false。 */
+    /** pipe must move data through byte-for-byte (including large data crossing buffer-chunk boundaries), and return false on cancellation. */
     @Test
     fun pipeCopiesExactBytesAndHonoursCancel() {
-        val data = ByteArray(3 shl 20) { (it % 251).toByte() } // 3MB,跨多个 1MB 缓冲块
+        val data = ByteArray(3 shl 20) { (it % 251).toByte() } // 3MB, spanning several 1MB buffer chunks
         val out = ByteArrayOutputStream()
         assertTrue(CopyEngine.pipe(ByteArrayInputStream(data), out, { false }))
         assertArrayEquals(data, out.toByteArray())

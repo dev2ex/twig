@@ -39,48 +39,51 @@ import java.io.File
 import kotlin.math.roundToInt
 
 /**
- * 图片查看器 = 幻灯片同屏(参照 SambaGallery):
- * 单个可缩放视图 + 手势翻页;切换/自动播放时保留当前图,右上角显示转圈直到新图就绪。
- * 全屏沉浸;单击切换悬浮栏;双击循环缩放模式;随机播放。
+ * Image viewer = slideshow on the same screen (modelled on SambaGallery):
+ * a single zoomable view + swipe-to-page; keep the current image while switching / auto-playing, show a spinner in
+ * the top-right until the new image is ready. Full-screen immersive; single tap toggles floating bars; double tap
+ * cycles zoom modes; shuffle playback.
  *
- * 两种进入方式:
- * - [start]:固定列表(从文件列表点开单张图,兄弟图片已在内存里),index 从 0 开始不变。
- * - [startSlideshow]:只传目录,自己在本 Activity 内用 [scanImages] 后台递归扫描
- *   ——找到第一张就先显示、边播边继续扫描追加,不必等整棵树扫完(网络来源尤其明显);
- *   工具栏副标题显示扫描进度。两种入口都不把大列表塞进 Intent extras
- *   ([pendingImages] 进程内直传),避免上千张图片的路径/文件名数组撑爆 binder 单次事务
- *   1MB 上限(TransactionTooLargeException)。
+ * Two entry points:
+ * - [start]: a fixed list (tapping a single image from the file list, sibling images already in memory), index
+ *   starts from 0 and doesn't change.
+ * - [startSlideshow]: takes only the directory, and this Activity uses [scanImages] to recursively scan in the
+ *   background — displays the first image found, keeps playing while continuing to scan and append; no need to
+ *   wait for the entire tree to finish scanning (the benefit is especially noticeable for network sources);
+ *   the toolbar subtitle shows scan progress. Neither entry point stuffs a large list into Intent extras
+ *   ([pendingImages] is passed within the process), to avoid thousands of images' path / filename arrays
+ *   blowing past the binder 1MB single-transaction limit (TransactionTooLargeException).
  */
 class ImageViewerActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityImageViewerBinding
 
-    private var images = mutableListOf<XFile>()  // 原始发现顺序,只追加、不重排——真实 index 的来源
-    private var order = mutableListOf<Int>()     // 播放顺序(随机时是 images 下标的一个排列)
-    private var pos = 0                          // 在 order 中的位置;current = order[pos] 是真实下标
+    private var images = mutableListOf<XFile>()  // original discovery order; only appended, never reordered — source of truth for real index
+    private var order = mutableListOf<Int>()     // playback order (when shuffled, a permutation of images' indices)
+    private var pos = 0                          // position within order; current = order[pos] is the real index
     private var shuffle = false
     private var playing = false
-    private var loadToken = 0                    // 防止过期加载覆盖
-    private var autoFit = true                   // 按屏幕方向旋转图片适配
-    private var currentLoading = false           // 当前图正在加载(下载)
-    private var prefetching = false              // 正在预取下一张
-    private var scanDone = true                  // 幻灯片递归扫描是否已完成(固定列表模式恒真)
-    private var wantAutoPlay = false              // 幻灯片模式:图片就绪后自动开始播放
-    private var canSelect = true                 // 「选择」入口(外部 content:// 打开时没有树可同步,隐藏)
+    private var loadToken = 0                    // prevent stale loads from overwriting
+    private var autoFit = true                   // rotate the image to fit the screen orientation
+    private var currentLoading = false           // the current image is loading (downloading)
+    private var prefetching = false              // prefetching the next image
+    private var scanDone = true                  // whether the slideshow's recursive scan has finished (always true in fixed-list mode)
+    private var wantAutoPlay = false              // slideshow mode: start playing automatically once an image is ready
+    private var canSelect = true                 // "Select" entry (hidden when opened from external content:// with no tree to sync)
 
-    /** 在查看器里勾选的图(按 path 去重,保持勾选顺序);退出后同步成树上的多选,见 [pendingResult]。 */
+    /** Images ticked in the viewer (deduped by path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
     private val picked = LinkedHashMap<String, XFile>()
-    private var changed = false                  // 删过图,文件面板需要刷新
+    private var changed = false                  // an image was deleted, the file panel needs a refresh
 
-    /** 按字节计容量:降采样上限放宽后单张位图可达数十 MB,再按"6 张"算会 OOM。 */
+    /** Capacity by byte count: with the downsampling cap relaxed, a single bitmap can reach tens of MB; "6 of those" would OOM. */
     private val cache = object : LruCache<String, Decoded>(
         ((Runtime.getRuntime().maxMemory() / 4) / 1024).toInt().coerceAtLeast(16 * 1024),
     ) {
         override fun sizeOf(key: String, value: Decoded) = value.bmp.byteCount / 1024
     }
 
-    private var shown: Decoded? = null // 当前显示的解码结果
-    private var shownRot = 0           // 显示位图相对原文件的总旋转角(EXIF + autoFit)
+    private var shown: Decoded? = null // currently displayed decoded result
+    private var shownRot = 0           // total rotation angle of the displayed bitmap relative to the original file (EXIF + autoFit)
     private var hiResToken = 0
     private val handler = Handler(Looper.getMainLooper())
     private val advance = Runnable {
@@ -97,7 +100,7 @@ class ImageViewerActivity : AppCompatActivity() {
         b.toolbar.setNavigationOnClickListener { finish() }
         b.toolbar.menu.add(R.string.action_more).apply {
             setIcon(R.drawable.ic_more_vert)
-            icon?.setTint(android.graphics.Color.WHITE) // 半透明黑底上默认色看不清
+            icon?.setTint(android.graphics.Color.WHITE) // default tint doesn't show against the translucent-black background
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             setOnMenuItemClickListener { showActions(); true }
         }
@@ -112,7 +115,7 @@ class ImageViewerActivity : AppCompatActivity() {
         autoFit = Prefs.imageAutoFit(this)
         b.btnFit.alpha = if (autoFit) 1f else 0.5f
         b.btnFit.setOnClickListener { scheduleHide(); toggleAutoFit() }
-        scheduleHide() // 悬浮栏默认可见,3 秒无操作后自动隐藏
+        scheduleHide() // floating bar is visible by default, auto-hides after 3 seconds of inactivity
 
         canSelect = intent.getBooleanExtra(EXTRA_ALLOW_SELECT, true)
         when (intent.getIntExtra(EXTRA_MODE, MODE_FIXED)) {
@@ -141,10 +144,10 @@ class ImageViewerActivity : AppCompatActivity() {
         autoFit = !autoFit
         Prefs.setImageAutoFit(this, autoFit)
         b.btnFit.alpha = if (autoFit) 1f else 0.5f
-        if (order.isNotEmpty()) cache.get(images[current].path)?.let { show(it) } // 立即重画当前图
+        if (order.isNotEmpty()) cache.get(images[current].path)?.let { show(it) } // immediately redraw the current image
     }
 
-    // ---- 全屏沉浸 ----
+    // ---- fullscreen immersive ----
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -153,7 +156,7 @@ class ImageViewerActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // 设备旋转不重建,但需按新屏幕方向重新旋转适配当前图
+        // Device rotation doesn't recreate, but we do need to re-rotate-fit the current image to the new screen orientation
         if (order.isEmpty()) return
         cache.get(images[current].path)?.let { b.image.post { show(it) } }
     }
@@ -165,12 +168,12 @@ class ImageViewerActivity : AppCompatActivity() {
         c.hide(WindowInsetsCompat.Type.systemBars())
     }
 
-    // ---- 幻灯片递归扫描(边扫边播)----
+    // ---- slideshow recursive scan (scan while playing) ----
 
     private fun startScan(root: XFile) {
-        scanDone = false // ★ 必须先置 false,否则 scanTick 首帧就因 scanDone==true 不再续期,总数只刷一次
+        scanDone = false // ★ Must be set to false first; otherwise the first scanTick frame sees scanDone==true and doesn't renew itself, so the total only refreshes once
         b.loading.visibility = View.VISIBLE
-        handler.postDelayed(scanTick, SCAN_TICK_MS) // 标题里的总数按固定节奏刷新,与扫描速度解耦,避免每张图都触发一次刷新
+        handler.postDelayed(scanTick, SCAN_TICK_MS) // the title's total refreshes on a fixed cadence, decoupled from the scan speed, to avoid triggering a refresh per image
         lifecycleScope.launch {
             var started = false
             runCatching {
@@ -205,8 +208,9 @@ class ImageViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** 标题里的"当前/总数"按固定节奏刷新总数(不用等切图才看到最新已扫到的张数)。只更新
-     * 文本、不干预悬浮栏显隐——扫描期间悬浮栏照常 3 秒无操作自动隐藏,下次唤出即显示最新总数。 */
+    /** Title's "current/total" refreshes the total on a fixed cadence (no need to wait for an image switch to see the latest scanned count).
+     *  Only updates the text, doesn't touch floating-bar visibility — during scanning the floating bar still auto-hides after 3 seconds
+     *  of inactivity, and the next reveal shows the latest total. */
     private val scanTick: Runnable = object : Runnable {
         override fun run() {
             if (order.isNotEmpty()) updateTitle()
@@ -214,18 +218,18 @@ class ImageViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** 图片列表(至少有第一张)就绪:开始显示 + 幻灯片模式自动播放。 */
+    /** Image list (at least the first image) is ready: begin displaying + slideshow mode auto-plays. */
     private fun onImagesReady() {
         loadCurrent()
         if (wantAutoPlay) start()
     }
 
-    // ---- 翻页 / 加载 ----
+    // ---- paging / loading ----
 
     private fun go(delta: Int) {
         if (order.isEmpty()) return
         pos = (pos + delta + order.size) % order.size
-        loadCurrent() // 自动播放的下一次计时在当前图加载完成后(onCurrentReady)才安排
+        loadCurrent() // the next auto-play tick is scheduled in onCurrentReady only after the current image finishes loading
     }
 
     private fun loadCurrent() {
@@ -240,24 +244,25 @@ class ImageViewerActivity : AppCompatActivity() {
             onCurrentReady()
             return
         }
-        // 保留当前图(不清空),右上角转圈表示正在下载/加载
+        // Keep the current image (don't clear it); the spinner in the top-right shows it's downloading / loading
         currentLoading = true; updateSpinner()
         lifecycleScope.launch {
             val bmp = runCatching { withContext(Dispatchers.IO) { decodeImage(this@ImageViewerActivity, images[idx]) } }.getOrNull()
-            if (token != loadToken) return@launch // 已切到别的图
+            if (token != loadToken) return@launch // already switched to a different image
             currentLoading = false; updateSpinner()
             if (bmp != null) { cache.put(path, bmp); show(bmp) }
             onCurrentReady()
         }
     }
 
-    /** 当前图加载完成:此时才安排下一次自动播放、并预取下一张(当前没加载完不往后下载)。 */
+    /** Current image finished loading: only now do we schedule the next auto-play tick and prefetch the next image
+     *  (don't start downloading later images until the current one has finished loading). */
     private fun onCurrentReady() {
         if (playing) scheduleNext()
         prefetchNext()
     }
 
-    /** 显示图片:按屏幕方向旋转适配(不改屏幕方向,只旋转图片内容);传入实际尺寸倍数。 */
+    /** Display the image: rotate to fit the screen orientation (don't change the screen orientation, only rotate the image content); pass in the actual size multiplier. */
     private fun show(d: Decoded) {
         val extra = if (autoFit) screenFitRotation(d.bmp) else 0
         shown = d
@@ -265,14 +270,14 @@ class ImageViewerActivity : AppCompatActivity() {
         b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual)
     }
 
-    /** 图片方向与屏幕方向不一致时旋转 90°,以在当前屏幕上"横着/竖着"占满。 */
+    /** Rotate by 90° when the image's orientation doesn't match the screen's, to fill the current screen "horizontally/vertically". */
     private fun screenFitRotation(bmp: Bitmap): Int {
         val screenLandscape = resources.displayMetrics.widthPixels >= resources.displayMetrics.heightPixels
         val imgLandscape = bmp.width > bmp.height
         return if (imgLandscape == screenLandscape || bmp.width == bmp.height) 0 else 90
     }
 
-    /** 预取下一张到缓存(带转圈);当前图还在加载则不预取,避免"往后下载"。 */
+    /** Prefetch the next image into the cache (with spinner); if the current image is still loading, don't prefetch — avoid "downloading ahead". */
     private fun prefetchNext() {
         if (currentLoading || order.isEmpty()) return
         val i = order[(pos + 1) % order.size]
@@ -295,13 +300,13 @@ class ImageViewerActivity : AppCompatActivity() {
         handler.postDelayed(advance, Prefs.slideshowIntervalMs(this))
     }
 
-    // ---- 播放 / 随机 ----
+    // ---- play / shuffle ----
 
     private fun start() {
         playing = true
         b.btnPlay.setImageResource(R.drawable.ic_pause)
         if (Prefs.slideshowKeepAwake(this)) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        if (!currentLoading) scheduleNext() // 当前图正在加载则等它就绪再计时
+        if (!currentLoading) scheduleNext() // current image is still loading; wait for it to be ready before starting the timer
     }
 
     private fun stop() {
@@ -334,30 +339,31 @@ class ImageViewerActivity : AppCompatActivity() {
 
     private val hideControls = Runnable { setControlsVisible(false) }
 
-    /** 悬浮栏/底栏 3 秒无操作后自动隐藏;每次交互(翻页/播放/随机/适配按钮、手动唤出)重新计时。 */
+    /** Floating / bottom bars auto-hide after 3 seconds of inactivity; every interaction (page / play / shuffle / fit button, manual reveal) restarts the timer. */
     private fun scheduleHide() {
         handler.removeCallbacks(hideControls)
         handler.postDelayed(hideControls, HIDE_CONTROLS_MS)
     }
 
-    /** 标题显示"真实 index"(该图在扫描/浏览原始顺序中的位置),而非随机播放序号——
-     * 随机播放时序号会跳来跳去,但反映的是这张图在目录里的真实位置。 */
+    /** Title shows the "real index" (this image's position in the original scan / browse order), not the shuffle-playback sequence number —
+     *  during shuffle the sequence number jumps around, but it reflects this image's actual position in the directory. */
     private fun updateTitle() {
         val f = images.getOrNull(current) ?: return
         b.toolbar.title = "${current + 1}/${images.size}  ${f.name}"
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(f.name))
     }
 
-    // ---- 操作菜单(长按画面 / 标题栏「更多」) ----
+    // ---- action menu (long-press image / title bar "more") ----
 
     /**
-     * 当前图的操作菜单。自动播放中弹菜单会先停播——否则对话框开着图还在往后翻,
-     * 用户点「删除」删掉的就不是他看着的那张了。
+     * The action menu for the current image. While auto-playing, opening the menu first pauses playback — otherwise
+     * with the dialog open the image keeps advancing and tapping "delete" would delete a different one from the one
+     * the user is looking at.
      */
     private fun showActions() {
         val file = images.getOrNull(current) ?: return
         if (playing) stop()
-        handler.removeCallbacks(hideControls) // 菜单期间别让悬浮栏自己缩回去
+        handler.removeCallbacks(hideControls) // don't let the floating bar auto-hide while the menu is open
         val labels = ArrayList<String>()
         val acts = ArrayList<() -> Unit>()
         if (canSelect) {
@@ -378,7 +384,7 @@ class ImageViewerActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 勾选/取消当前图;结果随时发布到 [pendingResult],由文件面板回到前台时取走。 */
+    /** Tick / untick the current image; result is published to [pendingResult] as it changes, picked up by the file panel when it returns to the foreground. */
     private fun togglePick(file: XFile) {
         if (picked.remove(file.path) == null) picked[file.path] = file
         toast(getString(R.string.title_selected_count, picked.size))
@@ -395,9 +401,10 @@ class ImageViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * 删除当前图并从列表里摘掉。[images] 是"原始发现顺序"、[order] 存的是它的下标,
-     * 删一项会让后面所有下标错位——必须整体重排 [order](>被删下标的减一),
-     * 不能只 remove 一个元素。删完 [pos] 原地指向播放顺序里的下一张。
+     * Delete the current image and remove it from the list. [images] is the "original discovery order"; [order] holds its
+     * indices, so deleting one shifts every later index — [order] must be rebuilt entirely (anything with an index
+     * greater than the deleted one decrements by 1), you can't just remove one element.
+     * After deletion, [pos] stays put and points to the next image in the playback order.
      */
     private fun delete(file: XFile) {
         val idx = images.indexOfFirst { it.path == file.path && it.scheme == file.scheme }
@@ -425,14 +432,14 @@ class ImageViewerActivity : AppCompatActivity() {
         pendingResult = Result(picked.values.toList(), changed)
     }
 
-    // ---- 放大后的高清区块(BitmapRegionDecoder) ----
+    // ---- hi-res region after zooming in (BitmapRegionDecoder) ----
 
-    /** 基础位图被放大到插值了,按可视区域从原文件重解一块高清的叠上去。 */
+    /** The base bitmap has been upscaled with interpolation; re-decode a hi-res region from the original file for the visible area and overlay it. */
     private fun loadHiRes(rect: RectF, scale: Float) {
         val d = shown ?: return
-        if (d.actual <= 1f) return // 原图就没有更多像素可挖
+        if (d.actual <= 1f) return // original has no more pixels to dig out
         val rot = shownRot
-        val vw = b.image.width.coerceAtLeast(1) // View 尺寸在主线程取好再进 IO
+        val vw = b.image.width.coerceAtLeast(1) // View dimensions read on the main thread before entering IO
         val vh = b.image.height.coerceAtLeast(1)
         val token = ++hiResToken
         lifecycleScope.launch {
@@ -465,17 +472,17 @@ class ImageViewerActivity : AppCompatActivity() {
         private const val SCAN_TICK_MS = 400L
         private const val HIDE_CONTROLS_MS = 3000L
 
-        /** 高清区块的像素上限:可视面积的倍数,再叠一个绝对上限(约 48MB@ARGB_8888)。 */
-        /** 固定列表模式下的进程内一次性传递槽:避免通过 Intent extras 传大列表触发
-         * TransactionTooLargeException(binder 单次事务上限 1MB,单目录几千张图片的路径 +
-         * 文件名数组很容易超)。onCreate 里读取后立即清空。 */
+        /** Pixel cap for hi-res regions: a multiple of the visible area, plus an absolute cap (≈48MB @ ARGB_8888). */
+        /** In-process one-shot transfer slot for fixed-list mode: avoids passing a large list via Intent extras, which
+         * triggers TransactionTooLargeException (binder's single-transaction cap is 1MB; a few thousand images' path +
+         * filename array in a single directory easily exceeds it). Cleared immediately after onCreate reads it. */
         @Volatile private var pendingImages: List<XFile>? = null
 
         /**
-         * 查看器里的操作结果:勾选的图([selection])、是否删过图([changed])。
-         * 由 [PaneFragment] 回到前台时 [takeResult] 取走一次——查看器是普通
-         * startActivity 起的(图片列表走 [pendingImages] 进程内直传,没走 Intent),
-         * 这里同样用进程内槽位回传,不额外引一套 ActivityResult 契约。
+         * Result from operations in the viewer: ticked images ([selection]) and whether any image was deleted ([changed]).
+         * Picked up once by [PaneFragment] via [takeResult] when it returns to the foreground — the viewer is started
+         * with a plain startActivity (the image list goes through [pendingImages] in-process, not through Intent),
+         * and the result is returned via the same in-process slot, avoiding an extra ActivityResult contract.
          */
         class Result(val selection: List<XFile>, val changed: Boolean)
 
@@ -484,13 +491,13 @@ class ImageViewerActivity : AppCompatActivity() {
         fun takeResult(): Result? = pendingResult.also { pendingResult = null }
 
         /**
-         * 固定图片列表(如同目录兄弟图片,已在内存里),从 index 开始,不自动播放。
-         * [allowSelect]=false 用于外部 content:// 打开(没有文件树可同步,不给「选择」)。
+         * Fixed image list (e.g. sibling images in the same directory, already in memory), starts at index, doesn't auto-play.
+         * [allowSelect] = false is for external content:// opens (no file tree to sync, so no "Select").
          */
         fun start(context: Context, images: List<XFile>, startIndex: Int, allowSelect: Boolean = true) {
             if (images.isEmpty()) return
             pendingImages = images
-            pendingResult = null // 上一轮没人来取的陈旧结果就此作废
+            pendingResult = null // any stale result nobody picked up last round is discarded here
             context.startActivity(
                 Intent(context, ImageViewerActivity::class.java).apply {
                     putExtra(EXTRA_MODE, MODE_FIXED)
@@ -500,7 +507,7 @@ class ImageViewerActivity : AppCompatActivity() {
             )
         }
 
-        /** 幻灯片:只传目录,查看器自己后台递归扫描并边扫边播,自动播放。 */
+        /** Slideshow: takes only the directory; the viewer recursively scans in the background, plays while scanning, and auto-plays. */
         fun startSlideshow(context: Context, dir: XFile) {
             pendingResult = null
             context.startActivity(

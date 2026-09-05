@@ -10,12 +10,17 @@ import android.widget.HorizontalScrollView
 import android.widget.ScrollView
 
 /**
- * 竖向滚动容器,额外把内层 [hsv] 的横向滚动位置画成**钉在视口底部**的指示条——
- * 原生横向滚动条画在 HorizontalScrollView 自己的底边,而它和全文一样高,
- * 不滚到文末根本看不见。内容不超宽(自动换行开着)时不画。
+ * Vertical scroll container that additionally draws the inner [hsv]'s horizontal scroll
+ * position as an indicator bar **pinned to the bottom of the viewport** — the native
+ * horizontal scrollbar is drawn on HorizontalScrollView's own bottom edge, and that
+ * edge is the same height as the full content, so it is not visible unless you scroll
+ * to the very end. When the content is not wider than the viewport (word-wrap is on),
+ * nothing is drawn.
  *
- * 双指缩放([onScale]/[onScaleEnd])用来调字号:双指落下就走 [onInterceptTouchEvent]
- * 整体接管(不下发给内层 EditText),避免缩放期间同时触发文本选中或横向滚动。
+ * Two-finger pinch ([onScale] / [onScaleEnd]) adjusts the font size: as soon as the second
+ * finger lands, [onInterceptTouchEvent] takes over the entire gesture (without forwarding
+ * to the inner EditText) so that text selection or horizontal scrolling is not triggered
+ * at the same time as the pinch.
  */
 class CodeScrollView @JvmOverloads constructor(
     context: Context,
@@ -61,7 +66,7 @@ class CodeScrollView @JvmOverloads constructor(
         val trackW = width.toFloat()
         val thumbW = maxOf(trackW * extent / range, 24 * dp)
         val x = (trackW - thumbW) * h.scrollX / (range - extent)
-        val bottom = scrollY + height - 2 * dp // 画布随滚动平移,加 scrollY 才钉在视口底
+        val bottom = scrollY + height - 2 * dp // the canvas is translated by the scroll; adding scrollY pins it to the viewport bottom
         canvas.drawRoundRect(x, bottom - 4 * dp, x + thumbW, bottom, 2 * dp, 2 * dp, paint)
     }
 }

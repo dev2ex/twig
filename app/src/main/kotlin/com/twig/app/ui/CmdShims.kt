@@ -7,53 +7,60 @@ import android.util.Log
 import java.io.File
 
 /**
- * 本地 shell 的命令补全垫片。
+ * Local shell command-completion shims.
  *
- * **为什么需要**:Android 的 PATH 目录权限是 `drwxr-x--x root:shell`
- * (`/system/xbin` 更狠,`drwxr-x---`),应用 uid 只有 `x`(按名字进入)没有 `r`
- * (列目录)。mksh 的命令补全要 `opendir` 每个 PATH 目录,一个候选都读不出来——
- * 敲 `mkd` 按 Tab 补不出 `mkdir`。`adb shell` 里能补是因为那个用户在 `shell` 组,
- * **别拿 adb 下的表现当准**。只有 `/apex/…/bin` 是 0755,所以从前"有些能补有些
- * 不能补"。
+ * **Why this is needed**: Android's PATH directories have permissions `drwxr-x--x root:shell`
+ * (and `/system/xbin` is even more restrictive, `drwxr-x---`); the app uid only has `x`
+ * (enter by name) but not `r` (list directory). mksh's command completion calls `opendir`
+ * on every PATH directory, so it cannot read a single candidate — typing `mkd` and pressing
+ * Tab produces no `mkdir`. `adb shell` can complete because that user is in the `shell`
+ * group, **so do not treat adb's behavior as the reference**. Only `/apex/…/bin` is 0755,
+ * which is why some completions worked and some did not before.
  *
- * **绕法是不列目录,改成按名字问**——`x` 权限足够 stat/执行单个文件:
- * - `toybox` 无参运行会自报它支持的全部命令名(实测 210 个),而 `/system/bin`
- *   下绝大多数命令本来就是指向 toybox 的 symlink,这一份几乎就是全集;
- * - 剩下 Android 特有的(`am`/`pm`/`dumpsys`…)和第三方的靠 [EXTRA] 这份写死的
- *   名单沿 PATH 逐个探测。**必须走完整 PATH 而不是只看 `/system/bin`**:
- *   `ssh`/`scp`/`ssh-keygen` 实测在 `/product/bin`。
+ * **The workaround is to not list directories but to probe by name** — `x` is enough to
+ * stat/execute a single file:
+ * - Running `toybox` with no arguments prints every command name it supports (210 in
+ *   measurement), and most commands under `/system/bin` are symlinks to toybox, so that
+ *   list is nearly the full set;
+ * - The remaining Android-specific ones (`am`/`pm`/`dumpsys`…) and third-party tools are
+ *   covered by the hard-coded [EXTRA] list, probed along the full PATH one by one.
+ *   **The full PATH must be walked, not just `/system/bin`**: in practice `ssh`/`scp`/
+ *   `ssh-keygen` live under `/product/bin`.
  *
- * 命中的在 `filesDir/bin` 里建同名 symlink,再由 `TerminalActivity.localEnv`
- * 把这个目录前置到 PATH——应用私有目录自己可读,补全就有候选了。
+ * Hits are linked with the same name into `filesDir/bin`; `TerminalActivity.localEnv`
+ * then prepends this directory to PATH — the app's private directory is readable by
+ * itself, so completion now has candidates.
  *
- * symlink **不受 API 29+ 的 W^X 限制**:内核解析后 execve 的是 `/system/bin`
- * 下的真身,不是 `/data` 上的文件(实测 `files/bin/mkdir --help` 正常)。
+ * symlinks are **not subject to API 29+'s W^X restriction**: after kernel resolution
+ * execve targets the real binary under `/system/bin`, not a file under `/data` (verified:
+ * `files/bin/mkdir --help` runs fine).
  *
- * 枚举不到的只剩「不在 [EXTRA] 里的厂商私有工具」,用户自己往这个目录补一个
- * symlink 即可,[ensure] 不会删非悬空的链接。
+ * What remains unenumerated is only "vendor-private tools not in [EXTRA]"; users can add
+ * a symlink to this directory themselves, and [ensure] does not delete non-dangling links.
  */
 object CmdShims {
     private const val TAG = "twig"
     private const val DIR = "bin"
 
-    /** 改了 [EXTRA] 就 +1,让已经生成过的设备重新探测一遍。 */
+    /** Bump this when [EXTRA] changes so already-generated devices re-probe. */
     private const val VERSION = 1
 
     /**
-     * toybox 报不出、又值得补全的命令。存在与否逐个探测,不存在的静默跳过——
-     * 各家 ROM 差异很大(这台机器 51 个里命中 41 个,没有 `wget`/`mksh`)。
+     * Commands toybox does not report but that are worth completing. Each one is probed for
+     * existence; misses are silently skipped — vendor ROMs vary wildly (this machine hit
+     * 41 out of 51, with no `wget`/`mksh`).
      */
     private val EXTRA = listOf(
-        // Android 平台工具
+        // Android platform tools
         "am", "pm", "cmd", "dumpsys", "settings", "content", "svc", "input", "monkey",
         "logcat", "getprop", "setprop", "getenforce", "setenforce", "bmgr", "wm", "ime",
         "screencap", "screenrecord", "dpm", "telecom", "requestsync", "sm", "vdc", "ndc",
         "getevent", "sendevent", "bu", "bugreport", "run-as", "start", "stop", "reboot",
         "app_process", "dalvikvm", "dex2oat", "atrace", "simpleperf", "media",
-        // 网络 / 文件系统
+        // network / filesystem
         "ip", "iptables", "ip6tables", "ping", "ping6", "tcpdump", "pppd",
         "resize2fs", "e2fsck", "tune2fs", "make_f2fs", "fsck.f2fs", "sqlite3",
-        // 第三方(多半在 /product/bin 或 /vendor/bin)
+        // third party (mostly under /product/bin or /vendor/bin)
         "ssh", "scp", "sftp", "ssh-keygen", "ssh-add", "ssh-agent", "rsync",
         "curl", "wget", "zip", "unzip", "zstd", "bzip2", "xz",
         "strace", "ltrace", "busybox", "bash", "mksh", "toolbox", "toybox", "sh",
@@ -61,7 +68,7 @@ object CmdShims {
 
     fun dir(ctx: Context): File = File(ctx.filesDir, DIR)
 
-    /** 后台生成。便宜:命中 stamp 时只读一个文件,不跑 toybox。 */
+    /** Generate in the background. Cheap: when the stamp matches, only one file is read and toybox does not run. */
     fun ensureAsync(ctx: Context) {
         val app = ctx.applicationContext
         Thread({ runCatching { ensure(app) }.onFailure { Log.w(TAG, "shims", it) } }, "twig-shims")
@@ -71,12 +78,14 @@ object CmdShims {
     private fun ensure(ctx: Context) {
         val dir = dir(ctx)
         val stamp = File(dir, ".stamp")
-        // 系统升级后命令可能增删,fingerprint 变了重新探测一遍
+        // After a system upgrade commands may have been added or removed; if the fingerprint
+        // changed, re-probe from scratch
         val want = Build.FINGERPRINT + "|" + VERSION
         if (stamp.isFile && runCatching { stamp.readText() }.getOrNull() == want) return
         if (!dir.isDirectory && !dir.mkdirs()) return
 
-        // 悬空链接(升级后目标没了)清掉;有效的一律保留——可能是用户自己加的
+        // Dangling links (target removed after an upgrade) are cleaned up; valid ones are
+        // always preserved — they may be user-added
         dir.listFiles()?.forEach { f ->
             if (f.name != ".stamp" && !f.exists()) runCatching { f.delete() }
         }
@@ -85,7 +94,7 @@ object CmdShims {
         var made = 0
         for (name in (toyboxNames() + EXTRA).distinct()) {
             val link = File(dir, name)
-            if (link.exists()) continue // 已有(含用户自建),不动
+            if (link.exists()) continue // already present (including user-created ones), do not touch
             val target = paths.asSequence()
                 .map { File(it, name) }
                 .firstOrNull { runCatching { it.canExecute() }.getOrDefault(false) }
@@ -97,8 +106,9 @@ object CmdShims {
     }
 
     /**
-     * `toybox` 无参数运行打印的是纯命令名列表(空白分隔,没有 banner——banner 只在
-     * `toybox --help` 时才有)。仍然过滤一道,别把意外输出当命令名建成链接。
+     * `toybox` run with no arguments prints a bare command-name list (whitespace-separated,
+     * with no banner — the banner only appears with `toybox --help`). Still filter, so that
+     * unexpected output is not treated as a command name and linked.
      */
     private fun toyboxNames(): List<String> = runCatching {
         val p = ProcessBuilder("/system/bin/toybox").redirectErrorStream(true).start()

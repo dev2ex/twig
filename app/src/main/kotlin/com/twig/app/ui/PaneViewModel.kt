@@ -22,8 +22,10 @@ import com.twig.app.XFileGitFs
 import com.twig.git.GitRepo
 import com.twig.app.Prefs
 import com.twig.app.R
+import com.twig.app.SafFileSystem
 import com.twig.app.SavedConnection
 import com.twig.app.SortSpec
+import com.twig.app.StorageVolumes
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -49,14 +51,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 一次目录递归统计的运行状态(属性卡片所在目录 fileKey → 此对象)。 */
+/** Live state for one recursive directory scan (properties card directory fileKey -> this object). */
 private class DirScanState(
     var stat: DirStat = DirStat(),
     var scanning: Boolean = true,
     var job: kotlinx.coroutines.Job? = null,
 )
 
-/** 一次递归通配符搜索的运行状态(owner 目录 fileKey → 此对象)。 */
+/** Live state for one recursive wildcard search (owner directory fileKey -> this object). */
 private class SearchState(
     val pattern: String,
     var scanning: Boolean = true,
@@ -65,50 +67,56 @@ private class SearchState(
 )
 
 /**
- * X-plore 式的"整棵树"模型:顶级节点为 内部存储/根目录/LAN/FTP/文档树(SAF),
- * SMB/FTP 服务器是 LAN/FTP 组下的树节点(展开即连接),压缩包是可展开的文件节点。
- * 永远不"进入"目录——一切都在同一棵树里就地展开/折叠。
+ * The X-plore-style "whole tree" model: top-level nodes are internal storage / root
+ * / LAN / FTP / documents tree (SAF). SMB/FTP servers are tree nodes under their
+ * LAN/FTP group (expand to connect); archives are expandable file nodes.
+ * We never "enter" directories — everything is expanded/collapsed in place in the
+ * same tree.
  *
- * [currentDir] = 最近点击的目录节点,是新建/粘贴(复制/移动)的目标,行上以边框高亮。
+ * [currentDir] = the most recently clicked directory node, the target for new
+ * folder / paste (copy/move); its row is bordered to highlight it.
  */
 class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
-    // ---- 节点类型 ----
+    // ---- Node types ----
 
     sealed interface Node {
         val key: String
         val depth: Int
     }
 
-    /** 真实文件/目录(也包括存储顶级节点与 SAF 树根、压缩包)。 */
+    /** Real file/directory (also including the storage top-level nodes, SAF tree roots, archives). */
     data class FileNode(
         val file: XFile,
         override val depth: Int,
         val expandable: Boolean,
         val expanded: Boolean,
-        /** 顶级节点显示名(如"内部存储");普通节点为 null 用 file.name。 */
+        /** Top-level node display name (e.g. "Internal storage"); null for regular nodes, which use file.name. */
         val label: String? = null,
-        /** 存储节点的容量文本。 */
+        /** Capacity text for storage nodes. */
         val capacity: String? = null,
         val loading: Boolean = false,
         /**
-         * 同一个文件可以在树上出现两处 —— 别的 App「用 Twig 打开」的压缩包挂在树顶
-         * ([externalMount]),而它在存储树里**原本那一行也还在**。行的 key 是 DiffUtil
-         * 认行的唯一依据,两处同 key 就会认错行(症状:其中一处展开是空的)。
-         * 外部挂载的那棵子树整体带上这个前缀,与原位置彻底分开;普通行为空串。
+         * The same file can appear in two places on the tree — an archive a different
+         * App opened with Twig is pinned at the top of the tree ([externalMount]),
+         * while its **original row in storage** is also still there. The row key is
+         * the only way DiffUtil identifies rows, and two rows with the same key get
+         * confused (symptom: one of them expands empty). The external mount subtree
+         * carries this prefix as a whole, so it is fully separate from the original
+         * location; regular use leaves it as an empty string.
          */
         val keyPrefix: String = "",
     ) : Node {
         override val key: String get() = keyPrefix + fileKey(file)
     }
 
-    /** 虚拟分组:LAN / FTP / SAF。 */
+    /** Virtual group: LAN / FTP / SAF. */
     data class GroupNode(val id: String, val label: String, val expanded: Boolean) : Node {
         override val depth: Int get() = 0
         override val key: String get() = "g:$id"
     }
 
-    /** 已保存的服务器(展开即连接);[info] 为连接后得到的补充信息(如 SMB 版本)。 */
+    /** Saved server (expanding it connects); [info] holds any supplemental info gained after connecting (e.g. SMB version). */
     data class ServerNode(
         val conn: SavedConnection,
         val expanded: Boolean,
@@ -119,16 +127,18 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val key: String get() = "s:${conn.label()}"
     }
 
-    /** 组内动作项,如"添加服务器…"。 */
+    /** Per-group action item, e.g. "Add server…". */
     data class ActionNode(val id: String, val label: String) : Node {
         override val depth: Int get() = 1
         override val key: String get() = "a:$id"
     }
 
     /**
-     * 收藏项(展开即按需连接/解锁并直达该目录)。
-     * [conn] 是收藏所在连接(conn/restic 两种 kind 才有)当前的已保存配置——展示时用它取
-     * 实时别名/协议类型,而不是收藏创建时冻结的 [Favorite.label](连接改名后收藏跟着更新)。
+     * Favorite item (expand to connect / unlock on demand and jump straight to that directory).
+     * [conn] is the *current* saved config for the connection this favorite lives on
+     * (only the conn/restic kinds have one) — display pulls the up-to-date alias /
+     * protocol type from it, not from the [Favorite.label] frozen at creation time
+     * (renaming a connection updates the favorite accordingly).
      */
     data class FavoriteNode(
         val fav: Favorite,
@@ -141,19 +151,24 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 对比收藏项(左右两侧目录的引用)。与 [FavoriteNode] 不同——它不是一个可展开的真实
-     * 目录,点击直接跳到 [CompareActivity] 重新扫描,长按菜单也是另一套(见
-     * `PaneFragment.compareFavMenu`)。
+     * Compare favorite (reference to a directory on each side). Unlike [FavoriteNode],
+     * this is not an expandable real directory — tapping it jumps straight to
+     * [CompareActivity] for a fresh scan, and the long-press menu is a different one
+     * (see `PaneFragment.compareFavMenu`).
      */
     data class CompareNode(val session: CompareSession, override val depth: Int) : Node {
         override val key: String get() = "cmp:${session.id}"
     }
 
     /**
-     * 属性卡片(长按菜单"属性"打开):挂在对应文件行正下方,左缘与文件图标对齐;
-     * 每个信息分组一个 tab,文件另有"哈希"tab(本地选中即算,网络手动点计算)。
-     * [details] 为 null 表示读取中。点 ✕ 或再次选菜单项关闭;所在目录折叠后自动清除。
-     * 目录另有 [dirStat]:递归统计出的文件/目录数与总大小,边扫边刷([scanning] 期间转圈)。
+     * Properties card (opened from the long-press menu's "Properties"): pinned
+     * directly below the corresponding row, with its left edge aligned to the file
+     * icon; one tab per information group, plus a "Hashes" tab for files (computed
+     * automatically for local files, requires a tap for network ones).
+     * [details] being null means it's still loading. The ✕ button or selecting the
+     * menu item again closes it; folding the owning directory clears it.
+     * Directories also get [dirStat]: recursive file/directory count + total size,
+     * refreshed as the scan progresses (a spinner shows during [scanning]).
      */
     data class InfoNode(
         val file: XFile,
@@ -169,11 +184,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 递归通配符搜索的虚拟结果目录,紧贴被搜索目录行下方(不依赖该目录本身是否展开)。
-     * 名称含实时匹配数"搜索结果(N)",边扫边填充,子项就是普通 [FileNode](挂在其下一级,
-     * 复制/删除/属性/再展开等全部复用普通文件行逻辑)。这不是常规目录:点击这一行本身即
-     * 收缩并把整个虚拟目录从树上移出(丢弃已扫到的结果),需要时重新发起搜索;
-     * 长按显示统计([matchedFiles]/[matchedDirs] 分别计数)。
+     * Virtual directory of recursive wildcard search results, pinned directly under
+     * the searched directory's row (independent of whether that directory is itself
+     * expanded). Name shows the live match count as "Search results (N)", and the
+     * rows fill as scanning progresses — children are plain [FileNode] entries
+     * (pinned one level down, reuse the regular copy/delete/properties/expand path).
+     * This is not a regular directory: tapping this row collapses and removes the
+     * virtual directory from the tree (discarding any results already gathered),
+     * and re-runs the search when needed. The long-press menu shows statistics
+     * ([matchedFiles] / [matchedDirs] counted separately).
      */
     data class SearchNode(
         val root: XFile,
@@ -186,13 +205,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val key: String get() = "search:${fileKey(root)}"
     }
 
-    /** 目录内检测到的 restic 备份仓库(未解锁需输入密码;解锁后子项为快照)。 */
+    /** A restic backup repository detected inside a directory (needs a password to unlock; once unlocked, children are snapshots). */
     data class ResticNode(
         val repoDir: XFile,
         override val depth: Int,
         val expanded: Boolean,
         val unlocked: Boolean,
-        /** 正在解锁(scrypt + 读快照列表,网络仓库可能几十秒)——行上显示转圈。 */
+        /** Unlocking is in progress (scrypt + reading snapshot list; can take tens of seconds on a remote repo) — row shows a spinner. */
         val connecting: Boolean = false,
     ) : Node {
         override val key: String get() = "restic:${fileKey(repoDir)}"
@@ -201,165 +220,228 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     data class State(
         val rows: List<Node> = emptyList(),
         val currentDir: XFile? = null,
-        /** 最近选中(点击展开/折叠)的节点 key,用于整树高亮框与恢复定位。 */
+        /** Most recently selected (clicked expand/collapse) node key, used for the highlight box around the tree and restoring position. */
         val currentKey: String? = null,
         val error: String? = null,
         /**
-         * 展开这个加密压缩包要密码(UI 据此弹密码框);[error] 同时非空表示上一次给的不对。
-         * 和 [error] 一样是"一次性"的:下一轮 [rebuild] 就清掉。
+         * Expanding this encrypted archive needs a password (UI uses this to show a
+         * password dialog); [error] being non-null at the same time means the
+         * previous password was wrong. Like [error], this is "one-shot" — the next
+         * [rebuild] clears it.
          */
         val passwordFor: XFile? = null,
         /**
-         * 正在恢复上次位置(逐个展开、行数还会变)。UI 靠它判断"这版行还不是最终版",
-         * 恢复期间反复把滚动锚定到目标行,直到它变 false 才收手。
+         * In the middle of restoring the last position (progressively expanding, the
+         * row count keeps changing). The UI uses it to tell "this version of the rows
+         * is not the final one", repeatedly anchoring the scroll to the target row
+         * during restore, and only stopping when it becomes false.
          */
         val restoring: Boolean = false,
-        /** 恢复定位的首选目标行(上次打开的文件);解析不出来时 UI 退回 [currentKey]。 */
+        /** Preferred target row when restoring position (the file last opened); when it doesn't resolve, the UI falls back to [currentKey]. */
         val scrollKey: String? = null,
     )
 
-    // ---- 状态 ----
+    // ---- State ----
     //
-    // ★ **线程规则只有一条:这些集合一律只在主线程写。**
+    // ★ **The threading rule is one thing only: every collection below is written only on the main thread.**
     //
-    // `withContext(io)` 块只负责"把数据取回来",产出 [Listing] / [Restored] /
-    // [RevealPlan] 这类纯数据,回到主线程再由 applyListing / applyRestored /
-    // applyReveal 落表。加新的异步路径时照这个样子写,别在 IO 块里直接改下面任何一张表。
+    // The `withContext(io)` blocks are only responsible for "fetching the data";
+    // they produce plain-data [Listing] / [Restored] / [RevealPlan] and the main
+    // thread's applyListing / applyRestored / applyReveal puts them into the tables.
+    // Write new async paths in the same shape — never modify any of the tables below
+    // inside an IO block.
     //
-    // 为什么要这条规则:恢复位置、连服务器、识别 git/restic 仓库原来都在 IO 上直接改这些
-    // 表,而 refresh()/refreshLocal()/toggleFile() 是**可以同时在跑的独立协程**——
-    // 两个 IO 线程同时改同一张表,轻则丢更新、重则读到"改了一半"的中间态
-    // (children 有了新列表、keyFile 还没跟上)。改成单线程写之后,rebuild() 每次
-    // 看到的都是一致的快照,并发容器也就只是兜底而不是唯一防线了。
+    // Why this rule: restoring position, connecting to servers, and detecting
+    // git/restic repos used to modify these tables directly on IO, while
+    // refresh()/refreshLocal()/toggleFile() can run as **independent concurrent
+    // coroutines**. Two IO threads modifying the same table at the same time would,
+    // in the best case, drop updates; in the worst case, read a half-modified state
+    // (children has a new list, keyFile is still behind). After moving the writes to
+    // a single thread, every rebuild() sees a consistent snapshot, and the
+    // concurrent containers are just belt-and-braces rather than the only line of
+    // defense.
     //
-    // 下面仍用并发容器,是因为**读**还是跨线程的(IO 里会读 children/gitInfo 判断
-    // "要不要重新列",见 planReveal),留着它们比换回裸 HashMap 更省心。
+    // We still keep the concurrent containers below because **reads** are still
+    // cross-thread (the IO side reads children/gitInfo to decide "do I need to
+    // re-list", see planReveal) — keeping them is less hassle than going back to
+    // bare HashMap.
     //
-    // 例外:serverScheme / schemeToConn / serverInfo / resticScheme / schemeToRestic
-    // 这几张由 schemeForConn / schemeForRestic 在 IO 上写。它们是**确定性函数的缓存**
-    // (scheme 由 Connections.schemeOf(conn) 算出),并发写入写的是同一个值,幂等;
-    // 而且 connSchemeBlocking 是给 PaneFragment 在 IO 上直接调的公开入口,搬回主线程
-    // 要改公开契约,不划算。
+    // Exceptions: serverScheme / schemeToConn / serverInfo / resticScheme /
+    // schemeToRestic are written by schemeForConn / schemeForRestic on IO. They
+    // are **caches of a deterministic function** (the scheme is computed by
+    // Connections.schemeOf(conn)), concurrent writes write the same value and are
+    // idempotent; and connSchemeBlocking is a public entry point PaneFragment calls
+    // directly on IO, so moving it back to the main thread would mean changing the
+    // public contract, which isn't worth it.
 
-    // ---- (1) 跨线程 ----
+    // ---- (1) Cross-thread ----
 
-    /** 顺序有意义([expandedDescriptors] 按它存恢复顺序),所以是 LinkedHashSet 包同步。
-     *  单元素 add/remove/contains 直接安全;**遍历/removeAll{} 必须自己 synchronized(expanded)**。 */
+    /** Order matters ([expandedDescriptors] stores the restore order by it), so it's a synchronized LinkedHashSet.
+     *  Single-element add/remove/contains are directly safe; **iteration / removeAll{} must synchronize on expanded yourself**. */
     private val expanded: MutableSet<String> =
         java.util.Collections.synchronizedSet(LinkedHashSet())
     private val children = ConcurrentHashMap<String, List<XFile>>()
-    /** 可展开节点 key -> 重新列举所需的 XFile(服务器为其根)。 */
+    /** Expandable-node key -> the XFile needed to re-list it (server's root for servers). */
     private val keyFile = ConcurrentHashMap<String, XFile>()
-    /** 服务器 key -> 已注册的 scheme(已连接标记)。 */
+    /** Server key -> registered scheme (marker that we're connected). */
     private val serverScheme = ConcurrentHashMap<String, String>()
-    /** 连接后得到的服务器补充信息(label → 如 "SMB3.1.1")。 */
+    /** Supplemental info gathered after connecting (label -> e.g. "SMB3"). */
     private val serverInfo = ConcurrentHashMap<String, String>()
-    /** 检测到 git 仓库的目录(dirKey → 已注册的虚拟 fs scheme + 显示名)。 */
+    /** Directory detected as a git repo (dirKey -> registered virtual fs scheme + display name). */
     private val gitInfo = ConcurrentHashMap<String, Pair<String, String>>()
-    /** 反查(供"最近位置"从 git scheme 还原宿主目录)。 */
+    /** Reverse lookup (let "Last position" recover the host directory from a git scheme). */
     private val schemeToGitHost = ConcurrentHashMap<String, XFile>()
     /**
-     * "廉价" git scheme(本地直读 / SSH 远程执行 git 命令):status()/log() 本身不缓存,
-     * 每次调用即读当前状态;这类根节点每次展开都强制重拉,不吃 [children] 缓存。
-     * SMB/WebDAV 等无 git 命令时靠 [XFileGitFs] 解析 .git 对象,逐文件网络访问贵,
-     * 不在此列——保留缓存,靠手动"刷新"菜单项按需更新。
+     * "Cheap" git schemes (local direct read / remote SSH runs the git command):
+     * status()/log() themselves don't cache, they read the live state on every call;
+     * the root nodes for these always force a fresh pull on every expand and don't
+     * use the [children] cache. SMB/WebDAV etc. without a git command fall back to
+     * [XFileGitFs] parsing the .git objects, which makes every file fetch costly,
+     * so they don't qualify — keep the cache and rely on the manual "Refresh" menu
+     * item for updates.
      */
     private val cheapGitSchemes: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    /** 被识别为 restic 仓库的目录 key。 */
+    /** Directory keys identified as a restic repository. */
     private val resticRepos: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    /** restic 节点 key -> 已注册的 restic scheme(已解锁)。 */
+    /** restic node key -> registered restic scheme (unlocked). */
     private val resticScheme = ConcurrentHashMap<String, String>()
-    /** 反查(供"收藏"从动态 scheme 还原来源)。 */
+    /** Reverse lookup (let "Favorites" recover the source from a dynamic scheme). */
     private val schemeToConn = ConcurrentHashMap<String, SavedConnection>()
     private val schemeToRestic = ConcurrentHashMap<String, XFile>()
 
-    // ---- (2) 只在主线程 ----
+    // ---- (2) Main-thread-only ----
 
-    /** 外部 App 传进来、临时挂在树顶的压缩包(见 [mountExternal]);同时只留一个。 */
+    /** Archive handed in by an external App, pinned at the top of the tree temporarily (see [mountExternal]); only one at a time. */
     private var externalMount: XFile? = null
     private val connecting = HashSet<String>()
-    /** 正在异步加载子项的节点 key(用于显示加载转圈)。 */
+    /** Node key currently asynchronously loading children (used to show the loading spinner). */
     private val loadingKeys = HashSet<String>()
-    /** apk 默认点击直接安装,不当压缩包展开;用户选"以压缩包方式打开"后记入此集,该节点起才可展开浏览包内容。 */
+
+    /**
+     * Key of the row "claimed" by the current tap (see [claimExpand] / [stillExpanding]).
+     *
+     * Expansion is asynchronous and the final step is the row's own [accordionExpand] —
+     * and the accordion only keeps one chain open. So when you **tap open a slow
+     * directory, get tired of waiting and tap open another**, the first one's
+     * completion collapses the second one instead (the user sees "the directory I
+     * just opened closed itself, and what popped up is the one from before"). The
+     * rule is **the later tap wins**: each tap calls [claimExpand] to claim, and
+     * when an in-flight completion lands and sees it's no longer the one, it only
+     * caches the children (instant expand next time), without expanding, without
+     * changing the current directory, and without surfacing any error.
+     *
+     * We don't cancel that coroutine: `listChildren` is blocking IO and cancel
+     * can't interrupt it; meanwhile `runCatching` catches `CancellationException`
+     * too and would surface it to the user as a "listing failed" error — the user
+     * gave up on it themselves, but they would get an error toast anyway.
+     */
+    private var pendingExpand: String? = null
+
+    /**
+     * Rows whose request has been abandoned but is **still in flight** (see [claimExpand]).
+     *
+     * Since the request can't be cancelled, it still sits in [loadingKeys] /
+     * [connecting] — those tables' semantics are now "is anything in flight", and
+     * **the spinner and "Connecting..." label are decided via this table as
+     * well**: the user no longer cares about them, and keeping the spinner turning
+     * / the "Connecting..." label visible would make them think the UI is stuck
+     * (most visible on slow-to-connect sources like SFTP).
+     *
+     * Conversely, the in-flight status is still useful: if the user taps that row
+     * back before the completion lands, just re-claim and put the spinner back —
+     * **don't re-issue the request** (see the `-> Unit` branch inside `toggleFile`/
+     * `toggleServer`).
+     */
+    private val abandoned = HashSet<String>()
+    /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
-    /** 打开了属性卡片的文件 key(fileKey);卡片内容缓存,关闭/折叠即丢弃。 */
+    /** File key (fileKey) for which the properties card is open; the card content is cached and dropped when closed/folded. */
     private val infoOpen = LinkedHashSet<String>()
     private val infoCache = HashMap<String, com.twig.app.FileInfo.Details>()
-    /** 卡片当前选中的 tab、已算出的哈希、正在计算哈希的 key。 */
+    /** Currently selected tab on the card, already-computed hashes, keys currently computing. */
     private val infoTab = HashMap<String, Int>()
     private val hashCache = HashMap<String, List<Pair<String, String>>>()
     private val hashing = HashSet<String>()
-    /** 目录属性卡片的递归统计:目录 fileKey → 运行状态(卡片关闭/折叠即取消,见 [rebuild])。 */
+    /** Recursive stats for a directory properties card: directory fileKey -> live state (the card closing/folding cancels — see [rebuild]). */
     private val dirScan = HashMap<String, DirScanState>()
-    /** 递归通配符搜索:被搜索目录 fileKey → 运行状态。见 [SearchNode]。 */
+    /** Recursive wildcard search: searched directory fileKey -> live state. See [SearchNode]. */
     private val searchState = HashMap<String, SearchState>()
-    /** 本轮 rebuild 已挂过附属行(属性卡片/搜索结果)的目录 key,防同一目录出现两处时重复挂。 */
+    /** Directory keys that have already had their auxiliary rows (properties card / search results) attached in this rebuild, to avoid duplicates when one directory appears in two places. */
     private val attachedKeys = HashSet<String>()
 
     var currentDir: XFile? = null
-    /** 最近选中的节点 key(任意类型:目录/服务器/分组/收藏/restic)。 */
+    /** Most recently selected node key (any type: directory / server / group / favorite / restic). */
     private var currentKey: String? = null
         private set
 
-    // ---- 恢复上次位置的中间状态 ----
+    // ---- Intermediate state for restoring the last position ----
     private var restoring = false
-    /** 滚动定位的首选目标行(“跳转到所在目录”要定位到的那个文件);为 null 时按当前目录定位。 */
+    /** Preferred target row to scroll to ("Go to containing folder" wants to land on that file); null means locate by current directory. */
     private var scrollKey: String? = null
-    /** 还没解析成 XFile 的当前目录描述符:网络位置要等对应服务器连上(serverScheme 建好)才解得出。 */
+    /** Current directory descriptor not yet resolved to an XFile: network locations need the corresponding server to connect first (serverScheme built) before they can be resolved. */
     private var pendingCurrentDesc: String? = null
 
     /**
-     * 阻塞 IO 用的调度器。**只为可测性存在**——生产环境永远是 [Dispatchers.IO]。
+     * Dispatcher for blocking IO. **Only exists for testability** — in production this
+     * is always [Dispatchers.IO].
      *
-     * 单测里换成受控调度器,`advanceUntilIdle()` 才覆盖得到这些 `withContext` 块;
-     * 否则它们跑在真实线程池上、虚拟时间管不着,测试会在 IO 还没做完时就往下断言,
-     * 变成时好时坏的 flaky 测试。
+     * Tests swap it for a controlled dispatcher so `advanceUntilIdle()` can reach
+     * those `withContext` blocks; otherwise they'd run on a real thread pool that
+     * virtual time cannot govern, the test would keep asserting before the IO is
+     * done, and the test would be flaky.
      *
-     * 做成可写字段而不是构造参数:`by viewModels()` 走的是
-     * `AndroidViewModelFactory`,它按反射找 `(Application)` 这个构造器,加了参数就得
-     * 靠 `@JvmOverloads` 兜——万一没兜住是**运行时**才炸,而单测直接 new 根本发现不了。
-     * 这条缝只给测试用,别在生产代码里改它。
+     * Made it a writable field rather than a constructor parameter: `by viewModels()`
+     * goes through `AndroidViewModelFactory`, which reflectively looks for the
+     * `(Application)` constructor; adding a parameter means relying on
+     * `@JvmOverloads` to catch it — if that doesn't catch it, it explodes at
+     * **runtime**, and a test that just `new`s the VM would never catch it.
+     * This hatchback is only for tests; don't touch it from production code.
      */
     @androidx.annotation.VisibleForTesting
     internal var io: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.IO
 
     private var sort = SortSpec.load(getApplication())
 
-    /** 是否显示隐藏文件;每次 [rebuild] 开头刷新一次。 */
+    /** Whether to show hidden files; refreshed at the top of every [rebuild]. */
     private var showHidden = Prefs.showHidden(getApplication())
 
-    /** 存入子项时统一按当前排序;虚拟节点(服务器/收藏等)不受影响。 */
+    /** Children are written already in the current sort order; virtual nodes (servers, favorites, ...) are unaffected. */
     private fun putChildren(key: String, list: List<XFile>) {
-        children[key] = sortList(list)
+        children[key] = sortList(key, list)
     }
 
-    /** 修改排序:重排所有已缓存子项并重建。 */
+    /** Change the sort: re-sort all cached children and rebuild. */
     fun setSort(spec: SortSpec) {
         sort = spec
         resortAll()
     }
 
-    /** 设置(缩略图/网格模式)变化后按新规则重排已缓存子项。 */
+    /** After settings (thumbnails / grid mode) change, re-sort cached children under the new rules. */
     fun resortAll() {
-        // children 可能被 IO 线程并发改动,取出来判空再写回,别 !!
-        for (k in children.keys.toList()) children[k]?.let { children[k] = sortList(it) }
+        // children may be modified concurrently from IO threads; pull, null-check, then write back — no !!
+        for (k in children.keys.toList()) children[k]?.let { children[k] = sortList(k, it) }
         rebuild()
     }
 
     /**
-     * 能出缩略图的文件紧跟文件夹之后聚齐,树式列表与网格一视同仁 —— 缩略图开着时图文混排,
-     * 图片挤在一堆文本文件中间很难扫;聚在一起才像相册。网格模式即使缩略图总开关关着也照样
-     * 分组(那时格子里是大图标),否则格子与整行混排更乱。都关着(树式列表 + 无缩略图)时
-     * 用原排序,与历来行为一致。
+     * Files that can produce a thumbnail are grouped right after directories, with
+     * the tree list and the grid treated alike — when thumbnails are on, image and
+     * text rows mixed together are hard to scan; grouping them feels more like a
+     * gallery. In grid mode this grouping still happens even with thumbnails off
+     * (cells show large icons then), otherwise cells and full-width rows mixed
+     * together would be even messier. When both are off (tree list + no thumbnails)
+     * we keep the original sort, matching the long-standing behavior.
      */
-    private fun sortList(list: List<XFile>): List<XFile> {
+    private fun sortList(key: String, list: List<XFile>): List<XFile> {
+        if (keepsServerOrder(key)) return list
         val app = getApplication<Application>()
         val cmp = sort.comparator()
         val grid = Prefs.thumbsGrid(app)
-        // 都关着(树式列表 + 无缩略图):不分组,与历来行为一致
+        // Both off (tree list + no thumbnails): no grouping, matching the long-standing behavior.
         if (!Prefs.thumbs(app) && grid == 0) return SortRules.sorted(list, cmp, null)
-        // 网格「全部文件」:压缩包和目录一样渲染成整行(可展开),夹在格子中间会把网格切断,
-        // 所以紧跟目录聚到前面;其余模式压缩包就是普通行,不必单独成组。
+        // Grid "All files" mode: archives, like directories, render as full expandable rows;
+        // wedged between cells they'd split the grid, so they cluster right after directories;
+        // in other modes an archive is a normal row and doesn't deserve its own group.
         val archivesFirst = grid == 2
         return SortRules.sorted(list, cmp) { f ->
             SortRules.groupOf(f.isDir, expandableArchive(f), Thumbs.canThumb(f), archivesFirst)
@@ -367,8 +449,29 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 隐藏文件(名字以 '.' 开头)按偏好过滤。只在**渲染**时滤,[children] 缓存始终存全量——
-     * 开关切回来不必重新列目录,网络来源尤其省一轮 IO。
+     * This directory's order is **decided by the server**, not re-sorted by the user's
+     * chosen sort.
+     *
+     * A media server's "Continue Watching" comes back sorted by most-recently played,
+     * its four "Latest" rows by most-recently added, and **a playlist's order is the
+     * order the user arranged it in** — that order is the entire reason those
+     * directories exist in the first place. Sorting them again by name/size would
+     * push a half-watched item to the middle of the list, looking exactly like
+     * "Continue Watching isn't updating"; playlists would just be shuffled.
+     */
+    private fun keepsServerOrder(key: String): Boolean {
+        val f = keyFile[key] ?: return false
+        return runCatching {
+            com.twig.fs.network.JellyfinFileSystem.keepsServerOrder(f.path) &&
+                Connections.ofScheme(f.scheme)?.isMediaServer() == true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Hidden files (names starting with '.') are filtered by preference. Filtering
+     * happens only at **render** time — the [children] cache always holds the full
+     * set — so flipping the switch back on doesn't require re-listing, which saves
+     * a network round-trip on remote sources.
      */
     private fun visible(list: List<XFile>?): List<XFile> {
         val l = list ?: return emptyList()
@@ -376,18 +479,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 压缩包是否渲染成可展开的整行(与 [addFile] 同一判定)。
-     * apk 默认不展开(点击走安装),除非用户手动选过"以压缩包方式打开"。
+     * Whether an archive renders as an expandable full row (same judgment as in [addFile]).
+     * Apks and apk bundles are not expanded by default (a tap goes to install), unless the user
+     * manually picked "Open as archive".
      */
     private fun expandableArchive(f: XFile, key: String = fileKey(f)): Boolean =
-        !f.isDir && Archives.isArchive(f) && (!OpenFiles.isApk(f) || forcedArchive.contains(key))
+        !f.isDir && Archives.isArchive(f) &&
+            (!OpenFiles.isInstallable(f) || forcedArchive.contains(key))
 
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state.asStateFlow()
 
     /**
-     * 首次装配。[descriptors] 非空时恢复上次的展开(本地目录 + 网络位置 + 分组/服务器,
-     * 网络用已保存连接重连);否则默认展开内部存储。[currentDesc] 恢复当前目录。
+     * First assembly. When [descriptors] is non-empty, restore the previous expansions
+     * (local directory + network location + groups/servers, with the network ones
+     * reconnecting via the saved connections); otherwise default-expand internal
+     * storage. [currentDesc] restores the current directory.
      */
     fun bootstrap(descriptors: List<String> = emptyList(), currentDesc: String? = null) {
         if (_state.value.rows.isNotEmpty()) return
@@ -398,12 +505,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val parsed = descriptors.sortedBy { it }.map { it.split('\t') }
-        // 分组先展开(建立树结构),纯内存操作、不必等 IO
+        // Expand groups first (to build the tree structure); pure in-memory, no IO needed.
         parsed.filter { it.getOrNull(0) == "group" }.forEach { expanded.add("g:${it[1]}") }
-        // 服务器/本地目录先标成"加载中"再出第一版骨架:所有根节点立刻可见,
-        // 还没连上/列出的位置显示转圈,而不是整棵树空白直到全部恢复完成。
-        // 网络目录("conn")挂在服务器行之下,行本身要等服务器连上才有位置渲染,
-        // 由服务器节点的转圈状态覆盖,不需要单独预标记。
+        // Mark servers/local directories as "loading" before rendering the first
+        // skeleton: every root node is visible immediately, and locations that
+        // aren't connected/listed yet show a spinner instead of leaving the whole
+        // tree blank until restore completes.
+        // Network directories ("conn") sit under the server row, and that row's
+        // spinner covers them, so they don't need their own pre-mark.
         for (p in parsed) when (p.getOrNull(0)) {
             "server" -> if (connFor(p[1]) != null) connecting.add("s:${p[1]}")
             "file" -> loadingKeys.add(fileKey(XFile("file", p[1], isDir = true)))
@@ -412,12 +521,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
         restoring = true
         pendingCurrentDesc = currentDesc
-        resolvePending() // 本地位置立刻解得出;网络的等服务器连上后在循环里再试
+        resolvePending() // Local positions resolve immediately; network ones retry inside the loop once the server is up.
         rebuild()
         viewModelScope.launch {
             for (p in parsed) {
                 if (p.getOrNull(0) == "group") continue
-                // IO 只把数据取回来,落表在下面的主线程段——这个类的线程规则见类注释
+                // IO only retrieves data; the table writes happen on the main thread
+                // below — see the class header comment for the threading rule.
                 val fetched = withContext(io) {
                     runCatching {
                         when (p[0]) {
@@ -443,37 +553,44 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             upgradeContainerKey()
             restoring = false
-            rebuild() // 最后一版行才是最终版,UI 据此收手停止重复锚定
+            rebuild() // Only the last version of rows is final — UI uses this to stop repeated scroll anchoring.
         }
     }
 
     /**
-     * 恢复收尾时校准高亮框的 key。
+     * Reconcile the highlight-box key at the end of restore.
      *
-     * 收藏/服务器的**根目录在树上没有自己的行** —— 子项直接挂在 `fav:`/`s:` 行下面
-     * (见 [addFavorite]/[addServer]),所以上次停在收藏根目录时,高亮框框的是 `fav:` 行。
-     * 但存盘只存得下"哪个目录"([currentDescriptor] 看的是 [currentDir]),"经由收藏
-     * 到达"这件事在那里就丢了;恢复时 [resolvePending] 一律按 `fileKey` 设 key,
-     * 于是指向一个**根本不存在的行**,表现为"从收藏展开的位置,重开后没有绿框"。
+     * Favorites/servers **don't have a row of their own for their root directory** —
+     * children sit directly under the `fav:`/`s:` row (see [addFavorite]/[addServer]),
+     * so when last parked at a favorite's root, the highlight box frames the `fav:`
+     * row. But the saved state can only store "which directory" (see [currentDescriptor]
+     * and [currentDir]); the "reached via favorite" fact is dropped there. During
+     * restore, [resolvePending] sets the key by `fileKey`, and that points to **a
+     * row that doesn't exist**, showing up as "no green box after reopen, at the
+     * position reached from the favorite".
      *
-     * ★ 这一步必须放在恢复循环**之后**:[containerKeyFor] 查的是 [keyFile],而
-     * `fav:`/`s:` 的条目要等 [restoreFavorite]/[restoreServer] 跑完才填得进去。
-     * 放进 [resolvePending] 是不够的——本地路径在循环开始前那次调用就已经解析成功
-     * 并清掉了 pendingCurrentDesc,那时 keyFile 还是空的。
+     * ★ This step must come **after** the restore loop: [containerKeyFor] looks up
+     * [keyFile], and `fav:`/`s:` entries only land there once [restoreFavorite]/
+     * [restoreServer] have run. Putting it into [resolvePending] is not enough —
+     * for local paths that call already succeeds at the very start of the loop and
+     * clears pendingCurrentDesc, at which point keyFile is still empty.
      *
-     * [up] 早就用 [containerKeyFor] 解决过同一类问题(见它的注释),这里是漏了同一步。
+     * [up] already dealt with the same class of problem using [containerKeyFor] (see
+     * its comment); this was the missing twin.
      */
     private fun upgradeContainerKey() {
         val cur = currentDir ?: return
-        // 用户在恢复期间自己点过别的行(currentKey 已不是按 currentDir 推出来的那个)
-        // 就不要覆盖他的选择
+        // The user tapped a different row during restore (currentKey is no longer the
+        // one we derived from currentDir) — don't overwrite their choice.
         if (currentKey != fileKey(cur)) return
         containerKeyFor(cur)?.let { currentKey = it }
     }
 
     /**
-     * 把还没解析的"当前目录"描述符尽量解析成 XFile。网络描述符依赖 [serverScheme]
-     * (服务器连上才有),所以要在恢复过程中反复调用,而不是 bootstrap 开头一次。
+     * Try to resolve the not-yet-resolved "current directory" descriptor into an XFile.
+     * Network descriptors depend on [serverScheme] (the server has to be connected
+     * first), so it's called repeatedly during restore rather than once at the start
+     * of bootstrap.
      */
     private fun resolvePending() {
         val d = pendingCurrentDesc ?: return
@@ -485,37 +602,51 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * IO 阶段取回来、待落进树的一份数据。见 [applyRestored]。
+     * One payload fetched by the IO phase, waiting to be merged into the tree. See
+     * [applyRestored].
      *
-     * 这个类型存在的意义就是把"取"和"写"分开:恢复/定位链路原来在 `withContext(io)`
-     * 里直接改 [children]/[keyFile]/[expanded],现在 IO 只产出 Restored,回主线程再落表。
+     * The reason this type exists is to separate "fetch" from "write": the
+     * restore/locate chain used to mutate [children] / [keyFile] / [expanded]
+     * directly inside `withContext(io)`; now IO only produces Restored, and the
+     * actual table writes happen back on the main thread.
      */
     private class Restored(
         val key: String,
         val file: XFile,
         val listing: Listing,
-        /** restic 收藏顺带取到的快照列表(挂在 `restic:` 节点上)。 */
+        /** Snapshot list also fetched for a restic favorite (mounted on the `restic:` node). */
         val extra: Pair<String, List<XFile>>? = null,
     )
 
-    /** 把 [Restored] 落进树。**只能在主线程调用。** */
-    private fun applyRestored(r: Restored) {
+    /** Merge [Restored] into the tree. **Main thread only.** */
+    /**
+     * Merge a "connected and the root is ready" result into the table.
+     *
+     * ★ [expand] must be turn-offable: a connection that's been abandoned
+     * ([landExpand] answers false) still needs the table write (the connection is
+     * already built and its children are already fetched, so the next tap expands
+     * instantly), but it **must not enter [expanded]** — that `expanded.add` skips
+     * [accordionExpand], so that server would **open a second path of its own**
+     * alongside the one the user already opened, and the tree would show two
+     * unrelated paths open at the same time.
+     */
+    private fun applyRestored(r: Restored, expand: Boolean = true) {
         keyFile[r.key] = r.file
         putListing(r.key, r.listing)
-        r.extra?.let { (k, v) -> children[k] = sortList(v) }
-        expanded.add(r.key)
+        r.extra?.let { (k, v) -> children[k] = sortList(k, v) }
+        if (expand) expanded.add(r.key)
     }
 
     private fun fetchServer(label: String): Restored? {
         val conn = connFor(label) ?: return null
         val root = XFile(schemeForConn(conn), "/", isDir = true)
-        return Restored("s:$label", root, listChildren(root)) // 经 listChildren 以识别 git/restic
+        return Restored("s:$label", root, listChildren(root)) // via listChildren so git/restic get detected
     }
 
     private fun fetchDir(dir: XFile): Restored =
-        Restored(fileKey(dir), dir, listChildren(dir)) // 经 listChildren 以识别 git/restic
+        Restored(fileKey(dir), dir, listChildren(dir)) // via listChildren so git/restic get detected
 
-    /** 重连/解锁收藏指向的目录(restic 收藏若没有已存密码会失败,保持折叠——与手动展开时一致)。 */
+    /** Reconnect / unlock the directory a favorite points at (a restic favorite without a stored password fails — it stays folded, same as a manual expand). */
     private fun fetchFavoriteById(id: String): Restored? {
         val fav = FavoritesStore.all(getApplication()).firstOrNull { it.id == id } ?: return null
         return resolveFavorite(fav, password = null)
@@ -527,20 +658,20 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun descToXFile(d: String): XFile? = TreeKeys.dirOfDescriptor(d, ::sessionSchemeOf)
 
     /**
-     * 连接标签 → 本次会话已注册的 scheme。连接已被删除、或这台服务器本次还没连上时
-     * 都返回 null —— 描述符解析据此判断"这条恢复不了"。
+     * Connection label -> scheme registered in this session. Returns null when the
+     * connection was deleted, or when that server isn't connected yet this session
+     * — descriptor resolution uses this to decide "this one cannot be restored".
      */
     private fun sessionSchemeOf(label: String): String? =
         if (connFor(label) == null) null else serverScheme["s:$label"]
 
-    /** 保存上次位置的描述符(本地/应用/网络/分组/服务器/收藏;restic 仓库节点本身、SAF 跳过)。 */
+    /** Descriptors of saved-last positions (local / apps / network / group / server / favorite; restic repository nodes themselves, and SAF, are skipped). */
     fun expandedDescriptors(): List<String> = expandedSnapshot().mapNotNull { key ->
         TreeKeys.descriptorOf(key) { scheme -> schemeToConn[scheme]?.label() }
     }
 
     /**
-     * 当前目录描述符;还没解析出来(网络服务器没连上就退出)时把原样存回去,别丢。
-     * 可持久化的来源只有本地、应用树与已连接服务器,其它(zip/restic/saf/git)返回 null。
+     * Current directory descriptor; when not yet resolved (user exited before the network server connected), keep it as-is. Persistable sources are only local, the apps tree and connected servers; everything else (zip/restic/saf/git) returns null.
      */
     fun currentDescriptor(): String? {
         val cur = currentDir ?: return pendingCurrentDesc
@@ -553,16 +684,27 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * [file] 所在那一层的子项缓存桶 key。普通目录行就是 [fileKey],但**收藏 / 服务器 /
-     * restic 仓库的根目录在树上没有自己的行**——子项直接挂在 `fav:`/`s:`/`restic:` 那一行
-     * 下面(见 [addFavorite]/[addServer]),[children] 也是存在那个 key 上的。所以直接拿
-     * `f:scheme:parentPath` 去查会落空:从收藏里点开的图片曾因此只有孤零零一张、显示
-     * 1/1 且不能翻页。找不到时退回 `f:` 形式(调用方按"取不到就单张"处理)。
+     * The children-cache bucket key for the layer [file] is in. For a normal directory
+     * row that's [fileKey], but **favorites / servers / restic repositories don't have
+     * a row of their own for their root directory** — children sit directly under the
+     * `fav:`/`s:`/`restic:` row (see [addFavorite]/[addServer]), and [children] is
+     * stored under that key. So looking up `f:scheme:parentPath` directly misses, and
+     * an image opened from a favorite used to come back as a single file showing 1/1
+     * with no pagination. When the lookup misses, fall back to the `f:` form (the
+     * caller treats a miss as "single image").
      */
     private fun siblingsKey(file: XFile): String {
         val fk = "f:${file.scheme}:${file.parentPath}"
         if (children.containsKey(fk)) return fk
-        // 收藏/服务器根的路径可能带尾斜杠(存进来时是什么样就是什么样),parentPath 则一定不带
+        // ★ `parentPath` is split on '/', while a **SAF path is a whole document URI**
+        // (the '/' inside child and parent document ids are encoded as %2F) — what
+        // we get out is not a parent directory at all, so "what other images / audio
+        // are in the same directory" finds nothing: only one image can be viewed,
+        // music can't build a play queue. Ask the tree directly: who contains this
+        // row (same idea as [upTarget]).
+        parentRow(file)?.let { return it.first }
+        // The favorite/server root path may have a trailing slash (whatever was stored);
+        // parentPath never does.
         val parent = file.parentPath.trimEnd('/').ifEmpty { "/" }
         return keyFile.entries.firstOrNull { (k, v) ->
             k != fk && v.scheme == file.scheme &&
@@ -570,16 +712,32 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }?.key ?: fk
     }
 
-    /** 与 [file] 同目录的图片列表 + 该文件在其中的下标(用于图片查看器左右切换)。 */
+    /**
+     * [file]'s parent directory's **name as displayed in the tree**, used as the
+     * title of ad-hoc lists like "now playing".
+     *
+     * ★ We can't take the last segment of `file.parentPath`: the last segment of a
+     * media server's path is the item id (Emby uses pure numbers), so the list would
+     * be called "40". The tree row's `XFile` carries a `displayName` (the album
+     * name) — use it directly; only fall back to the trailing path segment when
+     * nothing is found (e.g. the directory was never expanded).
+     */
+    fun parentLabel(file: XFile): String {
+        keyFile[siblingsKey(file)]?.takeIf { it.isDir }?.let { return it.name }
+        return file.parentPath.trimEnd('/').substringAfterLast('/').ifEmpty { "/" }
+    }
+
+    /** Image list of [file]'s directory + this file's index in it (used by the image viewer to page left/right). */
     fun imageSiblings(file: XFile): Pair<List<XFile>, Int> {
-        // 与列表所见一致:隐藏文件不显示时也不参与翻页;万一目标本身不在其中(隐藏项从别处打开)退回单张
+        // Match what's actually on screen: hidden files are also excluded from paging;
+        // if the target itself isn't in the list (a hidden item opened from elsewhere), fall back to a single-image view.
         val images = visible(children[siblingsKey(file)]).filter { !it.isDir && OpenFiles.isImage(it) }
             .takeIf { l -> l.any { it.path == file.path } } ?: listOf(file)
         val idx = images.indexOfFirst { it.path == file.path }.coerceAtLeast(0)
         return images to idx
     }
 
-    /** 与 [file] 同目录的音频列表(按面板当前排序)+ 该文件下标(用于音乐播放队列)。 */
+    /** Audio list of [file]'s directory (using the panel's current sort) + this file's index (used by the music play queue). */
     fun audioSiblings(file: XFile): Pair<List<XFile>, Int> {
         val audios = visible(children[siblingsKey(file)]).filter { !it.isDir && OpenFiles.isAudio(it) }
             .takeIf { l -> l.any { it.path == file.path } } ?: listOf(file)
@@ -587,41 +745,56 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return audios to idx
     }
 
-    /** 把 XFile 转成可持久化的播放列表曲目(本地/已连接服务器);其它来源返回 null。 */
+    /** Convert an XFile into a persistable playlist track (local / connected server); other sources return null. */
     fun trackFrom(file: XFile): com.twig.app.PlaylistTrack? = when {
         file.scheme == "file" ->
-            com.twig.app.PlaylistTrack(kind = "local", path = file.path, size = file.size, lastModified = file.lastModified)
+            com.twig.app.PlaylistTrack(
+                kind = "local", path = file.path, size = file.size, lastModified = file.lastModified,
+                displayName = file.displayName.orEmpty(),
+            )
         schemeToConn.containsKey(file.scheme) ->
             com.twig.app.PlaylistTrack(
                 kind = "conn", path = file.path, connLabel = schemeToConn[file.scheme]!!.label(),
                 size = file.size, lastModified = file.lastModified,
+                // ★ Must carry this: the trailing segment of a media server's path is the item id
+                // (Emby's are pure numbers), so rebuilding the name from path alone yields "38", "40".
+                displayName = file.displayName.orEmpty(),
+            )
+        // SAF: the document URI itself is a persistent authorization (takePersistableUriPermission),
+        // valid across sessions, so it can land on "Now playing" too. ★ The name can only rely on
+        // displayName — the URI doesn't carry a filename, and dropping that leaves the list as a
+        // row of content://… URIs without even an extension (media3 needs it to identify the container).
+        file.scheme == com.twig.app.SafFileSystem.SCHEME ->
+            com.twig.app.PlaylistTrack(
+                kind = "saf", path = file.path, size = file.size, lastModified = file.lastModified,
+                displayName = file.displayName.orEmpty(),
             )
         else -> null
     }
 
-    // ---- 交互 ----
+    // ---- Interaction ----
 
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
             is GroupNode -> {
                 currentKey = node.key
-                currentDir = null // 分组标题(局域网/FTP/…)不是真实目录,清掉避免复制/新建误用上一次选中的目录
+                currentDir = null // Group heading (LAN/FTP/...) isn't a real directory; clear it so copy/new don't pick up the previously-selected directory.
                 if (!expanded.remove(node.key)) accordionExpand(node.key)
                 rebuild()
             }
             is ServerNode -> toggleServer(node)
-            is ResticNode -> if (node.unlocked) toggleRestic(node) // 未解锁由 Fragment 弹密码
-            is FavoriteNode -> Unit // 由 Fragment 处理(可能需密码)
-            is CompareNode -> Unit // 由 Fragment 处理(跳到对比页)
-            is ActionNode -> Unit // 由 Fragment 处理
-            is InfoNode -> { // 点 ✕ 关闭
+            is ResticNode -> if (node.unlocked) toggleRestic(node) // Unlocked — Fragment shows password prompt if needed.
+            is FavoriteNode -> Unit // Handled by Fragment (may need password).
+            is CompareNode -> Unit // Handled by Fragment (jumps to compare page).
+            is ActionNode -> Unit // Handled by Fragment.
+            is InfoNode -> { // The ✕ button
                 val key = fileKey(node.file)
                 infoOpen.remove(key)
                 stopDirScan(key)
                 rebuild()
             }
-            is SearchNode -> closeSearch(node) // 点击虚拟目录行本身:收缩并移出
+            is SearchNode -> closeSearch(node) // Tapping the virtual directory row itself: collapse and remove.
         }
     }
 
@@ -631,80 +804,101 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 当前"绿色框选"的文件/目录(服务器/分组等非文件节点返回 null),
-     * 供未勾选任何项时作为复制/删除/重命名的默认操作对象。
-     * 排除根目录与内部存储顶级节点,防误删整个存储。
+     * The currently "green-highlighted" file/directory (non-file nodes like
+     * servers/groups return null), used as the default target for copy/delete/
+     * rename when nothing is checked.
+     * Root nodes like internal storage and removable volumes are excluded, so a
+     * whole storage volume cannot be wiped by accident.
      */
     fun currentSelection(): XFile? = currentKey?.let { k ->
         keyFile[k]?.takeIf {
             fileKey(it) == k && it.path != "/" &&
-                !(it.scheme == "file" && it.path == Environment.getExternalStorageDirectory().absolutePath)
+                !(
+                    it.scheme == "file" &&
+                        (
+                            it.path == Environment.getExternalStorageDirectory().absolutePath ||
+                                StorageVolumes.isVolumeRoot(it.path) // A whole SD card / USB stick shouldn't be the default target either.
+                            )
+                    )
         }
     }
 
-    /** 取(必要时建立)连接对应的已注册 scheme;阻塞 IO,失败返回 null。 */
+    /** Get (creating if needed) the registered scheme for a connection; blocking IO, returns null on failure. */
     fun connSchemeBlocking(conn: SavedConnection): String? =
         runCatching { schemeForConn(conn) }.getOrNull()
 
-    /** 仅重建树(组会重读已保存连接/SAF 授权),不重新列目录。 */
+    /** Rebuild the tree only (groups re-read saved connections / SAF grants), without re-listing directories. */
     fun refreshTree() = rebuild()
 
     /**
-     * 非空时树上**只保留这一个根**——选择器的「就在这台服务器里挑脚本」用:
-     * 别的来源(本地/其他服务器)整棵不出现,自然也就选不到,比选中后再报错好。
+     * When non-null the tree only keeps this one root — used by the picker's
+     * "Pick a script on this server": other sources (local / other servers) don't
+     * appear on the tree at all, so they can't be selected, which is better than
+     * letting them be selected and then failing.
      */
     var lockRoot: XFile? = null
 
-    /** [lockRoot] 那一行显示的名字(服务器名)。 */
+    /** Display name of the [lockRoot] row (server name). */
     var lockLabel: String? = null
 
     /**
-     * 挂载外部 App「用 Twig 打开」传进来的压缩包([ViewIntentActivity]):作为树顶的一行
-     * 就地展开,展开逻辑与树里点开压缩包完全一致(经 [listChildren] → `ArchiveFileSystem.rootOf`)。
-     * 只留最近一个——外部条目不属于任何真实目录,留一串历史挂载只会让树顶越堆越长。
+     * Mount an archive that an external App opened "with Twig" ([ViewIntentActivity]):
+     * it becomes a row at the top of the tree, expanded in place; the expansion logic
+     * is exactly the same as expanding an archive already in the tree (via [listChildren]
+     * → `ArchiveFileSystem.rootOf`).
+     * Only keep the most recent one — external entries don't belong to any real
+     * directory, keeping a history would just pile up at the top.
      */
     fun mountExternal(archive: XFile) {
         val key = EXTERNAL_KEY_PREFIX + fileKey(archive)
         externalMount = archive
         keyFile[key] = archive
         currentKey = key
-        children.remove(key) // 同一个包再次打开(内容可能变了)不吃上次的条目缓存
+        children.remove(key) // Re-opening the same archive (its contents may have changed) doesn't reuse the children cache.
+        claimExpand(key)
         loadingKeys.add(key)
         expanded.add(key)
         rebuild()
         viewModelScope.launch {
             val r = runCatching { withContext(io) { listChildren(archive) } }
-            loadingKeys.remove(key)
+            val mine = landExpand(key)
             r.fold(
                 {
                     putListing(key, it)
-                    it.mountRoot?.let { root -> currentDir = root } // 外部打开的包同样可以当目标目录
-                    accordionExpand(key); rebuild()
+                    if (mine) {
+                        it.mountRoot?.let { root -> currentDir = root } // An externally-opened archive can also act as a destination directory.
+                        accordionExpand(key)
+                    }
+                    rebuild()
                 },
-                { expanded.remove(key); rebuild(); emitFailure(it, archive) },
+                { expanded.remove(key); rebuild(); if (mine) emitFailure(it, archive) },
             )
         }
     }
 
-    /** 该 scheme 是否为已连接服务器(矩形树图判断能否"在另一面板显示")。 */
+    /** Whether this scheme is a connected server (used by the treemap to decide whether "show on the other side" is possible). */
     fun isConnScheme(s: String): Boolean = schemeToConn.containsKey(s)
 
-    /** 该 scheme 对应的连接(路径栏显示服务器名/类型图标用);非服务器来源为 null。 */
+    /** The connection backing this scheme (used by the path bar's server-name / type icon); null for non-server sources. */
     fun connOf(s: String): SavedConnection? = schemeToConn[s]
 
     /**
-     * 在树中逐级展开并定位到 [target](矩形树图"在另一面板显示"):
-     * 本地按 内部存储/根目录 归属选根;服务器来源先展开分组与服务器节点再下钻。
-     * 其余来源(压缩包内/restic 等)不支持。
-     * [focus] 是 [target] 里要滚动定位到的那个文件("跳转到所在目录"从音乐播放页/桌面
-     * 快捷方式过来时给出),高亮框仍框住目录本身,只是把列表滚到这一行。
-     * [openGit] 时顺带展开该目录下的 Git 虚拟节点并定位到它(“最近位置”里的 git 项)。
+     * Progressively expand and locate [target] in the tree (used by the treemap's
+     * "show on the other side"):
+     * for local, pick a root based on whether it's under internal storage or root;
+     * for a server, expand the group and server node first, then drill down.
+     * Other sources (inside archives / restic / etc.) aren't supported.
+     * [focus] is the file in [target] that should scroll into view ("Go to containing
+     * folder" gives one when arriving from the music player / a desktop shortcut);
+     * the highlight still frames the directory itself; the list just scrolls to that row.
+     * With [openGit], also expand the Git virtual node inside that directory and
+     * locate it (the "Last position" entry for a git item).
      */
     fun revealPath(target: XFile, focus: XFile? = null, openGit: Boolean = false) {
         viewModelScope.launch {
             val r = runCatching {
                 val plan = withContext(io) { planReveal(target, openGit) }
-                applyReveal(plan)   // 主线程落表
+                applyReveal(plan)   // Main-thread table write
                 plan.gitKey
             }
             r.fold(
@@ -720,31 +914,37 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 定位的"计划":哪些 key 该留着展开、哪些目录需要现列、git 虚拟根是哪个。
-     * IO 阶段只产出它,不碰任何 VM 状态;落表见 [applyReveal]。
+     * The "plan" for locating: which keys to keep expanded, which directories to
+     * list now, which the git virtual root is.
+     * The IO phase only produces this — it never touches any VM state; the merge
+     * is in [applyReveal].
      */
     private class RevealPlan(
         val keep: Set<String>,
-        /** 按从根到目标的顺序;已有缓存的只带 XFile,需要现列的带 [Restored]。 */
+        /** In order from root to target; already-cached entries carry only XFile, ones that need listing carry [Restored]. */
         val expand: List<Pair<String, XFile>>,
         val fetched: List<Restored>,
         val gitKey: String?,
     )
 
-    /** 主线程:把 [RevealPlan] 落进树,并按手风琴规则把不在链上的分支折起来。 */
+    /** Main thread: merge [RevealPlan] into the tree, and fold up any branch not on the chain per the accordion rule. */
     private fun applyReveal(plan: RevealPlan) {
+        // Locating is also an "expand" — it has to be claimed: otherwise an in-flight
+        // expand completing right now would accordionExpand itself, folding up the
+        // very chain we just located (see pendingExpand).
+        plan.expand.lastOrNull()?.first?.let { claimExpand(it) }
         plan.fetched.forEach { applyRestored(it) }
         plan.expand.forEach { (key, x) ->
             keyFile[key] = x
             expanded.add(key)
         }
-        // 其余展开的分支(另一根目录/别的服务器等)全部折叠
+        // Fold up every other currently-expanded branch (other root / other server / etc.).
         synchronized(expanded) { expanded.removeAll { it !in plan.keep } }
     }
 
-    /** IO:算出定位计划(会按需建立连接、列目录),不写任何 VM 状态。 */
+    /** IO: compute the reveal plan (connecting and listing on demand), without writing any VM state. */
     private fun planReveal(target: XFile, openGit: Boolean): RevealPlan {
-        // 手风琴规则:定位后同侧只保留这一条展开链,其余根/分支全折叠(与 accordionExpand 一致)。
+        // Accordion rule: after locating the same side keeps only this one expanded chain, all others fold up (matches accordionExpand).
         val keep = HashSet<String>()
         val chain = ArrayList<String>()
         val expand = ArrayList<Pair<String, XFile>>()
@@ -760,15 +960,18 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (chain.firstOrNull() != root) chain.add(0, root)
         } else {
-            // 本次会话该服务器还没展开过时 schemeToConn 里没有——scheme 是按连接确定性生成的
-            // (Connections.schemeOf),按它反查已保存连接、当场建连接注册,而不是直接报错。
+            // The first time this session, the scheme isn't in schemeToConn yet — the scheme is
+            // generated deterministically from the connection (Connections.schemeOf); look up
+            // the saved connection by it and register the connection on the spot instead of
+            // throwing an error.
             val conn = schemeToConn[target.scheme]
                 ?: ConnectionStore.all(getApplication()).firstOrNull { Connections.schemeOf(it) == target.scheme }
                     ?.also { schemeForConn(it) }
                 ?: throw FsException(str(R.string.err_reveal_unsupported))
-            val group = when (conn.type) {
-                "smb" -> "lan"
-                "webdav" -> "dav"
+            val group = when {
+                conn.type == "smb" -> "lan"
+                conn.type == "webdav" -> "dav"
+                conn.isMediaServer() -> "media" // Jellyfin and Emby share one group.
                 else -> conn.type
             }
             keep.add("g:$group")
@@ -779,7 +982,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             keep.add(sKey)
             expand.add(sKey to XFile(target.scheme, "/", isDir = true))
-            var p = target.path // 服务器根的子项挂在服务器节点下,链不含 "/"
+            var p = target.path // Children of a server root hang under the server node — the chain itself does not contain "/".
             while (p != "/" && p.isNotEmpty()) {
                 chain.add(0, p)
                 p = XFile(target.scheme, p, isDir = true).parentPath
@@ -791,8 +994,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             keep.add(key)
             if (!children.containsKey(key)) fetched.add(fetchDir(x)) else expand.add(key to x)
         }
-        // Git 虚拟节点挂在宿主目录行下,上面逐级展开时 listChildren 已顺带
-        // ensureGit 注册好,这里只需把它也展开(不然只看到宿主目录、还得再点一次)
+        // Git virtual nodes hang off their host-directory row. While walking up the chain
+        // above, listChildren already calls ensureGit to register them; here we just need
+        // to expand the Git node too — otherwise the user would only see the host
+        // directory and have to tap Git separately.
         var gitKey: String? = null
         if (openGit) {
             gitInfo[fileKey(target)]?.let { (s, _) ->
@@ -806,9 +1011,146 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return RevealPlan(keep, expand, fetched, gitKey)
     }
 
-    // ---- 最近位置(见 [HistoryStore]:记目录,不记文件) ----
+    // ---- Go to path (jump under a root) ----
 
-    /** 在某目录里打开了文件:把这个**目录**记进最近位置。 */
+    /**
+     * Expand and locate by a path typed by the user, starting from one **root row**
+     * (storage root / server root / document-tree root / favorite). A trailing
+     * directory becomes the current directory; a trailing file leaves the highlight on
+     * its directory and scrolls the list to that row (same split as [revealPath]'s
+     * `focus`).
+     *
+     * ★ Why descend **by name** instead of joining a path and handing it to
+     * [revealPath]: that one reconstructs every level by cutting the target path on
+     * '/', which only holds for local paths and connected servers. **A SAF path is a
+     * whole document URI** (the '/'s inside the child's and the parent's document id
+     * are encoded as %2F), so a joined path is not any row in the tree (the same
+     * lesson as [siblingsKey]); a media server's path is a chain of item ids, while
+     * the user only ever has names. Descending costs one `list` per level — exactly
+     * what [planReveal] pays as well, since it has to list every level anyway to hang
+     * the children.
+     *
+     * [rootKey] is that row's key: `s:<label>` for a server, `fav:<id>` for a
+     * favorite, `f:…` for a storage/document-tree root — which is also the bucket the
+     * children hang on (see [siblingsKey]), so it must come from the row, not be
+     * recomputed here. [root] may be null for a server that has not been connected in
+     * this session; it is connected inside the IO phase (see [fetchServer]).
+     */
+    fun revealUnder(rootKey: String, root: XFile?, path: String) {
+        val segs = relativeSegments(root, path)
+        viewModelScope.launch {
+            // Ancestors read the current rows, so it has to happen on the main thread.
+            // The row was long-pressed, hence visible, hence its ancestors are expanded.
+            // ★ A server is the exception: it may never have been opened this session,
+            // so its group is named explicitly rather than read off the rows — landing
+            // folds away everything outside this chain, the group row included.
+            val chain = ancestorKeysOf(rootKey) + rootKey + setOfNotNull(serverGroupKey(rootKey))
+            val r = runCatching { withContext(io) { planDescend(rootKey, root, segs) } }
+            r.fold(
+                { plan ->
+                    applyDescend(chain, plan)
+                    currentDir = plan.target
+                    currentKey = plan.targetKey
+                    scrollKey = plan.focus?.let { fileKey(it) }
+                    rebuild()
+                },
+                { rebuild(); emitError(it.message) },
+            )
+        }
+    }
+
+    /**
+     * Split the typed path into segments to descend through.
+     *
+     * An absolute path pasted from elsewhere is the common case, so when it really
+     * sits under this root, that prefix is cut off first. This only applies when the
+     * root's own path is slash-shaped — a SAF document URI or a media server's item
+     * ids are matched by name only.
+     */
+    private fun relativeSegments(root: XFile?, path: String): List<String> {
+        var rel = path.trim()
+        val rp = root?.path.orEmpty()
+        if (rp.startsWith("/") && rp != "/" && rel.startsWith("/")) {
+            rel = when {
+                rel == rp -> ""
+                rel.startsWith("$rp/") -> rel.removePrefix("$rp/")
+                else -> rel // not under this root: descending by name reports which segment is missing
+            }
+        }
+        return rel.split('/', '\\').map { it.trim() }.filter { it.isNotEmpty() && it != "." }
+    }
+
+    /** The chain [revealUnder] has to land: which rows to expand, what was fetched, where we stopped. */
+    private class DescendPlan(
+        val expand: List<Pair<String, XFile>>,
+        val fetched: List<Restored>,
+        val target: XFile,
+        /** Key of the row the highlight lands on — the root's own key when nothing was descended. */
+        val targetKey: String,
+        val focus: XFile?,
+    )
+
+    /** IO: descend from [root] segment by segment, producing the plan; touches no VM state. */
+    private fun planDescend(rootKey: String, root: XFile?, segs: List<String>): DescendPlan {
+        val expand = ArrayList<Pair<String, XFile>>()
+        val fetched = ArrayList<Restored>()
+        // Cached children are used as they are (same as planReveal); otherwise list now.
+        fun kidsOf(key: String, dir: XFile): List<XFile> {
+            children[key]?.let { expand.add(key to dir); return it }
+            val r = Restored(key, dir, listChildren(dir))
+            fetched.add(r)
+            return r.listing.children
+        }
+        var key = rootKey
+        var dir: XFile
+        var kids: List<XFile>
+        if (root == null) {
+            // Server not connected in this session: connect by label, same as planReveal's lookup
+            val r = fetchServer(rootKey.removePrefix("s:")) ?: throw FsException(str(R.string.err_conn_deleted))
+            fetched.add(r); dir = r.file; kids = r.listing.children
+        } else {
+            dir = root; kids = kidsOf(key, dir)
+        }
+        var focus: XFile? = null
+        for ((i, s) in segs.withIndex()) {
+            val hit = kids.firstOrNull { it.name == s }
+                ?: kids.firstOrNull { it.name.equals(s, ignoreCase = true) }
+                ?: throw FsException(str(R.string.err_goto_missing, s))
+            if (!hit.isDir) {
+                // A file is only allowed as the last segment: stop on its directory and
+                // scroll to it. Descending *into* an archive is a mount, not a listing.
+                if (i != segs.lastIndex) throw FsException(str(R.string.err_goto_not_dir, s))
+                focus = hit
+                break
+            }
+            dir = hit
+            key = fileKey(hit)
+            kids = kidsOf(key, dir)
+        }
+        return DescendPlan(expand, fetched, dir, key, focus)
+    }
+
+    /** Group row a server row belongs to; null for any other kind of root. */
+    private fun serverGroupKey(rootKey: String): String? {
+        val label = rootKey.removePrefix("s:").takeIf { it != rootKey } ?: return null
+        return connFor(label)?.let { "g:${groupIdFor(it)}" }
+    }
+
+    /** Main thread: land a [DescendPlan] and fold away every branch off this chain. */
+    private fun applyDescend(rootChain: Set<String>, plan: DescendPlan) {
+        // Same as applyReveal: claim the expansion, or a slower one still in flight
+        // lands later and accordions this whole chain shut (see pendingExpand).
+        claimExpand(plan.targetKey)
+        plan.fetched.forEach { applyRestored(it) }
+        plan.expand.forEach { (k, x) -> keyFile[k] = x; expanded.add(k) }
+        expanded.addAll(rootChain) // the way down to the root has to stay open too
+        val keep = rootChain + plan.expand.map { it.first } + plan.fetched.map { it.key }
+        synchronized(expanded) { expanded.removeAll { it !in keep } }
+    }
+
+    // ---- Recent locations (see [HistoryStore]: records directories, not files) ----
+
+    /** A file was opened inside [file]: record the **directory** in recent locations. */
     fun noteOpenedIn(file: XFile) {
         noteHistory(XFile(file.scheme, file.parentPath, isDir = true), "dir")
     }
@@ -818,15 +1160,17 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             dir.scheme == "file" -> HistoryEntry(kind, dir.path)
             schemeToConn.containsKey(dir.scheme) ->
                 HistoryEntry(kind, dir.path, schemeToConn[dir.scheme]!!.label())
-            else -> return // 压缩包内/restic/saf 等来源存不成"如何到达",不记
+            else -> return // Sources like archive contents / restic / SAF can't be recorded as "how to reach here" — skip.
         }
         HistoryStore.add(getApplication(), e)
     }
 
     /**
-     * 跳到一条最近位置。网络连接可能本次会话还没展开过,按标签反查已保存连接、用
-     * [Connections.schemeOf] 算出确定性 scheme 交给 [revealPath] 现连(它自己会处理)。
-     * 连接已被删除时返回 false,由 UI 提示。
+     * Jump to a recent location. The connection might not have been opened this session
+     * yet — look up the saved connection by label, derive the deterministic scheme via
+     * [Connections.schemeOf], and hand it to [revealPath], which connects on demand
+     * (it handles that itself). Returns false when the connection has been deleted,
+     * so the UI can show a hint.
      */
     fun revealHistory(e: HistoryEntry): Boolean {
         val scheme = if (e.connLabel.isEmpty()) {
@@ -841,23 +1185,23 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 编辑/删除服务后调用:丢弃该连接的缓存与折叠节点,下次展开用**新配置**重连。
+     * Called after editing/deleting a server: drop that connection's cache and collapsed
+     * nodes so the next expansion reconnects with the **new** configuration.
      *
-     * ★ 必须把 scheme 从 [FsRegistry] 里注销掉。scheme 是按连接标签确定性生成的,
-     * 只改密码/主机密钥时标签不变、scheme 也不变,光清 VM 这几张表没用——
-     * [Connections.ensure] 开头那句"已注册就复用"会把**旧配置建的**实例原样还回来,
-     * 表现为改了配置却不生效,直到重启应用。顺带断开旧连接,别把 socket 漏在那儿。
+     * ★ The scheme must be removed from [FsRegistry] too. The scheme is generated
+     * deterministically from the connection label, so changing just the password or
+     * host key keeps the same scheme; clearing only these VM tables is not enough —
+     * the "reuse if already registered" check at the start of [Connections.ensure]
+     * will hand back the **old** instance, and the change appears to have no effect
+     * until the app is restarted. Also tear down the old connection so its socket
+     * isn't left dangling.
      */
     fun forgetServer(label: String) {
         val key = "s:$label"
         val scheme = serverScheme.remove(key)
         if (scheme != null) {
             schemeToConn.remove(scheme)
-            when (val fs = FsRegistry.unregister(scheme)) {
-                is SmbFileSystem -> runCatching { fs.disconnect() }
-                is SftpFileSystem -> runCatching { fs.disconnect() }
-                else -> Unit
-            }
+            Connections.drop(scheme)
         }
         serverInfo.remove(label)
         children.remove(key)
@@ -867,10 +1211,32 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 折叠当前目录并把"当前目录"上移一级。服务器/收藏的根目录不是独立的 [FileNode]
-     * (子项直接挂在 [ServerNode]/[FavoriteNode] 行下,见 [addServer]/[addFavorite]),
-     * 逐级 parentPath 走到那里后改为折叠该节点本身;再上一级折叠其所在分组([GroupNode]),
-     * 一路退回树顶层——不再在到达某个来源自己的文件系统根时提前把 currentDir 清空了事。
+     * Called when a document-tree grant is revoked: clear what this row left behind in
+     * the tree (cached children, expansion state, green highlight) and re-list — same
+     * pattern as [forgetServer]. If we don't, re-granting the same tree later will
+     * expand into this stale list. The row itself doesn't need removal: the SAF group
+     * reads `persistedUriPermissions` fresh every time.
+     */
+    fun forgetSaf(file: XFile) {
+        val key = fileKey(file)
+        children.remove(key)
+        expanded.remove(key)
+        keyFile.remove(key)
+        if (currentKey == key) {
+            currentKey = null
+            currentDir = null
+        }
+        rebuild()
+    }
+
+    /**
+     * Collapse the current directory and move "current directory" up one level.
+     * Server/favorite roots are not standalone [FileNode] rows (their children hang
+     * directly under the [ServerNode]/[FavoriteNode] row — see [addServer]/
+     * [addFavorite]), so when `parentPath` walks up to one of those we collapse the
+     * container node itself instead; one level further collapses its containing
+     * [GroupNode], walking all the way back to the top of the tree. We no longer
+     * short-circuit by clearing `currentDir` at the first source-side root.
      */
     fun up() {
         val key = currentKey ?: return
@@ -895,35 +1261,91 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             else -> {
                 val cur = currentDir ?: return
                 expanded.remove(key)
-                if (cur.path == "/" || cur.path.isEmpty()) {
-                    currentDir = null
-                    currentKey = null
-                } else {
-                    val parent = cur.copy(path = cur.parentPath)
-                    currentDir = parent
-                    currentKey = containerKeyFor(parent) ?: fileKey(parent)
+                val up = upTarget(key, cur)
+                val parent = up?.second
+                currentDir = parent // When landing on a group row there is no "current directory" — same as the g:/s: branches.
+                currentKey = when {
+                    up == null -> null
+                    parent == null -> up.first
+                    else -> up.first ?: containerKeyFor(parent) ?: fileKey(parent)
                 }
             }
         }
         rebuild()
     }
 
-    /** 服务器所在分组 id(局域网/dav/sftp/ftp),与 [revealPath] 用的映射一致。 */
-    private fun groupIdFor(conn: SavedConnection): String = when (conn.type) {
-        "smb" -> "lan"
-        "webdav" -> "dav"
+    /**
+     * Where "Up" should land: the key of the row that becomes current in the tree
+     * (returns null when only a string fallback is available) and the directory to
+     * use as `currentDir`; null at the very top.
+     *
+     * Two spots used to drop the green highlight entirely:
+     * - The **archive root** has `"/"` as its path (it IS the archive's own root),
+     *   and the old code treated that as "we're at the top" and cleared everything.
+     *   But it is not at the top of the tree — it hangs off a host file, so its
+     *   parent should be the **directory containing the host file**, matching what
+     *   collapsing an archive inside the tree does (see [toggleFile]).
+     * - **SAF's path is a full document URI**, and `parentPath` splits it on `/` —
+     *   not an actual parent directory. So `currentKey` ends up pointing at a row
+     *   that doesn't exist — on screen, the green highlight just disappears.
+     *
+     * So ask the tree first: **whoever contains it is its parent**. That holds for
+     * every source; string fallback is only for "ancestor never expanded" cases.
+     */
+    private fun upTarget(key: String, cur: XFile): Pair<String?, XFile?>? {
+        if (mountRoots[key]?.let { it.scheme == cur.scheme && it.path == cur.path } == true) {
+            val host = keyFile[key] ?: return null
+            parentRow(host)?.let { return it } // The parent directory of the host file's row in the tree.
+            val dir = runCatching { FsRegistry.of(host).parentOf(host) }.getOrNull() ?: return null
+            return null to dir
+        }
+        parentRow(cur)?.let { return it }
+        // Nothing in the tree contains it — so it is either the top-level row (no
+        // parent), or a row hanging **directly under a group** (SAF grant roots do
+        // this; like server roots, fall back to its containing group title).
+        (_state.value.rows.firstOrNull { it.key == key } as? FileNode)?.let { row ->
+            if (row.depth == 0) return null
+            groupRowAbove(key)?.let { return it to null }
+        }
+        if (cur.path == "/" || cur.path.isEmpty()) return null
+        return null to cur.copy(path = cur.parentPath)
+    }
+
+    /** The nearest group row above [key] in the tree (only meaningful when it is not a top-level root — see [upTarget]). */
+    private fun groupRowAbove(key: String): String? {
+        val rows = _state.value.rows
+        val i = rows.indexOfFirst { it.key == key }
+        if (i < 0) return null
+        for (j in i - 1 downTo 0) if (rows[j] is GroupNode) return rows[j].key
+        return null
+    }
+
+    /** Of the expanded directories, who contains [file] — return that row's key and XFile. */
+    private fun parentRow(file: XFile): Pair<String, XFile>? {
+        val k = children.entries.firstOrNull { (_, list) ->
+            list.any { it.scheme == file.scheme && it.path == file.path }
+        }?.key ?: return null
+        return keyFile[k]?.let { k to it }
+    }
+
+    /** The group id the server lives in (lan/dav/sftp/ftp) — matches the mapping used by [revealPath]. */
+    private fun groupIdFor(conn: SavedConnection): String = when {
+        conn.type == "smb" -> "lan"
+        conn.type == "webdav" -> "dav"
+        conn.isMediaServer() -> "media" // Jellyfin and Emby share one group.
         else -> conn.type
     }
 
-    /** [x] 是否恰是某个已展开服务器/收藏的根目录——是则返回该节点的 key("s:.."/"fav:.."),
-     *  供 [up] 从子目录折回来时改用容器节点本身,而不是一个从未真正展开过的 fileKey。 */
+    /** Whether [x] is exactly the root of some expanded server/favorite — if so, return that node's key ("s:.." / "fav:.."),
+     *  used by [up] to fall back to the container node itself rather than a fileKey that was never really expanded. */
     private fun containerKeyFor(x: XFile): String? = keyFile.entries.firstOrNull { (k, v) ->
         (k.startsWith("s:") || k.startsWith("fav:")) && v.scheme == x.scheme && v.path == x.path
     }?.key
 
     /**
-     * 只重列已展开的本地目录(外部应用增删文件后同步),网络目录不动。
-     * 内容没变化时不重建树,避免无谓刷新。
+     * Only re-list expanded local directories (so external apps creating/removing files
+     * stay in sync); network directories are not touched.
+     * If nothing changed, skip rebuilding the tree to avoid a pointless refresh.
      */
     fun refreshLocal() {
         val targets = expandedSnapshot().mapNotNull { k ->
@@ -931,14 +1353,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (targets.isEmpty()) return
         viewModelScope.launch {
-            // IO 只取,落表在下面(sortList 还要读 Prefs,本来也该在主线程)
+            // IO only reads; the assignment below runs on the main thread anyway
+            // (sortList still reads Prefs, which has to be on the main thread).
             val fresh = HashMap<String, Listing>()
             withContext(io) {
                 for ((k, f) in targets) runCatching { fresh[k] = listChildren(f) }
             }
             var changed = false
             for ((k, l) in fresh) {
-                val sorted = sortList(applyListing(l))
+                val sorted = sortList(k, applyListing(l))
                 if (children[k] != sorted) changed = true
                 children[k] = sorted
             }
@@ -947,16 +1370,19 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 清掉 [dir] 自身的子项缓存(不管当前是否展开)。[refresh] 只重列"当前已展开"的目录——
-     * 对着一个折叠的目录直接建子目录(长按菜单,不必先点开)时,若它之前展开过又被折叠,
-     * 缓存留着旧列表,refresh 不会碰它,下次展开就还是建之前的样子(重启 app 才会因为全量
-     * 重建而"看起来好了")。这里显式清缓存,保证下次展开必重新拉取。
+     * Clear [dir]'s own children cache (whether expanded or not). [refresh] only
+     * re-lists "currently expanded" directories — so if you create a directory on a
+     * collapsed one (long-press menu, no need to open it first) and it was previously
+     * expanded then collapsed, the cache holds the stale list, refresh doesn't touch
+     * it, and the next expansion shows the pre-creation state (only a full app
+     * restart rebuilds everything and "seems to fix it"). Clearing here guarantees the
+     * next expansion re-fetches.
      */
     fun invalidate(dir: XFile) {
         children.remove(fileKey(dir))
     }
 
-    /** 增删改后刷新:重新列举所有已展开目录。 */
+    /** Refresh after a mutation: re-list every expanded directory. */
     fun refresh() {
         val targets = expandedSnapshot().mapNotNull { k -> keyFile[k]?.let { k to it } }
         viewModelScope.launch {
@@ -969,32 +1395,62 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- 展开逻辑 ----
+    // ---- Expansion logic ----
 
     /**
-     * 手风琴展开:折叠所有不在该节点祖先链上的节点(目录/服务器/分组/收藏均参与),
-     * 全树只保持"当前选中"这一条展开链。
+     * Accordion expansion: collapse every node not on this node's ancestor chain
+     * (directories / servers / groups / favorites all participate), keeping only
+     * the "currently selected" expansion chain open across the whole tree.
      */
+    /**
+     * Claim this tap: any earlier in-flight expansion (if it isn't this same row)
+     * is now abandoned — its spinner is collected immediately and it won't auto-expand
+     * itself when it lands. See [pendingExpand].
+     *
+     * **Every "open this row" entry point must call this**, including the synchronous
+     * branch that just expands from cache: synchronous expansion also calls
+     * [accordionExpand], and without claiming, a slower one can still collapse it
+     * after the fact.
+     */
+    private fun claimExpand(key: String) {
+        pendingExpand?.takeIf { it != key }?.let { abandoned.add(it) }
+        abandoned.remove(key) // Tapping back on a row we just abandoned: the spinner is reinstated, and the landing counts again.
+        pendingExpand = key
+    }
+
+    /** Asynchronous expansion lands: clear the spinner and answer "does this still count?" (see [pendingExpand]). */
+    private fun landExpand(key: String): Boolean {
+        loadingKeys.remove(key)
+        connecting.remove(key)
+        abandoned.remove(key)
+        return (pendingExpand == key).also { if (it) pendingExpand = null }
+    }
+
+    /** Should this row show a spinner? Real work is in flight and the user hasn't abandoned it yet (see [abandoned]). */
+    private fun busy(key: String): Boolean =
+        key !in abandoned && (loadingKeys.contains(key) || connecting.contains(key))
+
     private fun accordionExpand(key: String) {
         val ancestors = ancestorKeysOf(key)
-        // removeAll{} 内部是遍历,synchronizedSet 的遍历必须自己加锁(锁就是集合本身)
+        // removeAll{} iterates internally; iterating a synchronizedSet must be guarded by the set itself.
         synchronized(expanded) { expanded.removeAll { it != key && it !in ancestors } }
         expanded.add(key)
     }
 
-    /** [expanded] 的快照;遍历它的地方一律先取快照,别直接迭代(见字段注释)。 */
+    /** Snapshot of [expanded]; anywhere we iterate it, take a snapshot first — don't iterate directly (see field comments). */
     private fun expandedSnapshot(): List<String> = synchronized(expanded) { expanded.toList() }
 
     private fun ancestorKeysOf(key: String): Set<String> =
         TreeKeys.ancestorKeys(_state.value.rows.map { TreeKeys.Row(it.key, it.depth) }, key)
 
     /**
-     * 长按菜单"属性":开/关该文件行下方的信息卡片。多张卡片可同时保持打开,
-     * 互不影响;首次打开异步读取(EXIF/媒体信息/应用信息可能有 IO)。
+     * Long-press menu "Properties": toggle the info card under this file's row. Multiple
+     * cards can stay open at once, independently; first open reads asynchronously
+     * (EXIF / media info / app info may involve IO).
      */
     fun toggleInfo(n: FileNode) = toggleInfo(n.file)
 
-    /** 同上,但直接给文件(收藏行没有对应的 [FileNode],菜单里的"属性"走这个入口)。 */
+    /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */
     fun toggleInfo(file: XFile) {
         val key = fileKey(file)
         if (!infoOpen.remove(key)) {
@@ -1021,9 +1477,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 目录属性卡片的递归统计(文件数/目录数/总大小):打开卡片即扫,边扫边刷。
-     * 关闭卡片([toggleInfo] 再点一次 / ✕)或所在目录折叠([rebuild] 里的清理)都会取消——
-     * 大目录树尤其是网络来源的扫描代价高,卡片看不见就不该继续跑。
+     * Recursive stats for a directory's properties card (file count / dir count /
+     * total size): scan begins as soon as the card opens, refreshing along the way.
+     * Closing the card (toggling via [toggleInfo] again / ✕) or collapsing the
+     * directory (clean-up inside [rebuild]) cancels it — scanning large trees,
+     * especially on network sources, is expensive and shouldn't keep running
+     * when the card is no longer visible.
      */
     private fun startDirScan(key: String, dir: XFile) {
         dirScan.remove(key)?.job?.cancel()
@@ -1035,8 +1494,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 st.stat = it
                 rebuild()
             }
-            // 扫得太快就把转圈多留一会儿(见 DIR_SCAN_MIN_SPIN_MS):数字早就是最终值了,
-            // 这半秒只影响转圈什么时候停
+            // If the scan finishes too quickly, keep the spinner a bit longer (see
+            // DIR_SCAN_MIN_SPIN_MS): the numbers are already final, this half-second
+            // only affects when the spinner stops.
             val left = DIR_SCAN_MIN_SPIN_MS - (android.os.SystemClock.elapsedRealtime() - t0)
             if (left > 0) kotlinx.coroutines.delay(left)
             st.scanning = false
@@ -1048,12 +1508,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         dirScan.remove(key)?.job?.cancel()
     }
 
-    /** 仅供单测:仍在跑的目录递归统计条数(卡片关闭/折叠后必须归零)。 */
+    /** For unit tests only: count of in-flight directory-recursive stat scans (must drop to zero after the card is closed/collapsed). */
     internal fun activeDirScans(): Int = dirScan.count { it.value.job?.isActive == true }
 
     /**
-     * 切换属性卡片的 tab。切到"哈希"tab(下标 == 分组数)时,本地文件自动开算;
-     * 网络文件等用户点"计算"按钮(整文件读取,流量/耗时由用户决定)。
+     * Switch the properties card's tab. Switching to the "Hash" tab (index == section
+     * count) auto-starts computation for local files; network files wait for the user
+     * to tap "Compute" (a whole-file read — bandwidth/time is up to the user).
      */
     fun selectInfoTab(n: InfoNode, idx: Int) {
         val key = fileKey(n.file)
@@ -1065,7 +1526,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
     }
 
-    /** "哈希"tab 的手动计算按钮(网络文件)。 */
+    /** Manual "compute hash" button on the Hash tab (network files). */
     fun computeHash(n: InfoNode) {
         val key = fileKey(n.file)
         if (!hashCache.containsKey(key) && !hashing.contains(key)) startHash(key, n.file)
@@ -1087,18 +1548,24 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 发起递归通配符搜索:结果作为虚拟目录挂在 [root] 行下方,边扫边出(节流约 250ms 刷新一次,
-     * 避免大量命中逐条触发整树重建)。同一目录重复发起时取消旧任务、清空旧结果重新开始。
-     * [root] 当前必须在树中有对应的可见 [FileNode] 行(虚拟目录才有地方挂),否则本次调用
-     * 静默丢弃——[rebuild] 的清理逻辑也会在该行不可见时自动取消任务、丢弃状态。
+     * Kick off a recursive wildcard search: results hang as a virtual directory under
+     * [root]'s row, streamed in and rebuilt every ~250ms (throttled to avoid having
+     * many hits trigger a full tree rebuild one by one). Re-issuing against the same
+     * directory cancels the previous job and starts over with a clean slate.
+     * [root] must currently have a visible [FileNode] row in the tree (otherwise the
+     * virtual directory has nowhere to hang); otherwise this call is silently dropped —
+     * [rebuild]'s cleanup logic also cancels the job and discards state when the row
+     * becomes invisible.
      *
-     * 高亮框([CurrentDirFrame] 框住"currentKey 行 + 它的直接子级")随之切到搜索虚拟目录
-     * 本身([SearchNode.key]),而不是停留在被搜索的目录——否则框住的是"目录 + 搜索结果
-     * 虚拟目录标题行"这一层,框不到再下一层的结果列表(见 [closeSearch] 里的回落)。
+     * The highlight frame ([CurrentDirFrame] frames the currentKey row + its direct
+     * children) moves to the search virtual directory itself ([SearchNode.key]) rather
+     * than staying on the searched directory — otherwise the frame would enclose
+     * "directory + search-results virtual-directory title row" and skip the result list
+     * one level below (see the fallback in [closeSearch]).
      */
     fun startSearch(root: XFile, pattern: String) {
         val key = fileKey(root)
-        if (_state.value.rows.none { it.key == key }) return
+        if (!hasSearchAnchor(key)) return
         searchState.remove(key)?.job?.cancel()
         val st = SearchState(pattern)
         searchState[key] = st
@@ -1121,9 +1588,43 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 点击搜索虚拟目录行本身:取消未完成的扫描并把它从树上移出(结果不保留,需要重新发起)。
-     * 高亮框若正停在这个搜索节点上,回落到被搜索的目录本身(而不是悬空指向一个已消失的 key)。
+     * Does the tree have a place to hang this search's results?
+     *
+     * ★ Don't just check "is there a row whose key equals `fileKey(root)`": **server
+     * and favorite rows have keys `s:<label>` / `fav:…`**, and their attached rows
+     * hang on the directory `keyFile[that key]` points at (see [addServer] /
+     * [addFavorite]). Checking only the former would mean **a search issued at a
+     * server root is silently dropped** — symptom: "I tap search and nothing happens".
      */
+    private fun hasSearchAnchor(key: String): Boolean {
+        val rows = _state.value.rows
+        if (rows.any { it.key == key }) return true
+        return rows.any { row -> keyFile[row.key]?.let { fileKey(it) == key } == true }
+    }
+
+    /**
+     * Tap on the search virtual-directory row itself: cancel any in-flight scan and
+     * remove it from the tree (results are not kept — the search must be re-issued).
+     * If the highlight frame is currently on this search node, fall back to the
+     * searched directory itself (rather than pointing at a key that no longer exists).
+     */
+    /**
+     * For search results hung under a server/favorite row, look up by the directory
+     * that row points at.
+     *
+     * ★ Search-result keys are `fileKey(directory)` (see [addAttachments]), **not**
+     * the row's own `s:<label>` / `fav:<id>` — using the row's key returns nothing.
+     */
+    private fun searchDirKey(rowKey: String): String? = keyFile[rowKey]?.let { fileKey(it) }
+
+    private fun hasSearchUnder(rowKey: String) =
+        searchDirKey(rowKey)?.let { searchState.containsKey(it) } == true
+
+    /** When collapsing a server/favorite row, also remove its attached search results (the attached-row render ignores expansion state). */
+    private fun dropSearchUnder(rowKey: String) {
+        searchDirKey(rowKey)?.let { searchState.remove(it)?.job?.cancel() }
+    }
+
     private fun closeSearch(node: SearchNode) {
         val rootKey = fileKey(node.root)
         searchState.remove(rootKey)?.job?.cancel()
@@ -1131,37 +1632,43 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
     }
 
-    /** 长按菜单"以压缩包方式打开":apk 默认不可展开,这里放行并当普通压缩包挂载浏览。 */
+    /** Long-press menu "Open as archive": APKs aren't expandable by default; here we let it through and mount as a normal archive. */
     fun openAsArchive(n: FileNode) {
         forcedArchive.add(n.key)
         toggleFile(n.copy(expandable = true))
     }
 
     /**
-     * 长按菜单"刷新":丢弃该节点的子项缓存,重新拉取(git 根节点额外清 status/log/diff 缓存)。
-     * 通用于任意可展开节点,不止 git——用户按需手动刷新目录/压缩包内容。
+     * Long-press menu "Refresh": drop this node's child cache and re-fetch (git root
+     * nodes also clear the status/log/diff cache).
+     * Applies to any expandable node, not just git — the user can manually refresh a
+     * directory / archive contents at any time.
      */
     fun refreshNode(n: FileNode) {
         if (!n.expandable) return
         val key = n.key
         children.remove(key)
-        // 折叠状态也要清 git 缓存:SMB/WebDAV 仓库手动刷新是唯一刷新途径,
-        // logCache 无 TTL,折叠时"刷新"若不清,下次展开还是旧的
+        // Even while collapsed, drop the git cache: a manual refresh is the only
+        // refresh path for SMB/WebDAV repositories, logCache has no TTL, so if we
+        // don't clear on "refresh" while collapsed, the next expansion still shows
+        // the old state.
         val isExpanded = expanded.contains(key)
         if (isExpanded) loadingKeys.add(key)
         rebuild()
         viewModelScope.launch {
             val r = runCatching {
                 withContext(io) {
-                    // invalidate 放到发请求前一刻(而不是上面主线程 rebuild 之前):
-                    // 提前清会让 rebuild 用空缓存渲染出"注册时的旧分支名",闪一下才被新值盖掉
+                    // Run invalidate right before the request fires (not before the
+                    // main-thread rebuild above): clearing too early makes rebuild
+                    // render with the empty cache, flashing the "registered-at-load
+                    // time" branch name before the new one lands.
                     (FsRegistry.of(n.file) as? GitFileSystem)?.invalidate()
                     if (isExpanded) listChildren(n.file) else null
                 }
             }
             loadingKeys.remove(key)
             r.fold(
-                { it?.let { l -> putListing(key, l) }; rebuild() }, // 折叠时也 rebuild:标题可能已随 invalidate 更新
+                { it?.let { l -> putListing(key, l) }; rebuild() }, // Rebuild even when collapsed: the header may have updated with the invalidate.
                 { rebuild(); emitFailure(it, n.file) },
             )
         }
@@ -1172,23 +1679,41 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (n.file.isDir) currentDir = n.file
         val key = n.key
         currentKey = key
-        // 展开(不是折叠)Git 虚拟根时,把宿主目录记进最近位置——git 视图里的子节点
-        // (更改/历史/某次提交)scheme 相同但 path 不是 "/",不重复记
+        claimExpand(key)
+        // When expanding (not collapsing) a Git virtual root, record the host
+        // directory in recent locations — Git-view subnodes (Changes / History / a
+        // particular commit) share the scheme but have paths other than "/", so we
+        // don't double-record.
         if (key !in expanded && n.file.path == "/" && n.file.scheme.startsWith("git")) {
             schemeToGitHost[n.file.scheme]?.let { noteHistory(it, "git") }
         }
-        // 本地/SSH git(status()/log() 本身不缓存)下的任意节点——根/更改/历史/某次提交——每次
-        // 展开都强制重拉,不吃 children 缓存;根节点之外的子节点若不单独判断,展开链路上只有
-        // 根节点会重拉,子节点(如"历史")仍会命中自己那份 children 缓存,看起来"没刷新"。
-        // (SMB/WebDAV 等靠 XFileGitFs 解析的远程 git 太贵,不在此列,见 cheapGitSchemes 注释)
+        // Local/SSH git (where status()/log() don't cache by themselves) — every node
+        // (root / Changes / History / a particular commit) is forcibly re-fetched on
+        // expansion, bypassing the children cache. Without this special case, only
+        // the root would re-fetch along the expansion chain, while subnodes (e.g.
+        // "History") would still hit their own children cache — appearing "not
+        // refreshed".
+        // (Remote git over SMB/WebDAV via XFileGitFs is too expensive to do this; see
+        // the cheapGitSchemes comment.)
         val freshGit = n.file.scheme in cheapGitSchemes
+        // Media server "Continue watching" / "Latest" content is always changing (just
+        // watched half of it, just added to library); re-fetch on every expansion —
+        // otherwise "come back after finishing an episode, Continue Watching is still
+        // showing the old list".
+        val freshMedia = runCatching {
+            com.twig.fs.network.JellyfinFileSystem.isLiveDir(n.file.path) &&
+                Connections.ofScheme(n.file.scheme)?.isMediaServer() == true
+        }.getOrDefault(false)
         when {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFiles(n.file))
-                // 收起该目录时一并移出挂在它下面的搜索结果虚拟目录(不会自然从 rows 里消失——
-                // 它渲染时不看 exp,见 addFile),避免折叠后搜索结果孤零零留在一个收起的目录下面
+                // When collapsing this directory, also remove the search virtual
+                // directory hanging under it (it doesn't naturally disappear from
+                // rows — its render ignores exp, see addFile — so it would sit
+                // lonely under a collapsed directory).
                 searchState.remove(key)?.job?.cancel()
-                // 压缩包收起来了,粘贴目标不能还留在包里:退回它所在的那个目录
+                // Collapsing an archive: paste target must not stay inside the
+                // archive — fall back to the containing directory.
                 if (mountRoots.containsKey(key)) {
                     runCatching { FsRegistry.of(n.file).parentOf(n.file) }.getOrNull()
                         ?.let { currentDir = it }
@@ -1196,38 +1721,58 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rebuild()
             }
             searchState.containsKey(key) -> {
-                // 该目录本身并未真正展开,箭头只是因为挂了搜索结果而显示成"已展开"(见 addFile)。
-                // 点击这一行应该按箭头看起来的样子处理——当作"收起":只关掉搜索,不要落到下面
-                // 的分支去反而把它真正展开、拉出这个目录原本没请求过的文件/目录。
+                // This directory itself isn't actually expanded — the chevron just
+                // looks "expanded" because a search result hangs there (see addFile).
+                // Tapping this row should behave like the chevron suggests — treat it
+                // as "collapse": only close the search, don't fall into the
+                // expansion branch and really expand it, listing files/dirs this
+                // directory never asked for.
                 searchState.remove(key)?.job?.cancel()
                 rebuild()
             }
-            children.containsKey(key) && !freshGit -> {
-                mountRoots[key]?.let { currentDir = it } // 压缩包:当前目录落到包根
+            children.containsKey(key) && !freshGit && !freshMedia -> {
+                mountRoots[key]?.let { currentDir = it } // Archive: current directory becomes the archive root.
                 accordionExpand(key); rebuild()
             }
+            // This row is already being fetched (common after "abandon then tap
+            // back"): claimExpand above has reclaimed it and the spinner is
+            // reinstated — sending another request is just a duplicate. Same
+            // pattern as the connecting branch in toggleServer.
+            loadingKeys.contains(key) -> rebuild()
             else -> {
-                loadingKeys.add(key); rebuild() // 先显示转圈
+                loadingKeys.add(key); rebuild() // Show the spinner first.
                 viewModelScope.launch {
                     val r = runCatching {
                         withContext(io) {
-                            // invalidate 放到发请求前一刻:提前在主线程清掉缓存,上面这次
-                            // rebuild 会用空缓存把 Git 节点的标题渲成"注册时的旧分支名",
-                            // 等新值填回来之前多闪一次,不如干脆晚点清
+                            // Run invalidate right before the request fires, not on
+                            // the main thread earlier: clearing there makes the
+                            // rebuild above render the Git node's title with an
+                            // empty cache — flashing the "registered at load"
+                            // branch name for a frame before the new one lands.
                             if (freshGit) (FsRegistry.of(n.file) as? GitFileSystem)?.invalidate()
                             listChildren(n.file)
                         }
                     }
-                    loadingKeys.remove(key)
+                    // Meanwhile the user opened something else; this expansion is
+                    // abandoned: children are still cached (so a future tap
+                    // expands instantly), but no auto-expand, no currentDir move,
+                    // no error dialog (see pendingExpand).
+                    val mine = landExpand(key)
                     r.fold(
                         {
                             putListing(key, it)
-                            // 展开压缩包 = 选中包根,和展开目录一样能当复制/新建的目标。
-                            // 树上那一行是宿主文件(isDir=false),上面那句 `if (isDir)` 管不着它
-                            it.mountRoot?.let { root -> currentDir = root }
-                            accordionExpand(key); rebuild()
+                            if (mine) {
+                                // Expanding an archive = select the archive root, so
+                                // it can be a copy/new-folder target just like an
+                                // expanded directory. The archive's row in the tree
+                                // is the host file (isDir=false), so the
+                                // `if (isDir)` line above doesn't cover it.
+                                it.mountRoot?.let { root -> currentDir = root }
+                                accordionExpand(key)
+                            }
+                            rebuild()
                         },
-                        { rebuild(); emitFailure(it, n.file) },
+                        { rebuild(); if (mine) emitFailure(it, n.file) },
                     )
                 }
             }
@@ -1237,46 +1782,67 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun toggleServer(n: ServerNode) {
         val key = n.key
         currentKey = key
+        claimExpand(key) // Connecting a server is the slowest expansion — the "later tap wins" rule applies (see pendingExpand).
         when {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFilesByKey(key))
-                currentDir = keyFile[key] ?: currentDir // 折叠后高亮留在服务器行,目标同步成它的根,不留上一次目录
+                // When collapsing a server, also drop any search results hanging under
+                // it (attached-row rendering ignores expansion state — see
+                // addServer/addAttachments), same as toggleFile for a regular
+                // directory — otherwise the server collapses but a pile of search
+                // results stay orphaned under it.
+                dropSearchUnder(key)
+                currentDir = keyFile[key] ?: currentDir // After collapse, highlight stays on the server row and target syncs to its root; don't keep the previous directory.
                 rebuild()
+            }
+            hasSearchUnder(key) -> {
+                // Server isn't expanded, only search results hang under it: treat
+                // the tap as "collapse" — only close the search, don't fall into
+                // the branch below and actually expand the whole server (same rule
+                // as the toggleFile one).
+                dropSearchUnder(key); rebuild()
             }
             children.containsKey(key) -> {
                 currentDir = keyFile[key] ?: currentDir
                 accordionExpand(key); rebuild()
             }
-            connecting.contains(key) -> Unit
+            // Already connecting (common after "abandon then tap back"): claimExpand
+            // has already reclaimed it and the spinner is reinstated; no second
+            // connection, the in-flight one will count when it lands.
+            connecting.contains(key) -> rebuild()
             else -> {
                 connecting.add(key)
                 rebuild()
                 viewModelScope.launch {
                     val r = runCatching { withContext(io) { connectAndList(n.conn, key) } }
-                    connecting.remove(key)
+                    val mine = landExpand(key)
                     r.fold(
                         {
-                            applyRestored(it)
-                            currentDir = keyFile[key] ?: currentDir
-                            accordionExpand(key); rebuild()
+                            applyRestored(it, expand = mine) // Connection is already up; fall through to normal landing, just skip expanding.
+                            if (mine) {
+                                currentDir = keyFile[key] ?: currentDir
+                                accordionExpand(key)
+                            }
+                            rebuild()
                         },
-                        { rebuild(); emitError(it.message) },
+                        { rebuild(); if (mine) emitError(it.message) },
                     )
                 }
             }
         }
     }
 
-    /** 连接服务器(每台一个唯一 scheme 注册进 FsRegistry)并列出根;IO 线程,不写 VM 状态。 */
+    /** Connect to a server (register a unique scheme per server in FsRegistry) and list its root; IO thread, no VM state writes. */
     private fun connectAndList(conn: SavedConnection, key: String): Restored {
         val root = XFile(schemeForConn(conn), "/", isDir = true)
         return Restored(key, root, listChildren(root))
     }
 
     /**
-     * 取(或建立)某连接对应的已注册 scheme;服务器节点与收藏共用同一连接。
-     * 真正建连接/注册的活儿交给 [Connections.ensure](全项目唯一一份),这里只
-     * 维护 VM 自己的反查表。
+     * Get (or establish) the registered scheme for a connection; server nodes and
+     * favorites share the same connection. The actual connect/register work is
+     * delegated to [Connections.ensure] (the single source of truth); this method
+     * only maintains the VM's reverse-lookup table.
      */
     private fun schemeForConn(conn: SavedConnection): String {
         val nodeKey = "s:${conn.label()}"
@@ -1287,11 +1853,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return s
     }
 
-    /** 取(或建立)某 restic 仓库对应的已注册 scheme。 */
+    /** Get (or establish) the registered scheme for a restic repository. */
     private fun schemeForRestic(repoDir: XFile, password: String): String {
         val nodeKey = "restic:${fileKey(repoDir)}"
         resticScheme[nodeKey]?.let { return it }
-        val repo = ResticRepo.open(FsRegistry.of(repoDir), repoDir, password, NativeZstd())
+        val repo = ResticRepo.open(
+            FsRegistry.of(repoDir), repoDir, password, NativeZstd(),
+            com.twig.app.ResticCache.of(getApplication()),
+        )
         val s = "restic" + Integer.toHexString(nodeKey.hashCode())
         FsRegistry.register(ResticFileSystem(repo, s))
         resticScheme[nodeKey] = s
@@ -1300,17 +1869,21 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 用密码解锁 restic 仓库:打开、注册 ResticFileSystem、把快照作为子项。
+     * Unlock a restic repository with a password: open it, register ResticFileSystem,
+     * list snapshots as children.
      *
-     * 解锁期间该行显示转圈(复用 [connecting]),并且**忽略重复点击**——网络仓库解锁要
-     * 几十秒,以前既没有转圈也没有去重,用户会以为没反应而反复点,每点一次就多起一次
-     * 完整的 `ResticRepo.open`(scrypt + 整读 index),全都挤在 SMB 那把串行锁上排队,
-     * 越点越慢,最后表现成"永远打不开"。
+     * While unlocking the row shows a spinner (reuse [connecting]) and **duplicate
+     * taps are ignored** — unlocking a network repo takes tens of seconds. Previously
+     * there was neither a spinner nor dedup, so the user thought "nothing happened" and
+     * tapped again, each tap launching a full `ResticRepo.open` (scrypt + reading the
+     * whole index), all queued on SMB's serial lock — clicking more made it slower,
+     * ending in "never opens".
      */
     fun unlockRestic(repoDir: XFile, password: String, onResult: (Boolean, String?) -> Unit) {
         val nodeKey = "restic:${fileKey(repoDir)}"
-        if (!connecting.add(nodeKey)) return // 已经在解锁了,这一下点击不再叠加一次
-        rebuild() // 先把转圈显示出来
+        claimExpand(nodeKey) // Before the dedup: tapping back on a just-abandoned repo should reclaim it and reinstate the spinner.
+        if (!connecting.add(nodeKey)) { rebuild(); return } // Already unlocking; this tap is not stacked on top.
+        rebuild() // Show the spinner first.
         viewModelScope.launch {
             val r = runCatching {
                 withContext(io) {
@@ -1318,11 +1891,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     scheme to FsRegistry.of(scheme).list(XFile(scheme, "/", isDir = true))
                 }
             }
-            connecting.remove(nodeKey)
+            val mine = landExpand(nodeKey)
             r.fold(
                 onSuccess = { (_, snaps) ->
                     putChildren(nodeKey, snaps)
-                    accordionExpand(nodeKey)
+                    if (mine) accordionExpand(nodeKey)
                     rebuild()
                     onResult(true, null)
                 },
@@ -1336,11 +1909,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 丢弃一次没走完的解锁。★ 必须回滚(2026-08-04 定案):[schemeForRestic] 一打开仓库
-     * 就把 scheme 记进 [resticScheme],可紧随其后的"列快照"还可能失败(SMB 断线/短读/
-     * index 读到一半超时)。不回滚的话这个节点会渲染成 unlocked 而 `children` 是空的,
-     * 之后点它只走 [toggleRestic] 去展开一个空节点,**永远不再重试解锁**——症状正是
-     * 用户报的"第一次输密码进去过,之后再点就一直展不开"。
+     * Drop an unlock that didn't complete. ★ Rollback is mandatory (settled
+     * 2026-08-04): [schemeForRestic] records the scheme in [resticScheme] the moment
+     * the repo opens, but the immediately following "list snapshots" can still fail
+     * (SMB disconnect / short read / index mid-read timeout). Without rollback, the
+     * node renders as unlocked with empty `children`, and later taps only go through
+     * [toggleRestic] expanding an empty node — **never retrying the unlock**. That
+     * is exactly the user-reported symptom: "first time I entered the password it
+     * worked, after that it never expands again".
      */
     private fun forgetRestic(nodeKey: String) {
         val s = resticScheme.remove(nodeKey) ?: return
@@ -1350,9 +1926,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         expanded.remove(nodeKey)
     }
 
-    /** 折叠/展开已解锁的 restic 节点。 */
+    /** Collapse / expand an already-unlocked restic node. */
     fun toggleRestic(node: ResticNode) {
         currentKey = node.key
+        claimExpand(node.key)
         if (expanded.remove(node.key)) {
             Thumbs.cancelPending(descendantFilesByKey(node.key))
             rebuild()
@@ -1361,9 +1938,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- 收藏 ----
+    // ---- Favorites ----
 
-    /** 根据一个目录节点构造收藏(不支持的来源返回 null)。 */
+    /** Build a favorite from a directory node (returns null for unsupported sources). */
     fun favoriteFrom(file: XFile): Favorite? {
         if (!file.isDir) return null
         return when {
@@ -1373,12 +1950,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 val c = schemeToConn[file.scheme]!!
                 Favorite(label = "${c.displayLabel()}:${file.name}", kind = "conn", path = file.path, connLabel = c.label())
             }
+            // SAF: the grant was taken via takePersistableUriPermission, document
+            // URIs survive across sessions, so this location CAN be persisted (same
+            // as the saf branch in trackFrom). ★ The name must be stored too — the
+            // URI has no file name; slicing the path's last segment only yields a
+            // string of %XX escapes (see Favorite.pathName).
+            file.scheme == SafFileSystem.SCHEME ->
+                Favorite(label = file.name, kind = "saf", path = file.path, pathName = file.name)
             schemeToRestic.containsKey(file.scheme) -> {
-                val repoDir = schemeToRestic[file.scheme]!! // 底层仓库 XFile(可能在 SMB 等上)
+                val repoDir = schemeToRestic[file.scheme]!! // Underlying repo XFile (possibly on SMB, etc.).
                 val repoConn = when {
                     repoDir.scheme == "file" -> ""
                     schemeToConn.containsKey(repoDir.scheme) -> schemeToConn[repoDir.scheme]!!.label()
-                    else -> return null // 仓库在不可持久化的来源(如 zip/SAF)上,暂不支持收藏
+                    // Repo lives on a source where "how to reach here" can't be
+                    // persisted (inside an archive); repos on SAF would need an
+                    // extra dimension (repo also being saf) — not done.
+                    else -> return null
                 }
                 Favorite(
                     label = "restic:${file.name}",
@@ -1403,13 +1990,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
     }
 
-    /** 重命名收藏(传空串等于恢复自动生成的完整路径名)。 */
+    /** Rename a favorite (passing an empty string restores the auto-generated full path name). */
     fun renameFavorite(fav: Favorite, newLabel: String) {
         FavoritesStore.rename(getApplication(), fav, newLabel)
         rebuild()
     }
 
-    // ---- 对比收藏 ----
+    // ---- Compare favorites ----
 
     fun removeCompare(session: CompareSession) {
         CompareStore.remove(getApplication(), session)
@@ -1422,26 +2009,27 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 收藏指向的真实目录——只有展开(连接/解锁)过一次才解析得出([resolveFavorite] 存进
-     * [keyFile]);没解析过返回 null,菜单里那些要拿目录说事的项就不给。
+     * The actual directory a favorite points at — only resolvable after it has been
+     * expanded (connected / unlocked) once ([resolveFavorite] stores it in [keyFile]);
+     * returns null if it hasn't, so menu items that need the directory are hidden.
      */
     fun favoriteTarget(node: FavoriteNode): XFile? = keyFile[node.key]
 
-    /** 服务器节点指向的根目录——同 [favoriteTarget],连接(展开)过一次才解析得出。 */
+    /** The root directory a server node points at — same as [favoriteTarget]; only resolvable after connecting (expanding) once. */
     fun serverTarget(node: ServerNode): XFile? = keyFile[node.key]
 
-    /** 刷新收藏节点:丢掉缓存的子项并重列(连接/解锁已经建好,不用重走 resolveFavorite)。 */
+    /** Refresh a favorite node: drop the cached children and re-list (connection / unlock is already set up, no need to re-run resolveFavorite). */
     fun refreshFavorite(node: FavoriteNode) = refreshVirtual(node.key)
 
-    /** 同上,用于服务器节点(连接已建好,不重连)。 */
+    /** Same, but for a server node (connection already up, no reconnect). */
     fun refreshServer(node: ServerNode) = refreshVirtual(node.key)
 
-    /** 收藏/服务器这类"子项挂在自己 key 下"的虚拟行的刷新,见 [refreshNode] 的普通目录版。 */
+    /** Refresh for virtual rows like favorite/server whose children hang on their own key; see [refreshNode] for the regular-directory version. */
     private fun refreshVirtual(key: String) {
         val target = keyFile[key] ?: return
         children.remove(key)
         if (!expanded.contains(key)) { rebuild(); return }
-        connecting.add(key) // 收藏行的转圈复用"连接中"指示
+        connecting.add(key) // Favorite rows reuse the "connecting" spinner indicator.
         rebuild()
         viewModelScope.launch {
             val r = runCatching { withContext(io) { listChildren(target) } }
@@ -1454,32 +2042,45 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 展开/折叠收藏节点。展开时按需连接(网络)/解锁(restic)并列出目标目录。
-     * restic 需要密码时由 [password] 提供(为空则失败,由 Fragment 弹框重试)。
+     * Expand / collapse a favorite node. On expand, connect (network) / unlock
+     * (restic) as needed and list the target directory.
+     * For restic, [password] provides the password (empty = fail, Fragment shows a
+     * dialog to retry).
      */
     fun toggleFavorite(node: FavoriteNode, password: String?, onResult: (Boolean, String?) -> Unit) {
         val key = node.key
         currentKey = key
+        claimExpand(key)
         when {
             expanded.remove(key) -> {
-                currentDir = keyFile[key] ?: currentDir // 收藏本身也是个真实目录,和 toggleServer 一致地同步成当前目标
+                dropSearchUnder(key) // Same as toggleServer: drop search results under this row when collapsing.
+                currentDir = keyFile[key] ?: currentDir // A favorite is itself a real directory; sync currentDir to it the same way as toggleServer.
                 rebuild(); onResult(true, null)
+            }
+            hasSearchUnder(key) -> {
+                dropSearchUnder(key); rebuild(); onResult(true, null)
             }
             children.containsKey(key) -> {
                 currentDir = keyFile[key] ?: currentDir
                 accordionExpand(key); rebuild(); onResult(true, null)
             }
-            connecting.contains(key) -> Unit
+            // Already connecting (common after "abandon then tap back"): claimExpand
+            // has already reclaimed it and the spinner is reinstated; no second
+            // connection, the in-flight one will count when it lands.
+            connecting.contains(key) -> rebuild()
             else -> {
                 connecting.add(key); rebuild()
                 viewModelScope.launch {
                     val r = runCatching { withContext(io) { resolveFavorite(node.fav, password) } }
-                    connecting.remove(key)
+                    val mine = landExpand(key)
                     r.fold(
                         { restored ->
-                            applyRestored(restored)
-                            currentDir = keyFile[key] ?: currentDir
-                            accordionExpand(key); rebuild(); onResult(true, null)
+                            applyRestored(restored, expand = mine)
+                            if (mine) {
+                                currentDir = keyFile[key] ?: currentDir
+                                accordionExpand(key)
+                            }
+                            rebuild(); onResult(true, null)
                         },
                         { rebuild(); onResult(false, it.message) },
                     )
@@ -1498,7 +2099,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 schemeForConn(conn)
             }
             "restic" -> {
-                // 先确保仓库所在的底层来源可用(本地或某网络连接)
+                // First, make sure the repo's underlying source is reachable (local or some network connection).
                 val repoScheme = if (fav.repoConnLabel.isEmpty()) {
                     "file"
                 } else {
@@ -1510,39 +2111,49 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 val pw = password ?: Prefs.resticPassword(getApplication(), fav.repoPath)
                     ?: throw com.twig.core.FsException(str(R.string.err_need_restic_password))
                 val s = schemeForRestic(repoDir, pw)
-                // 收藏走的是这条独立解锁路径,不经过树里正常展开 restic 节点的 unlockRestic()——
-                // 那边的快照列表缓存(nodeKey)不会顺带被填。缺了它,同一仓库稍后在树里展开
-                // "所有快照" 会因为 resticScheme 已标记"已解锁"而直接读缓存,读到空的。
+                // Favorites take this independent unlock path — they don't go through
+                // unlockRestic() in the tree's normal restic-node expansion, so the
+                // snapshot-list cache (nodeKey) doesn't get filled in as a side effect.
+                // Without it, expanding "all snapshots" for the same repo later in the
+                // tree reads the cache (resticScheme already says "unlocked") and gets
+                // an empty list.
                 val nodeKey = "restic:${fileKey(repoDir)}"
-                // 快照列表也只是取回来,落表交给 applyRestored
+                // The snapshot list is also just fetched here; persistence is delegated to applyRestored.
                 if (!children.containsKey(nodeKey)) {
                     extra = nodeKey to FsRegistry.of(s).list(XFile(s, "/", isDir = true))
                 }
                 s
             }
+            "saf" -> SafFileSystem.SCHEME
             else -> throw com.twig.core.FsException(str(R.string.err_unsupported_favorite))
         }
-        val target = XFile(scheme, fav.path, isDir = true)
-        return Restored("fav:${fav.id}", target, listChildren(target), extra) // listChildren 顺带识别 git/restic
+        // ★ displayName must travel back: SAF's path last-segment is NOT a name; without
+        // it, the long-press menu title, properties card, and the destination name
+        // when copying all become a string of percent-encoded characters (same lesson
+        // as the PlaylistTrackNameTest).
+        val target = XFile(scheme, fav.path, isDir = true, displayName = fav.pathName.ifEmpty { null })
+        return Restored("fav:${fav.id}", target, listChildren(target), extra) // listChildren also identifies git / restic along the way.
     }
 
     /**
-     * 一次列举的结果:子项 + 这次**顺带发现**的东西。
+     * One listing's result: children + whatever was **incidentally discovered** this time.
      *
-     * 发现(restic 仓库 / git 仓库)原来是 [listChildren] 直接写进 VM 那几张表的,
-     * 而它跑在 IO 线程上。现在改成带出来,由主线程 [applyListing] 落表——
-     * IO 只负责"取回数据",这是这个类里唯一该记住的线程规则。
+     * Discoveries (restic repo / git repo) used to be written directly into the VM's
+     * tables by [listChildren], which runs on the IO thread. Now they're carried back
+     * and persisted on the main thread by [applyListing] — IO only fetches data, and
+     * that's the only threading rule worth remembering in this class.
      */
     private class Listing(
         val children: List<XFile>,
-        /** 该目录本身是个 restic 仓库(值为 `fileKey(dir)`)。 */
+        /** This directory itself is a restic repository (value is `fileKey(dir)`). */
         val resticRepo: String? = null,
-        /** 该目录下有 .git;数据源已建好并注册进 FsRegistry,待登记进 VM 的反查表。 */
+        /** This directory contains a .git; the data source has been built and registered in FsRegistry, pending registration in the VM's reverse-lookup table. */
         val git: Git? = null,
         /**
-         * 这次列的是个压缩包,值为**挂载后的包根**(scheme 是 zip/7z/rar 那套)。
-         * 展开它时要拿这个当"当前目录",复制/新建才落得进包里——树上那一行的 XFile
-         * 是**宿主文件**(isDir=false),不能当目录用。
+         * This listing was for an archive; value is the **mounted archive root** (scheme is the zip/7z/rar family).
+         * On expand, use this as "current directory" so copy/new-folder can land inside
+         * the archive — the XFile on this row in the tree is the **host file**
+         * (isDir=false), which cannot be used as a directory.
          */
         val mountRoot: XFile? = null,
     ) {
@@ -1550,8 +2161,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 把 [listChildren] 的发现落进 VM 状态,返回子项。**只能在主线程调用。**
-     * 幂等:同一个目录重复 apply 不会有副作用(scheme 由 key 确定性算出)。
+     * Apply [listChildren]'s discoveries into VM state and return the children.
+     * **Main thread only.**
+     * Idempotent: re-applying the same directory has no side effects (schemes are
+     * deterministically derived from keys).
      */
     private fun applyListing(l: Listing): List<XFile> {
         l.resticRepo?.let { resticRepos.add(it) }
@@ -1563,53 +2176,53 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return l.children
     }
 
-    /** [applyListing] + 排序 + 写进 [children];主线程。 */
+    /** [applyListing] + sort + write into [children]; main thread. */
     private fun putListing(key: String, l: Listing) {
         l.mountRoot?.let { mountRoots[key] = it }
         putChildren(key, applyListing(l))
     }
 
     /**
-     * 已展开的压缩包 key → 包根目录。展开一个包时"当前目录"要落到这儿,
-     * 复制/新建才进得了包里(见 [toggleFile])。**不能塞进 [keyFile]** ——
-     * 那张表存的是"重新列举需要的 XFile",对压缩包必须是**宿主文件**本身
-     * (刷新走 [listChildren] 的归档分支,要物化、要解密码),换成包根就全乱了。
+     * Expanded archive key → archive-root directory. When an archive is expanded,
+     * "current directory" must land here so copy/new-folder can enter the archive
+     * (see [toggleFile]). **Do NOT stuff this into [keyFile]** — that table stores
+     * "the XFile needed to re-list", which for archives has to be the **host file**
+     * itself (refresh goes through [listChildren]'s archive branch and needs to
+     * materialize + decrypt); putting the archive root in there would scramble everything.
      */
     private val mountRoots = ConcurrentHashMap<String, XFile>()
 
-    /** 列子项:目录直接列(并识别 restic 仓库 / git 仓库);压缩包挂载后列包根。IO 线程。 */
+    /** List children: directories are listed directly (also identifying restic repos / git repos); archives are mounted and the archive root is listed. IO thread. */
     private fun listChildren(file: XFile): Listing =
         if (file.isDir) {
             val kids = FsRegistry.of(file).list(file)
             Listing(
                 children = kids,
                 resticRepo = if (ResticRepo.looksLikeRepo(kids)) fileKey(file) else null,
-                // .git 也可能是**文件**(worktree / 子模块,内容是 "gitdir: …"),别只认目录
+                // .git may also be a **file** (worktree / submodule, contents are "gitdir: …") — don't only recognize directories.
                 git = if (kids.any { it.name == ".git" }) buildGit(file) else null,
             )
         } else {
-            // zip/7z 经定位读通道流式解析(远程免下载)。两种情况先物化到缓存(见 archiveTarget):
-            // - rar:junrar 只认本地文件
-            // - 嵌套包(包中包)且内层条目被压缩:隔着外层解压流 seek 会退化成
-            //   反复全量解压。STORED(未压缩,zip 套 zip 的常态)可直接切片,免物化秒开
+            // zip/7z parse streamingly over the seekable read channel (no full download for remote hosts). Materialize to cache first in two cases (see archiveTarget):
+            // - rar: junrar only accepts local files
+            // - nested archive (archive-in-archive) with the inner entry compressed: seeking through the outer decompression stream degenerates into repeated full decompressions. STORED (uncompressed, the normal case for zip-in-zip) can be sliced directly — no materialization, instant open.
             val (afs, archive) = archiveTarget(file)
-            // ★ rootOf 必须排在探测加密**之前**:非本地宿主(SMB/WebDAV/S3…)是挂载
-            // 那一刻才登记的,在那之前 needsPassword 会把远程路径当本地文件去开,
-            // 读不到字节又被内部 runCatching 吞成"不需要密码"——远程加密包就再也
-            // 不弹密码框了(见 RemoteArchiveMountTest)
+            // ★ rootOf must run **before** the encryption probe: non-local hosts (SMB/WebDAV/S3...) are only registered at mount time, before that needsPassword would try to open a remote path as a local file, read no bytes, and get silently swallowed by the internal runCatching into "no password needed" — remote encrypted archives would never prompt for a password again (see RemoteArchiveMountTest).
             val root = afs.rootOf(archive)
             unlockIfEncrypted(afs, archive, file)
             Listing(afs.list(root), mountRoot = root)
         }
 
-    // ---- 加密压缩包 ----
+    // ---- Encrypted archives ----
 
     /**
-     * 挂载前解锁加密包。已解锁过的直接放行;有保存的密码就用它;没有(或存的那个已经不对)
-     * 就抛 [ArchivePasswordException],由 UI 弹框问。**IO 线程**(要读归档头)。
+     * Unlock an encrypted archive before mounting. Already unlocked? Pass through. A
+     * saved password exists? Use it. Otherwise (or saved one is wrong) throw
+     * [ArchivePasswordException] for the UI to prompt. **IO thread** (reads the archive header).
      *
-     * [original] 是用户点的那个文件,[archive] 可能是它物化到缓存后的本地副本——
-     * 密码按 [original] 记,这样 SMB 上的加密包换了缓存文件名也还认得。
+     * [original] is the file the user tapped; [archive] may be a materialized local
+     * copy of it — the password is keyed by [original], so an encrypted archive on SMB
+     * still works after the cache filename changes.
      */
     private fun unlockIfEncrypted(afs: ArchiveFileSystem, archive: XFile, original: XFile) {
         val path = archive.path
@@ -1617,7 +2230,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val key = archivePwKey(original)
         val saved = Prefs.archivePassword(getApplication(), key) ?: throw ArchivePasswordException(path)
         if (!afs.checkPassword(path, saved)) {
-            // 存的那个已经不管用了(包被重新加密过),清掉免得每次都白试一遍
+            // The saved password no longer works (archive was re-encrypted) — clear it so we don't keep retrying.
             Prefs.setArchivePassword(getApplication(), key, null)
             throw ArchivePasswordException(path, wrong = true)
         }
@@ -1625,15 +2238,16 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 用户在密码框里给了密码:校验通过就记下来并重新展开 [file],不通过回 false 让 UI 再问。
-     * [save] 决定要不要落盘([Prefs.setArchivePassword])。
+     * The user gave a password in the dialog: if it checks out, store it and re-expand
+     * [file]; if not, return false so the UI can ask again.
+     * [save] decides whether to persist it ([Prefs.setArchivePassword]).
      */
     fun unlockArchive(file: XFile, password: String, save: Boolean, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val ok = runCatching {
                 withContext(io) {
                     val (afs, archive) = archiveTarget(file)
-                    afs.rootOf(archive) // 同上:先挂载登记宿主,远程包才读得到字节
+                    afs.rootOf(archive) // Same as above: register the host by mounting first so remote archives can be read.
                     if (!afs.checkPassword(archive.path, password)) return@withContext false
                     afs.setPassword(archive.path, password)
                     true
@@ -1642,45 +2256,46 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             onResult(ok)
             if (!ok) return@launch
             if (save) Prefs.setArchivePassword(getApplication(), archivePwKey(file), password)
-            // 上一次展开是失败收场的,缓存里没有它的子项,这里重新走一遍完整挂载
+            // The previous expansion failed, so its children aren't cached — go through the full mount again here.
             children.remove(fileKey(file))
             expandFileNode(file)
         }
     }
 
-    /** 密码存储的 key:用**用户点的那个文件**(而不是缓存副本路径),换设备缓存也不影响。 */
+    /** Password storage key: use the **file the user tapped** (not the cache copy's path), so changing device cache doesn't break it. */
     private fun archivePwKey(file: XFile): String = "${file.scheme}:${file.path}"
 
     /**
-     * 归档文件 → (对应的归档 FileSystem, 真正要挂载的归档 XFile)。
-     * 物化规则与 [listChildren] 完全一致,两处都要用所以抽出来。IO 线程。
+     * Archive file → (matching ArchiveFileSystem, the XFile that actually gets mounted).
+     * Materialization rules match [listChildren] exactly — extracted because both places need them. IO thread.
      */
     private fun archiveTarget(file: XFile): Pair<ArchiveFileSystem, XFile> {
         val scheme = Archives.schemeFor(file) ?: throw FsException(str(R.string.err_unsupported_type))
         val afs = FsRegistry.of(scheme) as ArchiveFileSystem
         val hostFs = runCatching { FsRegistry.of(file) }.getOrNull()
-        val needLocal = scheme == com.twig.fs.archive.RarFileSystem.SCHEME ||
+        val needLocal = scheme == Archives.RAR_SCHEME ||
             (hostFs is ArchiveFileSystem && !hostFs.fastRandom(file))
         return afs to if (needLocal) localArchive(file) else file
     }
 
-    /** 解锁成功后重新展开这一行(树里已有的那个节点,或外部挂载的那一行)。 */
+    /** Re-expand this row after a successful unlock (the row that already exists in the tree, or the externally mounted row). */
     private fun expandFileNode(file: XFile) {
         val key = fileKey(file)
         if (externalMount?.let { fileKey(it) } == key) {
-            mountExternal(file) // 它自己会用 EXTERNAL_KEY_PREFIX 那套 key
+            mountExternal(file) // It uses the EXTERNAL_KEY_PREFIX key family internally.
             return
         }
         val node = _state.value.rows.filterIsInstance<FileNode>().firstOrNull { it.key == key }
         if (node != null) {
-            expanded.remove(key) // toggleFile 是"切换",先保证它处在折叠态
+            expanded.remove(key) // toggleFile toggles; ensure it starts collapsed.
             toggleFile(node)
         }
     }
 
     /**
-     * 把归档物化到缓存目录(RAR 与嵌套包需要),按"来源+路径+大小+修改时间"缓存,
-     * 重复展开不重复下载/解压;本地文件直接返回。
+     * Materialize an archive into the cache directory (RAR and nested archives
+     * require this), keyed by source + path + size + mtime so re-expanding the same
+     * archive doesn't re-download / re-extract; local files are returned as-is.
      */
     private fun localArchive(file: XFile): XFile {
         if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
@@ -1689,10 +2304,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             "${file.scheme}:${file.path}:${file.size}:${file.lastModified}".hashCode(),
         )
         val out = java.io.File(dir, "${key}_${file.name}")
-        if (!out.exists() || out.length() != file.size) {
+        // ★ A size of 0 must not be used as the validity check: bz2 cannot report its
+        // uncompressed size (the format has no such field), so a tar inside one is a host
+        // of "unknown size" — comparing against 0 would re-inflate the whole thing on
+        // every expand. Dropping that check is safe because the cache key already covers
+        // source + path + size + mtime: a different host is a different key.
+        if (!out.exists() || (file.size > 0 && out.length() != file.size)) {
             val tmp = java.io.File(dir, "$key.part")
             try {
-                // 1MB 缓冲(默认 8KB 会把网络往返延迟放大成大量小读,参照 CopyEngine)
+                // 1MB buffer (the default 8KB turns network round-trip latency into many small reads; see CopyEngine).
                 FsRegistry.of(file).openInput(file).use { ins ->
                     tmp.outputStream().use { ins.copyTo(it, 1 shl 20) }
                 }
@@ -1703,40 +2323,45 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             com.twig.app.CacheDirs.trim(dir, keep = out)
         }
-        out.setLastModified(System.currentTimeMillis()) // LRU 记一次使用
+        out.setLastModified(System.currentTimeMillis()) // Mark one LRU use.
         return XFile(
             scheme = ArchiveFileSystem.HOST_SCHEME, path = out.path,
             isDir = false, size = out.length(), lastModified = file.lastModified,
         )
     }
 
-    // ---- 建树 ----
+    // ---- Building the tree ----
 
     private fun rebuild() {
         val rows = ArrayList<Node>()
         attachedKeys.clear()
-        showHidden = Prefs.showHidden(getApplication()) // 每轮读一次,不在每个目录里反复查 SharedPreferences
+        showHidden = Prefs.showHidden(getApplication()) // Read once per round, not once per directory from SharedPreferences.
         val lock = lockRoot
         if (lock != null) {
             addFile(rows, lock, 0, lockLabel)
         } else {
             val ext = Environment.getExternalStorageDirectory().absolutePath
-            // 外部打开的压缩包放最前面:它不属于任何一棵存储树,夹在中间反而找不到
+            // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
             externalMount?.let { addFile(rows, it, 0, keyPrefix = EXTERNAL_KEY_PREFIX) }
             addGroup(rows, "fav", str(R.string.group_fav))
-            // 对比收藏没有专门的空态提示——一次都没保存过就整个不露这一组,不占地方
+            // Saved comparisons have no dedicated empty state — if none were ever saved, don't show the group at all (saves space).
             if (CompareStore.all(getApplication()).isNotEmpty()) {
                 addGroup(rows, "cmp", str(R.string.compare_saved))
             }
             addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
+            // SD card / USB drive: wedged between internal storage and the root. The list is cached (see StorageVolumes class comments) — rebuild runs on every render, so don't rescan storageVolumes here.
+            for (v in StorageVolumes.cached(getApplication())) {
+                addFile(rows, XFile("file", v.path, isDir = true), 0, v.label, capacity(v.path))
+            }
             addFile(rows, XFile("file", "/", isDir = true), 0, str(R.string.group_root), capacity("/"))
             addGroup(rows, "lan", str(R.string.group_lan))
             addGroup(rows, "ftp", "FTP")
             addGroup(rows, "sftp", "SSH (SFTP)")
             addGroup(rows, "dav", "WebDAV")
             addGroup(rows, "s3", "S3")
+            addGroup(rows, "media", str(R.string.group_media))
             addGroup(rows, "saf", str(R.string.group_saf))
-            // 应用管理:虚拟只读来源,和存储节点一样是棵可就地展开的树(已安装/系统)
+            // Apps management: virtual read-only source, like a storage node it's an in-place expandable tree (installed / system).
             addFile(
                 rows,
                 XFile(AppsFileSystem.SCHEME, "/", isDir = true, canWrite = false),
@@ -1744,20 +2369,20 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 str(R.string.apps_root),
             )
         }
-        // 所在目录被折叠(卡片行没被建出来)的属性卡片自动关闭并丢缓存
+        // Auto-close and discard the cache of info cards whose containing directory was collapsed (so no card row was built).
         val liveInfo = rows.mapNotNullTo(HashSet()) { (it as? InfoNode)?.let { n -> fileKey(n.file) } }
         infoOpen.retainAll(liveInfo)
         infoCache.keys.retainAll(infoOpen)
         infoTab.keys.retainAll(infoOpen)
         hashCache.keys.retainAll(infoOpen)
-        // 卡片没了(关闭/折叠)就别继续扫目录
+        // If a card is gone (closed / collapsed), stop scanning its directory.
         dirScan.keys.toList().forEach { k -> if (k !in infoOpen) dirScan.remove(k)?.job?.cancel() }
-        // 所在目录行不可见(祖先被折叠)的搜索任务自动取消并丢弃,与属性卡片一致
+        // Auto-cancel and discard search tasks whose root row is no longer visible (ancestor collapsed), same as info cards.
         val liveSearch = rows.mapNotNullTo(HashSet()) { (it as? SearchNode)?.let { n -> fileKey(n.root) } }
         searchState.keys.toList().forEach { k ->
             if (k !in liveSearch) {
                 searchState.remove(k)?.job?.cancel()
-                if (currentKey == "search:$k") currentKey = null // 高亮曾指向它,行没了就不悬空
+                if (currentKey == "search:$k") currentKey = null // The highlight used to point at it; if the row is gone, don't leave it dangling.
             }
         }
         _state.value = State(rows, currentDir, currentKey, null, null, restoring, scrollKey)
@@ -1769,25 +2394,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         depth: Int,
         label: String? = null,
         capacity: String? = null,
-        /** 见 [FileNode.keyPrefix];整棵子树都要带着它,否则包内条目又会和原位置那棵撞上。 */
+        /** See [FileNode.keyPrefix]; the whole subtree must carry it, otherwise archive entries would clash with the row at their original location. */
         keyPrefix: String = "",
     ) {
         val key = keyPrefix + fileKey(file)
         val expandable = file.isDir || expandableArchive(file, key)
         if (expandable) keyFile[key] = file
         val exp = expandable && expanded.contains(key)
-        // 挂了搜索结果的目录箭头显示成"已展开"(哪怕本身没真正展开)——视觉上呼应下方冒出的
-        // 搜索结果虚拟目录;但这只影响图标,真正的子项列表仍只在 exp 为真时才拉取/渲染,
-        // 未展开的目录发起搜索后不会连带显示自己下面原本的文件/目录。
+        // A directory with a search result hangs shows the chevron as "expanded" (even if not actually expanded) — visually echoing the search-result virtual directory below; this only affects the icon, the actual children list is still only fetched/rendered when exp is true, so a collapsed directory that starts a search won't also show its original files/dirs below.
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
-            label, capacity, loadingKeys.contains(key), keyPrefix,
+            label, capacity, busy(key), keyPrefix,
         )
         addAttachments(rows, file, depth)
         if (exp) {
-            // git 虚拟根节点放最前面,不用在一堆真实文件后面翻找。
-            // 显示名不用 gitInfo 里注册时冻结的那份(切分支后会一直显示旧分支名),
-            // 改读 GitFileSystem.displayName——它跟着 statusCache 里最新的分支走。
+            // Put the git virtual root first, no need to dig through a pile of real files.
+            // Don't use the display name frozen at registration in gitInfo (after switching branches it'd keep showing the old one); read GitFileSystem.displayName instead — it follows the latest branch in statusCache.
             gitInfo[key]?.let { (s, gl) ->
                 val live = (runCatching { FsRegistry.of(s) }.getOrNull() as? GitFileSystem)?.displayName ?: gl
                 addFile(rows, XFile(s, "/", isDir = true, displayName = live, canWrite = false), depth + 1)
@@ -1798,14 +2420,18 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 挂在某个目录行下方的附属行:属性卡片 + 搜索结果虚拟目录(都不依赖该目录是否展开,
-     * 展开时排在其子项之前)。[depth] 是所属行自己的层级。收藏行没走 [addFile],但菜单里
-     * 同样能开属性/发起搜索,所以两处共用这段。
+     * Attached rows hanging under a directory row: info cards + search-result virtual
+     * directory (both render regardless of whether the directory is expanded; when
+     * expanded they come before its children). [depth] is the row's own depth.
+     * Favorite rows don't go through [addFile], but their menu can still open
+     * properties / start a search — so this method is shared between the two.
      */
     private fun addAttachments(rows: MutableList<Node>, file: XFile, depth: Int) {
         val key = fileKey(file)
-        // 同一个目录可能在树上出现多次(收藏 + 存储树里的原位置、搜索结果里的同一目录……),
-        // 附属行的 key 只按目录算,重复挂会在 DiffUtil 里撞 key —— 只认这一轮的第一处。
+        // The same directory may appear multiple times in the tree (favorite + its
+        // original position in the storage tree, the same directory in search results,
+        // …). Attached-row keys are keyed only by directory, and re-attaching would
+        // collide keys in DiffUtil — only honor the first occurrence in this round.
         if (!attachedKeys.add(key)) return
         if (infoOpen.contains(key)) {
             rows += InfoNode(
@@ -1828,35 +2454,41 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 目录检测到 .git:建数据源、注册虚拟文件系统,把要登记的东西带回去(**IO 线程**)。
+     * Directory detected to have a .git: build the data source, register the virtual
+     * FileSystem, and carry back what needs registering (**IO thread**).
      *
-     * 注册进 [FsRegistry] 留在这里而不是搬到主线程——建 GitData 本身要读 .git
-     * (SSH 仓库还要跑一次远程 exec),必须在 IO 上;而 FsRegistry 自己是线程安全的。
-     * 搬走的只是 VM 那几张反查表的写入,见 [applyListing]。
+     * Registration in [FsRegistry] stays here rather than moving to the main thread —
+     * building GitData itself reads .git (SSH repos also run a remote exec) and must
+     * be on IO; FsRegistry itself is thread-safe. What moves is just the writes to
+     * the VM's reverse-lookup tables, see [applyListing].
      */
     private fun buildGit(dir: XFile): Listing.Git? {
         val key = fileKey(dir)
-        if (gitInfo.containsKey(key)) return null // 已登记过,不重复建
+        if (gitInfo.containsKey(key)) return null // Already registered — don't rebuild.
         val (data, cheap) = runCatching { com.twig.app.gitDataFor(dir) }.getOrNull() ?: return null
         val branch = runCatching { data.branch() }.getOrDefault("?")
         val scheme = "git" + Integer.toHexString(key.hashCode())
         val label = "Git ($branch)"
-        // host 传 dir:虚拟树里的「工作区」要靠它把仓库记的绝对路径映射回这边(见 GitFileSystem)
+        // host passes dir: the virtual tree's "worktree" needs it to map the repo's
+        // stored absolute paths back here (see GitFileSystem).
         FsRegistry.register(GitFileSystem(getApplication(), data, scheme, label, host = dir))
         return Listing.Git(key, dir, scheme, label, cheap)
     }
 
     private fun addRestic(rows: MutableList<Node>, repoDir: XFile, depth: Int) {
         val nodeKey = "restic:${fileKey(repoDir)}"
-        // "已解锁" = 仓库打开了**并且**快照列表也取回来了。只看 resticScheme 的话,一次
-        // "打开成功、列快照失败" 就会把这行永久钉在 unlocked 上、点开却是空的(见
-        // [forgetRestic]);两个条件一起看,这种半成品状态下点击会重新走解锁,自愈。
+        // "Unlocked" = the repo is open **AND** the snapshot list was also fetched.
+        // If we only checked resticScheme, a single "open succeeded, list snapshots
+        // failed" would pin this row as unlocked forever, yet tapping it expands to
+        // nothing (see [forgetRestic]); checking both means a half-done state
+        // re-walks the unlock path on tap, self-healing.
         val unlocked = resticScheme.containsKey(nodeKey) && children.containsKey(nodeKey)
         val exp = expanded.contains(nodeKey)
-        rows += ResticNode(repoDir, depth, exp, unlocked, connecting.contains(nodeKey))
+        rows += ResticNode(repoDir, depth, exp, unlocked, busy(nodeKey))
         if (exp && unlocked) {
-            // fs-restic 是纯 JVM 模块,没有字符串资源可用,"最新" 虚拟目录(path=="/latest")
-            // 只带语言无关的原始名;本地化文案在这唯一的渲染点接管。
+            // fs-restic is a pure JVM module with no string resources available, so
+            // the "latest" virtual directory (path=="/latest") only carries the raw,
+            // language-neutral name; localized text is owned here at this one render point.
             visible(children[nodeKey]).forEach { f ->
                 val shown = if (f.path == "/latest") f.copy(displayName = str(R.string.restic_latest)) else f
                 addFile(rows, shown, depth + 1)
@@ -1886,20 +2518,19 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     else -> str(R.string.action_add_webdav)
                 }
                 rows += ActionNode("add_$type", label)
-                // 另一台 Twig 的 WiFi 共享说的就是 WebDAV,扫出来直接存成一条 WebDAV 连接
+                // Another Twig's WiFi sharing is WebDAV — scanning saves it directly as a WebDAV connection.
                 if (type == "webdav") rows += ActionNode("add_scan_twig", str(R.string.share_scan))
             }
+            // The only group holding two types: Jellyfin and Emby endpoints share the
+            // same origin and the same FileSystem implementation; splitting them into
+            // two groups would just add a near-identical layer to the sidebar.
+            "media" -> {
+                for (conn in ConnectionStore.all(app).filter { it.isMediaServer() }) addServer(rows, conn)
+                rows += ActionNode("add_jellyfin", str(R.string.action_add_jellyfin))
+                rows += ActionNode("add_emby", str(R.string.action_add_emby))
+            }
             "saf" -> {
-                for (perm in app.contentResolver.persistedUriPermissions) {
-                    runCatching {
-                        val docId = DocumentsContract.getTreeDocumentId(perm.uri)
-                        val docUri = DocumentsContract.buildDocumentUriUsingTree(perm.uri, docId)
-                        XFile(
-                            "saf", docUri.toString(), isDir = true,
-                            displayName = docId.substringAfterLast(':').ifEmpty { docId },
-                        )
-                    }.getOrNull()?.let { addFile(rows, it, 1) }
-                }
+                safRoots().forEach { addFile(rows, it, 1) }
                 rows += ActionNode("add_saf", str(R.string.action_add_saf))
             }
             "fav" -> {
@@ -1916,6 +2547,37 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Authorized document trees, one row each (in the order the system returns them).
+     *
+     * Row names come in two flavors: **third-party app providers use the app name**
+     * (see [SafFileSystem.providerApp] — their document id is a real path, with a
+     * last-segment like "home" that's neither recognizable nor nice-looking); the
+     * rest (external storage / downloads — system providers) use the document id's last segment.
+     * ★ When the same app authorizes multiple trees, just the app name can't tell
+     * them apart — append the directory name.
+     */
+    private fun safRoots(): List<XFile> {
+        val app = getApplication<Application>()
+        val roots = app.contentResolver.persistedUriPermissions.mapNotNull { perm ->
+            runCatching {
+                val docId = DocumentsContract.getTreeDocumentId(perm.uri)
+                val docUri = DocumentsContract.buildDocumentUriUsingTree(perm.uri, docId)
+                // The document id can be "primary:DCIM" or a real path; last-segment cut on both separators.
+                val tail = docId.substringAfterLast('/').substringAfterLast(':').ifEmpty { docId }
+                val file = XFile("saf", docUri.toString(), isDir = true, displayName = tail)
+                Triple(file, SafFileSystem.providerApp(app, file)?.label, tail)
+            }.getOrNull()
+        }
+        return roots.map { (file, appLabel, tail) ->
+            when {
+                appLabel == null -> file
+                roots.count { it.second == appLabel } > 1 -> file.copy(displayName = "$appLabel · $tail")
+                else -> file.copy(displayName = appLabel)
+            }
+        }
+    }
+
     private fun addFavorite(rows: MutableList<Node>, fav: Favorite, conns: Map<String, SavedConnection>) {
         val key = "fav:${fav.id}"
         val exp = expanded.contains(key)
@@ -1924,13 +2586,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             "restic" -> conns[fav.repoConnLabel]
             else -> null
         }
-        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp, connecting = connecting.contains(key))
-        // 属性卡片/搜索结果照普通目录行的规矩挂在下方(键按收藏所指的真实目录算)
+        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp, connecting = busy(key))
+        // Info cards / search results hang under it like a regular directory row (key based on the actual directory the favorite points at).
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) {
             visible(children[key]).forEach { addFile(rows, it, 2) }
-            // 收藏的目录本身就是 restic 仓库根(fav.kind 是 local/conn,还没经 resolveFavorite
-            // 的 restic 分支解锁):和普通浏览一致,补一行"restic 仓库"提示可展开解锁。
+            // The favorite's directory itself is a restic repo root (fav.kind is
+            // local/conn, not yet through resolveFavorite's restic branch for unlock):
+            // consistent with regular browsing, add a "restic repository" hint row
+            // to allow expand-to-unlock.
             keyFile[key]?.let { dir -> if (resticRepos.contains(fileKey(dir))) addRestic(rows, dir, 2) }
         }
     }
@@ -1938,15 +2602,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun addServer(rows: MutableList<Node>, conn: SavedConnection) {
         val key = "s:${conn.label()}"
         val exp = expanded.contains(key)
-        rows += ServerNode(conn, exp, connecting.contains(key), serverInfo[conn.label()])
-        // 属性卡片/搜索结果照普通目录行挂在下方(键按服务器根目录算),同 [addFavorite]
+        rows += ServerNode(conn, exp, busy(key), serverInfo[conn.label()])
+        // Info cards / search results hang under it like a regular directory row (key based on the server root directory), same as [addFavorite].
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) visible(children[key]).forEach { addFile(rows, it, 2) }
     }
 
-    // ---- 工具 ----
+    // ---- Utilities ----
 
-    /** 取字符串资源(多语言:随 AppCompatDelegate 当前 locale)。 */
+    /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
     private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 
     private fun capacity(path: String): String? = runCatching {
@@ -1961,8 +2625,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 展开失败的统一出口:加密包缺密码不是"错误",而是要请用户输密码——
-     * 那条路走 [State.passwordFor],别把 fs-archive 里那句英文异常 toast 出去。
+     * Unified exit point for failed expansions: an encrypted archive's missing
+     * password isn't an "error" — it needs to ask the user for the password; that
+     * path goes through [State.passwordFor], don't toast the English exception
+     * message from fs-archive here.
      */
     private fun emitFailure(t: Throwable, file: XFile?) {
         if (t is ArchivePasswordException && file != null) {
@@ -1975,13 +2641,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 折叠目录节点([FileNode])时收集其下(含仍展开的子目录/压缩包,递归)已缓存的
-     * 子项,交给 [Thumbs.cancelPending] 把还没开始跑的缩略图任务从线程池队列摘掉。 */
+    /** When collapsing a directory node ([FileNode]), collect its (still-expanded sub-dirs / archives, recursive) cached children and hand them to [Thumbs.cancelPending] to drop not-yet-started thumbnail jobs from the thread pool queue. */
     private fun descendantFiles(dir: XFile, out: MutableList<XFile> = mutableListOf()): List<XFile> =
         descendantFilesByKey(fileKey(dir), out)
 
-    /** 同 [descendantFiles],但从任意节点 key 开始——服务器根/restic 仓库根的 key
-     * 不是 `fileKey()` 那套("s:"/"restic:" 前缀),子项仍缓存在同一个 [children] 表里。 */
+    /** Same as [descendantFiles], but starting from any node key — server roots / restic repo roots have keys that aren't `fileKey()` style ("s:" / "restic:" prefix), yet children are still cached in the same [children] table. */
     private fun descendantFilesByKey(rootKey: String, out: MutableList<XFile> = mutableListOf()): List<XFile> {
         val kids = children[rootKey] ?: return out
         for (c in kids) {
@@ -1993,12 +2657,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         /**
-         * 外部打开(「用 Twig 打开」)挂在树顶那棵子树的 key 前缀。它和这个文件在存储树里
-         * 原本那一行是**两行**,不加以区分就会撞 DiffUtil 的 key。
+         * The key prefix for the externally-opened ("Open with Twig") subtree hanging
+         * off the top of the tree. It's **two rows** alongside the file's original
+         * row in the storage tree; without distinguishing them they'd collide on
+         * DiffUtil's keys.
          */
         const val EXTERNAL_KEY_PREFIX = "x:"
 
-        /** 见 [TreeKeys.fileKey];这里保留同名入口,免得几十个调用点都要改。 */
+        /** See [TreeKeys.fileKey]; this same-name entry point stays so the dozens of call sites don't all need changing. */
         fun fileKey(file: XFile): String = TreeKeys.fileKey(file)
     }
 }

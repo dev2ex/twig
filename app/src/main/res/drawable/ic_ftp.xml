@@ -1,0 +1,26 @@
+<!--
+  FTP: two directories with an arrow from one into the other — the protocol is nothing but
+  moving files between here and there. Deliberately not the cloud (ic_cloud now means
+  WebDAV / S3 only) and not a node tree (that is ic_lan, which SMB uses; a folder sitting on
+  a tree was drawn and rejected for exactly that collision).
+  Same recipe as the other source icons: white fill / white stroke, all colour from
+  android:tint.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/primary">
+    <!-- Source directory, upper left -->
+    <path android:fillColor="@android:color/white"
+        android:pathData="M1.8,1.4h2.69l1.2,1.9h4.51a1.2,1.2 0 0,1 1.2,1.2v4.9a1.2,1.2 0 0,1 -1.2,1.2H1.8a1.2,1.2 0 0,1 -1.2,-1.2V2.6a1.2,1.2 0 0,1 1.2,-1.2z" />
+    <!-- Target directory, lower right -->
+    <path android:fillColor="@android:color/white"
+        android:pathData="M13.8,13.4h2.69l1.2,1.9h4.51a1.2,1.2 0 0,1 1.2,1.2v4.9a1.2,1.2 0 0,1 -1.2,1.2H13.8a1.2,1.2 0 0,1 -1.2,-1.2V14.6a1.2,1.2 0 0,1 1.2,-1.2z" />
+    <!-- The transfer: an elbow from the first directory down into the second -->
+    <path android:strokeColor="@android:color/white"
+        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M13.2,4.2h4.6v5.2" />
+    <path android:strokeColor="@android:color/white"
+        android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M15.4,7.6L17.8,10.2L20.2,7.6" />
+</vector>

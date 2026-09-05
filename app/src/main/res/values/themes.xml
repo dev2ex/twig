@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 基于 AppCompat DayNight(随系统/手动深色,不引入 Material 库) -->
+    <!-- Based on AppCompat DayNight (follows system / manual dark, no Material library) -->
     <style name="Theme.Twig" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">@color/primary_dark</item>
@@ -9,9 +9,21 @@
         <item name="android:statusBarColor">@color/toolbar</item>
     </style>
 
-    <!-- 侧边操作列条目:图标 + 小字标签,X-plore 式 -->
+    <!-- Side action column item: icon + small label, X-plore style -->
+    <!--
+        Used by the headless relay screens (ViewIntentActivity / RunCommandActivity).
+        They don't display anything themselves, but **need to be able to pop up the unlock dialog** — AppCompat's AlertDialog requires
+        the host to be an AppCompat theme; the platform's Theme.Translucent doesn't satisfy it, and it crashes the moment a dialog is shown.
+    -->
+    <style name="Theme.Twig.Translucent" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
     <style name="StripItem">
-        <!-- 父容器是 GridLayout:0dp + columnWeight 让每列等宽(1 列时即占满) -->
+        <!-- Parent container is GridLayout: 0dp + columnWeight makes every column equal width (fills when there is only 1 column) -->
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_columnWeight">1</item>
@@ -40,11 +52,11 @@
     </style>
 
     <!--
-      **带副标题的 Toolbar** 都该用这一对(对比 / 文本对比 / 图片对比 / Git)。
-      不定死的话走 Theme.AppCompat 默认的 TextAppearance.Widget.AppCompat.Toolbar.Title
-      (20sp)——竖屏 actionBarSize 是 56dp,20sp 标题 + 14sp 副标题两行摆得开、字显得
-      很大;横屏只有 48dp,同样两行被挤扁,于是"竖屏进入字大、横屏进入正常"。而这套
-      尺寸在 Toolbar 建 title view 那一刻就定了,转屏也不会重来。显式给尺寸即可。
+      Every **Toolbar with a subtitle** should use this pair (compare / text compare / image compare / Git).
+      If left unset, it falls back to Theme.AppCompat's default TextAppearance.Widget.AppCompat.Toolbar.Title
+      (20sp) — portrait actionBarSize is 56dp, so a 20sp title + 14sp subtitle fit on two lines and look
+      very large; landscape only has 48dp, so the same two lines get squished, leading to "large text in portrait, normal in landscape". These sizes are fixed
+      at the moment Toolbar builds its title view, and rotation does not redo them. Just set the sizes explicitly.
     -->
     <style name="CompactToolbarTitle" parent="TextAppearance.Widget.AppCompat.Toolbar.Title">
         <item name="android:textSize">16sp</item>

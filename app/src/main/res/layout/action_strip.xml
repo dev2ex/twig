@@ -5,8 +5,9 @@
     android:background="@color/bar"
     android:orientation="vertical">
 
-    <!-- 顶部固定区:横屏隐藏 Toolbar 后,原来标题栏右侧的按钮(终端/音乐/切面板/菜单)
-         挪到这里,不随下方操作列滚动。竖屏由 MainActivity 整块 GONE -->
+    <!-- Top fixed area: when the Toolbar is hidden in landscape, the buttons that were
+         on its right (terminal/music/swap panels/menu) move here and do not scroll with
+         the action strip below. In portrait MainActivity sets the whole block GONE. -->
     <com.twig.app.ui.StripGrid
         android:id="@+id/as_top"
         android:layout_width="match_parent"
@@ -54,8 +55,9 @@
         android:layout_weight="1"
         android:scrollbars="none">
 
-    <!-- 列数由代码按屏幕方向设置(竖屏 1 列、横屏 2 列,见 MainActivity.applyStripColumns);
-         条目按行填充,0dp + columnWeight=1 让每列等宽 -->
+    <!-- Column count is set in code based on orientation (1 column in portrait, 2 in
+         landscape — see MainActivity.applyStripColumns); entries fill row by row, and
+         0dp + columnWeight=1 makes each column the same width. -->
     <com.twig.app.ui.StripGrid
         android:id="@+id/as_grid"
         android:layout_width="match_parent"
@@ -141,7 +143,8 @@
             <TextView style="@style/StripLabel" android:text="@string/strip_history" />
         </LinearLayout>
 
-        <!-- WiFi 共享:图标在服务开着时换成实心扇形(见 MainActivity.syncShareIcon) -->
+        <!-- WiFi sharing: the icon switches to a solid fan while the service is running
+             (see MainActivity.syncShareIcon) -->
         <LinearLayout android:id="@+id/as_share" style="@style/StripItem">
             <ImageView android:id="@+id/as_share_icon" style="@style/StripIcon"
                 android:src="@drawable/ic_share_wifi"

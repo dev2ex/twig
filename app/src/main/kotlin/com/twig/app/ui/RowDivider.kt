@@ -8,10 +8,12 @@ import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.R
 
 /**
- * 树式列表的行间分割线:只画在两条**普通整行**之间(网格格子之间、行与属性卡片之间不画)。
- * 刻意做得淡——1px + 半透明 divider 色,只给相邻两行一点边界感,不抢视觉。
- * 不占布局空间(不实现 getItemOffsets),行高不变;画在 onDrawOver 里,免得被下一行
- * 的选中态背景盖掉。
+ * Row dividers for the tree-style list: drawn **only** between two ordinary full-width
+ * rows (not between grid cells, not between a row and the info card). Intentionally
+ * understated — 1px + half-transparent divider color, just a hint of boundary between
+ * adjacent rows, not visually loud. Does not occupy layout space (no getItemOffsets),
+ * so row height is unchanged; drawn in onDrawOver so the next row's selected-state
+ * background does not paint over it.
  */
 class RowDivider(context: Context) : RecyclerView.ItemDecoration() {
 
@@ -20,13 +22,13 @@ class RowDivider(context: Context) : RecyclerView.ItemDecoration() {
     private val inset = 6f * context.resources.displayMetrics.density
 
     companion object {
-        /** 分割线画笔;操作栏(StripGrid)共用同一套配色,两处看起来是一样的线。 */
+        /** Divider paint; the toolbar (StripGrid) shares the same color set, so the two places look like the same line. */
         fun paint(context: Context): Paint = Paint().apply {
             color = ContextCompat.getColor(context, R.color.divider)
             alpha = 190
         }
 
-        /** 厚度取半 dp(高密度屏 1.5px):整 dp 在手机上偏粗,1px 又几乎看不见。 */
+        /** Thickness is half a dp (1.5px on high-density screens): a full dp reads as too thick on phones, 1px is barely visible. */
         fun thickness(context: Context): Float =
             (0.5f * context.resources.displayMetrics.density).coerceAtLeast(1f)
     }

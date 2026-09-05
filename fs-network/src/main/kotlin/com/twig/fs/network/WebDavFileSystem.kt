@@ -23,7 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 
-/** 一个 WebDAV 端点的配置;[baseUrl] 形如 https://host/dav/subdir。 */
+/** Configuration for a WebDAV endpoint; [baseUrl] is shaped like https://host/dav/subdir. */
 data class DavConfig(
     val baseUrl: String,
     val user: String = "",
@@ -31,11 +31,13 @@ data class DavConfig(
 )
 
 /**
- * WebDAV 文件系统:OkHttp + 手写 PROPFIND/MKCOL/MOVE(不引入 SDK,守住体积)。
+ * WebDAV filesystem: OkHttp + hand-written PROPFIND/MKCOL/MOVE (no SDK, to keep
+ * the APK size in check).
  *
- * - 列目录:PROPFIND Depth:1,解析 DAV: multistatus
- * - 读:GET 流式;写:先落临时文件,流关闭时 PUT(RequestBody 需已知长度)
- * - 目录删除:DELETE 按 RFC 4918 递归;重命名:MOVE + Destination
+ * - Listing: PROPFIND Depth:1, parsing DAV: multistatus
+ * - Reads: streaming GET; writes: stage to a temp file, PUT on stream close
+ *   (RequestBody needs a known length)
+ * - Directory deletion: recursive DELETE per RFC 4918; rename: MOVE + Destination
  */
 class WebDavFileSystem(
     private val config: DavConfig,
@@ -45,11 +47,16 @@ class WebDavFileSystem(
     override val displayName: String = "WebDAV (${config.baseUrl})"
 
     /**
-     * OkHttp 的默认超时是 connect/read/write 各 10 秒,对文件传输太紧:
-     * - **read** 是"两次读之间的间隔",慢速链路上服务端组包超过 10 秒就断;
-     * - **write** 同理,而 [openOutput] 是把整个文件一次 PUT 上去,弱网传大文件很容易撞上;
-     * - **callTimeout** 默认是 0(不限),但显式写出来免得以后有人顺手加上。
-     * 连接超时保持较短(连不上就该快点报错),读写放宽。
+     * OkHttp's default timeout is 10 seconds for connect/read/write — too tight
+     * for file transfers:
+     * - **read** is the gap between two reads; on a slow link where the server
+     *   spends more than 10 seconds assembling the next packet, the connection drops;
+     * - **write** works the same way, and [openOutput] PUTs the entire file at
+     *   once, so weak links sending large files easily hit it;
+     * - **callTimeout** defaults to 0 (unlimited), but we write it out explicitly
+     *   so nobody quietly adds a value later.
+     * Connect timeout stays short (failure to connect should fail fast); read
+     * and write are relaxed.
      */
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
@@ -76,14 +83,18 @@ class WebDavFileSystem(
         resp.use {
             if (it.code != 207) throw FsException("PROPFIND failed: HTTP ${it.code} @ $url")
             val body = it.body ?: throw FsException("PROPFIND returned no body @ $url")
-            // ★ 先整读进内存再交给 XML parser,别把 socket 流直接喂进去。
-            // 边读边解析时,响应体传到一半被截断的异常是从 parser 内部冒出来的,
-            // 到了 UI 上只剩孤零零一句 `unexpected end of stream` —— 看不出是哪个
-            // 请求、更分不清"服务器拒了"还是"回到一半断了"。2026-08-04 排查
-            // 「WebDAV 展开不了」时就卡在这上面(真因是服务端根目录下有个坏掉的
-            // mount,mod_dav 遍历到它就中断,chunked 流没发完)。
-            // multistatus 是目录清单,体积可控;而且 parseMultistatus 随后要建的
-            // DOM 本来就比原始字节大得多,多存这一份不算额外开销。
+            // ★ First read the whole body into memory before handing it to the XML parser;
+            // do not feed the socket stream in directly. When parsing as we read,
+            // a truncated-body exception surfaces from inside the parser, and the
+            // UI is left with only a bare "unexpected end of stream" — you cannot
+            // tell which request it was, nor whether the server refused or simply
+            // closed mid-stream. On 2026-08-04 while debugging "WebDAV cannot
+            // expand", the investigation stalled on this exact case (the real
+            // cause was a broken mount under the server's root that mod_dav
+            // walked into and aborted on, leaving the chunked stream unfinished).
+            // The multistatus body is a directory listing with a manageable size;
+            // the DOM that parseMultistatus builds afterwards is already much
+            // larger than the raw bytes, so caching one extra copy costs nothing.
             val bytes = try {
                 body.bytes()
             } catch (e: Exception) {
@@ -111,9 +122,9 @@ class WebDavFileSystem(
         }
     }
 
-    override fun randomAccessEfficient(): Boolean = true // HTTP Range 定位读
+    override fun randomAccessEfficient(): Boolean = true // HTTP Range positioned reads
 
-    /** HTTP Range 定位读;流池那套逻辑与 S3 完全一样,见 [HttpRangeSource]。 */
+    /** HTTP Range positioned read; the stream-pool logic is identical to S3, see [HttpRangeSource]. */
     override fun openRandom(file: XFile): RandomSource = HttpRangeSource(file.size) { position ->
         http.newCall(
             request(urlOf(file.path)).header("Range", "bytes=$position-").get().build(),
@@ -157,8 +168,10 @@ class WebDavFileSystem(
         val req = request(urlOf(file.path, dir = file.isDir))
             .method("MOVE", null)
             .header("Destination", urlOf(to, dir = file.isDir))
-            // Overwrite: F —— 目标已存在时让服务端答 412 而不是把它覆盖掉。
-            // 原来是 T,重命名成同目录已有的名字会无声删掉那个文件(与本地实现同一类问题)。
+            // Overwrite: F — make the server respond 412 when the target exists, instead
+            // of overwriting it. The original value was T, which silently deleted
+            // the file already there when renaming to an existing name in the same
+            // directory (same class of bug as the local implementation).
             .header("Overwrite", "F")
             .build()
         http.newCall(req).execute().use {
@@ -176,7 +189,7 @@ class WebDavFileSystem(
         http.newCall(req).execute().use { it.code == 207 }
     }.getOrDefault(false)
 
-    // ---- 内部 ----
+    // ---- internals ----
 
     private fun request(url: String): Request.Builder {
         val rb = Request.Builder().url(url)
@@ -186,7 +199,7 @@ class WebDavFileSystem(
         return rb
     }
 
-    /** 把内部路径映射为完整 URL;目录 URL 以 '/' 结尾(兼容严格服务器)。 */
+    /** Maps an internal path to a full URL; directory URLs end with '/' (for strict servers). */
     private fun urlOf(path: String, dir: Boolean = false): String {
         val base = config.baseUrl.trimEnd('/')
         val enc = path.trim('/').split('/').filter { it.isNotEmpty() }
@@ -195,7 +208,7 @@ class WebDavFileSystem(
         return if (dir) "$u/" else u
     }
 
-    /** 解析 multistatus;[requestUrlPath] 用于剔除代表目录自身的条目。 */
+    /** Parses multistatus; [requestUrlPath] is used to filter out the entry representing the directory itself. */
     private fun parseMultistatus(input: InputStream, dirPath: String, requestUrlPath: String): List<XFile> {
         val dbf = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val doc = dbf.newDocumentBuilder().parse(input)
@@ -206,10 +219,10 @@ class WebDavFileSystem(
         for (i in 0 until responses.length) {
             val resp = responses.item(i) as Element
             val hrefRaw = textOf(resp, "href") ?: continue
-            // 有的服务器返回完整 URL,统一取 path 部分再解码
+            // Some servers return full URLs; always take the path part and decode it
             val hrefPath = runCatching { URI(hrefRaw).path ?: hrefRaw }.getOrDefault(hrefRaw)
             val decoded = URLDecoder.decode(hrefPath, "UTF-8").trimEnd('/')
-            if (decoded == selfNorm) continue // 跳过目录自身
+            if (decoded == selfNorm) continue // skip the directory itself
 
             val name = decoded.substringAfterLast('/')
             if (name.isEmpty()) continue

@@ -11,7 +11,7 @@
         android:layout_height="match_parent"
         android:contentDescription="@null" />
 
-    <!-- 右上角加载转圈:切换/自动播放时显示,不遮挡当前图 -->
+    <!-- Loading spinner in the top-right corner: shown during navigation / autoplay, does not obscure the current image -->
     <ProgressBar
         android:id="@+id/loading"
         style="?android:attr/progressBarStyleSmall"
@@ -23,7 +23,7 @@
         android:indeterminateTint="@color/white"
         android:visibility="gone" />
 
-    <!-- 悬浮顶栏 -->
+    <!-- Floating top bar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
@@ -33,7 +33,7 @@
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_up" />
 
-    <!-- 悬浮底栏 -->
+    <!-- Floating bottom bar -->
     <LinearLayout
         android:id="@+id/controls"
         android:layout_width="match_parent"

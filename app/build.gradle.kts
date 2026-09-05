@@ -1,7 +1,44 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
+
+// Release signing: the key **never goes into the repo**; it's read from
+// keystore.properties (path / passwords in CLAUDE.local.md).
+// If the file is missing -> release produces an **unsigned APK**, not a silent
+// fallback to the debug key.
+// ★ The debug key is the AOSP public one; anyone can sign an APK that
+//   installs over the official one, so a silent fallback would bury that
+//   trap again with no warning.
+//   An unsigned APK is exactly what F-Droid wants (it signs its own, or does
+//   a reproducible-build comparison).
+// ★ The `import java.util.Properties` at the top cannot be omitted: in the
+//   Kotlin DSL `java` resolves to Gradle's java extension, so writing
+//   `java.util.Properties` inline fails with "Unresolved reference: util".
+val keystoreProps = rootProject.file("keystore.properties").takeIf { it.exists() }?.let { f ->
+    Properties().apply { f.inputStream().use { load(it) } }
+}
+
+// When a dev branch wants the test build to **install straight over** the
+// previous one (instead of uninstall + reinstall each time), sign it with the
+// debug key: set `debugSign=true` in the gitignored local.properties, or pass
+// `-PdebugSign=true` on the command line.
+// ★ This flag has a history: previously the dev branch achieved the same
+//   thing by **deleting the entire signing block above**, and git only saw
+//   "dev removed these lines". When dev was merged into master the real
+//   signing setup on master got **silently deleted** too — no conflict, no
+//   warning. Moving the choice into a gitignored file means this file is
+//   identical on both branches and merges have nothing to clobber.
+// ★ findProperty reads gradle.properties and `-P` args, **not** local.properties
+//   (that's AGP's own file), so the latter has to be read explicitly.
+val debugSign = (
+    project.findProperty("debugSign") as String?
+        ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
+            Properties().apply { f.inputStream().use { load(it) } }.getProperty("debugSign")
+        }
+    )?.toBoolean() == true
 
 android {
     namespace = "com.twig.app"
@@ -13,28 +50,51 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 270
-        versionName = "1.1.1"
+        versionCode = 285
+        versionName = "1.6.0"
         vectorDrawables.useSupportLibrary = true
-        // 与 fs-smb/fs-zstd 一致;避免 ffmpeg 解码器把 v7a/x86 的 so 也打进来
+        // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
-        // libtwigpty:特权进程里分配 PTY 用(见 cpp/twigpty.c 顶部注释)
+        // libtwigpty: PTY allocation inside the privileged process (see cpp/twigpty.c top comment)
         externalNativeBuild { cmake { arguments("-DANDROID_STL=none") } }
+    }
+
+    // Distribution channels: libre drops RAR (junrar is under the UnRAR
+    // license, non-free, F-Droid rejects it); full is the self-built / self-
+    // distributed complete build. **They differ in RAR alone** — don't sneak
+    // other differences into these two flavors.
+    // See CLAUDE.md "RAR and F-Droid".
+    flavorDimensions += "distribution"
+    productFlavors {
+        register("full") { dimension = "distribution"; isDefault = true }
+        register("libre") { dimension = "distribution" }
+    }
+
+    signingConfigs {
+        if (keystoreProps != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = true          // R8 代码混淆/裁剪
-            isShrinkResources = true        // 资源裁剪
+            isMinifyEnabled = true          // R8 code obfuscation / shrinking
+            isShrinkResources = true        // resource shrinking
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = signingConfigs.getByName("debug") // 用 debug 签名发布
+            signingConfig = if (debugSign) signingConfigs.getByName("debug")
+            else keystoreProps?.let { signingConfigs.getByName("release") }
         }
     }
 
-    // 体积优化:AAB 按 ABI / 密度 / 语言拆分,用户只下载自己设备需要的部分
+    // Size optimisation: AAB split by ABI / density / language — users download only what their device needs
     bundle {
         abi { enableSplit = true }
         density { enableSplit = true }
@@ -50,18 +110,18 @@ android {
 
     buildFeatures {
         viewBinding = true
-        aidl = true // 特权 helper 的 ITwigPrivService
+        aidl = true // ITwigPrivService for the privileged helper
     }
 
     testOptions {
-        // Robolectric 要能读到 res/(布局、strings)才能跑起来
+        // Robolectric needs to read res/ (layouts, strings) to run
         unitTests.isIncludeAndroidResources = true
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        isCoreLibraryDesugaringEnabled = true // jellyfin ffmpeg 解码器要求
+        isCoreLibraryDesugaringEnabled = true // required by the jellyfin ffmpeg decoder
     }
 
     kotlinOptions {
@@ -73,7 +133,7 @@ android {
             "META-INF/*.kotlin_module",
             "DebugProbesKt.bin",
             "kotlin-tooling-metadata.json",
-            // bcprov 等签名 jar 的签名文件与多版本 stub
+            // signature files of bcprov etc. and multi-version stubs
             "META-INF/*.SF",
             "META-INF/*.DSA",
             "META-INF/*.RSA",
@@ -89,6 +149,7 @@ dependencies {
     implementation(project(":core-fs"))
     implementation(project(":fs-local"))
     implementation(project(":fs-archive"))
+    "fullImplementation"(project(":fs-archive-rar")) // full only; see src/libre/.../RarSupport.kt for libre
     implementation(project(":fs-network"))
     implementation(project(":fs-smb"))
     implementation(project(":fs-restic"))
@@ -106,31 +167,41 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
-    // SSH 终端:Termux 终端模拟器 + 渲染视图(GPLv3,自用)
+    // SSH terminal: Termux terminal emulator + render view (GPLv3, in-tree)
     implementation("com.github.termux.termux-app:terminal-view:v0.118.0")
     implementation("com.github.termux.termux-app:terminal-emulator:v0.118.0")
 
-    // 媒体播放:ExoPlayer(自带解封装,MKV/MP4 全兼容)+ ffmpeg 音频软解(AC3/EAC3/DTS/TrueHD 等)
+    // Media playback: ExoPlayer (own demuxer, full MKV/MP4) + ffmpeg audio software decode (AC3/EAC3/DTS/TrueHD, etc.)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.jellyfin.media3.ffmpeg)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
-    // Shizuku:以 shell(uid 2000)身份跑进程,免 root 读 Android 11+ 的
-    // /Android/data 与 /Android/obb —— 那两个目录连 MANAGE_EXTERNAL_STORAGE 都进不去。
-    // ★ 这块是少数不手写的地方:核心是一个 AIDL 接口 + 特定协议的 ContentProvider,
-    // 抄过来跨版本很脆,而两个包加起来只有几十 KB。
+    // Shizuku: run a process under shell (uid 2000), so we can read Android
+    // 11+ /Android/data and /Android/obb without root — those two directories
+    // are unreachable even with MANAGE_EXTERNAL_STORAGE.
+    // ★ One of the few places we don't hand-write: the core is an AIDL
+    //   interface plus a custom ContentProvider protocol, and copying it
+    //   verbatim is fragile across versions, while the two packages total
+    //   only a few dozen KB.
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
 
-    // XAPK 组装、树 key 编解码、排序规则等纯 JVM 单测
+    // scrypt for backup / password encryption (see secure/Secrets.kt).
+    // ★ APK delta is 0: bcprov is already bundled via :fs-restic / :fs-network;
+    //   this just exposes it to :app at compile time.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+
+    // XAPK packing, tree-key codec, sort rules etc. — pure JVM unit tests
     testImplementation("junit:junit:4.13.2")
 
-    // PaneViewModel 这类挂在 Android 上的类的单测(见 PaneViewModelRestoreTest):
-    // - robolectric 在普通 JVM 测试里提供**真实**的 Android 框架实现(android.jar
-    //   里全是抛 Stub! 的空壳,构造 AndroidViewModel、读 SharedPreferences 都不行);
-    // - coroutines-test 换掉 Dispatchers.Main 并提供虚拟时间,好确定性地把
-    //   viewModelScope 里排队的协程推完再断言。
-    // 都只是 testImplementation,不进 APK。
+    // Unit tests for Android-bound classes like PaneViewModel (see PaneViewModelRestoreTest):
+    // - robolectric provides a **real** Android framework implementation inside
+    //   plain JVM tests (android.jar is full of Stub!-throwing shells — you
+    //   can't construct an AndroidViewModel or read SharedPreferences against it);
+    // - coroutines-test swaps Dispatchers.Main and provides virtual time, so
+    //   we can deterministically drain the coroutines queued on viewModelScope
+    //   before asserting.
+    // Both are testImplementation only — never shipped in the APK.
     testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

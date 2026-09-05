@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  对比行。形制照 item_file(展开箭头 + 26dp 图标 + 名字/大小时间 + 勾选),
-  差别只有一处:**行高固定**——高度跟着内容走的话,某侧缺失或名字换行就会让两栏错位、
-  同步滚动跟着失准。状态符号不在行里,单独占中间那一列(item_compare_state)。
+  Compare row. Shape follows item_file (expand arrow + 26dp icon + name/size-time + check),
+  with one difference: **the row height is fixed** — if the height followed the content, a missing entry on one side or a wrapping name would throw the two columns out of alignment,
+  and the synchronized scrolling would drift. The status symbol is not in the row; it occupies its own middle column (item_compare_state).
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/row"

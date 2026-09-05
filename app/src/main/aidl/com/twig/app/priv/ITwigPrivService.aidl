@@ -1,38 +1,42 @@
 package com.twig.app.priv;
 
 /**
- * 跑在 Shizuku 特权进程里的助手。
+ * Helper that runs inside Shizuku's privileged process.
  *
- * 这个进程由 Shizuku 用 app_process 拉起,**classpath 是我们自己的 APK**
- * (在 /data/app 下,标签 apk_data_file),所以不受"untrusted_app 不许加载
- * app_data_file"那条限制——rish 那条路正是死在这上面。
+ * That process is started by Shizuku via app_process, with **the classpath
+ * being our own APK** (under /data/app, tagged apk_data_file) — so it is
+ * NOT subject to the "untrusted_app may not load app_data_file" rule that
+ * killed the rish path.
  */
 interface ITwigPrivService {
 
-    /** 这个特权进程实际的 uid:0 = root,2000 = shell。 */
+    /** The effective uid of this privileged process: 0 = root, 2000 = shell. */
     int getUid();
 
     /**
-     * 交一个"活着"的凭据过来:app 进程一死,这个 binder 随之死亡,助手就自杀。
+     * Hand over a "live" credential: when the app process dies, this binder
+     * dies with it, so the helper kills itself.
      *
-     * ★ 不能只靠 Shizuku 的 destroy():app 被升级/杀死时 binder 已经断了,
-     * 那个调用根本送不到,**留下一个 root 进程常驻**(2026-08-17 实测撞到)。
+     * ★ We can't rely solely on Shizuku's destroy(): when the app is upgraded
+     *   or killed the binder is already gone, so that call never reaches us,
+     *   leaving **a root process resident** (hit in the wild on 2026-08-17).
      */
     void attach(IBinder token);
 
     /**
-     * 分配一个 PTY 并在从属端启动 [cmd],返回**主设备端 fd**;失败返回 null。
-     * 子进程 pid 写进 pid[0](供 kill 用)。
+     * Allocate a PTY and start [cmd] on the slave side, returning the
+     * **master-side fd**; null on failure.
+     * The child PID is written to pid[0] (for kill).
      *
-     * [apkPath] / [abi] 用来把 libtwigpty.so 从 APK 里抠出来加载 —— 见
-     * TwigPrivService.ensureLib 的说明。
+     * [apkPath] / [abi] are used to extract libtwigpty.so from the APK and
+     * load it — see TwigPrivService.ensureLib for the details.
      */
     ParcelFileDescriptor start(String apkPath, String abi, String cmd, String cwd,
                                in String[] env, int rows, int cols, out int[] pid);
 
-    /** 结束会话:给整个前台进程组发 SIGHUP。 */
+    /** End the session: send SIGHUP to the whole foreground process group. */
     void kill(int pid);
 
-    /** Shizuku 解绑时会调它,让这个进程退出。 */
+    /** Called by Shizuku on unbind so this process exits. */
     void destroy();
 }

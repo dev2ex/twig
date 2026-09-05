@@ -1,9 +1,10 @@
 package com.twig.git
 
 /**
- * Git 数据源抽象:UI/虚拟树只依赖此接口。
- * 实现可以是本地/远程 .git 解析([RepoGitData]),也可以是经 SSH
- * 远程执行 git 命令(服务端本地算好只回传结果,远程仓库快一个量级)。
+ * Git data source abstraction: the UI / virtual tree only depends on this interface.
+ * The implementation can be a local/remote .git parser ([RepoGitData]), or remote git
+ * command execution over SSH (the server computes locally and only returns results,
+ * which is an order of magnitude faster on remote repositories).
  */
 interface GitData : java.io.Closeable {
 
@@ -13,28 +14,29 @@ interface GitData : java.io.Closeable {
 
     fun log(skip: Int, limit: Int): List<GitCommit>
 
-    /** 所有本地分支。 */
+    /** All local branches. */
     fun branches(): List<GitBranch>
 
-    /** 关联的所有工作区(`git worktree`,含主工作区);拿不到返回空表。 */
+    /** All linked worktrees (`git worktree`, including the main worktree); returns an empty list if unavailable. */
     fun worktrees(): List<GitWorktree>
 
-    /** 同 [log],从指定 commit(如某分支 tip)开始,而非 HEAD。 */
+    /** Same as [log], but starts from a given commit (e.g. some branch tip) instead of HEAD. */
     fun logRef(ref: String, skip: Int, limit: Int): List<GitCommit>
 
     fun commit(sha: String): GitCommit?
 
-    /** 某提交相对首父的变更列表。 */
+    /** List of changes for a commit relative to its first parent. */
     fun diff(sha: String): List<GitChange>
 
     /**
-     * [path] 在某语境下的内容;不存在返回 null。
-     * [rev]:"WORK"=工作区、"INDEX"=暂存区、"HEAD"、提交 SHA、或 "SHA^"(首父)。
+     * Content of [path] in some context; returns null if it does not exist.
+     * [rev]: "WORK" = working area, "INDEX" = staging area, "HEAD", a commit SHA, or
+     * "SHA^" (first parent).
      */
     fun content(rev: String, path: String): ByteArray?
 }
 
-/** 基于 [GitRepo](.git 解析)的实现。 */
+/** Implementation based on [GitRepo] (.git parser). */
 class RepoGitData(private val repo: GitRepo) : GitData {
 
     override fun branch(): String = repo.branch()

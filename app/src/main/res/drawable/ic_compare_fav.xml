@@ -5,10 +5,8 @@
     android:viewportHeight="24"
     android:tint="@color/cmp_only">
     <!--
-      「对比收藏」根分组专用:文件夹(容器,和树上其它根节点一个语义)里挖出两块并排的
-      面板(对比的"两侧")。收藏项那一行用的是操作条同款 ic_compare(两栏 + 箭头)——
-      两者轮廓完全不同(实心文件夹 vs 细线两栏),不是只靠颜色区分。
-      挖空用 evenOdd:露出的是行背景本身,选中/深浅色主题都不会穿帮。
+      Dedicated to the "Compare favorites" root group: a folder (container, with the same semantics as the other root nodes in the tree) with two panels punched out side by side (the "two sides" of the compare). The favorites row itself uses the same ic_compare (two columns + arrow) as the action bar — the two silhouettes are completely different (solid folder vs. thin two-column), not just distinguished by color.
+      The cutout uses evenOdd: the row background itself shows through, so selection and light/dark themes do not break the illusion.
     -->
     <path
         android:fillColor="@android:color/white"

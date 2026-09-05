@@ -24,24 +24,28 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /**
- * `PaneViewModel` 的**恢复上次位置 / 展开**链路。
+ * `PaneViewModel`'s **restore last position / expansion** path.
  *
- * 这条链路一直没有测试,而它出过真实的 bug:2026-08-04「从收藏展开的位置,重开后
- * 没有绿框」——`currentDescriptor()` 只存得下"哪个目录",丢了"经由收藏到达"这件事,
- * 恢复时 key 指向一个树上根本不存在的行。当时是靠真机走查发现的,而那时
- * `TreeKeys`/`SortRules` 的纯函数测试已经在跑了:**它们覆盖不到控制流**。
- * 这个类补的就是那一块。
+ * This path had never been tested, and it had a real bug: on 2026-08-04, "a position
+ * expanded from a favorite has no green highlight after reopening" -- `currentDescriptor()`
+ * only stored "which directory", losing the fact that it was reached "via a favorite", so
+ * on restore the key pointed at a row that did not exist in the tree at all. That was found
+ * by walking through it on a real device, at a time when `TreeKeys`/`SortRules`'s pure
+ * function tests were already running: **they cannot cover control flow**. This class fills
+ * exactly that gap.
  *
- * 跑得起来靠两样(见 app/build.gradle.kts 里的说明):
- * - **Robolectric**:`PaneViewModel` 是 `AndroidViewModel`,构造要 Application,
- *   里面还有 20 多处 `getApplication()` 和一堆 SharedPreferences;
- * - **coroutines-test**:`viewModelScope` 跑在 Main 上(单测里没有),而且要能
- *   确定性地把排队的协程推完再断言。★ `PaneViewModel.io` 也必须换成同一个测试
- *   调度器,否则那 14 处 `withContext(io)` 会跑到真实线程池上,`advanceUntilIdle()`
- *   管不着,测试就成了碰运气。
+ * Getting it to run relies on two things (see the notes in app/build.gradle.kts):
+ * - **Robolectric**: `PaneViewModel` is an `AndroidViewModel`, its constructor needs an
+ *   Application, and it has 20-odd `getApplication()` calls plus a pile of SharedPreferences;
+ * - **coroutines-test**: `viewModelScope` runs on Main (absent in a unit test), and queued
+ *   coroutines need to be driven to completion deterministically before asserting. ★
+ *   `PaneViewModel.io` must also be swapped for the same test dispatcher, otherwise those
+ *   14 `withContext(io)` calls run on the real thread pool, `advanceUntilIdle()` has no
+ *   control over them, and the test becomes a coin flip.
  *
- * 用真实的 `LocalFileSystem` + Robolectric 提供的临时外部存储,不造假文件系统——
- * 恢复链路本来就该连着真实的列目录一起验。
+ * Uses a real `LocalFileSystem` + the temporary external storage Robolectric provides,
+ * rather than a fake file system -- the restore path should be verified together with
+ * real directory listing.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -57,8 +61,8 @@ class PaneViewModelRestoreTest {
     fun setup() {
         app = ApplicationProvider.getApplicationContext()
         Dispatchers.setMain(dispatcher)
-        // TwigApp.onCreate 已经把 LocalFileSystem 等基础来源注册好了(Robolectric 会
-        // 按 manifest 里的 android:name 真的实例化 Application)
+        // TwigApp.onCreate has already registered the base sources like LocalFileSystem
+        // (Robolectric really instantiates the Application per the manifest's android:name)
         ext = Environment.getExternalStorageDirectory()
         vm = PaneViewModel(app).apply { io = dispatcher }
     }
@@ -77,24 +81,24 @@ class PaneViewModelRestoreTest {
         .filter { !it.file.isDir }
         .map { it.file.name }
 
-    // ---- 展开本地目录 ----
+    // ---- expanding a local directory ----
 
     @Test
-    fun `恢复上次展开的本地目录并列出其中的文件`() = runTest(dispatcher) {
-        val photos = dir("照片")
+    fun `restores the last expanded local directory and lists its files`() = runTest(dispatcher) {
+        val photos = dir("photos")
         File(photos, "a.jpg").writeText("x")
         File(photos, "b.jpg").writeText("y")
 
         vm.bootstrap(listOf("file\t${ext.path}", "file\t${photos.path}"))
         advanceUntilIdle()
 
-        assertTrue("照片目录该在树上展开", "f:file:${photos.path}" in rowKeys())
+        assertTrue("the photos directory should be expanded in the tree", "f:file:${photos.path}" in rowKeys())
         assertTrue(expandedFileNames().containsAll(listOf("a.jpg", "b.jpg")))
     }
 
     @Test
-    fun `恢复当前目录时高亮框指向它自己`() = runTest(dispatcher) {
-        val docs = dir("文档")
+    fun `restoring the current directory points the highlight at itself`() = runTest(dispatcher) {
+        val docs = dir("docs")
         vm.bootstrap(listOf("file\t${ext.path}", "file\t${docs.path}"), currentDesc = "file\t${docs.path}")
         advanceUntilIdle()
 
@@ -103,17 +107,19 @@ class PaneViewModelRestoreTest {
     }
 
     /**
-     * ★ 回归:**上次停在收藏的根目录上,恢复后绿框要框住收藏那一行**。
+     * ★ Regression: **when we last stopped on a favorite's root directory, the highlight
+     * must land on the favorite row after restore**.
      *
-     * 收藏(和服务器)的根目录在树上没有自己的 FileNode —— 子项直接挂在 `fav:` 行
-     * 下面。而存盘只存得下 currentDir 这个目录本身,所以恢复时如果照直用
-     * `fileKey(dir)`,得到的 key 在树上找不到对应行,绿框就消失了。
+     * A favorite's (and a server's) root directory has no FileNode of its own in the tree --
+     * its children hang directly off the `fav:` row. But the saved state only stores the
+     * currentDir directory itself, so if restore naively used `fileKey(dir)`, the resulting
+     * key would match no row in the tree and the highlight would disappear.
      */
     @Test
-    fun `从收藏恢复时高亮框落在收藏行而不是一个不存在的目录行`() = runTest(dispatcher) {
-        val backup = dir("备份")
+    fun `restoring from a favorite puts the highlight on the favorite row, not a nonexistent directory row`() = runTest(dispatcher) {
+        val backup = dir("backup")
         File(backup, "x.txt").writeText("x")
-        val fav = Favorite(label = "备份", kind = "local", path = backup.path)
+        val fav = Favorite(label = "backup", kind = "local", path = backup.path)
         FavoritesStore.add(app, fav)
 
         vm.bootstrap(
@@ -123,34 +129,34 @@ class PaneViewModelRestoreTest {
         advanceUntilIdle()
 
         assertEquals("fav:${fav.id}", vm.state.value.currentKey)
-        assertTrue("收藏行本身要在树上", "fav:${fav.id}" in rowKeys())
-        // currentDir 仍是那个真实目录(新建/粘贴的落点靠它)
+        assertTrue("the favorite row itself must be in the tree", "fav:${fav.id}" in rowKeys())
+        // currentDir is still the real directory (new/paste targets rely on it)
         assertEquals(backup.path, vm.state.value.currentDir?.path)
     }
 
-    /** 恢复期间 restoring 为真,结束后必须落下来——UI 靠它决定何时停止反复锚定滚动。 */
+    /** `restoring` is true during restore and must fall back after -- the UI uses it to decide when to stop re-anchoring scroll. */
     @Test
-    fun `恢复结束后 restoring 落回 false`() = runTest(dispatcher) {
+    fun `restoring falls back to false once restore finishes`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
         assertFalse(vm.state.value.restoring)
     }
 
-    /** 描述符对应的目录已经不存在(用户在别处删了)时,不能崩,其余照常恢复。 */
+    /** When a descriptor's directory no longer exists (deleted elsewhere by the user), it must not crash, and everything else restores normally. */
     @Test
-    fun `失效的描述符被跳过而不影响其它项`() = runTest(dispatcher) {
-        val alive = dir("还在")
-        vm.bootstrap(listOf("file\t${ext.path}", "file\t${alive.path}", "file\t${ext.path}/早没了"))
+    fun `a stale descriptor is skipped without affecting the others`() = runTest(dispatcher) {
+        val alive = dir("alive")
+        vm.bootstrap(listOf("file\t${ext.path}", "file\t${alive.path}", "file\t${ext.path}/long-gone"))
         advanceUntilIdle()
 
         assertTrue("f:file:${alive.path}" in rowKeys())
     }
 
-    // ---- 展开 / 折叠 ----
+    // ---- expand / collapse ----
 
     @Test
-    fun `展开目录后再折叠_子项从行里消失`() = runTest(dispatcher) {
-        val music = dir("音乐")
+    fun `expanding a directory then collapsing it removes its children from the rows`() = runTest(dispatcher) {
+        val music = dir("music")
         File(music, "s.mp3").writeText("m")
 
         vm.bootstrap(listOf("file\t${ext.path}"))
@@ -169,14 +175,15 @@ class PaneViewModelRestoreTest {
     }
 
     /**
-     * 手风琴:展开一个目录会把**不在它祖先链上**的其它分支折起来。
-     * 这条走的是 `accordionExpand` → `TreeKeys.ancestorKeys`,是纯函数测试与
-     * 真实树状态的接缝——纯函数那边测的是算法,这里测的是"接对了没有"。
+     * Accordion: expanding a directory collapses any other branch that is **not on its
+     * ancestor chain**. This exercises `accordionExpand` -> `TreeKeys.ancestorKeys`, the
+     * seam between the pure-function tests and real tree state -- the pure-function side
+     * tests the algorithm, this one tests whether it was wired up correctly.
      */
     @Test
-    fun `展开一个目录会折叠同级的另一个目录`() = runTest(dispatcher) {
-        val a = dir("甲").also { File(it, "1.txt").writeText("1") }
-        val b = dir("乙").also { File(it, "2.txt").writeText("2") }
+    fun `expanding one directory collapses its sibling directory`() = runTest(dispatcher) {
+        val a = dir("a-dir").also { File(it, "1.txt").writeText("1") }
+        val b = dir("b-dir").also { File(it, "2.txt").writeText("2") }
 
         vm.bootstrap(listOf("file\t${ext.path}", "file\t${a.path}"))
         advanceUntilIdle()
@@ -188,18 +195,19 @@ class PaneViewModelRestoreTest {
         advanceUntilIdle()
 
         assertTrue("2.txt" in expandedFileNames())
-        assertFalse("展开乙之后,甲该被折起来", "1.txt" in expandedFileNames())
+        assertFalse("after expanding b-dir, a-dir should be collapsed", "1.txt" in expandedFileNames())
     }
 
-    // ---- 描述符往返 ----
+    // ---- descriptor round-trip ----
 
     /**
-     * 存盘 → 恢复 → 再存盘,描述符要稳定。不稳定的话每次冷启动位置都会漂,
-     * 而这种漂移在真机上极难察觉。
+     * Save -> restore -> save again, the descriptor must be stable. If it is not, the
+     * position drifts on every cold start, and that kind of drift is extremely hard to
+     * notice on a real device.
      */
     @Test
-    fun `展开状态存盘再恢复后描述符不变`() = runTest(dispatcher) {
-        val d = dir("往返")
+    fun `descriptor is unchanged after saving expansion state, restoring, and saving again`() = runTest(dispatcher) {
+        val d = dir("roundtrip")
         vm.bootstrap(listOf("file\t${ext.path}", "file\t${d.path}"), currentDesc = "file\t${d.path}")
         advanceUntilIdle()
 

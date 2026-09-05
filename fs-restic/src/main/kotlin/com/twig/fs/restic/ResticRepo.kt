@@ -10,14 +10,16 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /**
- * 一个已解锁的 restic 仓库(只读)。通过底层 [FileSystem] 读取仓库文件,因此
- * 本地 / SMB / SFTP 上的 restic repo 都能读——又一次复用统一抽象。
+ * An unlocked restic repository (read-only). Reads repository files through the underlying
+ * [FileSystem], so restic repos on local / SMB / SFTP all work — yet another reuse of the
+ * unified abstraction.
  */
 class ResticRepo private constructor(
     private val fs: FileSystem,
     private val repoDir: XFile,
     private val masterKey: ByteArray,
     private val zstd: Zstd,
+    private val cache: ObjectCache = ObjectCache.NONE,
 ) {
     data class Snapshot(
         val id: String,
@@ -38,39 +40,44 @@ class ResticRepo private constructor(
         val content: List<String>,
     )
 
-    /** blob id -> 位置(pack + 偏移 + 长度 + 是否压缩)。 */
+    /** blob id -> location (pack + offset + length + whether compressed). */
     private data class Loc(val pack: String, val offset: Long, val length: Int, val uncompressed: Int)
 
     /**
-     * blob id -> 位置。**延迟到第一次真正读 blob 时才加载**(★ 2026-08-04):
-     * 列快照只读 `snapshots/` 下的独立加密文件,根本用不到索引;而 `index/` 下常有
-     * 几十上百个文件、加起来几十 MB,整读一遍在 SMB/SFTP 上要几十秒。以前放在 [open]
-     * 里同步做,于是"输完密码到看见快照列表"要等这一整段,UI 上还没有任何指示。
-     * 挪到 [readBlob](= 展开某个快照的目录/读文件)之后,那条路径有目录展开的转圈。
+     * blob id -> location. **Loaded lazily on the first real blob read** (★ 2026-08-04):
+     * listing snapshots only reads the individual encrypted files under `snapshots/`, which
+     * do not need the index at all; meanwhile `index/` often contains dozens to hundreds of
+     * files, totaling tens of MB, and reading the whole thing on SMB/SFTP takes tens of seconds.
+     * Previously it was done synchronously inside [open], so "from entering the password to
+     * seeing the snapshot list" had to wait through all of that, with no UI indicator.
+     * After moving it to [readBlob] (= expanding a snapshot's directory / reading a file),
+     * that path has the directory-expanding spinner.
      *
-     * `by lazy` 默认是 SYNCHRONIZED:并发 readBlob 只会加载一次;初始化抛异常不会被
-     * 缓存,下次重试——正合"index 解析失败要明确报错"的原意(见 [loadIndex])。
-     * 填满之后只读,不必加锁。
+     * `by lazy` defaults to SYNCHRONIZED: concurrent readBlob will only load once;
+     * initialization exceptions are not cached, so the next attempt retries — which matches
+     * the intent of "index parse failure must be reported explicitly" (see [loadIndex]).
+     * Once filled, it is read-only, so no extra locking is needed.
      */
     private val index: Map<String, Loc> by lazy { loadIndex() }
 
     /**
-     * tree 解析缓存。**并发读写**:目录展开与缩略图生成会同时命中同一个仓库
-     * (下面 [readRange] 整体加锁正是为了同一个场景,只是当初漏了这张表)。
+     * Tree-parse cache. **Concurrent reads and writes**: directory expansion and thumbnail
+     * generation hit the same repository simultaneously ([readRange] below is locked as a
+     * whole for exactly this scenario, but this table was originally missed).
      */
     private val treeCache = java.util.concurrent.ConcurrentHashMap<String, List<Node>>()
 
     val snapshots: List<Snapshot> by lazy { loadSnapshots() }
 
-    // ---- 目录/文件访问 ----
+    // ---- directory/file access ----
 
-    /** "latest" 是虚拟别名,始终指向当前最新快照(snapshots 已按时间倒序)。 */
+    /** "latest" is a virtual alias, always pointing to the current newest snapshot (snapshots is already sorted newest-first). */
     fun snapshotByShort(short: String): Snapshot? =
         if (short == "latest") snapshots.firstOrNull() else snapshots.firstOrNull { it.shortId == short }
 
     fun childrenOfTree(treeId: String): List<Node> = loadTree(treeId)
 
-    /** 解析路径段到"其子项所在的 tree";段为空返回快照根 tree。 */
+    /** Resolve path segments to "the tree containing their children"; empty segments return the snapshot root tree. */
     fun resolveTree(snapshot: Snapshot, segments: List<String>): String? {
         var tree = snapshot.treeId
         for (seg in segments) {
@@ -86,7 +93,7 @@ class ResticRepo private constructor(
         return loadTree(parent).firstOrNull { it.name == segments.last() }
     }
 
-    /** 文件内容流:按 content blob 顺序惰性读取、解密、解压。 */
+    /** File content stream: lazy-read by content blob order, decrypt, decompress. */
     fun openFile(node: Node): InputStream = object : InputStream() {
         private val ids = node.content.iterator()
         private var cur: InputStream = nextChunk()
@@ -110,7 +117,7 @@ class ResticRepo private constructor(
         }
     }
 
-    // ---- 内部:加载 ----
+    // ---- internals: loading ----
 
     private fun loadTree(treeId: String): List<Node> = treeCache.getOrPut(treeId) {
         val json = JSONObject(String(readBlob(treeId), Charsets.UTF_8))
@@ -151,9 +158,10 @@ class ResticRepo private constructor(
 
     private fun loadIndex(): Map<String, Loc> {
         val index = HashMap<String, Loc>()
-        // 不吞异常:index 是 zstd 压缩的,若解压/解析失败(如平台 zstd 不可用)应明确报错。
+        // Do not swallow exceptions: the index is zstd-compressed, so a decompression/parse
+        // failure (e.g. zstd unavailable on the platform) must be reported explicitly.
         for (f in fs.list(sub("index")).filter { !it.isDir }) {
-            val json = JSONObject(String(decryptFile(readWhole(f)), Charsets.UTF_8))
+            val json = JSONObject(String(decryptFile(readCached(f)), Charsets.UTF_8))
             val packs = json.getJSONArray("packs")
             for (i in 0 until packs.length()) {
                 val pack = packs.getJSONObject(i)
@@ -173,7 +181,7 @@ class ResticRepo private constructor(
         return index
     }
 
-    /** 读一个 blob:定位 pack、读区间、解密、按需解压。 */
+    /** Read a blob: locate the pack, read the range, decrypt, decompress if needed. */
     private fun readBlob(id: String): ByteArray {
         val loc = index[id] ?: throw FsException("restic: index is missing blob $id")
         val packFile = XFile(
@@ -187,31 +195,34 @@ class ResticRepo private constructor(
     }
 
     /**
-     * 解密"非打包"文件(config / snapshot / index)。
-     * restic v2 里这类文件明文带 1 字节压缩头(0=未压缩,2=zstd),config 例外为原始 JSON。
+     * Decrypt a "non-pack" file (config / snapshot / index).
+     * In restic v2 these plaintexts carry a 1-byte compression header (0=uncompressed, 2=zstd);
+     * config is the exception and is raw JSON.
      */
     private fun decryptFile(raw: ByteArray): ByteArray {
         val plain = ResticCrypto.decrypt(masterKey, raw)
-        if (plain.isNotEmpty() && plain[0] == '{'.code.toByte()) return plain // config:无前缀
+        if (plain.isNotEmpty() && plain[0] == '{'.code.toByte()) return plain // config: no prefix
         val body = if (plain.isEmpty()) plain else plain.copyOfRange(1, plain.size)
         return if (ResticCrypto.isZstdFrame(body)) zstd.decompress(body, -1) else body
     }
 
-    // ---- 底层文件读取 ----
+    // ---- low-level file reads ----
 
     private fun sub(name: String) = XFile(repoDir.scheme, "${repoDir.path}/$name", isDir = true)
 
     /**
-     * 整读一个"非打包"文件(config / keyfile / snapshot / index)。
+     * Read an entire "non-pack" file (config / keyfile / snapshot / index) at once.
      *
-     * ★ 别用 `InputStream.readBytes()`:它固定按 8KB 一次调 `read`,而 SMB/SFTP/WebDAV
-     * 的每次 read 都是一个网络往返——几 MB 的 index 文件就是几百次往返,几十个 index
-     * 文件叠起来正是"解锁 restic 仓库要等很久"的大头。给 1MB 缓冲,底层能一次拉满协商
-     * 出来的最大读长度(libsmb2 自己会 clamp 到 max_read_size 并返回短读,循环兜住)。
+     * ★ Do not use `InputStream.readBytes()`: it always calls `read` in 8KB chunks,
+     * and every SMB/SFTP/WebDAV `read` is a network round trip — a few-MB index file
+     * becomes hundreds of round trips, and dozens of index files stacked together is
+     * exactly the bulk of "unlocking a restic repo takes forever". Giving a 1MB buffer
+     * lets the underlying layer fill at the negotiated max read length (libsmb2 itself
+     * clamps to max_read_size and returns short reads, which the loop covers).
      */
     private fun readWhole(f: XFile): ByteArray = fs.openInput(f).use { ins ->
         val buf = ByteArray(1 shl 20)
-        // 预分配到文件实际大小,省掉 ByteArrayOutputStream 反复扩容时的整段拷贝
+        // Pre-allocate to the actual file size to avoid whole-array copies as ByteArrayOutputStream grows
         val out = java.io.ByteArrayOutputStream(f.size.coerceIn(1L, MAX_PREALLOC).toInt())
         while (true) {
             val n = ins.read(buf, 0, buf.size)
@@ -222,9 +233,25 @@ class ResticRepo private constructor(
     }
 
     /**
-     * pack 定位读句柄缓存(LRU 2 个)。一个文件的 content blob 通常在同一 pack 内
-     * 连续排列,复用同一个 [RandomSource] 能让 SMB(pread)/WebDAV(Range)/FTP/SFTP
-     * 的定位读发挥效果;超出上限关闭最久未用的,避免打开的远程句柄无限增长。
+     * Whole-file read with local cache, used only for files under `index/`. Those files are
+     * content-addressed (the filename is the content hash), so their content never changes
+     * and the cache never needs invalidating; and they are the most expensive network cost
+     * for this reader — dozens of files, tens of MB, redone on every repo open over a slow link.
+     * The cache holds **the raw ciphertext** — the reason is in [ObjectCache].
+     */
+    private fun readCached(f: XFile): ByteArray {
+        cache.read(f.name)?.let { return it }
+        val bytes = readWhole(f)
+        // Failing to write to the cache (no space / no permission) should not affect this read
+        runCatching { cache.write(f.name, bytes) }
+        return bytes
+    }
+
+    /**
+     * Pack random-read handle cache (LRU 2). A file's content blobs usually live sequentially
+     * inside the same pack, so reusing the same [RandomSource] lets SMB (pread) / WebDAV (Range)
+     * / FTP / SFTP do their random reads efficiently; past the cap, close the least-recently-used
+     * one to keep open remote handles from growing without bound.
      */
     private val packRandoms = object : LinkedHashMap<String, RandomSource>(4, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, RandomSource>): Boolean {
@@ -235,15 +262,17 @@ class ResticRepo private constructor(
     }
 
     /**
-     * 按区间读取 pack 数据。★ 别再改回"openInput + skip 循环":那样每次都会把
-     * pack 开头到目标偏移之间的字节整段拉下来再丢弃,大 pack 靠后的 blob 会拖垮吞吐
-     * (2026-07-28 定案,见 CLAUDE.md)。改走 [FileSystem.openRandom] 定位读。
+     * Read pack data by range. ★ Do not change back to "openInput + skip loop": that pulls
+     * every byte from the start of the pack to the target offset and throws them away, so
+     * blobs late in large packs tank throughput (decision locked in 2026-07-28, see CLAUDE.md).
+     * Switched to [FileSystem.openRandom] for range reads.
      *
-     * ★ 必须整体加锁(2026-07-28):`packRandoms` 缓存的 [RandomSource] 会被 LRU
-     * 淘汰时 close(SMB 是销毁整个专用连接)。目录展开常和缩略图生成等并发命中
-     * 同一个仓库,若不加锁,一个线程正读到一半、另一个线程的插入把它淘汰关闭,
-     * `readAt` 就会返回 <=0,表现为"pack 读取不足"。加锁牺牲的只是 blob 间的并行,
-     * 不影响"避免整段下载丢弃"这个核心优化。
+     * ★ Must be locked as a whole (2026-07-28): the [RandomSource]s cached in `packRandoms`
+     * are closed when LRU evicts them (SMB tears down the entire dedicated connection).
+     * Directory expansion and thumbnail generation routinely hit the same repo concurrently,
+     * so without locking, one thread mid-read while another's insertion evicts and closes it,
+     * `readAt` returns <= 0, manifesting as "pack short read". The lock only costs blob-level
+     * parallelism — it does not undermine the core optimization of "avoid whole-packet download".
      */
     private fun readRange(f: XFile, offset: Long, length: Int): ByteArray = synchronized(packRandoms) {
         val src = packRandoms.getOrPut(f.path) { fs.openRandom(f) }
@@ -260,10 +289,10 @@ class ResticRepo private constructor(
     companion object {
         private val EMPTY = ByteArray(0).inputStream()
 
-        /** [readWhole] 预分配上限:`XFile.size` 拿不到/不靠谱时别按它开一个巨大的数组。 */
+        /** [readWhole] preallocation cap: when `XFile.size` is unavailable / unreliable, do not size the array from it. */
         private const val MAX_PREALLOC = 64L shl 20
 
-        /** 目录子项是否构成一个 restic 仓库(有 config 文件与 data/index/snapshots/keys 目录)。 */
+        /** Whether the directory's children look like a restic repo (a config file plus data/index/snapshots/keys directories). */
         fun looksLikeRepo(children: List<XFile>): Boolean {
             val names = children.associateBy { it.name }
             return names["config"]?.isDir == false &&
@@ -273,15 +302,27 @@ class ResticRepo private constructor(
                 names["keys"]?.isDir == true
         }
 
-        /** 用密码打开仓库;密码错误(解出的 JSON 无法解析)抛 [FsException]。 */
-        fun open(fs: FileSystem, repoDir: XFile, password: String, zstd: Zstd): ResticRepo {
+        /** Open a repository with the password; wrong password (the decrypted JSON cannot be parsed) throws [FsException]. */
+        fun open(
+            fs: FileSystem,
+            repoDir: XFile,
+            password: String,
+            zstd: Zstd,
+            cache: ObjectCache = ObjectCache.NONE,
+        ): ResticRepo {
             val master = deriveMasterKey(fs, repoDir, password)
-            val repo = ResticRepo(fs, repoDir, master, zstd)
-            // 校验:能解出 config 即密码正确
+            val repo = ResticRepo(fs, repoDir, master, zstd, cache)
+            // Validate: decrypting config means the password is correct
             val cfg = repo.decryptFile(repo.readWhole(XFile(repoDir.scheme, "${repoDir.path}/config", false)))
             runCatching { JSONObject(String(cfg, Charsets.UTF_8)).getInt("version") }
                 .getOrElse { throw FsException("restic: wrong password or corrupt repository") }
-            repo.loadIndex()
+            // ★ Do **not** touch the index here: that is the entire reason [index]'s `by lazy`
+            //   exists (see its comment). When 7f73d1d changed the index to lazy loading it forgot
+            //   to delete the original synchronous call here, so lazy loading never took effect,
+            //   and because it called a private method whose result was thrown away, the index was
+            //   in fact read **twice in full** — once here, once when the first readBlob triggered
+            //   the lazy load. Password correctness was already verified above by decrypting config,
+            //   so reading the index is not needed to confirm it.
             return repo
         }
 
@@ -309,14 +350,16 @@ class ResticRepo private constructor(
         }
 
         /**
-         * 解析 restic 的 RFC3339 时间戳。
+         * Parse a restic RFC3339 timestamp.
          *
-         * 两处修正:
-         * - **不再共享一个 [SimpleDateFormat] 实例**——它不是线程安全的,而这里被
-         *   `loadTree`(并发)和 `loadSnapshots` 同时调用。原来外面套着 runCatching,
-         *   所以症状不是崩溃而是时间戳静默变成 0(快照/文件时间显示错乱),更难发现。
-         * - **认时区偏移**。restic 写的是带偏移的 RFC3339(`…T12:34:56.789+08:00`),
-         *   原来只截前 19 位、按设备本地时区解释,UTC 存的快照会整体偏几小时。
+         * Two corrections:
+         * - **No longer share a single [SimpleDateFormat] instance** — it is not thread-safe,
+         *   and here it is called from `loadTree` (concurrent) and `loadSnapshots` at the same time.
+         *   Previously the call was wrapped in runCatching, so the symptom was not a crash but the
+         *   timestamp silently becoming 0 (snapshot/file times scrambled) — much harder to notice.
+         * - **Honor the timezone offset**. restic writes RFC3339 with an offset
+         *   (`…T12:34:56.789+08:00`), but the old code only took the first 19 chars and parsed
+         *   them in the device's local time zone, so UTC-stored snapshots ended up off by hours.
          */
         private fun parseTime(s: String): Long {
             if (s.length < 19) return 0L
@@ -327,10 +370,10 @@ class ResticRepo private constructor(
             }.getOrDefault(0L)
         }
 
-        /** 秒之后那一截里的时区偏移(`Z` / `+08:00` / `-0500`);认不出按 UTC。 */
+        /** The timezone offset from the part after seconds (`Z` / `+08:00` / `-0500`); unrecognized → UTC. */
         private fun offsetMillis(tail: String): Long {
             val i = tail.indexOfFirst { it == '+' || it == '-' }
-            if (i < 0) return 0L // 空、或只有小数秒、或 Z 结尾
+            if (i < 0) return 0L // empty, or only fractional seconds, or ends with Z
             val sign = if (tail[i] == '-') -1L else 1L
             val digits = tail.substring(i + 1).filter { it.isDigit() }
             if (digits.length < 4) return 0L

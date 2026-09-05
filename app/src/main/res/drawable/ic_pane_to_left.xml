@@ -1,4 +1,4 @@
-<!-- 切到左面板:右面板实心(当前)、左面板空心(目标),箭头指左(整体镜像) -->
+<!-- Switch to the left pane: right pane solid (current), left pane hollow (target), arrow points left (whole thing mirrored) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

@@ -1,34 +1,45 @@
 package com.twig.app.ui
 
 import com.twig.app.OpenFiles
+import com.twig.app.TextCodec
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
-import java.nio.charset.Charset
 
 /**
- * 一条歌词;[timeMs] < 0 表示无时间戳(纯文本行)。
- * [texts] 可含多行:同一时间戳的双语歌词(原文+译文)合并成一条、以及文本内的换行符拆分后,
- * 各占一行堆叠显示。
+ * One lyric line; [timeMs] < 0 means untimed (plain text line).
+ * [texts] can contain multiple lines: bilingual lyrics with the same timestamp (original + translation) merged
+ * into one entry, and embedded newlines inside the text split out, are stacked as one line each.
  */
 data class LyricLine(val timeMs: Long, val texts: List<String>)
 
-/** 解析后的歌词。[synced] 表示带时间戳(可同步高亮滚动)。 */
+/** Parsed lyrics. [synced] means with timestamps (can highlight and scroll in sync). */
 class Lyrics(val lines: List<LyricLine>, val synced: Boolean) {
     val isEmpty: Boolean get() = lines.isEmpty()
 }
 
 /**
- * 歌词来源(优先级):同目录同名 `.lrc` → 内嵌 ID3v2 USLT(mp3)/ FLAC vorbis comment LYRICS。
- * 全部手写解析,任何一步失败静默返回 null(不影响播放)。阻塞 IO,须在工作线程调用。
+ * Lyrics source (priority): the source's own (media servers, see [com.twig.core.LyricsSource]) →
+ * same-named `.lrc` in the parent directory → embedded ID3v2 USLT (mp3) / FLAC vorbis comment LYRICS.
+ * All parsing is hand-written; any step's failure silently returns null (doesn't affect playback). Blocking IO,
+ * must be called on a worker thread.
  */
 object LyricsLoader {
 
     fun load(file: XFile): Lyrics? {
+        // If the source has its own lyrics (media servers) use it: the other two require listing the parent
+        // directory for a same-named .lrc, or pulling down the entire song's bytes to scan ID3 frames — both
+        // expensive over the network
+        remote(file)?.let { return it }
         sidecar(file)?.let { return it }
         return runCatching { embedded(file) }.getOrNull()
     }
 
-    // ---- 同目录 .lrc ----
+    /** Lyrics provided directly by the source ([com.twig.core.LyricsSource], uniformly LRC text). */
+    private fun remote(file: XFile): Lyrics? = runCatching {
+        (FsRegistry.of(file) as? com.twig.core.LyricsSource)?.lyricsOf(file)?.let { parseLrc(it) }
+    }.getOrNull()
+
+    // ---- same-directory .lrc ----
 
     private fun sidecar(file: XFile): Lyrics? = runCatching {
         val fs = FsRegistry.of(file)
@@ -55,7 +66,7 @@ object LyricsLoader {
             val matches = TIME.findAll(l).toList()
             val text = l.substring(matches.lastOrNull()?.range?.last?.plus(1) ?: 0).trim()
             if (matches.isEmpty()) {
-                // 忽略 [ar:] [ti:] 等 id 标签行;其余当纯文本
+                // ignore id-tag lines like [ar:] [ti:]; treat the rest as plain text
                 if (!l.startsWith("[") && l.isNotBlank()) plain += LyricLine(-1, splitText(l.trim()))
                 continue
             }
@@ -68,7 +79,8 @@ object LyricsLoader {
             }
         }
         if (timedRaw.isNotEmpty()) {
-            // 同一时间戳的多行(双语原文+译文)合并成一条,内部换行符再拆行,各占一行
+            // Multiple lines with the same timestamp (bilingual original + translation) are merged into one entry;
+// embedded newlines are then split out, one per line
             val byTime = LinkedHashMap<Long, MutableList<String>>()
             for ((t, txt) in timedRaw.sortedBy { it.first }) {
                 byTime.getOrPut(t) { ArrayList() }.addAll(splitText(txt))
@@ -80,20 +92,20 @@ object LyricsLoader {
     }
 
     /**
-     * 把一段文本拆成多行,去掉空行。分隔符:换行符(含字面量 "\n")、Unicode 行/段分隔符,
-     * 以及 U+2009 窄空格(thin space)——不少双语歌词把原文和译文用它拼在同一行,
-     * 视觉上像一行,这里拆成上下两行显示。
+     * Split a block of text into multiple lines, dropping empty ones. Separators: newline (including the literal "\n"),
+     * Unicode line / paragraph separators, and U+2009 thin space — many bilingual lyrics join original and translation
+     * with it on the same line; visually it reads as one line, but here we split into top and bottom lines for display.
      */
     private fun splitText(s: String): List<String> =
         s.replace("\\n", "\n").split('\n', '\u2009', '\u2028', '\u2029')
             .map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf(s) }
 
-    // ---- 内嵌 ----
+    // ---- embedded ----
 
     private fun embedded(file: XFile): Lyrics? {
         val fs = FsRegistry.of(file)
         val head = fs.openInput(file).use { ins ->
-            val cap = 1 shl 20 // 1MB 足够覆盖 ID3/FLAC 头部
+            val cap = 1 shl 20 // 1MB is enough to cover the ID3 / FLAC header
             val buf = ByteArray(cap)
             var off = 0
             while (off < cap) { val n = ins.read(buf, off, cap - off); if (n < 0) break; off += n }
@@ -117,7 +129,7 @@ object LyricsLoader {
         return if (lines.isEmpty()) null else Lyrics(lines.map { LyricLine(-1, listOf(it)) }, synced = false)
     }
 
-    /** ID3v2 里的 USLT(v2.3/2.4)/ ULT(v2.2)非同步歌词帧。 */
+    /** Unsynchronised lyrics frame USLT (v2.3/2.4) / ULT (v2.2) in ID3v2. */
     private fun id3Uslt(b: ByteArray): String? {
         val major = b[3].toInt() and 0xFF
         val size = syncsafe(b, 6)
@@ -146,14 +158,14 @@ object LyricsLoader {
         return null
     }
 
-    /** USLT body: encoding(1) + language(3) + descriptor(以对应编码的 null 结尾) + lyrics。 */
+    /** USLT body: encoding (1) + language (3) + descriptor (null-terminated in the matching encoding) + lyrics. */
     private fun decodeUsltBody(b: ByteArray, start: Int, len: Int): String? {
         if (len < 4) return null
         val enc = b[start].toInt() and 0xFF
         val charset = when (enc) { 0 -> Charsets.ISO_8859_1; 1 -> Charsets.UTF_16; 2 -> Charsets.UTF_16BE; else -> Charsets.UTF_8 }
-        var p = start + 4 // 跳过 encoding + language
+        var p = start + 4 // skip encoding + language
         val end = start + len
-        // 跳过 descriptor 直到终止符(UTF-16 用双字节)
+        // skip descriptor until the terminator (UTF-16 uses two bytes)
         val wide = enc == 1 || enc == 2
         while (p < end) {
             if (wide) { if (p + 1 < end && b[p].toInt() == 0 && b[p + 1].toInt() == 0) { p += 2; break }; p += 2 }
@@ -163,7 +175,7 @@ object LyricsLoader {
         return String(b, p, end - p, charset).trim()
     }
 
-    /** FLAC VORBIS_COMMENT(块类型 4)里的 LYRICS / UNSYNCEDLYRICS 字段。 */
+    /** LYRICS / UNSYNCEDLYRICS field in the FLAC VORBIS_COMMENT (block type 4). */
     private fun flacLyrics(b: ByteArray): String? {
         var pos = 4
         while (pos + 4 <= b.size) {
@@ -215,16 +227,6 @@ object LyricsLoader {
         ((b[at].toInt() and 0xFF) shl 24) or ((b[at + 1].toInt() and 0xFF) shl 16) or
             ((b[at + 2].toInt() and 0xFF) shl 8) or (b[at + 3].toInt() and 0xFF)
 
-    /** 猜编码:带 BOM 用之,否则试 UTF-8,失败退 GBK/系统默认。 */
-    private fun decodeText(bytes: ByteArray): String {
-        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) {
-            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
-        }
-        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) {
-            return String(bytes, Charsets.UTF_16LE)
-        }
-        val utf8 = String(bytes, Charsets.UTF_8)
-        if (!utf8.contains('�')) return utf8
-        return runCatching { String(bytes, Charset.forName("GBK")) }.getOrDefault(utf8)
-    }
+    /** BOM → strict UTF-8 → the encodings the user has ordered in settings, see [com.twig.app.TextCodec]. */
+    private fun decodeText(bytes: ByteArray): String = TextCodec.decode(bytes).text
 }

@@ -2,7 +2,7 @@ package com.twig.git
 
 import java.util.zip.Inflater
 
-/** git 对象类型常量(pack 编码)。 */
+/** git object type constants (pack encoding). */
 object ObjType {
     const val COMMIT = 1
     const val TREE = 2
@@ -12,17 +12,18 @@ object ObjType {
     const val REF_DELTA = 7
 }
 
-/** 一个已解出的 git 对象。 */
+/** A resolved git object. */
 class RawObject(val type: Int, val data: ByteArray)
 
 /**
- * 只读对象库:松散对象(objects/xx/…,zlib)+ packfile(idx v2 定位,
- * OFS/REF delta 还原)。[fs] 以 .git 目录为根;本地/远程通用,
- * pack 经 [PackReader] 块缓冲定位读,远程也不用整包下载。
+ * Read-only object database: loose objects (objects/xx/..., zlib) + packfile
+ * (idx v2 locating, OFS/REF delta restoration). [fs] is rooted at the .git directory;
+ * shared by local/remote — pack goes through [PackReader]'s block-buffered seekable read,
+ * so remote doesn't have to download the whole pack either.
  */
 class ObjectStore(private val fs: GitFs) : java.io.Closeable {
 
-    /** pack 定位读 + 128KB 单块缓冲(远程免得逐字节往返)。 */
+    /** Pack seekable read + a single 128KB block buffer (remote avoids byte-by-byte round-trips). */
     private class PackReader(private val src: GitRandom) : java.io.Closeable {
         var pos = 0L
         private val block = ByteArray(1 shl 17)
@@ -73,22 +74,25 @@ class ObjectStore(private val fs: GitFs) : java.io.Closeable {
 
     private class PackFile(val reader: PackReader, val count: Int, val shas: ByteArray, val offsets: LongArray)
 
-    // ★ 必须 @Volatile:下面是双检锁,少了它另一个线程可能读到"非 null 但尚未构造完"
-    // 的列表(经典的 broken double-checked locking)。git 视图展开与 diff 渲染是并发的。
+    // ★ Must be @Volatile: a double-checked lock follows; without it another thread
+    // could read a "non-null but not yet constructed" list (the classic broken
+    // double-checked locking). Git view expansion and diff rendering are concurrent.
     @Volatile private var packsLoaded: List<PackFile>? = null
     private val packs: List<PackFile>
         get() = packsLoaded ?: synchronized(this) { packsLoaded ?: loadPacks().also { packsLoaded = it } }
 
-    // 小对象缓存(commit/tree 反复访问)。并发读写,不能用裸 HashMap
+    // Small-object cache (commit/tree are repeatedly accessed). Concurrent read/write, can't use a bare HashMap
     private val cache = java.util.concurrent.ConcurrentHashMap<String, RawObject>()
 
     /**
-     * 读一个对象;不存在返回 null。
+     * Reads an object; returns null if it does not exist.
      *
-     * 解析失败也返回 null 而不是把异常抛出去:[readLoose]/[readPacked] 底下是一堆
-     * 裸下标的二进制解析([applyDelta] 完全信任 delta 里的偏移和长度),损坏或被
-     * 截断的仓库(另一个进程正在写、网络仓库读了一半)会抛 AIOOBE。Twig 是"浏览任意
-     * 仓库的只读查看器",遇到坏仓库该显示不出内容,而不是把整个应用带崩。
+     * Parse failures also return null instead of throwing: underneath [readLoose]/[readPacked]
+     * is a pile of bare-index binary parsing ([applyDelta] fully trusts the offsets
+     * and lengths in the delta), and a corrupted or truncated repo (another process
+     * writing it, a network repo read halfway) would throw AIOOBE. Twig is a "read-only
+     * viewer for any repository" — when encountering a broken repo it should just show
+     * nothing rather than crash the whole app.
      */
     fun read(sha: String): RawObject? {
         cache[sha]?.let { return it }
@@ -97,7 +101,7 @@ class ObjectStore(private val fs: GitFs) : java.io.Closeable {
         return obj
     }
 
-    // ---- 松散对象 ----
+    // ---- loose objects ----
 
     private fun readLoose(sha: String): RawObject? {
         val comp = fs.readBytes("objects/${sha.substring(0, 2)}/${sha.substring(2)}") ?: return null
@@ -181,7 +185,7 @@ class ObjectStore(private val fs: GitFs) : java.io.Closeable {
         return 0
     }
 
-    /** 读 pack 内某偏移处的对象(递归还原 delta)。 */
+    /** Reads the object at the given offset inside a pack (recursively restoring deltas). */
     private fun readAt(p: PackFile, offset: Long): RawObject? {
         synchronized(p.reader) {
             val r = p.reader
@@ -232,7 +236,7 @@ class ObjectStore(private val fs: GitFs) : java.io.Closeable {
         return out.toByteArray()
     }
 
-    /** git delta 还原:copy(带偏移/长度位)与 insert 指令。 */
+    /** git delta restoration: copy (with offset/length bits) and insert instructions. */
     private fun applyDelta(base: ByteArray, delta: ByteArray): ByteArray {
         var pos = 0
         fun varint(): Long {
@@ -244,7 +248,7 @@ class ObjectStore(private val fs: GitFs) : java.io.Closeable {
                 s += 7
             }
         }
-        varint() // 源长度(校验略)
+        varint() // source length (skip validation)
         val outLen = varint().toInt()
         val out = ByteArray(outLen)
         var o = 0

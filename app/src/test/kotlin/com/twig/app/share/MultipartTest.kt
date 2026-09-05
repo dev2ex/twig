@@ -8,11 +8,18 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 /**
- * `multipart/form-data` 流式解析的单测。
+ * Unit tests for streaming `multipart/form-data` parsing.
  *
- * 这块值得单独测:边界扫描要跨缓冲区块拼接,而**正文里恰好出现边界前缀**、
- * 边界正好压在块边界上这两种情况在真机上极难复现——一旦错了表现为上传的文件
- * 尾部多/少几个字节,肉眼看不出来,视频却播不了。
+ * This deserves its own tests: boundary scanning has to stitch across buffer chunks, and
+ * the two cases where **the body happens to contain a boundary prefix** or **the boundary
+ * lands right on a chunk edge** are extremely hard to reproduce on a real device — get
+ * either wrong and an uploaded file ends up a few bytes longer or shorter at the tail,
+ * invisible to the eye but enough that the video will not play.
+ *
+ * Note: the literal Chinese/non-ASCII strings below (e.g. `新建目录`,
+ * `我的 视频;第1集.mp4`) are deliberately left untranslated — they are fixture data
+ * verifying that non-ASCII field values and filenames (including one containing a
+ * semicolon inside quotes) survive multipart parsing intact.
  */
 class MultipartTest {
 
@@ -40,7 +47,7 @@ class MultipartTest {
     }
 
     @Test
-    fun `单个文件部分`() {
+    fun `a single file part`() {
         val data = "hello world".toByteArray()
         val parts = parse(
             body("""Content-Disposition: form-data; name="f"; filename="a.txt"""" to data),
@@ -52,7 +59,7 @@ class MultipartTest {
     }
 
     @Test
-    fun `多个部分与普通字段混排`() {
+    fun `multiple parts mixed with an ordinary field`() {
         val parts = parse(
             body(
                 """Content-Disposition: form-data; name="name"""" to "新建目录".toByteArray(),
@@ -67,9 +74,9 @@ class MultipartTest {
         assertArrayEquals(byteArrayOf(0, 1, 2, 3), parts[1].third)
     }
 
-    /** 二进制正文里出现边界的**前缀**,不能被误判成真边界提前截断。 */
+    /** A **prefix** of the boundary appearing inside binary body data must not be mistaken for the real boundary and truncate early. */
     @Test
-    fun `正文含边界前缀不被截断`() {
+    fun `body containing a boundary prefix is not truncated`() {
         val tricky = ("\r\n--$boundary-not-really\r\nstill body").toByteArray()
         val parts = parse(
             body("""Content-Disposition: form-data; name="f"; filename="c.bin"""" to tricky),
@@ -79,11 +86,12 @@ class MultipartTest {
     }
 
     /**
-     * 大于内部缓冲区(64KB)的正文:边界必然落在某次填充的中间,
-     * 跨块拼接错一个字节就会在这儿露馅。
+     * A body larger than the internal buffer (64KB): the boundary is bound to land in the
+     * middle of some fill, and getting the cross-chunk stitching wrong by even one byte
+     * would surface right here.
      */
     @Test
-    fun `跨缓冲区块的大正文`() {
+    fun `a large body spanning buffer chunks`() {
         val big = ByteArray(300_000) { (it % 251).toByte() }
         val parts = parse(
             body("""Content-Disposition: form-data; name="f"; filename="big.bin"""" to big),
@@ -92,9 +100,9 @@ class MultipartTest {
         assertArrayEquals(big, parts[0].third)
     }
 
-    /** 处理方只读了一部分就走人时,下一个 part 仍要能对齐。 */
+    /** When the handler walks away after reading only part of a part, the next part must still line up correctly. */
     @Test
-    fun `部分未读完也不影响后续部分`() {
+    fun `a partially-read part does not affect the parts that follow`() {
         val raw = body(
             """Content-Disposition: form-data; name="f"; filename="skip.bin"""" to ByteArray(100_000) { 7 },
             """Content-Disposition: form-data; name="tail"""" to "ok".toByteArray(),
@@ -102,7 +110,7 @@ class MultipartTest {
         val seen = ArrayList<String>()
         Multipart(ByteArrayInputStream(raw), boundary).forEachPart { name, _, stream ->
             if (name == "f") {
-                stream.read(ByteArray(10)) // 故意只读一点点
+                stream.read(ByteArray(10)) // deliberately read only a little
             } else {
                 seen.add(String(stream.readBytes()))
             }
@@ -110,9 +118,9 @@ class MultipartTest {
         assertEquals(listOf("ok"), seen)
     }
 
-    /** 文件名带引号内的分号/中文,不能被参数分割逻辑切坏。 */
+    /** A file name containing a semicolon/non-ASCII text inside quotes must not be mangled by the parameter-splitting logic. */
     @Test
-    fun `文件名含特殊字符`() {
+    fun `a file name containing special characters`() {
         val parts = parse(
             body(
                 """Content-Disposition: form-data; name="f"; filename="我的 视频;第1集.mp4"""" to
@@ -122,9 +130,9 @@ class MultipartTest {
         assertEquals("我的 视频;第1集.mp4", parts[0].second)
     }
 
-    /** 没有任何 part 的空表单不该抛异常。 */
+    /** An empty form with no parts at all must not throw. */
     @Test
-    fun `空表单`() {
+    fun `an empty form`() {
         val raw = "--$boundary--\r\n".toByteArray()
         assertTrue(parse(raw).isEmpty())
     }

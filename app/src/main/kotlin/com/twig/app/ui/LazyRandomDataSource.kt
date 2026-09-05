@@ -8,9 +8,10 @@ import androidx.media3.datasource.DataSpec
 import com.twig.core.RandomSource
 
 /**
- * 懒开版的 [RandomSourceDataSource]:底层 [RandomSource] 在 [open] 时才由 [supplier] 建立,
- * [close] 时关闭。用于音乐队列——载入整个队列不会立即打开所有网络连接,只有真正被
- * ExoPlayer 加载(loader 线程,阻塞 IO 允许)的那首才建连接。
+ * Lazy-open variant of [RandomSourceDataSource]: the underlying [RandomSource] is only created by [supplier] when
+ * [open] is called, and closed on [close]. Used by the music queue — loading the entire queue doesn't open every
+ * network connection immediately; only the one ExoPlayer actually loads (on the loader thread, where blocking IO is
+ * allowed) gets a connection.
  */
 @UnstableApi
 class LazyRandomDataSource(

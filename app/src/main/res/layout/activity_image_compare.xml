@@ -18,8 +18,10 @@
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
 
-    <!-- 方向由代码定:横屏左右并排,竖屏上下并排。竖屏之所以不左右分,是横向手势
-         整条都要留给图片平移——挤在半屏宽里也根本看不清照片 -->
+    <!-- Direction is set in code: side-by-side in landscape, stacked in portrait.
+         Portrait is stacked rather than side-by-side because the horizontal swipe gesture
+         must be reserved entirely for image panning — squeezing a photo into half the
+         screen width is unviewable. -->
     <LinearLayout
         android:id="@+id/panes"
         android:layout_width="match_parent"

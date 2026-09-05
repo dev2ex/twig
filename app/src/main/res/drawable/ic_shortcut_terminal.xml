@@ -1,0 +1,21 @@
+<!--
+  Launcher icon for the terminal-flavoured shortcuts — the static "Terminal"
+  entry in res/xml/shortcuts.xml and the pinned remote-command ones: the same
+  glyph as ic_terminal, in Twig's green.
+  ★ The colour is a **literal** fillColor, not android:tint — a launcher loading
+  this by resource drops the tint and would draw a white glyph on its own light
+  icon plate. Same reason ic_terminal itself cannot be reused: it is tinted white
+  for the dark action strip and for notification small icons. See ShortcutIcons.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:strokeColor="#2E7D32"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M5,6 L11,12 L5,18" />
+    <path android:fillColor="#2E7D32"
+        android:pathData="M12,17h7v2h-7z" />
+</vector>

@@ -8,24 +8,30 @@ import com.twig.core.FsRegistry
 import org.json.JSONObject
 
 /**
- * 共享范围:要么整棵 [FsRegistry],要么某一个目录。
+ * Sharing scope: either the whole [FsRegistry] or a single directory.
  */
 sealed class ShareScope {
 
     /**
-     * 所有来源:URL 顶层是各已注册 FileSystem,下面才是它们各自的目录树。
-     * 这是这个功能最有意思的地方——电脑浏览器能直接下 SMB 上的、甚至压缩包里的文件,
-     * 因为对服务端来说它们都只是 `openInput()`。
+     * All sources: the URL top level is each registered FileSystem, and
+     * their directory trees hang below. This is the interesting part of
+     * the feature — a browser on the computer can download files straight
+     * from SMB, or even from inside an archive, because to the server they
+     * are all just `openInput()`.
      */
     object AllSources : ShareScope()
 
     /**
-     * 单个目录。
+     * A single directory.
      *
-     * [connLabel] 是该 scheme 对应的已保存连接标签(本地/压缩包这类没有连接的来源为空)。
-     * scheme 由 [Connections.schemeOf] 从标签确定性算出、跨重启不变,但**注册**不会自动
-     * 恢复——存下标签,服务冷启动时可以自己把连接重新建起来(见 [ShareRoot.ensureReady]),
-     * 不必要求用户先回树上手动展开一次那台服务器。
+     * [connLabel] is the label of the saved connection that corresponds to
+     * this scheme (empty for sources that have no connection, such as
+     * local / archives). The scheme is computed deterministically from the
+     * label by [Connections.schemeOf] and stays the same across restarts,
+     * but the **registration** does not auto-restore — storing the label
+     * lets the service rebuild the connection itself on a cold start (see
+     * [ShareRoot.ensureReady]), without making the user first expand the
+     * server manually in the tree.
      */
     data class Dir(
         val scheme: String,
@@ -36,9 +42,11 @@ sealed class ShareScope {
 }
 
 /**
- * 一次 WiFi 共享的配置。
+ * The configuration of one WiFi share session.
  *
- * **默认只读**:把整台设备的文件摊到局域网上本来就该是保守的默认值,写入要用户明确打开。
+ * **Read-only by default**: spreading the device's files across the LAN
+ * deserves a conservative default; writes require the user to opt in
+ * explicitly.
  */
 data class ShareConfig(
     val scope: ShareScope,
@@ -46,13 +54,13 @@ data class ShareConfig(
     val port: Int = DEFAULT_PORT,
     val user: String = "",
     val password: String = "",
-    /** 设备发现里报出去的名字;空则用机型名。 */
+    /** Name reported in device discovery; empty falls back to the model name. */
     val deviceName: String = "",
 ) {
-    /** 空密码 = 不设防(局域网内谁都能访问),非空才要 Basic 认证。 */
+    /** Empty password = no protection (anyone on the LAN can reach it); non-empty requires Basic auth. */
     val needsAuth: Boolean get() = password.isNotEmpty()
 
-    /** 用户名留空时允许随便填(只校验密码),但 WebDAV 客户端总要给个用户名。 */
+    /** Empty username is allowed (only the password is checked), but WebDAV clients always need to provide a username, so default to "twig". */
     val authUser: String get() = user.ifEmpty { "twig" }
 
     fun nameOrModel(): String = deviceName.ifEmpty { Build.MODEL ?: "Android" }
@@ -63,13 +71,16 @@ data class ShareConfig(
 }
 
 /**
- * 共享配置的持久化(SharedPreferences + JSON)。
+ * Persistence of share configuration (SharedPreferences + JSON).
  *
- * 单独一个 store 而不是往 [com.twig.app.Prefs] 里再摊七八个平铺的键:这组值只被共享功能
- * 整体读写,拆开只会多出一堆要同步维护的键名(与 `compare_options` 存整块 JSON 同一理由)。
+ * A separate store rather than seven or eight flat keys in
+ * [com.twig.app.Prefs]: the share feature reads and writes this set as a
+ * unit, and splitting it would just mean more key names to keep in sync
+ * (same reasoning as `compare_options` storing its whole block as one
+ * JSON blob).
  */
 object ShareStore {
-    private const val FILE = "twig_share"
+    const val FILE = "twig_share"
     private const val KEY = "config"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -93,7 +104,7 @@ object ShareStore {
                 readOnly = o.optBoolean("ro", true),
                 port = o.optInt("port", ShareConfig.DEFAULT_PORT),
                 user = o.optString("user"),
-                password = o.optString("pass"),
+                password = com.twig.app.secure.Secrets.dec(ctx, o.optString("pass")),
                 deviceName = o.optString("name"),
             )
         }.getOrDefault(ShareConfig(ShareScope.AllSources))
@@ -110,13 +121,15 @@ object ShareStore {
             }
         }
         o.put("ro", cfg.readOnly); o.put("port", cfg.port)
-        o.put("user", cfg.user); o.put("pass", cfg.password)
+        o.put("user", cfg.user); o.put("pass", com.twig.app.secure.Secrets.enc(ctx, cfg.password))
         o.put("name", cfg.deviceName)
         sp(ctx).edit().putString(KEY, o.toString()).apply()
     }
 
     /**
-     * 某个 scheme 属于哪条已保存连接(存 scope 时用)。本地/压缩包等没有连接的来源返回空串。
+     * Which saved connection a given scheme belongs to (used when persisting
+     * the scope). Sources with no underlying connection (local / archives)
+     * return the empty string.
      */
     fun connLabelOf(ctx: Context, scheme: String): String =
         Connections.ofScheme(scheme)?.label()

@@ -4,8 +4,13 @@ Twig as a whole is distributed under **GPL-3.0-only** (see [LICENSE](LICENSE)).
 Additional permissions and notices are in
 [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md).
 
+Twig builds in two flavors. **`libre`** (published on F-Droid) is 100% free
+software. **`full`** additionally bundles `junrar` for read-only RAR support;
+that library is **not** free software, and §2.2 applies to `full` only. Rows
+below are otherwise common to both.
+
 This file inventories every third-party component Twig uses, as of
-**1.1.1 (versionCode 270)**. Keep it in sync when dependencies change.
+**1.6.0 (versionCode 285)**. Keep it in sync when dependencies change.
 
 ---
 
@@ -56,23 +61,38 @@ headers (no compressor, no CLI). License text:
 > **These three are the direct reason Twig is GPL-3.0.** A fork that removes them
 > could consider a more permissive license.
 
-### 2.2 GPL-incompatible component (covered by an additional permission)
+### 2.2 Non-free component — `full` flavor only
 
-| Component | Version | License | Used for |
-|---|---|---|---|
-| **junrar** | 7.5.5 | **UnRAR License** (non-free) | Read-only RAR4 extraction |
+| Component | Version | License | Used for | Flavor |
+|---|---|---|---|---|
+| **junrar** | 8.1.0 | **UnRAR License** (non-free) | Read-only RAR4 + RAR5 extraction | `full` only |
 
 The UnRAR license carries a use restriction — the code may not be used to
-re-create the RAR compression algorithm — which conflicts with GPL section 7.
-This is resolved by the additional permission in
-[LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) §1, together with the notice its
-clause 2 requires: **the RAR-handling code in this program may not be used to
-develop a RAR (WinRAR) compatible archiver.**
+re-create the RAR compression algorithm. That is a field-of-endeavour
+restriction, so the library fails DFSG §6, OSI OSD §6 and FSF freedom 0, and it
+is incompatible with the GPL.
+
+**The `libre` flavor does not contain it.** RAR support lives in a separate Gradle
+module, `:fs-archive-rar`, which only the `full` flavor depends on; `libre` has no
+UnRAR-licensed code on its runtime classpath and none in its APK. Verify with:
+
+```bash
+./gradlew :app:dependencies --configuration libreReleaseRuntimeClasspath | grep -i junrar   # must print nothing
+```
+
+For the `full` flavor, see [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md) §1 for
+the additional permission and the limits of its scope, and §2 for the notice
+clause 2 of the UnRAR license requires: **the RAR-handling code in this program
+may not be used to develop a RAR (WinRAR) compatible archiver.**
 
 Twig provides read-only RAR extraction and does not implement RAR compression.
 
-> This dependency blocks inclusion in F-Droid (non-free dependency). To publish
-> there, split RAR support into a separate flavor or drop it.
+> **Replacing it.** libarchive (BSD-2) reads RAR4 and RAR5 with an independently
+> written implementation — Debian ships the libarchive-based `unrar-free` in
+> *main* while RARLAB's own `unrar` sits in *non-free*. A ready-made Android
+> binding exists (`me.zhanghai.android.libarchive:library`, Maven Central,
+> Apache-2.0), used by Material Files on F-Droid. It would let `libre` have RAR
+> too, at roughly +0.94 MB per ABI and with **no support for encrypted RAR**.
 
 ### 2.3 Weak copyleft with an exception
 
@@ -101,7 +121,7 @@ The Classpath Exception permits linking without the copyleft propagating.
 | Apache Commons Compress | 1.26.2 | Apache-2.0 | 7z |
 | SSHJ | 0.38.0 | Apache-2.0 | SFTP / SSH |
 | OkHttp | 4.12.0 | Apache-2.0 | HTTP layer for WebDAV and S3 |
-| SLF4J API | 1.7.36 | MIT | Transitive dependency of junrar |
+| SLF4J API | 1.7.36 | MIT | Transitive dependency of junrar (`full` only) |
 | Bouncy Castle (`bcprov-jdk18on`) | 1.75 / 1.78.1 | Bouncy Castle License (MIT-style) | X25519 key exchange, scrypt |
 | XZ for Java (`org.tukaani:xz`) | 1.9 | Public Domain | LZMA/LZMA2 for 7z |
 | Shizuku `api` / `provider` | 13.1.5 | MIT | Privileged access without root |

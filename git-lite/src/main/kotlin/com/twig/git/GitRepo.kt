@@ -4,18 +4,19 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * 只读 git 仓库解析:HEAD/refs、提交历史、工作区状态(changes)、提交 diff。
- * 不加锁、不写任何文件,可安全查看任意仓库。
+ * Read-only git repository parsing: HEAD/refs, commit history, worktree status (changes),
+ * commit diff. No locking, no writes, safe to view any repository.
  *
- * 文件访问经 [GitFs] 抽象:[metaFs] 以 .git 目录为根,[workFs] 以工作区为根;
- * 本地用 [LocalGitFs],SMB/WebDAV 等由调用方适配。[remote] 为 true 时
- * status 用"大小对比"替代 mtime/SHA(远程 stat 不可信、逐文件哈希太贵)。
+ * File access goes through the [GitFs] abstraction: [metaFs] is rooted at the .git
+ * directory, [workFs] at the worktree; local uses [LocalGitFs], SMB/WebDAV etc. are
+ * adapted by the caller. When [remote] is true, status uses "size comparison" instead
+ * of mtime/SHA (remote stat is unreliable, and per-file hashing is too expensive).
  */
 class GitRepo(
     private val metaFs: GitFs,
     private val workFs: GitFs,
     private val remote: Boolean = false,
-    /** `.git` 的解析结果;只有它在,才知道自己是哪条工作区、主工作区在哪(见 [worktrees])。 */
+    /** Resolved `.git`; only with this do we know which worktree we are and where the main worktree is (see [worktrees]). */
     private val dirs: GitDirs? = null,
 ) : java.io.Closeable {
 
@@ -26,16 +27,16 @@ class GitRepo(
 
     // ---- refs / HEAD ----
 
-    /** 当前分支名;detached 时返回短 SHA。 */
+    /** Current branch name; returns short SHA when detached. */
     fun branch(): String = headBranch(readText("HEAD"))
 
-    /** HEAD 文件内容 → 分支名;detached 时短 SHA。 */
+    /** HEAD file content → branch name; short SHA when detached. */
     private fun headBranch(head: String?): String {
         val h = head?.trim() ?: return "?"
         return if (h.startsWith("ref: ")) h.removePrefix("ref: ").substringAfterLast('/') else h.take(7)
     }
 
-    /** HEAD 指向的 commit SHA;空仓库(无提交)返回 null。 */
+    /** Commit SHA HEAD points to; returns null for an empty repo (no commits). */
     fun headSha(): String? {
         val head = readText("HEAD")?.trim() ?: return null
         if (!head.startsWith("ref: ")) return head.takeIf { it.length == 40 }
@@ -51,12 +52,12 @@ class GitRepo(
         return null
     }
 
-    // ---- 分支 ----
+    // ---- branches ----
 
-    /** 所有本地分支(refs/heads,含未 pack 的松散 ref 与 packed-refs),按名字排序。 */
+    /** All local branches (refs/heads, including unpacked loose refs and packed-refs), sorted by name. */
     fun branches(): List<GitBranch> {
         val cur = branch()
-        val out = LinkedHashMap<String, String>() // name -> sha,松散 ref 优先于 packed-refs
+        val out = LinkedHashMap<String, String>() // name -> sha; loose refs take priority over packed-refs
         collectLooseRefs("refs/heads", out)
         readText("packed-refs")?.lineSequence()?.forEach { l ->
             if (l.startsWith("#") || l.startsWith("^")) return@forEach
@@ -76,18 +77,22 @@ class GitRepo(
         }
     }
 
-    // ---- 工作区(git worktree) ----
+    // ---- worktrees (git worktree) ----
 
     /**
-     * 本仓库关联的所有工作区,主工作区排在最前;当前这条也在里面([GitWorktree.current])。
+     * All worktrees linked to this repo, with the main worktree first; the current one
+     * is also in the list ([GitWorktree.current]).
      *
-     * 数据全在公共目录的 `worktrees/<名>/` 下:`gitdir` 记着那条工作区 `.git` 文件的绝对
-     * 路径(去掉末段就是它的工作目录),`HEAD` 是它自己的、`locked` 在则被锁定。这几个
-     * 读取都走 [metaFs],[WorktreeGitFs] 会把 `worktrees/…` 路由到公共目录,所以站在
-     * 主仓库还是站在某条 worktree 里看到的是同一份列表。
+     * Data all lives in the common directory's `worktrees/<name>/`: `gitdir` records
+     * that worktree's `.git` file's absolute path (removing the last segment gives its
+     * working directory), `HEAD` is its own, and `locked` present means it is locked.
+     * All these reads go through [metaFs]; [WorktreeGitFs] routes `worktrees/...` to
+     * the common directory, so standing at the main repo or inside some worktree you
+     * see the same list.
      *
-     * 主工作区的路径只能从 [dirs] 推(公共 `.git` 的父目录),[dirs] 为空或仓库是 bare
-     * 的就不列它 —— 那种情况下没有"主工作区"这回事。
+     * The main worktree's path can only be inferred from [dirs] (the parent of the
+     * common `.git`); when [dirs] is null or the repo is bare, it isn't listed — there
+     * is no "main worktree" in that case.
      */
     fun worktrees(): List<GitWorktree> {
         val out = ArrayList<GitWorktree>()
@@ -98,7 +103,7 @@ class GitRepo(
             out += GitWorktree(
                 name = path.substringAfterLast('/').ifEmpty { path },
                 path = path,
-                // 站在 worktree 里时 metaFs 的 HEAD 是自己的,主工作区那份只在公共目录里
+                // when standing inside a worktree, metaFs's HEAD is its own; the main worktree's is only in the common directory
                 branch = headBranch(commonFs.readBytes("HEAD")?.toString(Charsets.UTF_8)),
                 locked = false,
                 current = !d.split,
@@ -110,7 +115,7 @@ class GitRepo(
             val gitFile = readText("worktrees/${e.name}/gitdir")?.trim()?.takeIf { it.isNotEmpty() } ?: continue
             out += GitWorktree(
                 name = e.name,
-                path = gitFile.trimEnd('/').substringBeforeLast('/'), // 去掉末段的 .git
+                path = gitFile.trimEnd('/').substringBeforeLast('/'), // drop the trailing .git segment
                 branch = headBranch(readText("worktrees/${e.name}/HEAD")),
                 locked = metaFs.stat("worktrees/${e.name}/locked") != null,
                 current = d != null && common != null &&
@@ -120,10 +125,10 @@ class GitRepo(
         return out
     }
 
-    /** 公共目录(objects/refs 所在);普通仓库就是 [metaFs] 自己。 */
+    /** Common directory (where objects/refs live); for a plain repo it is [metaFs] itself. */
     private val commonFs: GitFs get() = (metaFs as? WorktreeGitFs)?.common ?: metaFs
 
-    // ---- 提交历史 ----
+    // ---- commit history ----
 
     fun commit(sha: String): GitCommit? {
         val obj = store.read(sha) ?: return null
@@ -132,12 +137,12 @@ class GitRepo(
     }
 
     /**
-     * 从 HEAD 按提交时间倒序遍历历史,跳过 [skip] 条,最多返回 [limit] 条。
-     * 多父(merge)全部展开;用于 UI 分页。
+     * Walks history from HEAD in commit time descending order, skipping [skip] entries
+     * and returning at most [limit]. All parents (merges) are expanded; used for UI pagination.
      */
     fun log(skip: Int, limit: Int): List<GitCommit> = logFrom(headSha(), skip, limit)
 
-    /** 同 [log],但从指定 commit sha(如某分支的 tip)开始遍历,而非 HEAD。 */
+    /** Same as [log], but walks starting from the given commit sha (e.g. some branch tip) instead of HEAD. */
     fun logFrom(startSha: String?, skip: Int, limit: Int): List<GitCommit> {
         val start = startSha ?: return emptyList()
         val out = ArrayList<GitCommit>(limit)
@@ -182,7 +187,7 @@ class GitRepo(
 
     // ---- tree / blob / diff ----
 
-    /** 展平一棵 tree:相对路径 → blob SHA(跳过子模块)。 */
+    /** Flattens a tree: relative path → blob SHA (skips submodules). */
     fun flattenTree(treeSha: String, prefix: String = "", out: MutableMap<String, String> = HashMap()): Map<String, String> {
         val obj = store.read(treeSha) ?: return out
         if (obj.type != ObjType.TREE) return out
@@ -197,18 +202,18 @@ class GitRepo(
             i = nul + 21
             when {
                 mode == "40000" -> flattenTree(sha, "$prefix$name/", out)
-                mode == "160000" -> Unit // 子模块
+                mode == "160000" -> Unit // submodule
                 else -> out["$prefix$name"] = sha
             }
         }
         return out
     }
 
-    /** 读 blob 内容;非 blob 或不存在返回 null。 */
+    /** Read blob content; returns null for non-blob or missing. */
     fun readBlob(sha: String): ByteArray? =
         store.read(sha)?.takeIf { it.type == ObjType.BLOB }?.data
 
-    /** 某提交相对首个父提交的变更(根提交为全部新增)。 */
+    /** Changes of a commit relative to its first parent (for a root commit, all entries are added). */
     fun diff(c: GitCommit): List<GitChange> {
         val cur = flattenTree(c.tree)
         val parent = c.parents.firstOrNull()?.let { commit(it) }
@@ -234,16 +239,18 @@ class GitRepo(
 
     // ---- status ----
 
-    /** index 内容(路径 → 条目),供 status 与内容读取。 */
+    /** Index content (path → entry), used by status and content reads. */
     fun indexEntries(): Map<String, IndexEntry> =
         IndexFile.read(metaFs.readBytes("index"))
 
     /**
-     * 计算工作区状态。
-     * - staged:HEAD tree vs index
-     * - unstaged:index vs 工作区(本地:mtime+size 一致视为未改,可疑时算 SHA;
-     *   远程:仅比大小——远端 stat 不可信、逐文件哈希代价过高)
-     * - untracked:不在 index 且未被 .gitignore 排除;整目录未跟踪时折叠为 "dir/"
+     * Computes worktree status.
+     * - staged: HEAD tree vs index
+     * - unstaged: index vs worktree (local: matching mtime+size is treated as clean,
+     *   compute SHA when in doubt; remote: size comparison only — remote stat is
+     *   unreliable and per-file hashing is too expensive)
+     * - untracked: not in index and not excluded by .gitignore; when a whole directory
+     *   is untracked, fold it as "dir/"
      */
     fun status(): GitStatus {
         val index = indexEntries()
@@ -268,7 +275,7 @@ class GitRepo(
             when {
                 st == null || st.isDir -> unstaged.add(GitChange(path, ChangeKind.DELETED))
                 remote -> if (st.size != e.size) unstaged.add(GitChange(path, ChangeKind.MODIFIED))
-                st.mtimeSec == e.mtimeSec && st.size == e.size -> Unit // stat 一致视为干净
+                st.mtimeSec == e.mtimeSec && st.size == e.size -> Unit // matching stat is treated as clean
                 blobSha(path, st.size) != e.sha -> unstaged.add(GitChange(path, ChangeKind.MODIFIED))
             }
         }
@@ -291,7 +298,7 @@ class GitRepo(
             if (e.name == ".git") continue
             if (ignore.matches(rel, e.isDir)) continue
             if (e.isDir) {
-                // 目录下没有任何已跟踪文件 → 整目录折叠为 "dir/"
+                // directory has no tracked file under it → fold the whole directory as "dir/"
                 val tracked = indexed.any { it.startsWith("$rel/") }
                 if (!tracked) {
                     if (hasAnyVisibleFile(rel, ignore)) out.add("$rel/")
@@ -314,7 +321,7 @@ class GitRepo(
         return false
     }
 
-    /** 工作区文件按 git blob 规则求 SHA-1("blob <len>\0" + 内容)。 */
+    /** Computes a worktree file's SHA-1 by git blob rule ("blob <len>\0" + content). */
     private fun blobSha(path: String, size: Long): String {
         val md = MessageDigest.getInstance("SHA-1")
         md.update("blob $size".toByteArray(Charsets.US_ASCII))
@@ -323,13 +330,13 @@ class GitRepo(
         return ObjectStore.bytesToHex(md.digest())
     }
 
-    /** 读工作区文件内容(可为 null)。 */
+    /** Read worktree file content (may be null). */
     fun readWorkFile(path: String): ByteArray? = workFs.readBytes(path)
 
     override fun close() = store.close()
 
     companion object {
-        /** 打开本地目录下的仓库;不是 git 工作区返回 null。支持 .git 为文件的 worktree/子模块。 */
+        /** Opens the repo at a local directory; returns null if it isn't a git worktree. Supports worktree/submodule where .git is a file. */
         fun open(dir: File): GitRepo? {
             val dirs = layout(dir) ?: return null
             if (!File(dirs.gitDir, "HEAD").isFile) return null
@@ -339,7 +346,7 @@ class GitRepo(
             return GitRepo(meta, LocalGitFs(dir), remote = false, dirs = dirs)
         }
 
-        /** 目录是否是 git 工作区根(本地);worktree/子模块要 gitdir 真解析得出才算。 */
+        /** Whether the directory is a git worktree root (local); for worktree/submodule the gitdir must actually resolve. */
         fun isRepo(dir: File): Boolean =
             layout(dir)?.let { File(it.gitDir, "HEAD").isFile } ?: false
 

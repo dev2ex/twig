@@ -2,22 +2,64 @@ package com.twig.app.ui
 
 import android.content.Context
 import com.twig.app.R
+import com.twig.app.TextCodec
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
 /**
- * 文本写回同一来源。原来是 [TextViewerActivity] 的私有实现,双栏 diff 的"合并这段
- * 到对侧"也要往回写,搬出来共用——这套路里的每个分支都是踩出来的,复制一份迟早走样。
+ * Write text back to its original source. Originally a private implementation in
+ * [TextViewerActivity]; the two-column diff's "merge this hunk to the other side"
+ * also needs to write back, so it was lifted out and shared — every branch here is
+ * the result of a past incident, and a copy of it would inevitably drift.
  */
 
+/** Result of reading a text file: contents, whether it was truncated, the charset and BOM that decoded it (used when writing back). */
+internal class TextRead(
+    val text: String,
+    val truncated: Boolean,
+    /** null = no charset decoded it strictly; [text] is the result of lenient UTF-8 — which cannot be written back. */
+    val charset: Charset?,
+    val bom: ByteArray?,
+)
+
 /**
- * 严格 UTF-8 解码,不是合法 UTF-8 就返回 null(不做宽容替换)。
+ * Read up to [max] bytes of text. Decoding is delegated to [TextCodec]
+ * (BOM → strict UTF-8 → the user-ordered encodings from settings); the encoding it
+ * recognizes also decides whether the file is editable: a strict decode means every
+ * byte has a known meaning, so we can write it back as-is; when nothing decoded
+ * strictly we can only show a lenient decode (illegal bytes become U+FFFD), and
+ * writing that back would be irreversible damage.
  *
- * 读取端一律按 UTF-8 解,GBK 之类的文件本来就显示成乱码;宽容解码出来的 U+FFFD
- * 再写回去是**不可逆损坏**,所以凡是要写回的场景都得先过这关。
+ * ★ A truncation point can easily fall in the middle of a multi-byte character —
+ * that's **our** cut, not a flaw in the file's encoding (truncation already disables
+ * editing, no need to layer another reason on top).
+ */
+internal fun readTextFile(file: XFile, max: Int): TextRead {
+    FsRegistry.of(file).openInput(file).use { input ->
+        val buf = ByteArray(max)
+        var read = 0
+        while (read < buf.size) {
+            val n = input.read(buf, read, buf.size - read)
+            if (n < 0) break
+            read += n
+        }
+        val truncated = input.read() >= 0
+        val d = TextCodec.decode(buf, 0, read)
+        return TextRead(d.text, truncated, d.charset ?: if (truncated) Charsets.UTF_8 else null, d.bom)
+    }
+}
+
+/**
+ * Strict UTF-8 decode: returns null if the input is not valid UTF-8 (no lenient
+ * substitution).
+ *
+ * The two-column diff's "merge to other side" uses this to decide whether each side
+ * is writeable. U+FFFD produced by lenient decoding, written back, is **irreversible
+ * damage**, so any write path has to clear this gate first.
  */
 internal fun strictUtf8(bytes: ByteArray): String? = runCatching {
     Charsets.UTF_8.newDecoder()
@@ -28,10 +70,13 @@ internal fun strictUtf8(bytes: ByteArray): String? = runCatching {
 }.getOrNull()
 
 /**
- * 保存写回。默认路径是"写同目录临时文件 → 删原文件 → rename 顶上":
- * [com.twig.core.FileSystem.openOutput] 绝大多数实现是截断原文件再往里写,网络中途断线
- * 就只剩残片,原文件回不来了。来源自称 [com.twig.core.FileSystem.atomicOverwrite] 的
- * (zip:整包重写到 .twigtmp 再替换)直接写,免掉额外两次整包重写。
+ * Save back to the source. Default path is "write a same-directory temp file → delete
+ * the original → rename the temp into place":
+ * [com.twig.core.FileSystem.openOutput] truncates the original and writes into it in
+ * most implementations, so a half-finished write over the network leaves a fragment
+ * and the original is gone forever. Sources that advertise
+ * [com.twig.core.FileSystem.atomicOverwrite] (zip: rewrite the whole archive to
+ * .twigtmp and replace) just write directly, saving two extra whole-archive rewrites.
  */
 internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
     val fs = FsRegistry.of(file)
@@ -41,14 +86,18 @@ internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
     }
     val parent = fs.resolve(file.parentPath)
     val tmp = fs.createFile(parent, "${file.name}.twigtmp")
-    runCatching { if (fs.exists(tmp)) fs.delete(tmp) } // 清掉上次失败的残留
+    runCatching { if (fs.exists(tmp)) fs.delete(tmp) } // clean up leftover from a previous failed attempt
 
-    // ★ "能改这个文件"和"能在这个目录里新建文件"是两个独立权限(SMB/NTFS 的
-    // FILE_WRITE_DATA vs 目录的 FILE_ADD_FILE),实测有共享只给前者——建临时文件
-    // 直接 STATUS_ACCESS_DENIED。用户明明有权限改这个文件,不该因为我们选了这种
-    // 实现方式就存不上,于是降级成直接覆写原文件(没有原子保护,但存得上)。
-    // 降级只认"打开失败"这一种情况:写到一半失败是网络/空间问题,降级照样会失败,
-    // 而且会把原文件截断——那时原文件还完好,直接报错更安全。
+    // ★ "Can modify this file" and "can create a new file in this directory" are two
+    // independent permissions (SMB/NTFS's FILE_WRITE_DATA vs the directory's
+    // FILE_ADD_FILE). In practice some shares only grant the former — creating a temp
+    // file comes back as STATUS_ACCESS_DENIED. The user clearly has permission to
+    // modify this file, so we shouldn't fail to save just because we picked this
+    // implementation, so we fall back to directly overwriting the original (no atomic
+    // guarantee, but it does save).
+    // The fallback only fires for "open failed": a failure mid-write is a network/disk
+    // issue, the fallback would still fail, and would truncate the original file —
+    // at that point the original is still intact, so failing more honestly is safer.
     val out = runCatching { fs.openOutput(tmp) }.getOrNull()
     if (out == null) {
         runCatching { if (fs.exists(tmp)) fs.delete(tmp) }
@@ -62,9 +111,11 @@ internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
         throw e
     }
 
-    // ★ 过了这行 tmp 就是内容的唯一完整副本,原文件即将被删——后面无论哪步失败都
-    // 绝不能再删 tmp(早先版本在这里一并清理,等于把用户刚写的东西也抹掉),
-    // 只把 tmp 的名字报出去让用户能捞回来。
+    // ★ Past this line, tmp is the only complete copy of the content, and the
+    // original file is about to be deleted — whatever fails later we must **not**
+    // delete tmp again (an earlier version cleaned up here too, which meant wiping
+    // out what the user had just written). Just surface tmp's name so the user
+    // can rescue it.
     if (fs.exists(file)) fs.delete(file)
     try {
         fs.rename(tmp, file.name)
@@ -76,9 +127,10 @@ internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
     }
 }
 
-/** 这个条目现在能不能写:整个来源只读的靠 `writable()` 兜底,条目自身的可写位要现查。 */
+/** Whether this entry can be written right now: the whole-source read-only case is covered by `writable()`; the per-entry writable bit is checked live. */
 internal fun canWriteTo(file: XFile): Boolean {
     val fs = FsRegistry.of(file)
-    // canWrite 默认 true 不可信(按 intent/路径拼出来的 XFile 没问过来源),所以 resolve 一次
+    // The default-true canWrite is not trustworthy (an XFile built from intent/path
+    // never asked the source), so resolve once.
     return fs.writable() && runCatching { fs.resolve(file.path).canWrite }.getOrDefault(true)
 }

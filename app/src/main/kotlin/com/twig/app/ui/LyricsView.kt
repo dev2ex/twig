@@ -14,47 +14,50 @@ import android.widget.OverScroller
 import kotlin.math.abs
 
 /**
- * 自绘滚动歌词:
- * - 一条歌词可含多行(双语原文+译文、换行符拆行),堆叠显示;当前条整体高亮居中、平滑跟随。
- * - 当前条某行过长时跑马灯左右滚动;非当前条过长则省略号截断。
- * - 纵向拖动滚动歌词、点某条歌词 seek 到该句;横向滑动回调 [onSwipe] 切上/下一首。
- * - 封面↔歌词的切换不在这里(交给下方信息区),无时间戳歌词点击回调 [onTap]。
+ * Self-drawn scrolling lyrics:
+ * - One lyric line can contain multiple text lines (bilingual original + translation, newlines split out),
+ *   stacked; the current line is highlighted and centred overall, following playback smoothly.
+ * - When the current line is too long, marquee-scroll left/right; non-current lines truncate with ellipsis.
+ * - Vertical drag scrolls the lyrics; tap a line to seek to it; horizontal swipe callback [onSwipe] switches to
+ *   the next / previous track.
+ * - The cover ↔ lyrics toggle doesn't live here (handled by the info area below); tap on untimed lyrics
+ *   calls [onTap].
  */
 class LyricsView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
 ) : View(context, attrs) {
 
     var onTap: (() -> Unit)? = null
-    /** 点击某条带时间戳的歌词 → 跳转到该时间(ms)。 */
+    /** Tap a lyric line with a timestamp → seek to that time (ms). */
     var onSeekTo: ((Long) -> Unit)? = null
-    /** 横向滑动切歌:next=true 左滑(下一首),false 右滑(上一首)。 */
+    /** Horizontal swipe to switch tracks: next=true left-swipe (next track), false right-swipe (previous). */
     var onSwipe: ((next: Boolean) -> Unit)? = null
 
     private var lyrics: Lyrics? = null
     private var currentIndex = -1
     private var scrollY = 0f
     private var targetY = 0f
-    private var manual = false          // 无时间戳歌词:整段手动滚动
-    private var userScrolling = false   // 同步歌词:用户正在手动浏览(暂停自动跟随)
+    private var manual = false          // untimed lyrics: scroll the entire block manually
+    private var userScrolling = false   // synced lyrics: user is manually browsing (auto-follow paused)
     private var accentColor = accent
 
-    /** 同步歌词手动滚动后,若 [RESUME_DELAY_MS] 内没点行 seek,自动跳回当前播放位置。 */
+    /** After the user manually scrolls synced lyrics, if no line is tapped within [RESUME_DELAY_MS] for a seek, automatically snap back to the current playback position. */
     private val resumeFollow = Runnable {
         userScrolling = false
         targetY = centers.getOrElse(currentIndex.coerceAtLeast(0)) { 0f }
         postInvalidateOnAnimation()
     }
 
-    // 每条的内容(单位:content 坐标,从 0 起)中心 y 与块高
+    // Per-entry contents (units: content coordinates, from 0): centre y and block height
     private var centers = FloatArray(0)
     private var heights = FloatArray(0)
     private var entryChangedAt = 0L
 
-    private val subLine = dp(26f)   // 每行文本竖直槽高
-    private val entryGap = dp(16f)  // 条与条之间的额外间距
+    private val subLine = dp(26f)   // vertical slot height per text line
+    private val entryGap = dp(16f)  // extra spacing between entries
     private val sideMargin = dp(20f)
 
-    // TextPaint(而非 Paint):TextUtils.ellipsize 需要它
+    // TextPaint (not Paint): TextUtils.ellipsize needs it
     private val normal = android.text.TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = dp(16f); textAlign = Paint.Align.CENTER; color = Color.argb(150, 255, 255, 255)
     }
@@ -65,13 +68,13 @@ class LyricsView @JvmOverloads constructor(
         textSize = dp(15f); textAlign = Paint.Align.CENTER; color = Color.argb(140, 255, 255, 255)
     }
 
-    private var startX = 0f          // 按下位置(判断横向切歌 / 纵向滚动)
+    private var startX = 0f          // press position (decides horizontal-track-switch vs vertical-scroll)
     private var startY = 0f
-    private var downY = 0f           // 纵向滚动的增量参考(随移动更新)
+    private var downY = 0f           // increment reference for vertical scroll (updated as we move)
     private var dragging = false
     private var horizontalDrag = false
 
-    // 惯性滚动:抬手时按滑动速度继续滚一段,而不是手一松就硬停
+    // Inertial scroll: on release, continue scrolling for a moment based on fling velocity, rather than stopping abruptly
     private val scroller = OverScroller(context)
     private var velocityTracker: VelocityTracker? = null
     private val minFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
@@ -103,10 +106,10 @@ class LyricsView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 高亮色随封面主色调(0 = 默认)。 */
+    /** Highlight colour tracks the cover's dominant colour (0 = default). */
     fun setAccent(color: Int) { accentColor = if (color != 0) color else accent; highlight.color = accentColor; invalidate() }
 
-    /** 非当前行 / 提示文字的颜色(由 [MusicTint] 按背景反推,不再是固定半透明白)。 */
+    /** Colour for non-current lines / hint text (derived from the background by [MusicTint], no longer a fixed translucent white). */
     fun setTint(normalColor: Int, hintColor: Int) {
         normal.color = normalColor; hint.color = hintColor; invalidate()
     }
@@ -158,7 +161,8 @@ class LyricsView @JvmOverloads constructor(
         for (i in l.lines.indices) {
             val blockCenter = cy + centers[i] - scrollY
             val h = heights[i]
-            // 上下边缘露出一半就整条隐藏(不画半截字),而不是只在完全滚出视野时才隐藏
+            // Hide the whole line once half of it has crossed the top/bottom edge (don't draw half a character),
+// rather than only hiding once it's fully scrolled off-screen
             if (blockCenter - h / 2f < 0 || blockCenter + h / 2f > height) continue
             val p = if (i == currentIndex) highlight else normal
             val texts = l.lines[i].texts
@@ -180,11 +184,11 @@ class LyricsView @JvmOverloads constructor(
         if (marqueeRunning) postInvalidateOnAnimation()
     }
 
-    /** 当前行跑马灯:居中文本在可视区左右往返,两端各停顿一下。 */
+    /** Marquee for the current line: centred text shuttles left/right within the visible area, pausing briefly at each end. */
     private fun drawMarquee(canvas: Canvas, text: String, p: Paint, cx: Float, baseY: Float, avail: Float, tw: Float) {
         val overflow = tw - avail
         val speed = dp(45f) / 1000f      // px/ms
-        val pause = 800f                 // 端点停顿 ms
+        val pause = 800f                 // endpoint pause in ms
         val travelMs = overflow / speed
         val period = travelMs + pause
         val t = (System.currentTimeMillis() - entryChangedAt).toFloat()
@@ -195,7 +199,7 @@ class LyricsView @JvmOverloads constructor(
             cycle < pause * 2 + travelMs -> overflow
             else -> overflow - (cycle - pause * 2 - travelMs) * speed
         }.coerceIn(0f, overflow)
-        // CENTER 对齐:x 从"显示左端"移到"显示右端"
+        // CENTER alignment: x moves from "display left end" to "display right end"
         val xLeft = sideMargin + tw / 2f
         canvas.drawText(text, xLeft - off, baseY, p)
     }
@@ -203,7 +207,7 @@ class LyricsView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (!scroller.isFinished) scroller.forceFinished(true) // 惯性滚动中再次按下:立即接管
+                if (!scroller.isFinished) scroller.forceFinished(true) // Press again during inertial scroll: take over immediately
                 removeCallbacks(flingTick)
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain().apply { addMovement(event) }
@@ -217,11 +221,11 @@ class LyricsView @JvmOverloads constructor(
                 val totalDy = event.y - startY
                 if (!dragging && (abs(totalDx) > touchSlop || abs(totalDy) > touchSlop)) {
                     dragging = true
-                    horizontalDrag = abs(totalDx) > abs(totalDy) // 横向优先判为切歌手势
+                    horizontalDrag = abs(totalDx) > abs(totalDy) // horizontal wins and is treated as a track-switch gesture
                     if (horizontalDrag) parent?.requestDisallowInterceptTouchEvent(true)
                 }
                 if (dragging && !horizontalDrag) {
-                    // 纵向:滚动歌词(略微放大位移,手感更跟手)
+                    // Vertical: scroll the lyrics (slightly amplified displacement so the touch feels more responsive)
                     scrollY = (scrollY - (event.y - downY) * DRAG_SPEED).coerceIn(0f, maxScroll())
                     downY = event.y
                     if (lyrics?.synced == true) {
@@ -236,7 +240,7 @@ class LyricsView @JvmOverloads constructor(
                 when {
                     dragging && horizontalDrag -> if (abs(event.x - startX) > dp(48f)) onSwipe?.invoke(event.x < startX)
                     !dragging -> handleTap(event.x, event.y)
-                    else -> { // 纵向拖拽结束:按抬手速度起惯性滚动
+                    else -> { // vertical drag ends: start inertial scroll based on release velocity
                         velocityTracker?.let { vt ->
                             vt.addMovement(event)
                             vt.computeCurrentVelocity(1000)
@@ -244,7 +248,7 @@ class LyricsView @JvmOverloads constructor(
                             if (abs(vy) > minFlingVelocity) {
                                 scroller.forceFinished(true)
                                 scroller.fling(0, scrollY.toInt(), 0, vy.toInt(), 0, 0, 0, maxScroll().toInt())
-                                removeCallbacks(resumeFollow) // 惯性结束后 flingTick 里再重新计时
+                                removeCallbacks(resumeFollow) // after inertia ends, flingTick will re-time
                                 postOnAnimation(flingTick)
                             } else if (lyrics?.synced == true) {
                                 userScrolling = true
@@ -266,7 +270,7 @@ class LyricsView @JvmOverloads constructor(
         if (l != null && l.synced && !l.isEmpty) {
             val i = entryAt(x, y)
             if (i >= 0) {
-                // 点某句 seek 到该句;退出手动浏览态让自动跟随接管
+                // Tap a line to seek to it; exit manual-browsing so auto-follow takes over again
                 userScrolling = false
                 removeCallbacks(resumeFollow)
                 onSeekTo?.invoke(l.lines[i].timeMs)
@@ -274,11 +278,11 @@ class LyricsView @JvmOverloads constructor(
                 return
             }
         }
-        // 无时间戳歌词、或点在文字左右空白处,无处可跳,点击切回封面
+        // Untimed lyrics, or a tap in the blank left/right of the text — nowhere to seek, so tap toggles back to the cover
         onTap?.invoke(); performClick()
     }
 
-    /** 命中屏幕 (x,y) 落在哪条歌词块的文字上;文字左右的空白处不算命中,返回 -1。 */
+    /** Which lyric block does the screen point (x,y) land on (within actual text)? Blank space left/right of the text doesn't count, returns -1. */
     private fun entryAt(x: Float, y: Float): Int {
         val l = lyrics ?: return -1
         val cy = height / 2f
@@ -292,7 +296,7 @@ class LyricsView @JvmOverloads constructor(
         return -1
     }
 
-    /** 点击 x 是否真的落在该条歌词某一行文字的实际宽度内(而非居中留白处)。 */
+    /** Does the click x actually land inside the actual width of a line of text in this lyric entry (not the centred blank padding)? */
     private fun textHit(l: Lyrics, i: Int, blockCenterScreen: Float, h: Float, x: Float, y: Float): Boolean {
         val texts = l.lines[i].texts
         if (texts.isEmpty()) return false
@@ -302,7 +306,7 @@ class LyricsView @JvmOverloads constructor(
         val avail = width - 2 * sideMargin
         val tw = minOf(paint.measureText(texts[row]), avail)
         val cx = width / 2f
-        val slop = dp(12f) // 命中范围稍放宽,避免文字边缘卡手
+        val slop = dp(12f) // widen the hit range a little so text edges don't feel sticky
         return abs(x - cx) <= tw / 2f + slop
     }
 
@@ -319,6 +323,6 @@ class LyricsView @JvmOverloads constructor(
     companion object {
         private val accent = Color.parseColor("#66BB6A")
         private const val RESUME_DELAY_MS = 3000L
-        private const val DRAG_SPEED = 1.15f // 手动滚动稍微跟手一点,不完全 1:1
+        private const val DRAG_SPEED = 1.15f // manual scroll feels a bit more responsive than a strict 1:1
     }
 }

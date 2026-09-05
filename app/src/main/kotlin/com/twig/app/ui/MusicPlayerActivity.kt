@@ -32,7 +32,7 @@ import com.twig.app.databinding.ItemPlaylistRowBinding
 import com.twig.core.XFile
 import java.util.concurrent.Executors
 
-/** 音乐播放主界面(UI 壳,状态全在 [MusicEngine]/[MusicService];onDestroy 不 release 播放器)。 */
+/** Main music player UI (UI shell; state all in [MusicEngine]/[MusicService]; onDestroy does not release the player). */
 @UnstableApi
 class MusicPlayerActivity : AppCompatActivity() {
 
@@ -44,9 +44,9 @@ class MusicPlayerActivity : AppCompatActivity() {
     private var lyricsForId: String? = null
     private var waveForId: String? = null
     private var seekPreview: Long? = null
-    private var accentColor = 0 // 从封面提取的主色调;0 = 用主题默认强调色
-    private var bgTone = 0 // 毛玻璃背景的平均色(文字压在上面的那个颜色);0 = 还没出封面,用 fallbackBg()
-    private var tint = MusicTint.of(Color.parseColor("#1A1A1A")) // 前景层级色,随 bgTone 反推
+    private var accentColor = 0 // accent color extracted from the cover; 0 = use theme default accent
+    private var bgTone = 0 // average color of the blurred background (the color text actually sits on); 0 = cover not yet available, use fallbackBg()
+    private var tint = MusicTint.of(Color.parseColor("#1A1A1A")) // foreground layer color, derived from bgTone
     private lateinit var plDrawer: PlaylistDrawer
     private val finisher: () -> Unit = { finish() }
 
@@ -70,38 +70,54 @@ class MusicPlayerActivity : AppCompatActivity() {
         override fun onTrackChanged(index: Int, track: PlaylistTrack?) { bindTrack() }
         override fun onPlayStateChanged(playing: Boolean) { updatePlayButton() }
         override fun onModeChanged() { updateModeButtons() }
-        override fun onFavChanged() { updateFavButton(); plDrawer.reload() } // 通知栏点了心形
+        override fun onFavChanged() { updateFavButton(); plDrawer.reload() } // Heart icon tapped from the notification.
         override fun onQueueChanged() { bindTrack() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // ★ The view and the lateinit fields are **all built right here**, not deferred to
+        // after unlock: while the unlock dialog is up, the Activity still goes through onResume;
+        // at that point plDrawer hasn't been assigned and it crashes on the spot (always when
+        // entering from the notification). Same pitfall as the PaneFragment.adapter entry —
+        // **any time initialization is moved after an async callback, lifecycle callbacks fire first**.
         b = ActivityMusicPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
         setupImmersive()
-        b.bgBlur.setBackgroundColor(fallbackBg()) // 先铺纯色,避免进页面黑一下再出毛玻璃
+        b.bgBlur.setBackgroundColor(fallbackBg()) // paint a solid color first to avoid a black flash before the blur appears
         requestNotifPermission()
         wireViews()
 
         plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit)
         MusicUi.register(finisher)
 
-        // 无队列时载入"上次真正在放的那个队列"(不自动播):可能是 NOW,也可能是某个命名播放列表
-        // ——按 Prefs.lastQueueId 定位,而不是无脑固定取 NOW,否则上次在播命名列表时冷启动会跳错列表。
-        if (!MusicEngine.hasQueue()) {
-            val lastId = Prefs.lastQueueId(this)
-            val pl = lastId?.let { PlaylistStore.get(this, it) }
-                ?: PlaylistStore.get(this, Playlist.NOW)
-                ?: PlaylistStore.all(this).firstOrNull { it.tracks.isNotEmpty() }
-            if (pl != null && pl.tracks.isNotEmpty()) {
-                MusicEngine.play(this, pl, pl.lastIndex, pl.lastPosMs, autoPlay = false)
-            }
+        // While locked, music **keeps playing normally** (that's what distinguishes "lock" from
+        // "exit"); the buttons on the notification also keep working — but **entering this screen
+        // requires the master password**: playlists, which server each track came from, and
+        // "locate in file manager" all live behind it.
+        SecurityUi.gate(this) { restoreLastQueue() }
+    }
+
+    /**
+     * Loads "the queue that was actually being played last time" (no auto-play): could be NOW,
+     * could be some named playlist. Locates by [Prefs.lastQueueId], not by blindly taking NOW —
+     * otherwise a cold-start while a named list was being played jumps to the wrong list.
+     */
+    private fun restoreLastQueue() {
+        if (MusicEngine.hasQueue()) return
+        val lastId = Prefs.lastQueueId(this)
+        val pl = lastId?.let { PlaylistStore.get(this, it) }
+            ?: PlaylistStore.get(this, Playlist.NOW)
+            ?: PlaylistStore.all(this).firstOrNull { it.tracks.isNotEmpty() }
+        if (pl != null && pl.tracks.isNotEmpty()) {
+            MusicEngine.play(this, pl, pl.lastIndex, pl.lastPosMs, autoPlay = false)
         }
     }
 
-    /** 竖屏↔横屏切换:Activity 在 manifest 里声明了 configChanges,系统不会重建它,
-     *  要手动重新 inflate 对应方向的布局(横屏 layout-land 双栏)并重新走一遍绑定。
-     *  MusicEngine/播放状态都在单例里,重新 inflate 视图不影响播放。 */
+    /** Portrait ↔ landscape switch: the Activity declares configChanges in the manifest, so the
+     *  system does not recreate it — must manually re-inflate the layout for the new orientation
+     *  (landscape layout-land has two panes) and rebind everything. MusicEngine/playback state both
+     *  live in the singleton, so re-inflating views doesn't disturb playback. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         b = ActivityMusicPlayerBinding.inflate(layoutInflater)
@@ -115,14 +131,15 @@ class MusicPlayerActivity : AppCompatActivity() {
             b.cover.visibility = if (showingLyrics) View.GONE else View.VISIBLE
             b.lyrics.visibility = if (showingLyrics) View.VISIBLE else View.GONE
         }
-        // 新的 View 实例什么都还没画过,强制重新应用一遍封面/歌词/波形(缓存命中会立即出图,不会重新算)
+        // The new View instances have drawn nothing yet; force-reapply cover/lyrics/waveform
+        // (a cache hit renders immediately, no recompute)
         artForId = null; lyricsForId = null; waveForId = null
         bindTrack()
         updatePlayButton()
         updateModeButtons()
     }
 
-    /** 按钮/手势监听——onCreate 与横竖屏切换重新 inflate 后都要走一遍。 */
+    /** Button/gesture listeners — must be wired both in onCreate and after every re-inflate on orientation switch. */
     private fun wireViews() {
         b.btnDrawer.setOnClickListener { b.drawer.openDrawer(GravityCompat.START) }
         b.btnMore.setOnClickListener { overflowMenu() }
@@ -136,7 +153,8 @@ class MusicPlayerActivity : AppCompatActivity() {
         b.lyrics.onTap = { toggleView() }
         b.lyrics.onSeekTo = { MusicEngine.seekTo(it) }
         b.lyrics.onSwipe = { next -> if (next) MusicEngine.next() else MusicEngine.prev() }
-        // 下方 曲名/艺术家/专辑 区域点击也切换封面↔歌词(扩大切换热区;横屏双栏常显,toggleView 本身会忽略)
+        // Tapping the track title/artist/album row also toggles cover ↔ lyrics (expands the tap
+        // target; in landscape the two panes are always visible so toggleView itself no-ops)
         val toggle = View.OnClickListener { toggleView() }
         b.trackTitle.setOnClickListener(toggle)
         b.trackArtist.setOnClickListener(toggle)
@@ -147,11 +165,12 @@ class MusicPlayerActivity : AppCompatActivity() {
         b.wave.onSeek = { MusicEngine.seekTo(it) }
         b.wave.onPreview = { p -> seekPreview = p; if (p != null) b.tvPos.text = fmt(p) }
 
-        applyColors() // 新 inflate 的视图带的是 XML 里的纯白占位色,立刻换成按背景反推的那套
+        applyColors() // newly inflated views carry the pure-white placeholder color from XML; immediately swap to the bg-derived set
     }
 
-    /** 沉浸式:内容延伸到状态栏下(毛玻璃背景铺满),状态栏透明、图标用亮色;顶栏/控制区/抽屉
-     *  按系统栏 inset 让开,避免被状态栏/导航栏遮挡。 */
+    /** Immersive: content extends below the status bar (blurred background fills it), status bar is
+     *  transparent with light icons; top bar / controls / drawer inset around system bars so they
+     *  aren't covered by the status/navigation bar. */
     private fun setupImmersive() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -174,7 +193,8 @@ class MusicPlayerActivity : AppCompatActivity() {
         }
     }
 
-    /** 状态栏/导航栏图标的明暗跟随当前背景:毛玻璃不再压暗后,亮色封面上白图标会看不见。 */
+    /** Light/dark of status/nav bar icons follows the current background: now that the blur is no
+     *  longer darkened, white icons disappear on light covers. */
     private fun applySystemBarIcons() {
         val light = MusicTint.isLight(if (bgTone != 0) bgTone else fallbackBg())
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -183,7 +203,7 @@ class MusicPlayerActivity : AppCompatActivity() {
         }
     }
 
-    /** 跟随主界面「全屏」偏好隐藏/显示状态栏(与 MainActivity.applyFullscreen 一致)。 */
+    /** Hides/shows the status bar following the main "fullscreen" preference (matches MainActivity.applyFullscreen). */
     private fun applyFullscreen() {
         val controller =
             androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
@@ -198,13 +218,13 @@ class MusicPlayerActivity : AppCompatActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyFullscreen() // 系统可能在切换后恢复状态栏,重新应用
+        if (hasFocus) applyFullscreen() // the system may restore the status bar after a switch; re-apply
     }
 
-    /** 封面区左右滑切歌、单击封面↔歌词切换。 */
+    /** Swipe left/right on the cover to skip tracks; single-tap toggles cover ↔ lyrics. */
     private fun setupCenterGestures() {
         val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: android.view.MotionEvent): Boolean = true // 必须消费 DOWN,后续 MOVE/UP/fling 才会来
+            override fun onDown(e: android.view.MotionEvent): Boolean = true // must consume DOWN for subsequent MOVE/UP/fling to arrive
             override fun onSingleTapUp(e: android.view.MotionEvent): Boolean { toggleView(); return true }
             override fun onFling(
                 e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float,
@@ -217,7 +237,7 @@ class MusicPlayerActivity : AppCompatActivity() {
                 return false
             }
         })
-        // 歌词显示时交给 LyricsView 自己处理(滚动/点击);封面显示时走手势
+        // When lyrics are showing, hand them to LyricsView (scroll/tap); when cover is showing, gestures apply
         b.centerArea.setOnTouchListener { _, ev -> if (showingLyrics) false else detector.onTouchEvent(ev) }
     }
 
@@ -238,7 +258,7 @@ class MusicPlayerActivity : AppCompatActivity() {
         MusicEngine.saveResume()
     }
 
-    // ---- 绑定当前曲目 ----
+    // ---- Bind the current track ----
 
     private fun bindTrack() {
         val track = MusicEngine.currentTrack()
@@ -246,8 +266,10 @@ class MusicPlayerActivity : AppCompatActivity() {
         b.trackTitle.text = track?.title?.ifEmpty { null } ?: track?.name ?: ""
         b.trackArtist.text = track?.artist ?: ""
         b.trackAlbum.text = track?.album ?: ""
-        // 专辑名是元数据后台补全的,来得比界面晚。以前空专辑用 GONE,补全那一刻整块标题区
-        // 突然长高一行、下面的波形/操作栏跟着往下跳;改 INVISIBLE 一直占位,只是不显示文字。
+        // Album name is backfilled from metadata on a background thread, arriving after the UI.
+        // Previously an empty album was GONE, so at the moment of backfill the whole title block
+        // suddenly grew one line and the waveform/controls below jumped down; INVISIBLE keeps the
+        // slot reserved and just hides the text.
         b.trackAlbum.visibility = if (track?.album.isNullOrEmpty()) View.INVISIBLE else View.VISIBLE
         val count = MusicEngine.trackCount()
         b.tvIndex.text = if (count > 0) "${MusicEngine.currentIndex() + 1} / $count" else ""
@@ -265,17 +287,19 @@ class MusicPlayerActivity : AppCompatActivity() {
         loadWaveform(track.id, file)
     }
 
-    /** 封面 + 毛玻璃 + 主色调统一走 [MusicArt] 缓存:缓存命中瞬间上图(不再"黑一下"),
-     *  否则后台算一次,播放页/列表页共享复用。 */
+    /** Cover + blur + accent all go through the [MusicArt] cache: a hit renders the image
+     *  instantly (no more "black flash"), otherwise it's computed once in the background and
+     *  reused between the player page and the list page. */
     private fun loadArt(id: String, file: XFile) {
         if (artForId == id) return
         artForId = id
         val dark = isDark()
         val snap = MusicArt.snapshot(id, dark)
         if (snap != null) {
-            applyArt(snap) // 命中缓存:立即
+            applyArt(snap) // cache hit: apply immediately
         } else {
-            // 切到未缓存的新曲:先清掉上一首封面,避免加载新图前残留旧封面
+            // Switched to an uncached new track: clear the previous cover first so the old one
+            // doesn't linger while the new image loads
             showCoverPlaceholder()
         }
         MusicArt.load(this, id, file, dark) { s -> if (artForId == id && !isFinishing) applyArt(s) }
@@ -294,14 +318,16 @@ class MusicPlayerActivity : AppCompatActivity() {
         b.cover.setImageResource(R.drawable.ic_audio)
     }
 
-    /** fitCenter 会在非同比例容器里留出透明 letterbox,clipToOutline 圆角只能裁到 View
-     *  整个矩形边界,裁在透明留白上肉眼看不见。这里只把圆角画在图片实际落地的那个矩形
-     *  (fitCenter 缩放后居中的位置)上,而不是整个 View 边界——letterbox 部分仍保持
-     *  透明,图片本身的四角才会真正显示圆角,且不需要拉伸/裁切原图比例。 */
+    /** fitCenter leaves a transparent letterbox in a non-matching-aspect container, and clipToOutline's
+     *  rounded corner only clips to the View's full rectangle — clipping on transparent padding
+     *  is invisible to the eye. Here the rounded corners are drawn only on the rectangle the image
+     *  actually lands in (the centered position after fitCenter scaling), not on the whole View
+     *  bounds — the letterbox stays transparent, the image's own four corners actually show as
+     *  rounded, and no stretching/cropping of the original image's aspect ratio is needed. */
     private fun setRoundedCover(src: Bitmap) {
         val view = b.cover
         if (view.width <= 0 || view.height <= 0) {
-            view.setImageBitmap(src) // onMeasure 前先原样显示,布局完成后重画一次圆角版本
+            view.setImageBitmap(src) // display as-is before onMeasure; redraw the rounded version after layout
             view.post { if (!isFinishing) setRoundedCover(src) }
             return
         }
@@ -324,10 +350,12 @@ class MusicPlayerActivity : AppCompatActivity() {
     }
 
     /**
-     * 前景配色随封面变:文字/图标不再是硬编码纯白,而是由 [MusicTint] 从毛玻璃背景的
-     * 平均色反推——同色系、对比度按层级递减(曲名 7:1 / 艺术家 4.6:1 / 专辑·序号 3.1:1),
-     * 避免纯白压深色背景那种 13:1 的"两层贴在一起"的生硬感。
-     * 强调色(播放键、已播波形、当前歌词、激活的随机/循环/心形)仍来自封面主色调。
+     * Foreground colors follow the cover: text/icons are no longer hard-coded pure white but are
+     * derived by [MusicTint] from the blurred background's average color — same color family,
+     * contrast decreasing by layer (track title 7:1 / artist 4.6:1 / album·index 3.1:1), avoiding
+     * the harsh "two layers stuck together" feel of pure white on a dark background at 13:1.
+     * Accent color (play button, played waveform, current lyrics, active shuffle/repeat/heart)
+     * still comes from the cover's accent color.
      */
     private fun applyColors() {
         tint = MusicTint.of(if (bgTone != 0) bgTone else fallbackBg())
@@ -352,8 +380,10 @@ class MusicPlayerActivity : AppCompatActivity() {
         updateFavButton()
     }
 
-    /** 封面主色调(无则主题默认);顺带保证它压在当前背景上还看得见——背景本来就是同一张
-     *  封面糊出来的,主色调可能跟背景同色同亮度,不校正的话播放键/已播波形会糊进背景。 */
+    /** Cover accent color (or theme default); also ensures it stays visible on the current
+     *  background — the background is itself a blur of the same cover, so the accent may share
+     *  hue and brightness with the background, and without correction the play button / played
+     *  waveform would blend into the background. */
     private fun effAccent(): Int {
         val raw = if (accentColor != 0) accentColor
         else androidx.core.content.ContextCompat.getColor(this, R.color.accent)
@@ -383,7 +413,7 @@ class MusicPlayerActivity : AppCompatActivity() {
     }
 
     private fun toggleView() {
-        if (isLandscape()) return // 横屏封面+歌词双栏常显,没有"切换"这一说
+        if (isLandscape()) return // landscape cover+lyrics two panes always visible, no "toggle" to speak of
         showingLyrics = !showingLyrics
         b.cover.visibility = if (showingLyrics) View.GONE else View.VISIBLE
         b.lyrics.visibility = if (showingLyrics) View.VISIBLE else View.GONE
@@ -419,37 +449,37 @@ class MusicPlayerActivity : AppCompatActivity() {
         PlaylistStore.toggleFav(this, track)
         updateFavButton()
         plDrawer.reload()
-        MusicEngine.notifyFavChanged() // 通知栏心形跟着换实心
+        MusicEngine.notifyFavChanged() // notification heart switches to filled too
     }
 
-    // ---- overflow 菜单 ----
+    // ---- overflow menu ----
 
     private fun overflowMenu() {
         val track = MusicEngine.currentTrack() ?: return
         val file = MusicEngine.currentFile() ?: return
-        val items = arrayOf(
-            getString(R.string.music_info),
-            getString(R.string.music_send_to),
-            getString(R.string.music_share),
-            getString(R.string.music_locate),
-            if (PlaylistStore.isFav(this, track.id)) getString(R.string.music_remove_fav) else getString(R.string.music_add_fav),
-            getString(R.string.music_remove_from),
-        )
+        // Pair labels with actions; do not use fixed indices — "go to containing folder" is omitted
+        // for sources like document trees (see MusicDialogs.canLocate); once any item can be
+        // missing, a hardcoded when(which) goes out of alignment
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items += getString(R.string.music_info) to { MusicDialogs.showInfo(this, file) }
+        items += getString(R.string.music_send_to) to { MusicDialogs.sendToPlaylist(this, listOf(track)) }
+        items += getString(R.string.music_share) to { MusicDialogs.share(this, file); Unit }
+        if (MusicDialogs.canLocate(file)) {
+            items += getString(R.string.music_locate) to { MusicDialogs.locateInFileManager(this, file) }
+        }
+        val favLabel = if (PlaylistStore.isFav(this, track.id)) {
+            getString(R.string.music_remove_fav)
+        } else {
+            getString(R.string.music_add_fav)
+        }
+        items += favLabel to { toggleFav() }
+        items += getString(R.string.music_remove_from) to {
+            val id = MusicEngine.queueId
+            PlaylistStore.removeTrack(this, id, track.id)
+            MusicEngine.removeFromQueue(track.id)
+        }
         AlertDialog.Builder(this)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> MusicDialogs.showInfo(this, file)
-                    1 -> MusicDialogs.sendToPlaylist(this, listOf(track))
-                    2 -> MusicDialogs.share(this, file)
-                    3 -> MusicDialogs.locateInFileManager(this, file)
-                    4 -> toggleFav()
-                    5 -> {
-                        val id = MusicEngine.queueId
-                        PlaylistStore.removeTrack(this, id, track.id)
-                        MusicEngine.removeFromQueue(track.id)
-                    }
-                }
-            }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .show()
     }
 

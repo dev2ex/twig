@@ -14,11 +14,14 @@ import java.io.OutputStream
 import java.util.EnumSet
 
 /**
- * 一个 SFTP 连接的配置;[keyPath] 非空时用私钥认证([password] 兼作私钥口令)。
+ * Configuration for an SFTP connection; when [keyPath] is non-empty, public-key
+ * authentication is used ([password] doubles as the private-key passphrase).
  *
- * [knownHostKey] / [onLearnHostKey] 是主机密钥 TOFU(见 [SftpFileSystem.hostKeyVerifier]):
- * 空表示还没记住过,首次连上就把指纹交给 [onLearnHostKey] 让上层存起来;
- * 非空则必须匹配,不匹配拒绝连接。
+ * [knownHostKey] / [onLearnHostKey] handle host-key TOFU (see
+ * [SftpFileSystem.hostKeyVerifier]): empty means "not remembered yet" — the
+ * fingerprint is handed to [onLearnHostKey] on first connect so the layer above
+ * can persist it; non-empty means it must match, otherwise the connection is
+ * refused.
  */
 data class SftpConfig(
     val host: String,
@@ -28,64 +31,118 @@ data class SftpConfig(
     val keyPath: String = "",
     val knownHostKey: String = "",
     val onLearnHostKey: (String) -> Unit = {},
+    /**
+     * Optional directory the connection is rooted at ("/srv/media" or "srv/media");
+     * empty = the server root. Every path the UI sees is relative to it, and
+     * [SftpFileSystem.serverPath] translates back.
+     */
+    val path: String = "",
 )
 
 /**
- * SFTP 文件系统,基于 SSHJ。
+ * SFTP filesystem, based on SSHJ.
  *
- * 连接模型:SSH 握手开销大,保持单个持久连接、首次操作时懒连接;
- * SFTP 协议在单通道上按请求 ID 多路复用,流式读写与离散操作可并存。
- * 主机密钥走 TOFU(首次信任并记住,之后变了就拒绝),见 [hostKeyVerifier]。
+ * Connection model: SSH handshake is expensive, so we keep a single persistent
+ * connection and lazy-connect on the first operation; SFTP multiplexes requests
+ * by ID over one channel, so streaming reads/writes coexist with discrete
+ * operations. Host key verification follows TOFU (trust on first use, then
+ * reject on change), see [hostKeyVerifier].
  */
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
 ) : FileSystem {
 
-    override val displayName: String = "SFTP (${config.host})"
+    /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
+    private val base = config.path.trim('/')
+
+    override val displayName: String =
+        "SFTP (${config.host}" + (if (base.isEmpty()) "" else "/$base") + ")"
+
+    /**
+     * Visible path → the absolute path on the server. **Every SFTP request argument goes
+     * through here**, while everything that builds an [XFile] keeps the visible path.
+     *
+     * ★ It is `public` because SFTP paths escape this class: the git viewer runs
+     * `git -C <path>`, the terminal `cd`s into the current directory and remote commands
+     * get a workdir — all of them shell out over the same SSH connection and need the
+     * **real** path, not the one on screen. Anything that hands a path to a command must
+     * call this, or it will land in the wrong directory.
+     */
+    fun serverPath(visible: String): String {
+        if (base.isEmpty()) return visible
+        val rel = visible.trim('/')
+        return if (rel.isEmpty()) "/$base" else "/$base/$rel"
+    }
+
+    /**
+     * The inverse of [serverPath]: an absolute path on the server → the path the UI sees;
+     * null when it falls **outside** the connection root and so cannot be shown at all.
+     *
+     * Needed because paths also travel the other way: a command's output can name
+     * directories on the server (`git worktree list` prints absolute paths), and turning
+     * one back into an [XFile] means stripping the root again — without it the git
+     * viewer's worktree list has the right count and expands into nothing.
+     */
+    fun visiblePath(server: String): String? {
+        if (base.isEmpty()) return server
+        val rel = server.trim('/')
+        if (rel == base) return "/"
+        return if (rel.startsWith("$base/")) "/" + rel.removePrefix("$base/") else null
+    }
 
     @Volatile private var client: SFTPClient? = null
     @Volatile private var ssh: SSHClient? = null
 
     /**
-     * 主机密钥校验(TOFU:trust on first use)。
+     * Host-key verification (TOFU: trust on first use).
      *
-     * 原来用的是 SSHJ 的 `PromiscuousVerifier` —— 任何主机密钥都接受。注释写的理由是
-     * "文件管理器场景以可用性优先",但代价是局域网里的中间人可以无声接管每一条 SFTP
-     * 连接,而这条连接上跑着用户的密码认证、文件传输和远程命令执行。
+     * Previously this used SSHJ's `PromiscuousVerifier` — which accepts any host
+     * key. The comment said "in a file manager, availability comes first", but
+     * the cost is that a man-in-the-middle on the LAN can silently hijack every
+     * SFTP connection, on which the user's password auth, file transfers and
+     * remote command execution all run.
      *
-     * 现在:第一次连上就记住指纹(交给 [SftpConfig.onLearnHostKey] 持久化),之后每次
-     * 必须对得上;对不上直接拒绝并抛 [HostKeyChanged],由上层把两个指纹都显示出来让
-     * 用户判断——这正是主机密钥变更时**应该**打断用户的场合(要么服务器重装了,要么
-     * 正在被中间人劫持,两种情况用户都需要知道)。
+     * Now: the fingerprint is remembered on first connect (passed to
+     * [SftpConfig.onLearnHostKey] for persistence), and on every subsequent
+     * connect it must match; mismatch throws [HostKeyChanged], and the layer
+     * above surfaces both fingerprints so the user can decide — this is exactly
+     * the moment where a host-key change *should* interrupt the user (either
+     * the server was reinstalled, or someone is hijacking the connection;
+     * either way the user needs to know).
      *
-     * 没有做"要不要信任"的交互式弹框:那需要把一次阻塞 IO 拆成两段等 UI 回答,而
-     * :fs-network 是纯 JVM 模块、够不到 UI。用户确认服务器确实换了密钥时,走服务器
-     * 长按菜单里的"忘记主机密钥"重置即可。
+     * There is no interactive "do you trust this?" dialog: that requires
+     * splitting a blocking IO into two halves to wait for a UI answer, and
+     * :fs-network is a pure JVM module that cannot reach the UI. When the user
+     * confirms the server did legitimately change its key, the "Forget host key"
+     * entry in the server's long-press menu resets the state.
      */
     class HostKeyChanged(val expected: String, val actual: String) :
         RuntimeException("host key changed: expected $expected, got $actual")
 
-    // 不能写成 SAM lambda:HostKeyVerifier 有两个方法(verify + findExistingAlgorithms)
+    // Cannot be written as a SAM lambda: HostKeyVerifier has two methods (verify + findExistingAlgorithms)
     private fun hostKeyVerifier() = object : net.schmizz.sshj.transport.verification.HostKeyVerifier {
         override fun verify(hostname: String?, port: Int, key: java.security.PublicKey): Boolean {
             val fp = fingerprintOf(key)
             val known = config.knownHostKey
             return when {
-                known.isEmpty() -> { config.onLearnHostKey(fp); true } // 首次见到:记住
+                known.isEmpty() -> { config.onLearnHostKey(fp); true } // first encounter: remember it
                 known == fp -> true
                 else -> throw HostKeyChanged(known, fp)
             }
         }
 
-        /** 不限定算法(返回空表 = 没有已知偏好),交给 SSHJ 自己协商。 */
+        /** Do not constrain algorithms (returning an empty list = "no known preference"); let SSHJ negotiate. */
         override fun findExistingAlgorithms(hostname: String?, port: Int): List<String> = emptyList()
     }
 
     /**
-     * 与 `ssh-keygen -lf` 一致的 SHA256 指纹(SSH 线格式取 SHA-256、base64、去掉补位
-     * 的 '='),这样用户能拿它跟服务器上打印出来的那串直接对。
-     * 取不到 SSH 线格式时退回 X.509 编码的十六进制——只跟自己存的值比,够用。
+     * SHA-256 fingerprint matching `ssh-keygen -lf` (SSH wire format → SHA-256 →
+     * base64 → drop the '=' padding), so users can paste it next to the one
+     * their server prints and compare directly.
+     * When the SSH wire format cannot be obtained, falls back to hex of the
+     * X.509 encoding — it is only compared against our own stored value, so
+     * this is good enough.
      */
     private fun fingerprintOf(key: java.security.PublicKey): String = runCatching {
         val wire = net.schmizz.sshj.common.Buffer.PlainBuffer().putPublicKey(key).compactData
@@ -96,9 +153,11 @@ class SftpFileSystem(
     }
 
     /**
-     * 标准 base64 编码,不补 '='(ssh-keygen 的指纹就是这个形态)。
-     * 自己写:这是纯 JVM 模块,没有 `android.util.Base64`;而 `java.util.Base64`
-     * 要 API 26,minSdk 是 24 —— 与 `ResticCrypto.base64` 避开的是同一个坑。
+     * Standard base64 encoding without '=' padding (this is exactly the form
+     * ssh-keygen uses for fingerprints).
+     * Hand-rolled: this is a pure JVM module, no `android.util.Base64`;
+     * `java.util.Base64` needs API 26, minSdk is 24 — the same pitfall that
+     * `ResticCrypto.base64` sidesteps.
      */
     private fun b64(data: ByteArray): String {
         val alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -117,7 +176,7 @@ class SftpFileSystem(
         return sb.toString()
     }
 
-    /** 新建并认证一条 SSH 连接(不复用),供 SFTP 与终端各自独立使用。 */
+    /** Creates and authenticates a new SSH connection (not reused); used independently by SFTP and the terminal. */
     private fun newAuthedClient(): SSHClient {
         val s = SSHClient()
         s.addHostKeyVerifier(hostKeyVerifier())
@@ -135,7 +194,9 @@ class SftpFileSystem(
             }
         } catch (e: Exception) {
             runCatching { s.disconnect() }
-            // 主机密钥变了要单独报:这不是"连不上",是安全事件,得让用户看见两个指纹
+            // A changed host key must be reported separately — this is not a
+            // "connection failed", it is a security event, and the user must
+            // see both fingerprints
             generateSequence(e as Throwable) { it.cause }.filterIsInstance<HostKeyChanged>()
                 .firstOrNull()?.let {
                     throw FsException(
@@ -147,11 +208,12 @@ class SftpFileSystem(
                         it,
                     )
                 }
-            e.printStackTrace() // logcat W/System.err:twig 排查 e.message 为空的连接失败原因
+            e.printStackTrace() // logcat W/System.err:twig — debug connection failures with empty e.message
             throw FsException("SFTP connection failed: ${e::class.simpleName}: ${e.message}", e)
         }
-        // 心跳:移动网络/NAT 对空闲连接通常几分钟就静默掐断,应用切后台时尤其明显;
-        // 定时发心跳包续活连接,并能更快探测到真断线。
+        // Keepalive: mobile networks / NATs silently kill idle connections after a
+        // few minutes, especially when the app goes background; periodic keepalives
+        // keep the connection alive and let us detect a real disconnect faster.
         s.connection.keepAlive.keepAliveInterval = 15
         return s
     }
@@ -165,7 +227,7 @@ class SftpFileSystem(
         return s.newSFTPClient().also { client = it }
     }
 
-    /** 掉线后自动重连重试一次(息屏/网络休眠会断开持久连接)。 */
+    /** Auto-reconnect and retry once after a disconnect (screen-off / network sleep can drop the persistent connection). */
     private fun <T> retry(op: (SFTPClient) -> T): T = try {
         op(cli())
     } catch (e: Exception) {
@@ -174,14 +236,16 @@ class SftpFileSystem(
     }
 
     /**
-     * 在服务器上执行命令,返回 stdout;非零退出/失败返回 null。
-     * 复用 SFTP 的持久 SSH 连接(每条命令一个 exec 会话),掉线自动重连一次。
-     * 供上层跑远程 git 等服务端本地操作。
+     * Runs a command on the server, returning stdout; returns null on non-zero
+     * exit / failure.
+     * Reuses the SFTP persistent SSH connection (one exec session per command);
+     * auto-reconnects once on disconnect.
+     * Used by the layer above to run remote git and similar server-side operations.
      */
     fun exec(cmd: String): ByteArray? {
         repeat(2) { attempt ->
             try {
-                synchronized(this) { cli() } // 确保已连接
+                synchronized(this) { cli() } // ensure we are connected
                 val session = ssh?.startSession() ?: return null
                 try {
                     val c = session.exec(cmd)
@@ -193,26 +257,30 @@ class SftpFileSystem(
                 }
             } catch (e: Exception) {
                 if (attempt == 1) return null
-                synchronized(this) { disconnect() } // 重连后再试一次
+                synchronized(this) { disconnect() } // reconnect and try again
             }
         }
         return null
     }
 
-    /** 一次远程命令的完整结果(退出码 + 两路输出)。 */
+    /** Complete result of a remote command (exit code + both output streams). */
     class ExecResult(val code: Int, val stdout: String, val stderr: String) {
         val ok: Boolean get() = code == 0
     }
 
     /**
-     * 执行一条命令,把退出码与 stdout/stderr 都带回来——[exec] 只在成功时给 stdout,
-     * 用于能力探测够用,但给用户跑脚本必须能看到失败原因。
+     * Runs a command and brings back the exit code along with stdout and stderr —
+     * [exec] only returns stdout on success, which is enough for capability
+     * detection but not for user-facing script execution where the failure
+     * reason must be visible.
      *
-     * 两点与 [exec] 不同:
-     * - **用独立连接**(同 [openShell]):用户脚本可能跑很久,不该占着浏览文件那条
-     *   共享连接,更不该在传大文件时互相拖累。
-     * - **stdout/stderr 各起一条线程读**:单线程先读完 stdout 再读 stderr,对面
-     *   写满 stderr 缓冲区就会双方僵住。
+     * Two differences from [exec]:
+     * - **Uses a dedicated connection** (same as [openShell]): user scripts may
+     *   run for a long time, so they must not occupy the shared connection used
+     *   for browsing files, nor stall each other when large files are being moved.
+     * - **Reads stdout and stderr on separate threads**: with a single thread
+     *   reading stdout first then stderr, the server can fill its stderr buffer
+     *   and both sides deadlock.
      */
     fun execFull(cmd: String, timeoutSec: Long = 900): ExecResult {
         val c = newAuthedClient()
@@ -241,9 +309,12 @@ class SftpFileSystem(
     }
 
     /**
-     * 一条交互式 shell 会话(带 PTY,独立 SSH 连接),供 SSH 终端使用。
-     * 所有出站操作(stdin 数据 / 窗口尺寸变更)经同一把锁串行化:
-     * 并发写会搅乱加密流计数器,服务器 MAC 校验失败直接断 TCP(裸 EOF)。
+     * One interactive shell session (with PTY, dedicated SSH connection), for the
+     * SSH terminal.
+     * All outbound operations (stdin data / window-size changes) are serialized
+     * through the same lock: concurrent writes scramble the cipher stream
+     * counters, the server's MAC check fails, and the TCP connection is dropped
+     * (raw EOF).
      */
     class ShellSession internal constructor(
         private val ownClient: SSHClient,
@@ -256,7 +327,7 @@ class SftpFileSystem(
 
         val stdout: InputStream get() = shell.inputStream
 
-        /** 写入远端 stdin(串行化)。 */
+        /** Writes to remote stdin (serialized). */
         fun write(buf: ByteArray, off: Int, len: Int) {
             synchronized(writeLock) {
                 shell.outputStream.write(buf, off, len)
@@ -265,10 +336,14 @@ class SftpFileSystem(
         }
 
         /**
-         * 同步远端 PTY 尺寸(串行化;尺寸没变不发)。返回是否真的发出了 window-change。
-         * ★ 不得在 Android 主线程调用:SSHJ 写 socket 前已推进包序号/加密流状态,
-         * NetworkOnMainThreadException 抛出后连接即「中毒」,下一个包必断。
-         * 失败不静默——历史上吞掉该异常导致根因排查绕了两大圈。
+         * Synchronizes the remote PTY size (serialized; no-op when the size
+         * is unchanged). Returns whether a window-change was actually sent.
+         * ★ Must not be called from the Android main thread: SSHJ advances
+         * packet sequence / cipher-stream state before writing to the socket,
+         * so once NetworkOnMainThreadException is thrown the connection is
+         * "poisoned" and the next packet is guaranteed to fail.
+         * Failures are not silenced — historically swallowing this exception
+         * sent the root-cause investigation on a wild goose chase twice over.
          */
         fun resize(cols: Int, rows: Int): Boolean {
             synchronized(writeLock) {
@@ -287,26 +362,29 @@ class SftpFileSystem(
         val isOpen: Boolean get() = shell.isOpen
 
         /**
-         * 远端 shell 的退出码;null = 没收到 exit-status。
-         * `getExitStatus()` 声明在 `Session.Command` 上而不是 `Session`,不过
-         * 实现类 `SessionChannel` 同时实现了 Session/Command/Shell,cast 即可取到。
+         * Exit code of the remote shell; null = no exit-status received.
+         * `getExitStatus()` is declared on `Session.Command`, not on `Session`,
+         * but the implementation class `SessionChannel` implements
+         * Session/Command/Shell simultaneously, so a cast reaches it.
          */
         val exitStatus: Int? get() = runCatching {
             (session as? net.schmizz.sshj.connection.channel.direct.Session.Command)?.exitStatus
         }.getOrNull()
 
         /**
-         * 远端 shell 是不是**自己正常退出**的(`exit` / Ctrl+D),而不是连接断了——
-         * 两者在 stdout 上都只表现为 EOF,得靠 SSH 协议层区分,否则正常退出也会
-         * 被当掉线自动重连。
+         * Whether the remote shell **exited on its own** (`exit` / Ctrl+D), as
+         * opposed to the connection being dropped — both look like EOF on stdout,
+         * so we must rely on the SSH protocol layer to tell them apart; otherwise
+         * a clean exit would also trigger the disconnect auto-reconnect.
          *
-         * 判据两条,满足其一即算正常:
-         * - 收到了 `exit-status`(channel 正常关闭时服务端会发这条请求);
-         * - 传输层还连着——channel 没了但 TCP/SSH transport 活着,只可能是远端把
-         *   这条 shell 关了;真掉线的话 transport 一定也一起没了。
+         * Two criteria; either one means "clean":
+         * - We received `exit-status` (the server sends this on normal channel close);
+         * - The transport is still up — channel gone but TCP/SSH transport alive
+         *   can only mean the remote end closed this shell; a real disconnect
+         *   would take the transport with it.
          *
-         * stdout 的 EOF 可能早于 `exit-status` 到达,所以先等 channel 真正关闭
-         * (最多 [waitMs]),别在消息还在路上时就下结论。
+         * stdout's EOF may arrive before `exit-status`, so wait for the channel
+         * to actually close (up to [waitMs]) before drawing a conclusion.
          */
         fun exitedCleanly(waitMs: Long = 2000): Boolean {
             runCatching { session.join(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
@@ -321,10 +399,11 @@ class SftpFileSystem(
     }
 
     /**
-     * 开一条交互式 shell(xterm-256color PTY)。用**独立的 SSH 连接**,
-     * 与 SFTP 文件传输隔离——共用一条 transport 时终端输入会触发
-     * "Broken transport EOF"(两个 channel 并发读写被服务器踢),
-     * 且传大文件不会卡住终端。
+     * Opens an interactive shell (xterm-256color PTY). Uses a **dedicated SSH
+     * connection**, isolated from SFTP file transfer — sharing one transport
+     * makes terminal input trigger "Broken transport EOF" (the server kicks
+     * concurrent channel reads/writes) and large file transfers can stall the
+     * terminal.
      */
     fun openShell(cols: Int, rows: Int): ShellSession {
         val c = newAuthedClient()
@@ -343,7 +422,7 @@ class SftpFileSystem(
     override fun resolve(path: String): XFile = XFile(scheme, path, isDir = true)
 
     override fun list(dir: XFile): List<XFile> =
-        retry { it.ls(dir.path) }
+        retry { it.ls(serverPath(dir.path)) }
             .map { info ->
                 XFile(
                     scheme = scheme,
@@ -356,7 +435,7 @@ class SftpFileSystem(
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
 
     override fun openInput(file: XFile): InputStream {
-        val rf = retry { it.open(file.path) }
+        val rf = retry { it.open(serverPath(file.path)) }
         return object : FilterInputStream(rf.RemoteFileInputStream()) {
             override fun close() {
                 try { super.close() } finally { runCatching { rf.close() } }
@@ -364,16 +443,16 @@ class SftpFileSystem(
         }
     }
 
-    // SFTP 支持按偏移定位读(RemoteFile.read(offset,...)),不是 O(位置) 的重开跳过,
-    // 所以缩略图对 MKV/mp4 可走"精确解析容器 + 只下必要片段"的路径(否则退化到只取
-    // 时间 0 = 黑图)。
+    // SFTP supports positioned reads (RemoteFile.read(offset,...)), not O(position) reopen-and-skip,
+    // so thumbnails for MKV/mp4 can take the "parse the container precisely + download
+    // only the necessary fragments" path (otherwise degrading to time 0 = a black frame).
     override fun randomAccessEfficient(): Boolean = true
 
     override fun openRandom(file: XFile): RandomSource {
-        val rf = retry { it.open(file.path) }
+        val rf = retry { it.open(serverPath(file.path)) }
         return object : RandomSource {
             override fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int =
-                rf.read(position, buffer, offset, length) // SSHJ:返回读到字节数,EOF 返回 -1
+                rf.read(position, buffer, offset, length) // SSHJ: returns bytes read, EOF returns -1
             override fun length(): Long = file.size
             override fun close() { runCatching { rf.close() } }
         }
@@ -386,7 +465,7 @@ class SftpFileSystem(
             EnumSet.of(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)
         }
         var chunk = FALLBACK_WRITE_CHUNK
-        val rf = retry { c -> c.open(file.path, modes).also { chunk = writeChunk(c, it) } }
+        val rf = retry { c -> c.open(serverPath(file.path), modes).also { chunk = writeChunk(c, it) } }
         val limit = chunk
         return object : FilterOutputStream(rf.RemoteFileOutputStream()) {
             override fun write(b: ByteArray, off: Int, len: Int) {
@@ -406,17 +485,22 @@ class SftpFileSystem(
     }
 
     /**
-     * 一次 SFTP WRITE 能带多少数据。
+     * How much data one SFTP WRITE can carry.
      *
-     * ★ 必须自己切块:SSHJ 的 `RemoteFileOutputStream.write(buf,off,len)` 把整个 len
-     * 原样塞进**一个** SFTP WRITE 包(不像读那边会自然短读),而 OpenSSH `sftp-server`
-     * 的 `SFTP_MAX_MSG_LENGTH` 是 256KB,超了不是回错误码而是
-     * `error("bad message") + exit(11)` —— 子系统进程直接没,客户端下一次读包报
-     * `EOF while reading packet`,看着像掉线。`CopyEngine.pipe` 的缓冲 0.21.1 从 64KB
-     * 提到 1MB(为 SMB 提速)后,复制到 SFTP 的文件只要超过 1MB 就必挂,小文件反而正常。
+     * ★ We must chunk ourselves: SSHJ's `RemoteFileOutputStream.write(buf,off,len)`
+     * stuffs the whole `len` into **one** SFTP WRITE packet (unlike reads, which
+     * naturally short-read), while OpenSSH `sftp-server`'s `SFTP_MAX_MSG_LENGTH`
+     * is 256 KB — exceeding it doesn't return an error code, it just does
+     * `error("bad message") + exit(11)` — the subsystem process is gone, and
+     * the next read on the client reports `EOF while reading packet`, which
+     * looks exactly like a disconnect. After `CopyEngine.pipe`'s buffer was
+     * raised from 64 KB to 1 MB in 0.21.1 (to speed up SMB), any file larger
+     * than 1 MB copied to SFTP would reliably fail; small files were fine.
      *
-     * 取值同 SSHJ 官方上传器(`SFTPFileTransfer.Uploader`):通道协商的远端最大包
-     * 减去 SFTP 请求头开销;OpenSSH 通常是 32KB。上下界兜底防服务器报离谱值。
+     * The chosen value mirrors SSHJ's official uploader (`SFTPFileTransfer.Uploader`):
+     * channel-negotiated remote max packet size minus the SFTP request header
+     * overhead; OpenSSH is usually 32 KB. Upper and lower bounds guard against
+     * servers reporting nonsense values.
      */
     private fun writeChunk(c: SFTPClient, rf: net.schmizz.sshj.sftp.RemoteFile): Int = runCatching {
         (c.sftpEngine.subsystem.remoteMaxPacketSize - rf.outgoingPacketOverhead)
@@ -425,33 +509,34 @@ class SftpFileSystem(
 
     override fun mkdir(parent: XFile, name: String): XFile {
         val path = join(parent.path, name)
-        retry { it.mkdir(path) }
+        retry { it.mkdir(serverPath(path)) }
         return XFile(scheme, path, isDir = true)
     }
 
     override fun delete(file: XFile) {
         if (file.isDir) {
             for (child in list(file)) delete(child)
-            retry { it.rmdir(file.path) }
+            retry { it.rmdir(serverPath(file.path)) }
         } else {
-            retry { it.rm(file.path) }
+            retry { it.rm(serverPath(file.path)) }
         }
     }
 
     override fun rename(file: XFile, newName: String): XFile {
         val to = join(file.parentPath, newName)
-        retry { it.rename(file.path, to) }
+        retry { it.rename(serverPath(file.path), serverPath(to)) }
         return file.copy(path = to)
     }
 
     override fun exists(file: XFile): Boolean =
-        runCatching { cli().statExistence(file.path) != null }.getOrDefault(false)
+        runCatching { cli().statExistence(serverPath(file.path)) != null }.getOrDefault(false)
 
     override fun setModifiedTime(file: XFile, time: Long): Boolean = runCatching {
         val sec = time / 1000
-        // SFTPv3 的 atime/mtime 是一对,协议里没有"只改 mtime"这回事;
-        // 没有更好的 atime 来源,就让它跟着 mtime 一起走
-        retry { it.setattr(file.path, net.schmizz.sshj.sftp.FileAttributes.Builder().withAtimeMtime(sec, sec).build()) }
+        // SFTPv3's atime/mtime come as a pair, and the protocol has no notion of
+        // "change mtime only"; with no better source for atime, just move it
+        // along with mtime
+        retry { it.setattr(serverPath(file.path), net.schmizz.sshj.sftp.FileAttributes.Builder().withAtimeMtime(sec, sec).build()) }
         true
     }.getOrDefault(false)
 
@@ -468,7 +553,7 @@ class SftpFileSystem(
     companion object {
         const val SCHEME = "sftp"
 
-        /** 问不到协商值时的保守块大小(OpenSSH 的通道包上限就是 32KB)。 */
+        /** Conservative chunk size when the negotiated value is unavailable (OpenSSH's channel packet limit is 32 KB). */
         private const val FALLBACK_WRITE_CHUNK = 32 * 1024 - 1024
 
         init {
@@ -476,10 +561,12 @@ class SftpFileSystem(
         }
 
         /**
-         * Android 系统自带的 "BC" 是阉割版(缺 X25519/EdDSA 等),SSHJ 探测到它就不再
-         * 注册依赖里带的完整版 BouncyCastle,导致 curve25519-sha256 握手报
-         * "no such algorithm x25519"。这里把系统假 BC 顶掉换成完整版(追加注册,
-         * 不抢 TLS 等其他算法的首选 Provider)。
+         * The "BC" bundled with Android is a stripped-down build (missing X25519/EdDSA
+         * etc.), so once SSHJ detects it, it stops registering the full BouncyCastle
+         * shipped in our dependencies, and the curve25519-sha256 handshake fails with
+         * "no such algorithm x25519". Here we evict the fake system BC and replace it
+         * with the full version (append-registered, not stealing the preferred-provider
+         * slot for TLS and other algorithms).
          */
         private fun ensureFullBouncyCastle() {
             runCatching {

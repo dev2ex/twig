@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 左右两栏。白色:diff 顶栏上的图标都是直接画成白的,不在代码里染 -->
+<!-- Left and right columns. White: the icons on the diff top bar are drawn white directly, not tinted in code -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

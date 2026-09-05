@@ -7,12 +7,15 @@ import com.twig.core.XFile
 import java.io.OutputStream
 
 /**
- * 共享服务的请求分发:同一棵 [ShareRoot] 上同时长着两张脸——
- *  - **浏览器**走 GET/POST,拿到的是 [WebUi] 渲染的 HTML(目录列表 + 拖拽上传);
- *  - **WebDAV 客户端**走 PROPFIND/PUT/MKCOL/MOVE/COPY/DELETE/LOCK 那一套。
+ * Request dispatch for the share service: a single [ShareRoot] simultaneously
+ * wears two faces —
+ *  - **browsers** talk GET/POST and receive the HTML rendered by [WebUi]
+ *    (directory listing + drag-and-drop upload);
+ *  - **WebDAV clients** talk the PROPFIND/PUT/MKCOL/MOVE/COPY/DELETE/LOCK set.
  *
- * 只读模式下所有会改动文件的方法统一 403,判定集中在 [requireWrite] 一处,
- * 不散落到各个 handler 里(漏一个就是"只读"没关严)。
+ * In read-only mode every method that would change a file is uniformly 403;
+ * the check is centralised in [requireWrite] and not scattered across each
+ * handler (one miss and "read-only" is no longer watertight).
  */
 class ShareHandler(
     private val ctx: Context,
@@ -35,9 +38,10 @@ class ShareHandler(
             "COPY" -> requireWrite(res) { moveOrCopy(req, res, move = false) }
             "LOCK" -> requireWrite(res) { lock(res) }
             "UNLOCK" -> requireWrite(res) { res.send(204) }
-            // 属性写不落地(没有可存元数据的地方),但必须答 207 而不是 501:
-            // macOS Finder 复制文件时会紧跟一个 PROPPATCH 写 mtime,501 会让它判定整个
-            // 复制失败并把刚上传好的文件删掉
+            // PROPPATCH does not write to disk (no place to store metadata),
+            // but it must answer 207, not 501: when macOS Finder copies a file
+            // it follows up with a PROPPATCH to set mtime; 501 makes it decide
+            // the whole copy failed and delete the file it just uploaded.
             "PROPPATCH" -> requireWrite(res) { proppatch(req, res) }
             else -> res.send(405, extra = listOf("Allow: $ALLOW"))
         }
@@ -47,14 +51,15 @@ class ShareHandler(
         if (cfg.readOnly) res.sendText(403, "Read-only share") else body()
     }
 
-    // ---- 基础 ----
+    // ---- Basics ----
 
     private fun options(res: HttpResponder) {
         res.send(
             200,
             extra = listOf(
-                // DAV: 2 = 支持 LOCK。macOS Finder 与 Windows 资源管理器都只肯往
-                // class 2 的服务器上写东西,哪怕锁本身是走过场的(见 [lock])。
+                // DAV: 2 = LOCK is supported. macOS Finder and Windows
+                // Explorer will only write to a class-2 server, even though
+                // the lock itself is purely token (see [lock]).
                 "DAV: 1, 2",
                 "Allow: $ALLOW",
                 "MS-Author-Via: DAV",
@@ -62,14 +67,14 @@ class ShareHandler(
         )
     }
 
-    /** 找不到就 404;顺带把"路径非法(含 ..)"也算进去。 */
+    /** 404 if not found; this also covers "illegal path (contains ..)". */
     private fun target(req: HttpRequest, res: HttpResponder): XFile? {
         val f = root.resolve(req.path)
         if (f == null) res.sendText(404, "Not found")
         return f
     }
 
-    // ---- 读 ----
+    // ---- Read ----
 
     private fun get(req: HttpRequest, res: HttpResponder) {
         if (root.isVirtualRoot(req.path)) {
@@ -78,7 +83,8 @@ class ShareHandler(
         }
         val file = target(req, res) ?: return
         if (file.isDir) {
-            // 目录 URL 不以 '/' 结尾时先重定向:否则页面里的相对链接会挂到上一级去
+            // When a directory URL does not end with '/', redirect first;
+            // otherwise the page's relative links will point one level up
             if (!req.rawPath.endsWith("/")) {
                 res.send(301, extra = listOf("Location: ${req.rawPath}/"))
                 return
@@ -89,20 +95,22 @@ class ShareHandler(
         sendFile(req, res, file)
     }
 
-    /** 单个文件下载,支持 Range(播放器拖进度、下载工具续传都要它)。 */
+    /** Single-file download, with Range support (player seek bars and downloader resume both need it). */
     private fun sendFile(req: HttpRequest, res: HttpResponder, file: XFile) {
         val fs = FsRegistry.of(file)
         val size = file.size
         val type = Mime.of(file.name)
         val extra = ArrayList<String>()
         if (file.lastModified > 0) extra += "Last-Modified: " + HttpResponder.httpDate(file.lastModified)
-        // 文件名带非 ASCII 时用 RFC 5987 的 filename*,浏览器才不会把中文名存成乱码
+        // When the file name contains non-ASCII, use RFC 5987's filename* so
+        // the browser does not save the Chinese name as mojibake
         extra += "Content-Disposition: inline; filename*=UTF-8''" + HttpServer.encodeSegment(file.name)
 
         val range = parseRange(req.header("range"), size)
         if (range == null) {
-            // size <= 0 = 该来源报不出长度(某些压缩包条目/虚拟文件):不发 Content-Length,
-            // 写完关连接([HttpResponder.sendStream] 会自己把 keep-alive 关掉)
+            // size <= 0 = this source cannot report a length (some archive
+            // entries / virtual files): omit Content-Length and close the
+            // connection when done (sendStream will turn keep-alive off itself)
             res.sendStream(200, type, if (size > 0) size else -1L, extra) { out ->
                 fs.openInput(file).use { copy(it, out, Long.MAX_VALUE) }
             }
@@ -119,8 +127,10 @@ class ShareHandler(
             if (start == 0L) {
                 fs.openInput(file).use { copy(it, out, len) }
             } else {
-                // 定位读:SMB/WebDAV/SFTP/FTP 都实现了高效 openRandom,默认实现也能用
-                // (重开跳过),总之比自己在这儿 skip 强
+                // Positional read: SMB / WebDAV / SFTP / FTP all implement an
+                // efficient openRandom, and the default implementation is also
+                // usable (reopen and skip) — either way it is better than
+                // skipping here ourselves
                 fs.openRandom(file).use { src ->
                     val buf = ByteArray(BUF)
                     var pos = start
@@ -148,20 +158,22 @@ class ShareHandler(
     }
 
     /**
-     * 解析 Range 头。返回 null = 没有 Range(整发);返回 first<0 = 区间不合法(416)。
-     * 只支持单区间——多区间要 multipart/byteranges,实际没有客户端拿它下文件。
+     * Parse the Range header. null = no Range (send the whole file); first<0
+     * = the range is invalid (416). Only single ranges are supported —
+     * multi-range responses would need multipart/byteranges, and no actual
+     * client uses that to download files.
      */
     private fun parseRange(header: String?, size: Long): Pair<Long, Long>? {
         val h = header?.trim() ?: return null
         if (!h.startsWith("bytes=")) return null
-        if (size <= 0) return null // 长度未知就没法算区间,当整发处理
+        if (size <= 0) return null // length unknown, so the range cannot be computed — treat as a full send
         val spec = h.removePrefix("bytes=").substringBefore(',').trim()
         val dash = spec.indexOf('-')
         if (dash < 0) return -1L to -1L
         val startStr = spec.substring(0, dash).trim()
         val endStr = spec.substring(dash + 1).trim()
         return if (startStr.isEmpty()) {
-            // "bytes=-N" = 最后 N 字节
+            // "bytes=-N" = the last N bytes
             val n = endStr.toLongOrNull() ?: return -1L to -1L
             if (n <= 0) -1L to -1L else maxOf(0L, size - n) to size - 1
         } else {
@@ -181,7 +193,8 @@ class ShareHandler(
 
         val base = req.rawPath.trimEnd('/')
         if (root.isVirtualRoot(req.path)) {
-            // 虚拟根本身没有 XFile,自己拼一条 collection,子项是各来源
+            // The virtual root itself has no XFile; assemble a collection
+            // entry by hand, with the sources as children
             appendResponse(sb, hrefOf(base, dir = true), "/", true, 0, 0)
             if (depth > 0) {
                 for (s in root.sources()) {
@@ -237,8 +250,9 @@ class ShareHandler(
     }
 
     /**
-     * 目录的 href 必须带尾斜杠,不少客户端靠它判断是不是集合。
-     * [rawPath] 必须**已经是编码过的**(来自 [HttpRequest.rawPath] 或 encodeSegment)。
+     * A directory's href must end with a trailing slash — plenty of clients
+     * use it to tell a collection from a non-collection. [rawPath] must
+     * **already be encoded** (from [HttpRequest.rawPath] or encodeSegment).
      */
     private fun hrefOf(rawPath: String, dir: Boolean): String {
         val p = "/" + rawPath.trim('/')
@@ -284,7 +298,8 @@ class ShareHandler(
     private fun delete(req: HttpRequest, res: HttpResponder) {
         val file = target(req, res) ?: return
         if (ShareRoot.segments(req.path).isNullOrEmpty()) {
-            // 共享根自己不能删——那是用户选的共享范围,不是共享内容
+            // The share root itself cannot be deleted — that is the user's
+            // chosen share scope, not the share's content
             res.sendText(403, "Cannot delete the share root")
             return
         }
@@ -295,10 +310,13 @@ class ShareHandler(
     }
 
     /**
-     * MOVE / COPY。目标由 `Destination:` 头给(绝对 URL),必须落在同一个共享里。
+     * MOVE / COPY. The destination comes from the `Destination:` header (an
+     * absolute URL) and must land inside the same share.
      *
-     * 同目录改名走 `rename`,跨目录先试同来源的 `moveWithin`,都不行才落到
-     * [CopyEngine]——它本来就是跨来源流式搬运的那条路,"从 SMB 移到本地"这种组合零成本。
+     * Same-directory renames go through `rename`; cross-directory operations
+     * first try same-source `moveWithin`, and only fall through to
+     * [CopyEngine] if that fails — and [CopyEngine] is the cross-source
+     * streaming mover anyway, so "from SMB to local" comes at zero cost.
      */
     private fun moveOrCopy(req: HttpRequest, res: HttpResponder, move: Boolean) {
         val src = target(req, res) ?: return
@@ -319,16 +337,21 @@ class ShareHandler(
         val newName = destSegs.last()
         val sameParent = src.scheme == destParent.scheme && src.parentPath == destParent.path
 
-        // ★ 自身检查必须排在"覆盖已存在目标"**前面**:源与目标是同一个路径时,
-        // 下面那句为覆盖做的 delete 删掉的正是源文件,等走到后面再判 403 已经晚了
-        // (2026-08-10 `ShareServerTest.COPY 到自身被拒绝` 就是这么暴露出来的)。
+        // ★ The self-check must come **before** "overwrite the existing
+        // destination": when the source and destination are the same path,
+        // the delete below to clear the existing target would actually
+        // delete the source file, and the 403 would arrive too late (this
+        // is how the 2026-08-10 `ShareServerTest.COPY to self is rejected`
+        // test came to be written).
         if (sameParent && newName == src.name) {
             res.sendText(403, "Source and destination are the same"); return
         }
 
         val existing = root.resolve(destPath)
         if (existing != null) {
-            // WebDAV 默认 Overwrite: T;显式 F 时目标已存在必须答 412 而不是覆盖
+            // WebDAV defaults to Overwrite: T; explicit F means the
+            // destination already exists, so we must answer 412 rather than
+            // overwrite
             if (req.header("overwrite")?.trim()?.uppercase() == "F") {
                 res.sendText(412, "Destination exists"); return
             }
@@ -341,21 +364,28 @@ class ShareHandler(
                 FsRegistry.of(src).moveWithin(src, destParent, newName) -> Unit
             else -> transferAs(src, destParent, newName, move)
         }
-        root.invalidateAll() // 两端目录都可能变,逐个失效不如整棵丢掉省心
+        root.invalidateAll() // either side's directory may have changed; dropping the whole cache is easier than invalidating per-entry
         res.send(if (existing != null) 204 else 201)
     }
 
     /**
-     * 把 [src] 搬到 `destParent/newName` —— 关键是**目标名可以和源名不同**。
+     * Move [src] to `destParent/newName` — the key thing is that the
+     * destination name can differ from the source name.
      *
-     * 不能直接用 `CopyEngine.transfer(listOf(src), destParent, move)`:那个接口的语义是
-     * "复制进这个目录、保持原名",改名只能事后补一次 rename。而 WebDAV 的 COPY 完全允许
-     * 目标就在源所在的目录里(`COPY /a.txt → /b.txt`),那时 transfer 会先把文件复制到
-     * 它自己身上,再把**源**改成新名字——源文件当场消失。2026-08-10 的
-     * `ShareServerTest.COPY 留下源文件` 就是踩在这儿。
+     * `CopyEngine.transfer(listOf(src), destParent, move)` cannot be used
+     * directly: its semantics is "copy into this directory, keep the
+     * original name", and a rename would have to be a separate follow-up.
+     * But WebDAV COPY completely allows the destination to sit next to the
+     * source (`COPY /a.txt → /b.txt`), in which case transfer would first
+     * copy the file onto itself and then rename the **source** to the new
+     * name — the source file would vanish on the spot. The 2026-08-10
+     * `ShareServerTest.COPY leaves the source` test stepped right on that.
      *
-     * 所以文件直接流式写到确切的目标条目上;目录先建出目标目录、再把子项整体搬进去,
-     * 跨来源的部分仍然交给 [CopyEngine](它才是处理递归与冲突的那一层)。
+     * So for files, write straight to the exact destination entry; for
+     * directories, create the destination directory first and then move its
+     * children across — still going through [CopyEngine] for the
+     // cross-source parts (it is the layer that handles recursion and
+     // conflicts).
      */
     private fun transferAs(src: XFile, destParent: XFile, newName: String, move: Boolean) {
         val srcFs = FsRegistry.of(src)
@@ -381,7 +411,7 @@ class ShareHandler(
         if (move) srcFs.delete(src)
     }
 
-    /** 从 Destination 头里取出本服务内部的路径;指向别的主机时返回 null。 */
+    /** Extract this service's internal path from the Destination header; returns null if it points at a different host. */
     private fun destinationPath(req: HttpRequest): String? {
         val raw = req.header("destination")?.trim() ?: return null
         val path = if (raw.startsWith("http://") || raw.startsWith("https://")) {
@@ -393,12 +423,15 @@ class ShareHandler(
     }
 
     /**
-     * 假锁:记下 token 就答应,不做任何互斥。
+     * A fake lock: just note down the token and agree, no actual mutual exclusion.
      *
-     * 真做锁要维护带超时的锁表、每个写方法校验 If 头,而这个服务的使用场景是
-     * "一台手机 + 局域网里的自己"——冲突概率约等于零,代价却是一整套状态机。
-     * 但 **DAV class 2 不能不声明**:macOS Finder / Windows 资源管理器发现不支持 LOCK
-     * 就整个以只读方式挂载,写入功能等于白做。
+     * A real lock would require a timeout-aware lock table and every write
+     * method checking the If header, while the use case for this service
+     * is "one phone + the user themselves on the LAN" — the collision
+     * probability is essentially zero, but the cost would be an entire
+     * state machine. However, **DAV class 2 must be advertised**: when
+     * macOS Finder / Windows Explorer find that LOCK is not supported, the
+     * whole share mounts as read-only and the write feature is wasted.
      */
     private fun lock(res: HttpResponder) {
         val token = "opaquelocktoken:twig-" + java.util.UUID.randomUUID()
@@ -423,7 +456,7 @@ class ShareHandler(
         )
     }
 
-    /** 属性写不落地,但要按 207 逐条答"成功",否则客户端会判定整个操作失败。 */
+    /** PROPPATCH does not persist, but it must answer 207 with each prop "succeeded" — otherwise the client treats the whole operation as failed. */
     private fun proppatch(req: HttpRequest, res: HttpResponder) {
         val body = """
             <?xml version="1.0" encoding="utf-8"?>
@@ -455,7 +488,7 @@ class ShareHandler(
     }
 }
 
-/** 扩展名 → MIME,直接问系统那份表,不自己维护。 */
+/** Extension → MIME, asking the system's own table rather than maintaining our own. */
 object Mime {
     fun of(name: String): String {
         val ext = name.substringAfterLast('.', "").lowercase()

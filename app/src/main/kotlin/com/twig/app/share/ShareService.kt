@@ -15,23 +15,27 @@ import com.twig.app.MainActivity
 import com.twig.app.R
 
 /**
- * 共享会话的进程内单例:HTTP 服务 + 发现应答器 + 各种"别被杀"的锁都归它管,
- * [ShareService] 只是它在系统眼里的那张前台服务通行证。
+ * In-process singleton for the share session: the HTTP server, the discovery
+ * responder, and the various "please don't kill me" locks all live here;
+ * [ShareService] is just its foreground-service ticket in the system's eyes.
  *
- * 与 `Transfers`/`TransferService` 同一套分工:**状态归会话,服务只负责活着**。
- * 好处是"端口被占用"这类失败在 [start] 里当场同步抛出来,能直接摆给用户看——
- * 要是把绑定塞进 `onStartCommand`,用户只会看到服务起来又悄悄没了。
+ * Same division of labour as `Transfers` / `TransferService`: **the session
+ * owns the state, the service is just here to stay alive**. The benefit is
+ * that failures like "port already in use" surface synchronously inside
+ * [start] and can be shown to the user immediately — if the bind were
+ * stuffed into `onStartCommand`, the user would only see the service come
+ * up and silently disappear.
  */
 object WebShare {
 
-    /** 正在跑的一次共享;null = 没开。 */
+    /** A running share session; null = none. */
     class Session(
         val cfg: ShareConfig,
         val scopeLabel: String,
         internal val server: HttpServer,
         internal val beacon: Discovery.Beacon,
     ) {
-        /** 电脑上该输的地址,WiFi 网卡的排在最前(见 [Net.addresses])。 */
+        /** Addresses the user can type into their computer, with the WiFi interface first (see [Net.addresses]). */
         fun urls(): List<String> = Net.addresses().map { "http://$it:${cfg.port}" }
 
         fun primaryUrl(): String = urls().firstOrNull() ?: "http://0.0.0.0:${cfg.port}"
@@ -43,15 +47,17 @@ object WebShare {
 
     val isRunning: Boolean get() = session != null
 
-    /** 状态变化时通知界面刷新(共享对话框开着的话)。 */
+    /** Notify the UI to refresh when the state changes (if the share dialog is open). */
     @Volatile var onStateChanged: (() -> Unit)? = null
 
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     /**
-     * 起服务。**阻塞 IO**(可能要先把 scope 指向的那台服务器重连上),须在工作线程调用。
-     * 端口绑定失败等原因会抛异常,由调用方展示。
+     * Start the service. **Blocking I/O** (may need to reconnect the server
+     * the scope points at first), so it must be called on a worker thread.
+     * A failed port bind, etc., throws here and the caller is expected to
+     * display it.
      */
     @Synchronized
     fun start(ctx: Context, cfg: ShareConfig, scopeLabel: String) {
@@ -64,7 +70,7 @@ object WebShare {
         val server = HttpServer(cfg.port, auth, ShareHandler(app, cfg, root)) { active ->
             if (active) acquireWake(app) else releaseWake()
         }
-        server.start() // 绑不上端口就在这儿抛
+        server.start() // a failed bind throws right here
 
         val beacon = Discovery.Beacon(cfg, scopeLabel)
         beacon.start()
@@ -74,7 +80,7 @@ object WebShare {
         try {
             ShareService.start(app)
         } catch (e: Exception) {
-            stop(app) // 前台服务起不来就整个回滚,别留一个没有通知栏保护的裸服务
+            stop(app) // if the foreground service cannot start, roll back the whole thing; never leave a bare service running with no notification to back it
             throw e
         }
         onStateChanged?.invoke()
@@ -92,11 +98,14 @@ object WebShare {
         onStateChanged?.invoke()
     }
 
-    // ---- 保活的三层 ----
+    // ---- The three layers of staying alive ----
 
     /**
-     * WiFi 锁:息屏后系统会让 WiFi 进省电态甚至断开,那样局域网里这台设备就"消失"了。
-     * 整个共享期间一直持有——它只是不让 WiFi 睡,代价远小于把传到一半的文件掐断。
+     * WiFi lock: once the screen goes off the system may put WiFi into a
+     * power-save state or even drop it, and the device would "disappear"
+     * from the LAN. Hold it for the entire share session — all it does is
+     * keep WiFi awake, which is far cheaper than cutting a half-finished
+     * file transfer in two.
      */
     private fun acquireWifi(ctx: Context) {
         if (wifiLock != null) return
@@ -121,9 +130,11 @@ object WebShare {
     }
 
     /**
-     * CPU 唤醒锁:**只在有请求正在处理时持有**(见 [HttpServer] 的 onActive)。
-     * 空闲时死攥着 partial wake lock 是纯耗电——那时候进程有前台服务保着不会被杀,
-     * 醒不醒着无所谓;而正在往外传文件时被 doze 掐掉 CPU,传输就断在半路。
+     * CPU wake lock: **held only while a request is being handled** (see
+     * onActive in [HttpServer]). Holding a partial wake lock while idle is
+     * pure battery drain — the foreground service already keeps the process
+     * alive, so awake or asleep makes no difference; but having doze cut the
+     * CPU mid-transfer would break the file in half.
      */
     @Synchronized
     private fun acquireWake(ctx: Context) {
@@ -132,7 +143,8 @@ object WebShare {
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "twig:share-io").apply {
                 setReferenceCounted(false)
-                // 兜底超时:万一 onActive(false) 因为异常没回来,锁也不会永远挂着
+                // Failsafe timeout: if onActive(false) never comes back due
+                // to an exception, the lock does not stay held forever
                 acquire(10 * 60 * 1000L)
             }
         }
@@ -146,11 +158,15 @@ object WebShare {
 }
 
 /**
- * 共享期间的前台服务。
+ * The foreground service that runs while a share is active.
  *
- * 它自己不干活([WebShare] 才持有 socket 和线程),存在的唯一意义是**让系统别回收这个
- * 进程**:共享一开就可能几小时没人动,后台进程随时会被清理,而那会让局域网里正在
- * 拷贝的电脑端直接断线。通知栏那条同时也是"共享还开着"的唯一可见提示,以及一步停止的入口。
+ * It does not do any work itself ([WebShare] owns the socket and threads);
+ * its only purpose is to **keep the system from reclaiming this process**:
+ * a share may sit idle for hours, and a background process is fair game
+ * for cleanup at any time, which would abruptly disconnect the computer
+ * on the LAN in the middle of a copy. The notification is also the only
+ * visible hint that a share is still on, plus a one-tap entry point for
+ * stopping it.
  */
 class ShareService : Service() {
 
@@ -166,7 +182,7 @@ class ShareService : Service() {
                 NotificationChannel(
                     CHANNEL,
                     getString(R.string.share_channel),
-                    NotificationManager.IMPORTANCE_LOW, // 常驻提示,不该出声
+                    NotificationManager.IMPORTANCE_LOW, // persistent hint; should not make sound
                 ).apply { setShowBadge(false) },
             )
         }
@@ -184,9 +200,12 @@ class ShareService : Service() {
             return START_NOT_STICKY
         }
         startForeground(NOTIF_ID, notification(s))
-        // START_STICKY 没有意义:进程真被杀了,socket 和线程都没了,系统重启服务只会
-        // 拿到一个 session == null 的空壳(上面那条分支)。共享是用户显式开的,
-        // 让它跟着进程一起结束比"自己悄悄复活一个连不上的服务"诚实。
+        // START_STICKY is pointless: if the process really was killed, the
+        // sockets and threads are gone, and the system restarting the service
+        // would only produce an empty shell with session == null (the
+        // branch above). Sharing is something the user turned on
+        // explicitly; having it die with the process is more honest than
+        // quietly resurrecting a service that nobody can reach.
         return START_NOT_STICKY
     }
 
@@ -227,7 +246,8 @@ class ShareService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // 服务被系统结束(用户划掉任务、内存回收)时,别留一个还在监听端口的僵尸服务
+        // When the system ends the service (user swipes the task, memory
+        // reclaim), do not leave a zombie service still listening on the port
         WebShare.stop(this)
     }
 

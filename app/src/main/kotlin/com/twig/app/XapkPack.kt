@@ -9,23 +9,30 @@ import java.util.Enumeration
 import java.util.zip.CRC32
 
 /**
- * 把「base.apk + 各 split apk + manifest.json」现拼成一个 XAPK(APKPure 格式,本质是 zip)流。
+ * Stitches "base.apk + each split apk + manifest.json" into a single XAPK
+ * (APKPure's format, a zip at heart) stream.
  *
- * 全部条目用 **STORED**(不压缩):apk 内容本身已经压缩过,再压几乎不省空间,
- * 而 STORED 换来一个关键好处 —— **总长度不读文件就能精确算出**([totalSize]),
- * `XFile.size` 因此是准的,复制进度条、剩余时间、目标端的空间校验全都照常工作。
- * (DEFLATE 则要么先整包压一遍才知道大小,要么进度条全程瞎猜。)
+ * All entries are written as **STORED** (uncompressed): apk content is
+ * already compressed, so recompressing saves almost nothing, and STORED has
+ * one crucial benefit — the **total length is computable without reading the
+ * files** ([totalSize]), so `XFile.size` is accurate and the copy progress
+ * bar, the time-remaining estimate, and the destination's space check all
+ * work normally. (DEFLATE, by contrast, would either have to compress the
+ * whole bundle up front to know the size, or let the progress bar guess
+ * blindly the whole time.)
  *
- * 代价是 STORED 的 local header 必须提前写对 CRC,所以 [open] 时会把每个 apk 读一遍
- * 算 CRC 再开始吐数据 —— 本地 /data/app 读取很快,且结果按「路径:大小:修改时间」缓存,
- * 同一个应用第二次复制不再重算。
+ * The trade-off is that STORED's local header requires a correct CRC up
+ * front, so [open] reads each apk once to compute its CRC before producing
+ * any data — local reads from /data/app are fast, and the result is cached
+ * by "path:size:mtime" so the same app on a second copy is not recomputed.
  *
- * 不使用 zip64:单个 apk 与总大小都远小于 4GB(超出时 [totalSize] 会溢出成负数,
- * 由 [AppsFileSystem] 侧回落成只给 base.apk)。
+ * zip64 is not used: individual apks and the total are well under 4 GB
+ * (if they weren't, [totalSize] would overflow into a negative number, and
+ * [AppsFileSystem] would fall back to offering only base.apk).
  */
 class XapkPack(private val entries: List<Entry>) {
 
-    /** zip 内的一个条目:名字 + 内容(内存字节 或 磁盘文件)。 */
+    /** One entry in the zip: name + content (in-memory bytes or a file on disk). */
     class Entry(val name: String, val bytes: ByteArray?, val file: File?) {
         val nameBytes: ByteArray = name.toByteArray(Charsets.UTF_8)
         val size: Long = bytes?.size?.toLong() ?: file?.length() ?: 0L
@@ -33,19 +40,21 @@ class XapkPack(private val entries: List<Entry>) {
         fun open(): InputStream = bytes?.let { ByteArrayInputStream(it) } ?: FileInputStream(file!!)
     }
 
-    /** 打包后的字节数(不读文件内容即可算出;见类注释)。 */
+    /** The number of bytes in the packed bundle (computable without reading file contents; see class note). */
     fun totalSize(): Long {
         var n = 0L
         for (e in entries) {
-            n += LFH + e.nameBytes.size + e.size // 本地头 + 文件名 + 数据
-            n += CDH + e.nameBytes.size // 中央目录项
+            n += LFH + e.nameBytes.size + e.size // local header + filename + data
+            n += CDH + e.nameBytes.size // central directory entry
         }
         return n + EOCD
     }
 
     /**
-     * 打开整包的读取流。先把各条目 CRC 算好(见类注释),再按
-     * 「本地头₁+数据₁ … 中央目录 EOCD」惰性拼接 —— 文件按需打开,不会同时占住一堆 fd。
+     * Opens the read stream for the whole bundle. First computes every entry's
+     * CRC (see class note), then lazily stitches them as
+     * "local-header₁ + data₁ … central directory + EOCD" — files are opened
+     * on demand, so we never hold a pile of fds at once.
      */
     fun open(): InputStream {
         val crcs = entries.map { crcOf(it) }
@@ -156,7 +165,7 @@ class XapkPack(private val entries: List<Entry>) {
 
     private fun put32(b: ByteArray, p: Int, v: Int): Int = put32(b, p, v.toLong() and 0xffffffffL)
 
-    /** zip 的 DOS 时间/日期(各 2 字节);1980 年以前一律钳到 1980-01-01。 */
+    /** The zip DOS time/date (2 bytes each); anything before 1980 is clamped to 1980-01-01. */
     private fun putDosTime(b: ByteArray, p: Int, millis: Long): Int {
         val c = java.util.Calendar.getInstance().apply { timeInMillis = millis }
         val year = c.get(java.util.Calendar.YEAR)
@@ -175,11 +184,11 @@ class XapkPack(private val entries: List<Entry>) {
     }
 
     companion object {
-        private const val LFH = 30 // 本地文件头固定部分
-        private const val CDH = 46 // 中央目录项固定部分
-        private const val EOCD = 22 // 目录结束记录
+        private const val LFH = 30 // fixed part of the local file header
+        private const val CDH = 46 // fixed part of a central directory entry
+        private const val EOCD = 22 // end-of-central-directory record
 
-        /** apk 内容不变(路径+大小+修改时间相同)就不重算 CRC。 */
+        /** If an apk's content is unchanged (same path + size + mtime), skip recomputing the CRC. */
         private val crcCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
     }
 }

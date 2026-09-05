@@ -14,9 +14,12 @@ import com.twig.app.Format
 import kotlin.math.abs
 
 /**
- * SpaceSniffer 式矩形树图(squarified treemap):按大小比例铺满当前层级的全部子项,
- * 不聚合(小文件是细条,点/长按仍可命中)。目录暖色、文件冷色(色相按名字散列微调);
- * 块够大才画名字/大小。点/长按回调交给宿主处理(下钻/菜单)。
+ * SpaceSniffer-style rectangular treemap (squarified treemap): fills the entire
+ * level with children sized in proportion, no aggregation (small files become
+ * thin strips but are still tappable / long-pressable). Directories warm-toned,
+ * files cool-toned (hue shifted slightly by a hash of the name); name/size are
+ * only drawn when the block is large enough. Tap / long-press callbacks are
+ * delegated to the host (drill-down / menu).
  */
 class TreemapView @JvmOverloads constructor(
     context: Context,
@@ -25,11 +28,11 @@ class TreemapView @JvmOverloads constructor(
 
     var onTapTile: ((TreemapEntry) -> Unit)? = null
     var onLongTile: ((TreemapEntry) -> Unit)? = null
-    /** 横向滑动(净位移超阈值且横>竖)→ 切换面板,与树列表同一交互。 */
+    /** Horizontal swipe (net displacement above the threshold and horizontal > vertical) → switch panes, same interaction as the tree list. */
     var onSwipe: ((Float) -> Unit)? = null
     var onTouchDown: (() -> Unit)? = null
 
-    /** 选中块的 key("scheme:path"),画高亮描边;由宿主维护。 */
+    /** Selected block keys ("scheme:path"), drawn with a highlight border; maintained by the host. */
     var selectedKeys: Set<String> = emptySet()
         set(value) {
             field = value
@@ -66,10 +69,10 @@ class TreemapView @JvmOverloads constructor(
     private val selPaint = Paint().apply {
         style = Paint.Style.STROKE
         strokeWidth = 3 * dpi
-        color = 0xFF1B5E20.toInt() // primary_dark:彩色块上足够醒目
+        color = 0xFF1B5E20.toInt() // primary_dark: stands out enough on colourful blocks
     }
 
-    // 双指缩放 + 平移(几何变换,文字不缩放:放大后更多块能放下标签)
+    // Two-finger zoom + pan (geometric transform, text doesn't scale: zooming in reveals more label space)
     private var scale = 1f
     private var tx = 0f
     private var ty = 0f
@@ -101,7 +104,7 @@ class TreemapView @JvmOverloads constructor(
         relayout()
     }
 
-    // ---- 布局(squarified) ----
+    // ---- Layout (squarified) ----
 
     private fun relayout() {
         val n = node ?: return
@@ -121,7 +124,7 @@ class TreemapView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** squarified treemap:逐行沿短边铺,最坏长宽比不再改善时换行。 */
+    /** Squarified treemap: lay out row by row along the short edge, switching rows when the worst aspect ratio stops improving. */
     private fun squarify(
         items: List<Pair<TreemapEntry, Double>>,
         bounds: RectF,
@@ -166,7 +169,7 @@ class TreemapView @JvmOverloads constructor(
         free: RectF,
         emit: (TreemapEntry, RectF) -> Unit,
     ): RectF {
-        val alongTop = free.width() < free.height() // 短边为宽 → 该行横着铺在顶部
+        val alongTop = free.width() < free.height() // shorter side is the width → lay this row across the top
         val side = (if (alongTop) free.width() else free.height()).toDouble()
         val thick = (rowSum / side).toFloat()
         var off = 0f
@@ -187,7 +190,7 @@ class TreemapView @JvmOverloads constructor(
         }
     }
 
-    /** 目录暖橙、文件蓝灰;同类内按名字散列微调色相/明度,相邻块可区分。 */
+    /** Directories warm orange, files blue-grey; within the same class hue/brightness are shifted slightly by a hash of the name so adjacent blocks stay distinguishable. */
     private fun tileColor(e: TreemapEntry): Int {
         val h = abs(e.name.hashCode())
         val hue = if (e.isDir) 26f + (h % 6) * 4f else 202f + (h % 6) * 5f
@@ -196,14 +199,14 @@ class TreemapView @JvmOverloads constructor(
         return Color.HSVToColor(floatArrayOf(hue, sat, v))
     }
 
-    // ---- 绘制 ----
+    // ---- Drawing ----
 
     override fun onDraw(canvas: Canvas) {
-        val pad = 2f // 块间留缝(屏幕像素,不随缩放变)
+        val pad = 2f // gap between blocks (screen pixels, doesn't scale with zoom)
         val w = width.toFloat()
         val h = height.toFloat()
         for (t in tiles) {
-            // 布局坐标 → 屏幕坐标;视口外的块跳过
+            // Layout coords → screen coords; skip blocks outside the viewport
             val sl = t.rect.left * scale + tx
             val st = t.rect.top * scale + ty
             val sr = t.rect.right * scale + tx
@@ -211,7 +214,7 @@ class TreemapView @JvmOverloads constructor(
             if (sr < 0 || sl > w || sb < 0 || st > h) continue
             fill.color = t.color
             val r = RectF(sl, st, sr - pad, sb - pad)
-            if (r.width() <= 0 || r.height() <= 0) { // 细条:不留缝直接铺,保证可见可点
+            if (r.width() <= 0 || r.height() <= 0) { // thin strip: don't leave a gap, ensure it's visible and tappable
                 canvas.drawRect(RectF(sl, st, sr, sb), fill)
                 continue
             }
@@ -224,7 +227,7 @@ class TreemapView @JvmOverloads constructor(
                     selPaint,
                 )
             }
-            // 文字固定字号,按屏幕块大小决定显不显示——放大即出现更多标签
+            // Fixed font size; show based on screen block size — zooming in reveals more labels
             if (r.width() > 42 * dpi && r.height() > 15 * dpi) {
                 canvas.save()
                 canvas.clipRect(r)
@@ -238,7 +241,7 @@ class TreemapView @JvmOverloads constructor(
         }
     }
 
-    // ---- 手势 ----
+    // ---- Gestures ----
 
     private val gd = GestureDetector(
         context,
@@ -261,7 +264,7 @@ class TreemapView @JvmOverloads constructor(
                 dy: Float,
             ): Boolean {
                 if (scale <= 1f) return false
-                tx -= dx; ty -= dy // 放大后单指拖动平移
+                tx -= dx; ty -= dy // after zooming in, single-finger drag pans
                 clampPan()
                 invalidate()
                 return true
@@ -274,7 +277,7 @@ class TreemapView @JvmOverloads constructor(
         object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(d: ScaleGestureDetector): Boolean {
                 val ns = (scale * d.scaleFactor).coerceIn(1f, 40f)
-                // 焦点在内容上的位置保持不动
+                // Keep the focal point on the content stationary
                 tx = d.focusX - (d.focusX - tx) * (ns / scale)
                 ty = d.focusY - (d.focusY - ty) * (ns / scale)
                 scale = ns
@@ -285,7 +288,7 @@ class TreemapView @JvmOverloads constructor(
         },
     )
 
-    /** 屏幕坐标 → 布局坐标后命中。 */
+    /** Screen coords → layout coords then hit-test. */
     private fun tileAt(x: Float, y: Float): Tile? {
         val cx = (x - tx) / scale
         val cy = (y - ty) / scale
@@ -295,7 +298,7 @@ class TreemapView @JvmOverloads constructor(
     private var downX = 0f
     private var downY = 0f
     private var swiped = false
-    private var gdCancelled = false // 捏合开始后本轮不再喂 gd,防误触点按/长按
+    private var gdCancelled = false // once pinching starts, don't feed gd this round, prevents accidental tap/long-press
 
     @Suppress("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -307,7 +310,7 @@ class TreemapView @JvmOverloads constructor(
                 swiped = false; gdCancelled = false
             }
             MotionEvent.ACTION_MOVE -> {
-                // 仅未放大时横滑切面板;放大后单指是平移
+                // Only horizontal swipe switches panes when not zoomed in; single-finger drag pans after zoom
                 if (!swiped && !scaleGd.isInProgress && scale <= 1f) {
                     val dx = event.x - downX
                     val dy = event.y - downY

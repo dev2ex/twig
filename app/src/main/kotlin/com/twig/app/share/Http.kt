@@ -18,32 +18,36 @@ import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 一次请求。[body] 已按 Content-Length / chunked 限长,读到 -1 就是这次请求的正文结束,
- * 不会串到下一个 keep-alive 请求上去。
+ * One request. [body] is already bounded by Content-Length / chunked — reading
+ * -1 means the end of this request's body and it will not bleed into the
+ * next keep-alive request.
  */
 class HttpRequest(
     val method: String,
-    /** 解码后的路径(不含 query),永远以 '/' 开头。用于**寻址**。 */
+    /** The decoded path (without the query), always starting with '/'. Used for **addressing**. */
     val path: String,
     /**
-     * 原样的、仍带百分号转义的路径。用于**生成链接**(HTML 的 href、WebDAV 的
-     * D:href、301 的 Location)。
+     * The as-received path, still percent-escaped. Used for **building links**
+     * (HTML href, WebDAV D:href, 301 Location).
      *
-     * 两个都留着不是冗余:拿解码后的 [path] 去拼 href,再把子项名字编码一遍,就成了
-     * "解码的前缀 + 编码的末段"这种半生不熟的 URL——目录名一带中文或空格,整棵子树
-     * 的链接就全断了(2026-08-10 的现场)。规矩是**寻址用 path,拼链接用 rawPath**。
+     * Keeping both is not redundant: take the decoded [path], splice it into
+     * an href, re-encode the child names, and you get a "decoded prefix +
+     * encoded last segment" half-baked URL — the moment a directory name
+     * contains Chinese or spaces, every link in the subtree breaks (the
+     * 2026-08-10 incident). The rule is **addressing uses path, link
+     * building uses rawPath**.
      */
     val rawPath: String,
     val query: Map<String, String>,
-    /** 请求头,key 一律小写。 */
+    /** Request headers; keys are lowercased. */
     val headers: Map<String, String>,
     val body: InputStream,
-    /** 客户端看到的 `Host:`,拼 WebDAV 的 Destination / href 绝对 URL 时要用。 */
+    /** The `Host:` the client sent; used to build absolute URLs for WebDAV Destination / href. */
     val host: String,
 ) {
     fun header(name: String): String? = headers[name.lowercase()]
 
-    /** WebDAV 的 Depth,缺省按 [def]。"infinity" 返回 [Int.MAX_VALUE]。 */
+    /** WebDAV Depth, defaulting to [def]. "infinity" returns [Int.MAX_VALUE]. */
     fun depth(def: Int = Int.MAX_VALUE): Int = when (header("depth")?.lowercase()) {
         null -> def
         "0" -> 0
@@ -53,19 +57,21 @@ class HttpRequest(
 }
 
 /**
- * 响应写出器。**一次请求只能发一个响应**——重复调用会被忽略,免得处理逻辑里
- * 某条分支发完又往下走,把两份响应串到同一条连接上(那会让后续 keep-alive 请求全部错位)。
+ * Response writer. **One request can only produce one response** — repeated
+ * calls are silently dropped, so that a branch in the handler that sends
+ * and then keeps going cannot splice two responses onto the same connection
+ * (which would offset every subsequent keep-alive request).
  */
 class HttpResponder(private val out: OutputStream) {
 
     var responded = false
         private set
 
-    /** 这次响应之后连接还能不能复用;发了长度未知的流式响应就只能关掉。 */
+    /** Whether the connection can be reused after this response; a length-unknown streaming response forces the connection closed. */
     var keepAlive = true
         private set
 
-    /** HEAD 请求:照常算 Content-Length,但不写正文。 */
+    /** HEAD request: still computes Content-Length, but does not write the body. */
     var headOnly = false
 
     fun send(
@@ -85,8 +91,11 @@ class HttpResponder(private val out: OutputStream) {
         send(code, contentType, text.toByteArray(Charsets.UTF_8))
 
     /**
-     * 流式响应。[length] < 0 表示长度未知——那就只能写完关连接([keepAlive] 置 false),
-     * 不上 chunked:HTTP/1.0 客户端不认它,而这里省下的那点复用收益远不如"到处都能下"。
+     * Streaming response. [length] < 0 means the length is unknown — the
+     * connection must be closed after writing ([keepAlive] is set to false),
+     * and chunked encoding is not used: HTTP/1.0 clients do not understand
+     * it, and the small saving in connection reuse here is not worth being
+     * "downloadable everywhere".
      */
     fun sendStream(
         code: Int,
@@ -110,7 +119,7 @@ class HttpResponder(private val out: OutputStream) {
         sb.append("Server: Twig\r\n")
         if (contentType != null) sb.append("Content-Type: ").append(contentType).append("\r\n")
         if (length >= 0) sb.append("Content-Length: ").append(length).append("\r\n")
-        // 下载大文件时客户端要能显示进度、也要能断点续传
+        // For large file downloads the client needs to show progress and resume
         sb.append("Accept-Ranges: bytes\r\n")
         for (h in extra) sb.append(h).append("\r\n")
         sb.append("Connection: ").append(if (keepAlive) "keep-alive" else "close").append("\r\n")
@@ -144,27 +153,31 @@ class HttpResponder(private val out: OutputStream) {
             else -> "Status"
         }
 
-        /** RFC 1123 日期,WebDAV 的 getlastmodified 与 HTTP 的 Date/Last-Modified 共用。 */
+        /** RFC 1123 date, shared by WebDAV's getlastmodified and HTTP's Date/Last-Modified. */
         fun httpDate(ms: Long): String = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US)
             .apply { timeZone = TimeZone.getTimeZone("GMT") }
             .format(java.util.Date(ms))
     }
 }
 
-/** 请求处理器;由 [ShareHandler] 实现(HTML 界面 + WebDAV 两套都在里面分发)。 */
+/** Request handler; implemented by [ShareHandler] (the HTML UI + WebDAV are both dispatched inside). */
 fun interface HttpHandler {
     fun handle(req: HttpRequest, res: HttpResponder)
 }
 
 /**
- * 极小 HTTP/1.1 服务器:一条 accept 线程 + 每连接一个工作线程(缓存线程池)。
+ * A minimal HTTP/1.1 server: one accept thread + one worker thread per
+ * connection (cached thread pool).
  *
- * 只实现"够用"的那部分:请求行/头解析、Content-Length 与 chunked 正文、Basic 认证、
- * keep-alive、100-continue。没有 TLS(局域网内、体积优先),没有 chunked **响应**
- * (见 [HttpResponder.sendStream])。
+ * Only the "good enough" parts are implemented: request line / header
+ * parsing, Content-Length and chunked bodies, Basic auth, keep-alive, and
+ * 100-continue. No TLS (LAN, size-first), and no chunked **responses** (see
+ * [HttpResponder.sendStream]).
  *
- * @param onActive 有请求正在处理时回调 true、全部处理完回调 false,供上层按需持有
- *   WakeLock——传输期间锁屏不该把传到一半的文件掐掉,而空闲时死攥着锁只是耗电。
+ * @param onActive Called with true while any request is being handled and
+ *   false once all of them are done, so the upper layer can hold a WakeLock
+ *   only as needed — the screen going off should not abort a half-finished
+ *   transfer, but holding the lock while idle is just battery drain.
  */
 class HttpServer(
     private val port: Int,
@@ -173,7 +186,7 @@ class HttpServer(
     private val onActive: (Boolean) -> Unit = {},
 ) {
 
-    /** Basic 认证凭据;`password` 为空时上层根本不该构造它。 */
+    /** Basic auth credentials; if `password` is empty the upper layer should not construct one at all. */
     class BasicAuth(val user: String, val password: String) {
         private val expected = "Basic " + android.util.Base64.encodeToString(
             "$user:$password".toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP,
@@ -181,7 +194,9 @@ class HttpServer(
 
         fun accepts(headerValue: String?): Boolean {
             val v = headerValue ?: return false
-            // 常量时间比较不是重点(局域网 + 短口令),但至少别被长度差异一眼看穿
+            // Constant-time comparison is not the point (LAN + short
+            // password), but at least don't let the length difference give it
+            // away at a glance
             return v.trim() == expected
         }
     }
@@ -201,8 +216,10 @@ class HttpServer(
     )
 
     /**
-     * 绑定端口并起 accept 线程。**绑定失败直接抛**(端口被占/被系统禁用),
-     * 让调用方当场把错误摆给用户,而不是起一个连不上的服务。
+     * Bind the port and start the accept thread. **A failed bind throws
+     * immediately** (port taken / disabled by the system), so the caller
+     * can show the error to the user on the spot rather than starting a
+     * service that nobody can connect to.
      */
     fun start() {
         val s = ServerSocket()
@@ -227,7 +244,8 @@ class HttpServer(
             } catch (e: IOException) {
                 if (running) continue else break
             }
-            // 连接数兜底:恶意/失控的客户端不该把线程池撑爆
+            // Connection-count cap: a malicious / runaway client must not be
+            // able to blow up the thread pool
             if (connections.get() >= MAX_CONNECTIONS) {
                 runCatching { sock.close() }
                 continue
@@ -246,7 +264,7 @@ class HttpServer(
         }
     }
 
-    /** 一条连接上的 keep-alive 循环。 */
+    /** The keep-alive loop on a single connection. */
     private fun serve(sock: Socket) {
         sock.soTimeout = IDLE_TIMEOUT_MS
         sock.tcpNoDelay = true
@@ -257,9 +275,9 @@ class HttpServer(
             val req = try {
                 readRequest(input, sock)
             } catch (e: SocketTimeoutException) {
-                return // 空闲超时:正常关掉
+                return // idle timeout: close it normally
             } catch (e: IOException) {
-                return // 客户端走了
+                return // the client went away
             } ?: return
             if (req === MALFORMED) {
                 runCatching { res.sendText(400, "Bad Request") }
@@ -279,14 +297,16 @@ class HttpServer(
                 }
                 if (!res.responded) res.sendText(500, "No response")
             } catch (e: IOException) {
-                return // 写到一半客户端断了,这条连接没救了
+                return // client disconnected mid-write, this connection is gone
             } catch (e: Throwable) {
                 runCatching { res.sendText(500, e.message ?: e::class.java.simpleName) }
             } finally {
                 markActive(false)
             }
 
-            // 正文没读完(比如只读了一半就拒了)会串到下一个请求上,只能关连接
+            // If the body is not fully read (e.g. only half was rejected)
+            // it would bleed into the next request — the only option is to
+            // close the connection
             val drained = runCatching { drain(req.body) }.getOrDefault(false)
             val wantsClose = req.header("connection")?.lowercase()?.contains("close") == true
             if (!res.keepAlive || wantsClose || !drained) return
@@ -299,7 +319,7 @@ class HttpServer(
         if (!on && n == 0) onActive(false)
     }
 
-    /** 把剩余正文丢掉,好复用连接;超过上限就不值得了,直接关。 */
+    /** Discard the remaining body so the connection can be reused; if it goes past the cap, it's not worth it — close. */
     private fun drain(body: InputStream): Boolean {
         val buf = ByteArray(8192)
         var total = 0L
@@ -311,7 +331,7 @@ class HttpServer(
         }
     }
 
-    /** 解析一个请求;流末尾返回 null,格式错误返回 [MALFORMED]。 */
+    /** Parse one request; returns null on end-of-stream, [MALFORMED] on format error. */
     private fun readRequest(input: BufferedInputStream, sock: Socket): HttpRequest? {
         val line = readLine(input) ?: return null
         if (line.isEmpty()) return MALFORMED
@@ -329,7 +349,8 @@ class HttpServer(
             headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
 
-        // 100-continue:curl/部分 WebDAV 客户端会先问再发正文,不答它就一直等着
+        // 100-continue: curl / some WebDAV clients ask before sending the body;
+        // if we don't answer, they just sit there
         if (headers["expect"]?.lowercase()?.contains("100-continue") == true) {
             sock.getOutputStream().write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
             sock.getOutputStream().flush()
@@ -344,7 +365,8 @@ class HttpServer(
         val qIdx = target.indexOf('?')
         val rawPath = if (qIdx < 0) target else target.substring(0, qIdx)
         val query = if (qIdx < 0) emptyMap() else parseQuery(target.substring(qIdx + 1))
-        // 有的客户端(尤其 WebDAV 的 Destination 回环)发绝对 URI 形式的请求目标
+        // Some clients (especially WebDAV's Destination round-trip) send an
+        // absolute URI as the request target
         val pathOnly = if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
             runCatching { java.net.URI(rawPath).rawPath }.getOrNull() ?: rawPath
         } else {
@@ -367,12 +389,12 @@ class HttpServer(
         private const val MAX_CONNECTIONS = 48
         private const val MAX_DRAIN = 1L shl 20
 
-        /** 解析失败的哨兵,免得再造一个异常类型。 */
+        /** Sentinel for parse failures, so we don't need a whole new exception type. */
         private val MALFORMED = HttpRequest(
             "", "/", "/", emptyMap(), emptyMap(), java.io.ByteArrayInputStream(ByteArray(0)), "",
         )
 
-        /** 读一行(以 LF 结尾,顺带吃掉 CR);流末尾返回 null。 */
+        /** Read one line (LF-terminated, swallowing the CR along the way); null on end-of-stream. */
         fun readLine(input: InputStream): String? {
             val buf = ByteArrayOutputStream(128)
             while (true) {
@@ -383,14 +405,16 @@ class HttpServer(
                     if (s.endsWith("\r")) s = s.dropLast(1)
                     return s
                 }
-                if (buf.size() > 8192) return null // 头太长,当断流处理
+                if (buf.size() > 8192) return null // header too long — treat as a broken stream
                 buf.write(c)
             }
         }
 
         /**
-         * 路径的百分号解码。**不能用 `URLDecoder.decode`**——它是 form 编码那套,
-         * 会把 `+` 当空格;文件名里的加号(常见于音乐/影片命名)会被吃掉,变成找不到文件。
+         * Percent-decoding for paths. **`URLDecoder.decode` cannot be used** —
+         * it is the form-encoding variant, which turns `+` into a space; the
+         * plus signs that are common in music / movie file names would be eaten
+         * and the file would become unfindable.
          */
         fun decodePath(s: String): String {
             if ('%' !in s) return s
@@ -409,11 +433,13 @@ class HttpServer(
         }
 
         /**
-         * 路径段的百分号编码(生成 href / Location / Destination 用)。
+         * Percent-encoding for a path segment (used to produce href / Location / Destination).
          *
-         * 只放过 RFC 3986 的 unreserved(`ALPHA DIGIT - . _ ~`),别的一律编码。
-         * 子分隔符(`+ , ; = & $ ...`)在路径段里其实合法,但各家客户端对它们的解码
-         * 宽严不一(`+` 尤其容易被按 form 编码当成空格),多编几个字节换"到处都对"。
+         * Only the RFC 3986 unreserved set is allowed through (`ALPHA DIGIT - . _ ~`);
+         * everything else is encoded. The sub-delimiters (`+ , ; = & $ ...`) are
+         * technically legal in a path segment, but clients vary in how strictly
+         * they decode them (`+` in particular often gets form-decoded into a
+         * space); encoding a few extra bytes is worth "works everywhere".
          */
         fun encodeSegment(s: String): String {
             val sb = StringBuilder(s.length + 8)
@@ -426,7 +452,7 @@ class HttpServer(
             return sb.toString()
         }
 
-        /** 整条路径编码(逐段编,'/' 保留)。 */
+        /** Encode a whole path (one segment at a time, '/' preserved). */
         fun encodePath(path: String): String =
             path.split('/').joinToString("/") { encodeSegment(it) }
 
@@ -442,12 +468,12 @@ class HttpServer(
             return out
         }
 
-        /** query 用的是 form 编码,这里 `+` **就是**空格。 */
+        /** Query strings use form encoding, where `+` **is** a space. */
         private fun decodeForm(s: String): String = decodePath(s.replace('+', ' '))
     }
 }
 
-/** 按 Content-Length 限长的正文流:读满就报末尾,不会串进下一个 keep-alive 请求。 */
+/** A body stream bounded by Content-Length: once the limit is reached it reports EOF, so it cannot bleed into the next keep-alive request. */
 private class LimitedInputStream(private val src: InputStream, private var left: Long) : InputStream() {
     override fun read(): Int {
         if (left <= 0) return -1
@@ -466,24 +492,24 @@ private class LimitedInputStream(private val src: InputStream, private var left:
     override fun available(): Int = minOf(src.available().toLong(), left).toInt()
 }
 
-/** `Transfer-Encoding: chunked` 的正文流(WebDAV 客户端上传大文件时常用)。 */
+/** The `Transfer-Encoding: chunked` body stream (commonly used by WebDAV clients uploading large files). */
 private class ChunkedInputStream(private val src: InputStream) : InputStream() {
     private var left = 0L
     private var done = false
 
-    /** 当前块读完后还欠一个 CRLF 没吃掉(块与块之间的分隔符)。 */
+    /** The CRLF after the current chunk is still owed (the separator between chunks). */
     private var pendingCrlf = false
 
-    /** 让下一块可读;返回 false = 整个正文结束。 */
+    /** Make the next chunk readable; returns false = the whole body is over. */
     private fun nextChunk(): Boolean {
         if (done) return false
         if (left > 0) return true
         if (pendingCrlf) { HttpServer.readLine(src); pendingCrlf = false }
         val line = HttpServer.readLine(src) ?: run { done = true; return false }
-        // 块大小是十六进制,后面可能跟 ";扩展参数"
+        // Chunk size is hex, possibly followed by ";extension params"
         val size = line.substringBefore(';').trim().toLongOrNull(16) ?: run { done = true; return false }
         if (size == 0L) {
-            // 末块之后可能还有 trailer 头,一路读到空行为止
+            // Trailer headers may follow the last chunk; read until the empty line
             while (true) {
                 val t = HttpServer.readLine(src) ?: break
                 if (t.isEmpty()) break

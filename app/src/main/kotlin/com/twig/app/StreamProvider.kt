@@ -22,16 +22,20 @@ import com.twig.core.XFile
 import java.io.File
 
 /**
- * 流式内容提供者:把任意来源(本地/SMB/压缩包/FTP 等)的 [XFile] 以
- * content:// URI 暴露给外部应用("用其他应用打开"),无需先整文件缓存。
+ * Streaming ContentProvider: exposes an [XFile] from any source (local /
+ * SMB / archive / FTP / ...) as a `content://` URI to other apps ("Open
+ * with..."), without caching the whole file first.
  *
- * - 本地文件直接返回真实 fd;
- * - 虚拟来源在 API 26+ 用 openProxyFileDescriptor(基于 FUSE 的可 seek 代理 fd,
- *   外部播放器拖进度条会转成 openRandom 的定位读);
- * - 更老系统退化为单向管道(不可 seek)。
+ * - Local files return a real fd directly;
+ * - Virtual sources on API 26+ use openProxyFileDescriptor (a FUSE-backed
+ *   seekable proxy fd: the external player's seek bar becomes a positional
+ *   read via openRandom);
+ * - On older systems this degrades to a one-way pipe (not seekable).
  *
- * URI 形如 content://<pkg>.stream/<base64(scheme,size,name,path)>/<文件名>,
- * 自包含全部信息,进程被杀后外部应用仍可凭 URI 重新打开。
+ * The URI has the form
+ * `content://<pkg>.stream/<base64(scheme,size,name,path)>/<file name>`, and is
+ * self-contained — after the process is killed, the external app can still
+ * reopen the file using the URI alone.
  */
 class StreamProvider : ContentProvider() {
 
@@ -49,7 +53,7 @@ class StreamProvider : ContentProvider() {
         selectionArgs: Array<String>?,
         sortOrder: String?,
     ): Cursor {
-        val f = decode(uri)
+        val f = decode(requireContext(), uri)
         val cols = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(cols, 1).apply {
             addRow(cols.map {
@@ -63,8 +67,9 @@ class StreamProvider : ContentProvider() {
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        if ("w" in mode) throw SecurityException("只读")
-        val f = decode(uri)
+        val ctx = requireContext()
+        if ("w" in mode) throw SecurityException(ctx.getString(R.string.stream_read_only))
+        val f = decode(ctx, uri)
         if (f.scheme == "file") {
             return ParcelFileDescriptor.open(File(f.path), ParcelFileDescriptor.MODE_READ_ONLY)
         }
@@ -79,7 +84,7 @@ class StreamProvider : ContentProvider() {
                 Handler(ioLooper()),
             )
         }
-        // API < 26:单向管道流,外部应用不可 seek
+        // API < 26: one-way pipe stream; the external app cannot seek
         val pipe = ParcelFileDescriptor.createPipe()
         Thread({
             runCatching {
@@ -96,7 +101,7 @@ class StreamProvider : ContentProvider() {
         it.start(); ioThread = it
     }).looper
 
-    /** 代理 fd 回调:外部应用的 read(offset) 转成 RandomSource 定位读。 */
+    /** Proxy fd callback: the external app's read(offset) is turned into a RandomSource positional read. */
     private class RandomCallback(
         private val src: RandomSource,
         private val size: Long,
@@ -138,10 +143,10 @@ class StreamProvider : ContentProvider() {
             )
         }
 
-        private fun decode(uri: Uri): XFile {
-            val token = uri.pathSegments.firstOrNull() ?: throw SecurityException("bad uri")
+        private fun decode(ctx: Context, uri: Uri): XFile {
+            val token = uri.pathSegments.firstOrNull() ?: throw SecurityException(ctx.getString(R.string.stream_bad_uri))
             val parts = String(Base64.decode(token, B64)).split("\n", limit = 4)
-            require(parts.size == 4) { "bad token" }
+            require(parts.size == 4) { ctx.getString(R.string.stream_bad_token) }
             return XFile(
                 scheme = parts[0],
                 path = parts[3],

@@ -24,6 +24,7 @@
     <string name="restic_wrong_pw">密码错误或无法读取:%1$s</string>
     <string name="restic_latest">最新 (latest)</string>
     <string name="action_density">行高</string>
+    <string name="action_text_size">文字大小</string>
     <string name="action_sort">排序</string>
     <string name="action_remember_location">记住上次位置</string>
     <string name="action_fullscreen">全屏(隐藏状态栏)</string>
@@ -39,6 +40,9 @@
     <string name="density_compact">紧凑</string>
     <string name="density_normal">正常</string>
     <string name="density_large">宽松</string>
+    <string name="text_size_small">小</string>
+    <string name="text_size_normal">中</string>
+    <string name="text_size_large">大</string>
     <string name="action_new_folder">新建文件夹</string>
     <string name="action_new_text">新建文本文件</string>
     <string name="new_text_default">新建文本.txt</string>
@@ -67,7 +71,7 @@
     <string name="treemap_reveal">对侧显示</string>
     <string name="menu_swap_pane">切换到另一面板</string>
     <string name="treemap_confirm_delete">删除 %1$s(%2$s)?</string>
-    <!-- 操作列顶部固定区的短标签(9sp 单行,长文案会被截断) -->
+    <!-- Short labels for the action strip's pinned top row (9sp, single line; long copy is truncated) -->
     <string name="strip_term">终端</string>
     <string name="strip_swap">切换</string>
     <string name="strip_menu">菜单</string>
@@ -83,6 +87,11 @@
     <string name="search_result_title">搜索结果(%1$d)</string>
     <string name="search_stats">目录:%1$s\n通配符:%2$s\n匹配文件:%3$d 个\n匹配目录:%4$d 个</string>
     <string name="search_scanning_suffix">\n(仍在搜索中…)</string>
+    <!-- Go to path: descend by name from one root row (see PaneViewModel.revealUnder) -->
+    <string name="action_goto_path">跳转到路径…</string>
+    <string name="goto_hint">该根下的路径,如 Download/notes.txt</string>
+    <string name="err_goto_missing">找不到:%1$s</string>
+    <string name="err_goto_not_dir">%1$s 不是目录</string>
     <string name="action_add_favorite">添加到收藏</string>
     <string name="action_remove_favorite">取消收藏</string>
     <string name="action_rename_favorite">重命名</string>
@@ -128,12 +137,13 @@
     <string name="s3_endpoint">端点(https://s3.区域.amazonaws.com)</string>
     <string name="s3_access_key">Access Key ID</string>
     <string name="s3_secret_key">Secret Access Key</string>
-    <string name="s3_bucket">存储桶(留空则列出全部)</string>
+    <string name="s3_bucket">Bucket/前缀(可选,留空列出全部)</string>
+    <string name="conn_path">路径(可选)</string>
     <string name="s3_region">区域(默认 us-east-1)</string>
     <string name="s3_path_style">路径式寻址(自建 MinIO 等需勾选)</string>
     <string name="webdav_url">服务器 URL(http(s)://…)</string>
     <string name="smb_host">主机(IP/名称)</string>
-    <string name="smb_share">共享名</string>
+    <string name="smb_share">共享名/路径(可选,留空列出全部共享)</string>
     <string name="smb_domain">域(默认 WORKGROUP)</string>
     <string name="action_saved">已保存连接</string>
     <string name="action_theme">主题</string>
@@ -144,7 +154,6 @@
     <string name="action_settings">设置</string>
     <string name="action_view_mode">视图</string>
     <string name="action_thumbs">缩略图</string>
-    <string name="action_show_hidden">显示隐藏文件</string>
     <string name="view_mode_grid_off">列表</string>
     <string name="view_mode_grid_media">网格 · 仅媒体文件</string>
     <string name="view_mode_grid_all">网格 · 全部文件</string>
@@ -165,6 +174,7 @@
     <string name="sftp_pick_key">选择</string>
     <string name="sftp_key_copied">私钥已导入: %1$s</string>
     <string name="sftp_key_failed">私钥导入失败: %1$s</string>
+    <string name="shortcut_terminal">终端</string>
     <string name="terminal_menu">SSH 终端</string>
     <string name="terminal_here">在此打开终端</string>
     <string name="terminal_failed">终端连接失败</string>
@@ -256,7 +266,7 @@
     <string name="diff_merge_down">把这段复制到下栏</string>
     <string name="diff_undo">撤销</string>
     <string name="diff_merge_blocked_encoding">内容不是合法 UTF-8,写回会损坏文件,已禁用合并</string>
-    <!-- 目录对比 -->
+    <!-- Directory compare -->
     <string name="compare_title">目录对比</string>
     <string name="strip_compare">对比</string>
     <string name="compare_need_two">请先在两个面板里各选一个目录</string>
@@ -290,6 +300,7 @@
     <string name="compare_content_hint">只有大小相同的一对才会读取内容。网络来源要把两边都下载一遍,所以默认关闭。</string>
     <string name="compare_text_diff">文本对比</string>
     <string name="compare_image_diff">图片对比</string>
+    <string name="compare_hex_diff">十六进制对比</string>
     <string name="img_cmp_sync">同步缩放</string>
     <string name="img_cmp_same_size">尺寸相同</string>
     <string name="img_cmp_bigger">%1$s侧像素更多</string>
@@ -304,17 +315,24 @@
     <string name="compare_pick_pair">请选一个两侧都有的文件</string>
     <string name="compare_copy_confirm">把选中的 %1$d 项复制到%2$s侧?</string>
     <string name="compare_sync_confirm">把 %1$d 项差异推送到%2$s侧?</string>
+    <string name="compare_sync_section">同步</string>
+    <string name="compare_sync_incremental_opt">增量同步(保留目标侧多余项)</string>
+    <string name="compare_sync_incremental_hint">只把源侧独有的和两侧不同的推过去,目标侧多出来的东西留着。关掉即镜像同步——目标侧多余的文件和目录会被删除,同步完两侧完全一致。</string>
+    <string name="compare_sync_incremental">增量同步(保留%1$s侧多余的 %2$d 项)</string>
+    <string name="compare_sync_overwrite_newer">覆盖%1$s侧较新的 %2$d 项</string>
+    <string name="compare_sync_scanning">正在扫描…已比对 %1$d · 差异 %2$d</string>
+    <string name="compare_sync_delete_failed">%1$d 项删除失败</string>
+    <string name="compare_sync_wait_scan">还在扫描,等扫完再同步</string>
     <string name="compare_delete_confirm">删除%2$s侧的 %1$d 项?不可撤销。</string>
     <string name="compare_exclude_this">排除此项</string>
     <string name="compare_excludes">排除规则</string>
     <string name="compare_excludes_hint">一行一条。通配符 * 和 ? 按整个名字匹配;含斜杠的规则匹配相对根的路径。</string>
     <string name="compare_excludes_presets">添加常用规则…</string>
     <string name="compare_save">保存这次对比</string>
-    <string name="compare_saved">对比收藏</string>
+    <string name="compare_saved">对比</string>
     <string name="compare_saved_ok">已保存</string>
-    <string name="compare_saved_empty">还没有保存过对比</string>
-    <string name="compare_saved_delete">删除某条对比收藏</string>
-    <string name="compare_saved_deleted">已删除</string>
+    <string name="compare_remove">删除这条对比</string>
+    <string name="compare_remove_confirm">删除保存的对比 %1$s?</string>
     <string name="compare_save_unsupported">该来源无法保存(restic 快照与压缩包下次打不开)</string>
     <string name="compare_open_failed">两侧中有一侧连不上</string>
     <string name="open_how">打开方式</string>
@@ -325,6 +343,7 @@
     <string name="open_as_archive">以压缩包方式打开</string>
     <string name="viewer_theme">配色</string>
     <string name="viewer_wrap">自动换行</string>
+    <string name="viewer_line_numbers">行号</string>
     <string name="viewer_search">搜索</string>
     <string name="viewer_text_bigger">增大字号</string>
     <string name="viewer_text_smaller">减小字号</string>
@@ -332,6 +351,12 @@
     <string name="hex_search_hex">HEX</string>
     <string name="hex_search_hint_text">搜索文本</string>
     <string name="hex_search_hint_hex">十六进制,如 4D 5A</string>
+    <string name="hex_cmp_opening">正在打开…</string>
+    <string name="hex_cmp_scanning">正在逐字节对比… %1$d%%</string>
+    <string name="hex_cmp_scan_failed">字节对比失败</string>
+    <string name="hex_cmp_identical">两个文件完全相同</string>
+    <string name="hex_cmp_count">%1$d 处差异</string>
+    <string name="hex_cmp_count_more">超过 %1$d 处差异</string>
     <string name="viewer_preview">预览</string>
     <string name="viewer_edit">编辑</string>
     <string name="viewer_save">保存</string>
@@ -343,12 +368,15 @@
     <string name="viewer_discard_msg">有尚未保存的修改。</string>
     <string name="viewer_discard_ok">放弃</string>
     <string name="viewer_readonly_truncated">文件过大,仅载入了前 %1$s,不能编辑</string>
-    <string name="viewer_readonly_encoding">文本不是 UTF-8,为避免存坏已禁用编辑</string>
+    <string name="viewer_readonly_encoding">认不出文本编码,为避免存坏已禁用编辑</string>
+    <string name="viewer_charset_failed_title">%1$s 存不下</string>
+    <string name="viewer_charset_failed">%1$s 表示不了这些字符:%2$s\n\n转成 UTF-8 能存下,但文件编码也就变了——别的程序再打开,原有内容可能全成乱码。</string>
+    <string name="viewer_save_as_utf8">转成 UTF-8 保存</string>
     <string name="share_confirm">复制到此</string>
     <string name="share_no_content">未收到可复制的内容</string>
     <string name="share_add_server_hint">请先在主界面添加此类服务器连接</string>
 
-    <!-- 音乐播放器 -->
+    <!-- Music player -->
     <string name="music_menu">音乐</string>
     <string name="music_title">音乐播放</string>
     <string name="music_channel">正在播放</string>
@@ -380,15 +408,18 @@
     <string name="music_load_failed">列表里的曲目一首都打不开——服务器连上了吗?</string>
     <string name="music_pin_shortcut">添加"音乐"快捷方式到桌面</string>
     <string name="music_pin_shortcut_unsupported">当前桌面不支持添加快捷方式</string>
+    <!-- 默认显示名:首次访问时自动创建的最爱播放列表 -->
+    <string name="playlist_favorites">我的最爱</string>
 
-    <!-- 树/根节点(PaneViewModel) -->
+    <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">收藏</string>
     <string name="group_internal_storage">内部存储</string>
     <string name="group_root">根目录</string>
     <string name="group_lan">局域网 (SMB)</string>
     <string name="group_saf">文档树 (SAF)</string>
+    <string name="volume_grant_saf">用 SAF 授权此卷</string>
 
-    <!-- 应用管理(AppsFileSystem) -->
+    <!-- Apps (AppsFileSystem) -->
     <string name="apps_root">应用</string>
     <string name="apps_user">已安装</string>
     <string name="apps_system">系统</string>
@@ -399,6 +430,14 @@
     <string name="apps_launch">启动应用</string>
     <string name="apps_uninstall_system">系统应用无法卸载</string>
     <string name="apps_launch_failed">该应用没有启动入口</string>
+
+    <!-- Apk bundle install: xapk / apks / apkm (ApkBundleInstall) -->
+    <string name="install_title">安装应用包</string>
+    <string name="install_no_apk">这个包里没有 apk</string>
+    <string name="install_failed">安装失败:%1$s</string>
+    <string name="install_done">安装完成</string>
+    <string name="install_need_permission">安装应用包需要先允许 Twig「安装未知应用」。</string>
+    <string name="install_settings">去设置</string>
     <string name="capacity_format">可用 %1$s / %2$s</string>
     <string name="action_add_smb">添加 SMB 服务器…</string>
     <string name="action_add_ftp">添加 FTP 服务器…</string>
@@ -406,6 +445,10 @@
     <string name="action_add_webdav">添加 WebDAV…</string>
     <string name="action_add_s3">添加 S3 存储…</string>
     <string name="action_add_saf">添加文档树…</string>
+    <string name="action_remove_saf">移除文档树</string>
+    <string name="confirm_remove_saf">放弃对\"%1$s\"的访问授权?\n\n只是交还授权 —— 目录和里面的东西原样留在那儿,随时可以重新添加。</string>
+    <string name="saf_remove_failed">没能交还这条访问授权</string>
+    <string name="saf_root_no_move">文档树根是一条访问授权,不是普通目录 —— 可以复制,但不能移动</string>
     <string name="fav_hint">长按目录可添加到收藏</string>
     <string name="err_reveal_unsupported">该来源无法在面板中定位</string>
     <string name="err_conn_deleted">对应的连接配置已删除</string>
@@ -418,7 +461,7 @@
     <string name="err_hash_read_error">读取错误</string>
     <string name="err_operation_failed">操作失败</string>
 
-    <!-- 设置页(SettingsActivity) -->
+    <!-- Settings page (SettingsActivity) -->
     <string name="settings_section_display">显示</string>
     <string name="settings_show_hidden">显示隐藏文件</string>
     <string name="settings_show_hidden_desc">关闭时,名字以点开头的文件与目录不显示</string>
@@ -450,6 +493,28 @@
     <string name="settings_thumbs_embedded">优先使用文件内置缩略图</string>
     <string name="settings_thumbs_embedded_desc">jpg 有 EXIF 内置图时直接用:更快,但通常只有 160×120,较模糊</string>
     <string name="settings_clear_thumbs_cache">清除缩略图缓存</string>
+    <string name="settings_section_text">文本</string>
+    <string name="settings_text_charsets">文本编码</string>
+    <string name="charsets_none">仅 Unicode</string>
+    <string name="charsets_dialog_note">文本不是 Unicode 时,按下面勾选的顺序逐个尝试,第一个能干净解开的胜出。windows-125x、ISO-8859-x、KOI8-R 这些单字节编码请放最后——它们几乎接受任意字节,排在后面的候选永远轮不上。</string>
+    <string name="charset_item">%1$s \u00b7 %2$s</string>
+    <string name="charset_move_up">上移</string>
+    <string name="charset_move_down">下移</string>
+    <string name="charset_lang_zh_cn">简体中文</string>
+    <string name="charset_lang_zh_tw">繁体中文</string>
+    <string name="charset_lang_ja">日文</string>
+    <string name="charset_lang_ko">韩文</string>
+    <string name="charset_lang_cyrillic">西里尔文</string>
+    <string name="charset_lang_western">西欧</string>
+    <string name="charset_lang_arabic">阿拉伯文</string>
+    <string name="charset_lang_zh_hk">繁体中文(香港)</string>
+    <string name="charset_lang_thai">泰文</string>
+    <string name="charset_lang_greek">希腊文</string>
+    <string name="charset_lang_turkish">土耳其文</string>
+    <string name="charset_lang_hebrew">希伯来文</string>
+    <string name="charset_lang_baltic">波罗的海</string>
+    <string name="charset_lang_central">中欧</string>
+
     <string name="settings_section_player">视频播放</string>
     <string name="settings_longpress_speed">按住画面加速倍数</string>
     <string name="settings_speed_n">%1$.1f×</string>
@@ -469,7 +534,7 @@
     <string name="terminal_here_root">在此打开 root 终端</string>
     <string name="terminal_here_shizuku">在此打开 Shizuku 终端</string>
     <string name="terminal_new_priv">新建特权会话</string>
-    <!-- 特权访问(root / Shizuku) -->
+    <!-- Privileged access (root / Shizuku) -->
     <string name="settings_section_privileged">特权访问</string>
     <string name="settings_privileged">提权文件访问</string>
     <string name="settings_privileged_desc">读写应用自己够不着的目录,如 /data 与 Android/data</string>
@@ -507,7 +572,11 @@
     <string name="picker_hint_single">点一个文件即选中</string>
     <string name="picker_hint_multi">勾选文件后点「选择」</string>
     <string name="picker_none_checked">还没有勾选文件</string>
-    <!-- 后台传输(复制/移动/压缩) -->
+    <!-- Background transfers (copy / move / compress) -->
+    <!-- StreamProvider 通过 SecurityException / IllegalArgumentException 抛给调用方 app 的提示 -->
+    <string name="stream_read_only">只读</string>
+    <string name="stream_bad_uri">URI 格式错误</string>
+    <string name="stream_bad_token">stream token 解析失败</string>
     <string name="transfer_channel">文件传输</string>
     <string name="transfer_background">转到后台</string>
     <string name="transfer_background_hint">后台传输中,点通知栏可返回</string>
@@ -563,7 +632,7 @@
     <string name="msg_pick_one_to_rename">请仅勾选 1 项进行重命名</string>
     <string name="err_failed">失败</string>
     <string name="treemap_path_summary">%1$s · %2$s · %3$d 项</string>
-    <!-- 属性卡片(FileInfo) -->
+    <!-- File info card (FileInfo) -->
     <string name="info_section_basic">基本</string>
     <string name="info_section_image">图片</string>
     <string name="info_section_media">媒体</string>
@@ -619,7 +688,7 @@
     <string name="info_channel_mono">单声道</string>
     <string name="info_channel_stereo">立体声</string>
     <string name="info_channel_n">%d 声道</string>
-    <!-- Git 虚拟树(GitVfs) -->
+    <!-- Git virtual tree (GitVfs) -->
     <string name="git_changes_n">更改 (%d)</string>
     <string name="git_other_branches">其他分支</string>
     <string name="git_worktrees_n">工作区 (%d)</string>
@@ -631,7 +700,7 @@
     <string name="git_read_only">Git 视图只读</string>
     <string name="git_file_deleted">(文件已删除)</string>
 
-    <!-- WiFi 共享(内置 HTTP + WebDAV 服务) -->
+    <!-- WiFi sharing (built-in HTTP + WebDAV server) -->
     <string name="dialog_close">关闭</string>
     <string name="share_title">WiFi 共享</string>
     <string name="share_dir_menu">用 WiFi 共享</string>
@@ -668,7 +737,7 @@
     <string name="share_scan_found">发现的设备</string>
     <string name="share_scan_added">已添加 %s</string>
 
-    <!-- 发给浏览器的页面 -->
+    <!-- Pages served to the browser -->
     <string name="share_web_sources">所有来源</string>
     <string name="share_web_name">名称</string>
     <string name="share_web_size">大小</string>
@@ -689,4 +758,101 @@
     <string name="share_web_stats">%1$d 个目录 · %2$d 个文件 · %3$s</string>
     <string name="share_web_error">打不开:%s</string>
     <string name="share_web_net_error">网络错误</string>
+    <string name="action_connect_jellyfin">添加 Jellyfin 服务器</string>
+    <string name="action_connect_emby">添加 Emby 服务器</string>
+    <string name="action_add_jellyfin">添加 Jellyfin 服务器…</string>
+    <string name="action_add_emby">添加 Emby 服务器…</string>
+    <string name="group_media">媒体服务器</string>
+    <string name="jf_url">服务器地址(http(s)://主机:8096)</string>
+    <string name="jf_user">用户名</string>
+    <string name="jf_pass">密码</string>
+    <string name="jf_api_key">API Key(可选;填了就不用密码)</string>
+    <string name="jf_api_key_hint">用 API Key 时,用户名只用来指定看谁的观看记录——留空则取第一个用户。</string>
+    <string name="media_resume">继续观看</string>
+    <string name="err_progress_sync">同步播放进度失败:%1$s</string>
+    <string name="media_playlists">播放列表</string>
+    <string name="media_collections">合集</string>
+    <string name="media_latest">最新</string>
+    <string name="media_folders">文件夹</string>
+    <string name="media_albums">专辑</string>
+    <string name="media_album_artists">专辑艺术家</string>
+    <string name="media_artists">艺术家</string>
+    <string name="player_prev_episode">上一集</string>
+    <string name="player_next_episode">下一集</string>
+    <string name="settings_auto_next">自动播放下一集</string>
+    <string name="settings_auto_next_sum">一集播完后接着播同一部剧的下一集</string>
+
+    <!-- Security & backup -->
+    <string name="settings_section_security">安全与备份</string>
+    <string name="settings_master_pw">主密码</string>
+    <string name="settings_master_pw_off">未启用 —— 密码由本机硬件密钥库保护</string>
+    <string name="settings_master_pw_on">已启用 —— 每次启动需输入一次</string>
+    <string name="master_pw_note">已保存的密码一直是加密的:密钥存在本机的硬件密钥库里、永远不会离开这台设备,所以把 /data/data 拷到别处也还原不出任何密码。\n\n主密码更进一步 —— 密钥由你输入的内容现场推导,不落盘,因此连 root 过的设备也拿不到。代价是每次启动应用要输入一次。</string>
+    <string name="master_pw_enable">设置主密码</string>
+    <string name="master_pw_change">修改主密码</string>
+    <string name="master_pw_disable">关闭主密码</string>
+    <string name="master_pw_new">新密码</string>
+    <string name="master_pw_repeat">再输一遍</string>
+    <string name="master_pw_current">当前密码</string>
+    <string name="master_pw_unlock_title">解锁 Twig</string>
+    <string name="master_pw_unlock_note">输入主密码以使用已保存的服务器密码。</string>
+    <string name="master_pw_mismatch">两次输入不一致</string>
+    <string name="master_pw_too_short">至少 6 个字符</string>
+    <string name="master_pw_failed">主密码设置失败</string>
+    <string name="master_pw_wrong">密码不对</string>
+    <string name="master_pw_enabled">主密码已启用</string>
+    <string name="master_pw_disabled">主密码已关闭。密码仍由本机密钥库加密保存。</string>
+    <string name="settings_master_pw_on_bio">已启用 —— 每次启动需指纹或主密码</string>
+    <string name="master_pw_bio_enable">开启指纹解锁</string>
+    <string name="master_pw_bio_disable">关闭指纹解锁</string>
+    <string name="master_pw_bio_enabled">已开启指纹解锁。主密码依然有效,随时可以改用它。</string>
+    <string name="master_pw_bio_disabled">已关闭指纹解锁</string>
+    <string name="master_pw_bio_unavailable">开不了指纹解锁 —— 请先在系统设置里录入指纹</string>
+    <string name="master_pw_use_pw">用主密码</string>
+    <string name="settings_backup_export">导出配置</string>
+    <string name="settings_backup_export_desc">连接、密码、收藏与设置,导出成一个 .twigbak 文件</string>
+    <string name="settings_backup_import">导入配置</string>
+    <string name="settings_backup_import_desc">把 .twigbak 文件合并到这台设备</string>
+    <string name="backup_export_title">导出配置</string>
+    <string name="backup_export_note">设一个密码来加密备份。留空则导出成可直接阅读的明文。</string>
+    <string name="backup_export_warn">这个文件里是全部服务器密码和私钥的明文。不要放进网盘,也不要用聊天工具发送。</string>
+    <string name="backup_pw_hint">密码(留空 = 不加密)</string>
+    <string name="backup_import_pw_title">这份备份是加密的</string>
+    <string name="backup_import_pw_note">输入导出时设置的密码。</string>
+    <string name="backup_export_failed">导出失败:%1$s</string>
+    <string name="backup_imported">已导入 %1$d 条连接、%2$d 个密码、%3$d 个私钥、%4$d 项设置</string>
+    <string name="backup_import_failed">导入失败:%1$s</string>
+    <string name="backup_bad_password">密码不对,或者文件被改动过</string>
+    <string name="backup_bad_format">不是 Twig 备份文件</string>
+    <string name="backup_restart_note">重启 Twig 后全部设置才会生效。</string>
+    <string name="backup_working">正在处理…</string>
+    <string name="backup_locked">请先用主密码解锁</string>
+    <string name="picker_hint_dir">点开要保存到的目录,再按「确定」</string>
+    <string name="backup_pick_dir">备份保存到</string>
+    <string name="backup_pick_file">选择备份文件</string>
+    <string name="backup_exported_at">已导出到 %1$s</string>
+    <string name="action_lock">锁定</string>
+    <string name="action_exit">退出</string>
+    <string name="exit_title">退出 Twig</string>
+    <string name="exit_note">以下会被停掉:</string>
+    <string name="exit_running_music">正在播放:%1$s</string>
+    <string name="exit_running_share">WiFi 共享正开着</string>
+    <string name="exit_running_transfer">有文件正在传输</string>
+    <string name="exit_confirm">退出</string>
+    <string name="exit_lock_instead">只锁定</string>
+    <string name="exit_lock_hint">锁定不会打断上面这些,只是回来时要重新输主密码。</string>
+    <plurals name="exit_running_term">
+        <item quantity="other">%1$d 个终端会话</item>
+    </plurals>
+
+    <!-- About -->
+    <string name="settings_section_about">关于</string>
+    <string name="settings_about">关于 Twig</string>
+    <string name="about_version">版本 %1$s(%2$d)</string>
+    <string name="about_body">%1$s\n许可:GPL-3.0-only\n\n源码、问题反馈与发布:\n%2$s</string>
+    <string name="about_open">项目主页</string>
+    <string name="about_copy">复制链接</string>
+    <string name="about_no_browser">这台设备上没有能打开链接的应用——地址已复制到剪贴板</string>
+    <string name="pdf_page_mode">单页模式</string>
+    <string name="pdf_open_failed">无法打开该 PDF</string>
 </resources>

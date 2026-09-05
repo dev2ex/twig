@@ -10,33 +10,38 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * app 这一侧对 [TwigPrivService] 的绑定管理。
+ * The app-side binding management for [TwigPrivService].
  *
- * 一个进程只保留一条连接,多条终端会话共用 —— 每条会话只是让它再 forkpty 一次,
- * 而拉起一个特权进程要几百毫秒、还要走一次 Shizuku 的鉴权。
+ * Only one connection is kept per process, shared by all terminal sessions —
+ * each session simply asks it to forkpty again, whereas starting a privileged
+ * process takes several hundred milliseconds and goes through one round of
+ * Shizuku's permission check.
  */
 object PrivService {
 
     private const val TAG = "twig-priv"
 
     /**
-     * `version` 变了 Shizuku 会重启那个进程。**改了 [TwigPrivService] 的行为就要 +1**,
-     * 否则用户机上可能还连着旧代码跑起来的常驻进程。
+     * Changing `version` makes Shizuku restart that process. **Bump it by +1
+     * whenever [TwigPrivService]'s behaviour changes**, otherwise the user's
+     * device may still be running a resident process started from the old code.
      */
     private const val VERSION = 3
 
     private val args = Shizuku.UserServiceArgs(
         ComponentName("com.twig.app", TwigPrivService::class.java.name),
     )
-        // daemon(false):跟着 app 走,退出就收掉,不在用户机上留常驻进程
+        // daemon(false): lives with the app — goes away when it exits, no
+        // resident process left on the user's device
         .daemon(false)
         .processNameSuffix("priv")
         .debuggable(false)
         .version(VERSION)
 
     /**
-     * 一个只为"还活着"这件事存在的 binder:它随本进程一起消失,助手 linkToDeath
-     * 到它身上就能在 app 没了的时候自杀。
+     * A binder that exists only to be "alive": it disappears with this process,
+     * and the helper links to its death so it can kill itself when the app is
+     * gone.
      */
     private val aliveToken = android.os.Binder()
 
@@ -52,7 +57,8 @@ object PrivService {
             } else {
                 null
             }
-            // 立刻把存活凭据交过去,免得 app 意外退出时留下一个 root 进程
+            // Hand over the liveness token right away, so that if the app
+            // crashes unexpectedly we don't leave a root process behind
             runCatching { s?.attach(aliveToken) }
                 .onFailure { Log.w(TAG, "attach failed", it) }
             synchronized(lock) {
@@ -72,8 +78,9 @@ object PrivService {
     private var pending: CountDownLatch? = null
 
     /**
-     * 取到助手接口,必要时先把它拉起来。**阻塞,只能在后台线程调用** ——
-     * Shizuku 起那个进程要跑一遍 app_process,几百毫秒起步。
+     * Get the helper interface, starting it if necessary. **Blocks, must be
+     * called on a background thread** — Shizuku starting that process runs
+     * through app_process, which takes several hundred milliseconds.
      */
     fun get(timeoutMs: Long = 20_000): ITwigPrivService? {
         service?.let { if (runCatching { it.asBinder().pingBinder() }.getOrDefault(false)) return it }
@@ -95,7 +102,7 @@ object PrivService {
         synchronized(lock) { service = null }
     }
 
-    /** APK 路径与当前 ABI —— 助手要靠它们把 libtwigpty.so 从包里抠出来。 */
+    /** APK path and current ABI — the helper uses these to extract libtwigpty.so from the package. */
     fun apkPath(ctx: Context): String = ctx.applicationInfo.sourceDir
 
     fun abi(): String = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"

@@ -22,46 +22,67 @@ import java.util.TimeZone
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * 一个 S3 端点的配置。
+ * Configuration for an S3 endpoint.
  *
- * [bucket] 留空时根目录列出账号下所有桶;填了则根目录直接是那个桶——
- * 很多访问凭证只被授权了单个桶、没有 `ListAllMyBuckets` 权限,
- * 那种情况下不填就会开局一个 AccessDenied。
+ * When [bucket] is empty, the root lists every bucket owned by the account; when
+ * it is filled in, the root is that bucket directly — many access credentials
+ * are only authorized for a single bucket and lack `ListAllMyBuckets`, in which
+ * case leaving it empty would open with an AccessDenied.
+ *
+ * [bucket] may also carry a key prefix (`photos-bucket/2026/raw`), which roots the
+ * connection at that "directory": a bucket name and a start prefix are one path, so
+ * they share one field.
  */
 data class S3Config(
-    /** 形如 `https://s3.us-east-1.amazonaws.com` 或 `http://192.168.1.9:9000`。 */
+    /** For example, `https://s3.us-east-1.amazonaws.com` or `http://192.168.1.9:9000`. */
     val endpoint: String,
     val accessKey: String,
     val secretKey: String,
     val region: String = "us-east-1",
     val bucket: String = "",
-    /** true = `endpoint/bucket/key`;false = `bucket.endpoint/key`(AWS 正统写法)。 */
+    /** true = `endpoint/bucket/key`; false = `bucket.endpoint/key` (the AWS canonical form). */
     val pathStyle: Boolean = true,
 )
 
 /**
- * S3 文件系统:OkHttp + 手写 SigV4 签名 + 手写 XML 解析,零新依赖。
+ * S3 filesystem: OkHttp + hand-written SigV4 signing + hand-written XML parsing,
+ * zero new dependencies.
  *
- * 不用 AWS SDK 的原因见 [Sigv4] —— 光 s3 模块连着依赖十几 MB,比整个 APK 还大,
- * 而实际用到的只是 GET/PUT/DELETE 几个 REST 调用。同一份实现通吃 AWS S3、MinIO、
- * Cloudflare R2、阿里云 OSS、腾讯云 COS、Backblaze B2 等一切 S3 兼容服务。
+ * Why the AWS SDK is not used is explained in [Sigv4] — the s3 module alone pulls
+ * in over ten MB of transitive dependencies, larger than the entire APK, while
+ * we only need GET/PUT/DELETE REST calls. The same implementation also covers
+ * AWS S3, MinIO, Cloudflare R2, Aliyun OSS, Tencent COS, Backblaze B2 and any
+ * other S3-compatible service.
  *
- * **S3 没有目录**,这里的目录是两件东西凑出来的:
- *  - 列目录时带 `delimiter=/`,服务端把同前缀的对象折叠成 `CommonPrefixes` = 子目录;
- *  - [mkdir] 写一个以 `/` 结尾的空对象当占位符,好让空目录也能显示出来
- *    (纯靠 CommonPrefixes 的话,没有对象的目录根本不存在)。
- *  列目录时这些占位符会被滤掉,不会自己冒出来变成一个 0 字节的怪文件。
+ * **S3 has no real directories**; the directories here are faked from two pieces:
+ *  - When listing, we pass `delimiter=/`; the server folds objects sharing a
+ *    prefix into `CommonPrefixes` = subdirectories.
+ *  - [mkdir] writes an empty object whose key ends with `/` as a placeholder,
+ *    so empty directories can show up at all (relying on CommonPrefixes alone
+ *    means directories with no objects simply do not exist).
+ *  When listing, those placeholders are filtered out, so they do not surface as
+ *    a 0-byte odd file.
  */
 class S3FileSystem(
     private val config: S3Config,
     override val scheme: String = SCHEME,
 ) : FileSystem {
 
+    /** The bucket name alone — the first segment of [S3Config.bucket], which may carry a prefix. */
+    private val bucket = config.bucket.trim('/').substringBefore('/')
+
+    /**
+     * The key prefix the root sits at (the rest of [S3Config.bucket]); "" = the bucket
+     * root. Named apart from [base], which is the endpoint URL.
+     */
+    private val keyBase = config.bucket.trim('/').substringAfter('/', "")
+
     override val displayName: String =
         "S3 (" + config.endpoint.substringAfter("://").trimEnd('/') +
-            (if (config.bucket.isEmpty()) "" else "/${config.bucket}") + ")"
+            (if (bucket.isEmpty()) "" else "/$bucket") +
+            (if (keyBase.isEmpty()) "" else "/$keyBase") + ")"
 
-    /** 超时取值与 [WebDavFileSystem] 同理:连接短、读写放宽(大文件传输不能按 10 秒算)。 */
+    /** Timeout values mirror [WebDavFileSystem]: short connect, generous read/write (large file transfers cannot be measured in 10-second units). */
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
@@ -72,17 +93,20 @@ class S3FileSystem(
     private val base: HttpUrl = runCatching { config.endpoint.trimEnd('/').toHttpUrl() }
         .getOrElse { throw FsException("Bad S3 endpoint: ${config.endpoint}", it) }
 
-    // ---- 路径 ↔ (桶, 键) ----
+    // ---- path ↔ (bucket, key) ----
 
-    /** [key] 为空表示桶根。 */
+    /** An empty [key] means the bucket root. */
     private data class Loc(val bucket: String, val key: String)
 
     /**
-     * 把 [XFile.path] 拆成桶与键;返回 null 表示"桶列表"这一层(仅 [S3Config.bucket] 为空时存在)。
+     * Splits [XFile.path] into bucket and key; returns null to mean the
+     * "bucket list" layer (only present when [S3Config.bucket] is empty).
+     * The prefix the connection is rooted at is prepended here, in the one place every
+     * key passes through — everything that builds an [XFile] keeps the visible path.
      */
     private fun locOf(path: String): Loc? {
-        val p = path.trim('/')
-        if (config.bucket.isNotEmpty()) return Loc(config.bucket, p)
+        val p = listOf(keyBase, path.trim('/')).filter { it.isNotEmpty() }.joinToString("/")
+        if (bucket.isNotEmpty()) return Loc(bucket, p)
         if (p.isEmpty()) return null
         val i = p.indexOf('/')
         return if (i < 0) Loc(p, "") else Loc(p.substring(0, i), p.substring(i + 1))
@@ -91,7 +115,7 @@ class S3FileSystem(
     private fun loc(file: XFile): Loc =
         locOf(file.path) ?: throw FsException("Not inside a bucket: ${file.path}")
 
-    /** 目录的对象前缀:桶根为空串,否则 `key/`。 */
+    /** The object prefix for a directory: empty for the bucket root, otherwise `key/`. */
     private fun prefixOf(l: Loc): String = if (l.key.isEmpty()) "" else l.key.trimEnd('/') + "/"
 
     private fun childPath(dirPath: String, name: String): String =
@@ -101,7 +125,7 @@ class S3FileSystem(
 
     override fun root(): XFile = XFile(scheme, "/", isDir = true)
 
-    /** 与 FTP/WebDAV 一致:不 stat,纯路径映射(判类型请走 [list],见 CLAUDE.md 的 resolve 坑)。 */
+    /** Same as FTP/WebDAV: no stat, plain path mapping (use [list] to determine type, see the resolve pitfall in CLAUDE.md). */
     override fun resolve(path: String): XFile = XFile(scheme, path, isDir = true)
 
     override fun list(dir: XFile): List<XFile> {
@@ -113,7 +137,7 @@ class S3FileSystem(
             val q = ArrayList<Pair<String, String>>()
             q += "list-type" to "2"
             q += "delimiter" to "/"
-            // 名字里可能有 XML 里非法的字节(控制字符等),让服务端先编码再回
+            // Names may contain bytes that are illegal in XML (e.g. control chars), so let the server encode them before returning
             q += "encoding-type" to "url"
             if (prefix.isNotEmpty()) q += "prefix" to prefix
             token?.let { q += "continuation-token" to it }
@@ -127,7 +151,7 @@ class S3FileSystem(
             }
             for (e in doc.byTag("Contents")) {
                 val key = decodeKey(e.text("Key") ?: continue)
-                // 目录占位符(mkdir 写的那个空对象),以及桶根自身的前缀条目
+                // Directory placeholder (the empty object written by mkdir), plus the prefix entry for the bucket root itself
                 if (key == prefix || key.endsWith("/")) continue
                 val name = key.removePrefix(prefix)
                 if (name.isEmpty() || '/' in name) continue
@@ -167,20 +191,21 @@ class S3FileSystem(
         }
     }
 
-    override fun randomAccessEfficient(): Boolean = true // HTTP Range 定位读
+    override fun randomAccessEfficient(): Boolean = true // HTTP Range positioned reads
 
     override fun openRandom(file: XFile): RandomSource {
         val l = loc(file)
         return HttpRangeSource(file.size) { position ->
-            // 越界时 S3 答 416,HttpRangeSource 认这个码,所以这里不走 checked 的 call()
+            // S3 responds with 416 when the position is out of range; HttpRangeSource recognises this code, so we skip the checked call() here
             rawCall("GET", l.bucket, l.key, headers = mapOf("Range" to "bytes=$position-"))
         }
     }
 
     /**
-     * PUT 是整体生效的:要么还是旧对象,要么已经是新对象,不会读到写了一半的东西。
-     * 分片上传中途失败也一样(没 Complete 就不可见),所以覆盖写自身是原子的——
-     * 文本编辑器保存因此免掉"写临时文件 → 删 → 改名"那两趟。
+     * PUT takes effect atomically: it is either the old object or the new one —
+     * no in-between state to read. Multipart uploads work the same way (nothing
+     * is visible until Complete), so an overwrite itself is atomic — text editors
+     * therefore avoid the "write temp file → delete → rename" dance.
      */
     override fun atomicOverwrite(): Boolean = true
 
@@ -197,7 +222,7 @@ class S3FileSystem(
         if (l.key.isEmpty()) {
             createBucket(l.bucket)
         } else {
-            // 空目录占位符:S3 没有目录,不写这个的话新建的空目录下次列出来就没了
+            // Empty-directory placeholder: S3 has no directories, so without writing this a freshly created empty directory disappears the next time we list it
             call("PUT", l.bucket, l.key.trimEnd('/') + "/", body = EMPTY_BODY, payloadSha = Sigv4.EMPTY_SHA256)
                 .close()
         }
@@ -205,7 +230,7 @@ class S3FileSystem(
     }
 
     private fun createBucket(bucket: String) {
-        // us-east-1 是默认区域,给它带上 LocationConstraint 反而会被 AWS 拒(InvalidLocationConstraint)
+        // us-east-1 is the default region; sending it a LocationConstraint actually makes AWS reject the request (InvalidLocationConstraint)
         val bytes = if (config.region == "us-east-1") ByteArray(0) else (
             "<CreateBucketConfiguration><LocationConstraint>${config.region}</LocationConstraint>" +
                 "</CreateBucketConfiguration>"
@@ -219,20 +244,22 @@ class S3FileSystem(
 
     override fun delete(file: XFile) {
         val l = locOf(file.path) ?: throw FsException("Cannot delete the bucket list")
-        // 配置锁定了单个桶时,"根" 就是那个桶——删它等于把整个连接的内容清空,
-        // 而用户看到的只是自己按了删除键的那一行。不给这条路。
-        if (l.key.isEmpty() && config.bucket.isNotEmpty()) throw FsException("Cannot delete the bucket root")
+        // When the config locks onto a single bucket, the "root" *is* that bucket
+        // — deleting it clears the entire connection, but the user only sees
+        // the one row they tapped delete on. We do not allow that path.
+        if (l.key.isEmpty() && bucket.isNotEmpty()) throw FsException("Cannot delete the bucket root")
         if (!file.isDir) {
             call("DELETE", l.bucket, l.key).close()
             return
         }
-        // 目录 = 一批共享前缀的对象,逐个删(批量 DELETE 要算 Content-MD5,
-        // 而各家兼容实现对它的支持参差不齐,不值得为它冒风险)
+        // A directory = a batch of objects sharing a prefix; delete them one by one
+        // (batch DELETE requires Content-MD5, and the various compatible
+        // implementations have spotty support for it — not worth the risk)
         for (key in allKeys(l.bucket, prefixOf(l))) call("DELETE", l.bucket, key).close()
-        if (l.key.isEmpty()) call("DELETE", l.bucket, "").close() // 桶本身
+        if (l.key.isEmpty()) call("DELETE", l.bucket, "").close() // the bucket itself
     }
 
-    /** 前缀下的全部对象键(不带 delimiter,即递归)。 */
+    /** Every object key under a prefix (no delimiter, i.e. recursive). */
     private fun allKeys(bucket: String, prefix: String): List<String> {
         val out = ArrayList<String>()
         var token: String? = null
@@ -259,19 +286,19 @@ class S3FileSystem(
     }
 
     /**
-     * 同一端点内的移动走服务端 CopyObject + DELETE:不经过手机,
-     * 几十 GB 的对象也是一次请求的事(不覆盖的话 [com.twig.core.CopyEngine]
-     * 会老老实实下载再上传一遍)。
+     * Intra-endpoint moves go through server-side CopyObject + DELETE: no traffic
+     * through the phone; even multi-tens-of-GB objects are one request
+     * (otherwise [com.twig.core.CopyEngine] faithfully downloads and re-uploads).
      */
     override fun moveWithin(src: XFile, destDir: XFile, newName: String): Boolean {
         if (src.scheme != scheme || destDir.scheme != scheme) return false
         val dest = XFile(scheme, childPath(destDir.path, newName), src.isDir)
-        if (locOf(dest.path)?.key.isNullOrEmpty()) return false // 目标落在桶层,交给拷贝引擎
+        if (locOf(dest.path)?.key.isNullOrEmpty()) return false // destination lands at bucket level, fall through to the copy engine
         transfer(src, dest, move = true)
         return true
     }
 
-    /** 服务端搬运;目录则逐个对象搬。 */
+    /** Server-side move; for directories, each object is moved individually. */
     private fun transfer(src: XFile, dest: XFile, move: Boolean) {
         val from = loc(src)
         val to = loc(dest)
@@ -284,7 +311,7 @@ class S3FileSystem(
         val srcPrefix = prefixOf(from)
         val dstPrefix = prefixOf(to)
         val keys = allKeys(from.bucket, srcPrefix)
-        // 空目录(只有占位符甚至什么都没有)也要在目标建出来
+        // Empty directories (placeholder only, or even completely empty) must still be created at the destination
         if (keys.isEmpty()) call("PUT", to.bucket, dstPrefix, body = EMPTY_BODY).close()
         for (key in keys) {
             copyObject(Loc(from.bucket, key), Loc(to.bucket, dstPrefix + key.removePrefix(srcPrefix)))
@@ -293,24 +320,24 @@ class S3FileSystem(
     }
 
     private fun copyObject(from: Loc, to: Loc) {
-        // x-amz-copy-source 的键要编码,但 '/' 是路径分隔符必须留着
+        // The key in x-amz-copy-source must be encoded, but '/' must be kept as the path separator
         val source = "/${from.bucket}/${Sigv4.uriEncode(from.key, encodeSlash = false)}"
         call(
             "PUT", to.bucket, to.key,
             body = EMPTY_BODY,
             headers = mapOf("x-amz-copy-source" to source),
         ).use {
-            // CopyObject 会先回 200 再流式发结果,失败信息藏在响应体里而不是状态码上
+            // CopyObject first responds 200 then streams the result; failure information is in the body, not the status code
             val text = it.body?.string().orEmpty()
             if ("<Error" in text) throw FsException("COPY failed: ${errorText(text)}")
         }
     }
 
     override fun exists(file: XFile): Boolean {
-        val l = locOf(file.path) ?: return true // 桶列表层
+        val l = locOf(file.path) ?: return true // bucket-list layer
         if (l.key.isEmpty()) return runCatching { call("HEAD", l.bucket, "").close() }.isSuccess
         if (!file.isDir) return runCatching { call("HEAD", l.bucket, l.key).close() }.isSuccess
-        // 目录:有占位符、或前缀下有任何对象,都算存在
+        // Directory: has a placeholder, or has any object under the prefix — either counts as existing
         if (runCatching { call("HEAD", l.bucket, prefixOf(l)).close() }.isSuccess) return true
         return runCatching {
             val doc = xml(
@@ -324,17 +351,19 @@ class S3FileSystem(
         }.getOrDefault(false)
     }
 
-    // ---- 上传 ----
+    // ---- Uploads ----
 
     /**
-     * 分片上传的输出流:攒够一片就发一片,**全程不落盘**。
+     * Output stream for multipart upload: as soon as a part fills, send it —
+     * **nothing is ever staged on disk**.
      *
-     * 小于一片的文件走单次 PUT(省掉 initiate/complete 两趟往返),
-     * 所以绝大多数文件仍是一个请求搞定。
+     * Files smaller than one part take a single PUT (skipping the initiate/complete
+     * round trips), so the vast majority of files still finish in one request.
      *
-     * 一片 8 MiB × 上限 10000 片 = 单对象最大 80 GB,同时上传时的内存占用固定
-     * 在一片的大小。注意进度回调的粒度是**写入缓冲**而非"发出去了",
-     * 进度条会以片为单位一顿一顿地走。
+     * One part = 8 MiB × 10000 parts = max 80 GB per object; concurrent upload
+     * memory usage stays pinned at one part. Note that the progress granularity
+     * is **buffer writes**, not bytes actually on the wire — the progress bar
+     * advances in part-sized steps.
      */
     private inner class S3Out(private val bucket: String, private val key: String) : OutputStream() {
         private val buf = ByteArray(PART_SIZE)
@@ -365,10 +394,10 @@ class S3FileSystem(
             try {
                 val id = uploadId
                 if (id == null) {
-                    // 整个对象不足一片
+                    // The whole object is less than one part
                     call("PUT", bucket, key, body = buf.toRequestBody(null, 0, pos)).close()
                 } else {
-                    if (pos > 0) flushPart() // 最后一片允许小于 5 MiB
+                    if (pos > 0) flushPart() // The last part is allowed to be smaller than 5 MiB
                     complete(id)
                 }
             } catch (t: Throwable) {
@@ -417,7 +446,7 @@ class S3FileSystem(
                 body = bytes.toRequestBody(XML_TYPE),
                 payloadSha = Sigv4.sha256Hex(bytes),
             ).use {
-                // 同 CopyObject:200 也可能是失败,真正的结果在响应体里
+                // Same as CopyObject: 200 may also be a failure; the real outcome lives in the response body
                 val text = it.body?.string().orEmpty()
                 if ("<Error" in text) throw FsException("CompleteMultipartUpload failed: ${errorText(text)}")
             }
@@ -426,7 +455,7 @@ class S3FileSystem(
 
     // ---- HTTP ----
 
-    /** 发请求并检查状态码;失败抛 [FsException]。 */
+    /** Sends a request and checks the status code; failures throw [FsException]. */
     private fun call(
         method: String,
         bucket: String?,
@@ -448,7 +477,7 @@ class S3FileSystem(
         return resp
     }
 
-    /** 同 [call] 但不检查状态码(调用方自己要看 416/404 这类码时用)。 */
+    /** Same as [call] but does not check the status code (used when the caller needs to inspect codes like 416/404 itself). */
     private fun rawCall(
         method: String,
         bucket: String?,
@@ -462,8 +491,9 @@ class S3FileSystem(
         val amzDate = Sigv4.amzDate(System.currentTimeMillis())
         val hostHeader =
             if (url.port == HttpUrl.defaultPort(url.scheme)) url.host else "${url.host}:${url.port}"
-        // 签名覆盖 host + 所有 x-amz-* + 调用方给的头;okhttp 自己补的
-        // Content-Length / User-Agent 之类不在 SignedHeaders 里,不参与签名。
+        // Signing covers host + all x-amz-* + headers supplied by the caller; headers
+        // OkHttp adds itself (Content-Length / User-Agent etc.) are not in SignedHeaders
+        // and so do not participate in signing.
         val signed = LinkedHashMap<String, String>()
         signed["host"] = hostHeader
         signed["x-amz-content-sha256"] = payloadSha
@@ -492,9 +522,10 @@ class S3FileSystem(
     }
 
     /**
-     * 请求体的 payload hash。空体算真 hash(便宜且最标准);有内容的一律
-     * `UNSIGNED-PAYLOAD` —— 上传的分片有 8 MiB,为签名再整读一遍算 SHA-256
-     * 纯属白烧 CPU,而 S3 本来就接受这个值。
+     * Payload hash for the request body. An empty body gets a real hash (cheap
+     * and standard); anything with content uses `UNSIGNED-PAYLOAD` — uploaded
+     * parts are 8 MiB, so reading the whole part again to compute SHA-256 for
+     * signing is pure CPU waste, and S3 accepts this value.
      */
     private fun shaFor(body: RequestBody?): String =
         if (body == null || runCatching { body.contentLength() }.getOrDefault(-1L) == 0L) {
@@ -511,15 +542,17 @@ class S3FileSystem(
             path = "/"
         } else if (config.pathStyle) {
             b.host(base.host)
-            // 桶级操作(列对象/建桶/删桶)是 `/bucket`,不带尾斜杠——
-            // 带了在部分兼容实现上会被当成"名为空串的对象"
+            // Bucket-level operations (list/create/delete a bucket) are `/bucket`,
+            // no trailing slash — with a trailing slash some compatible implementations
+            // interpret it as "an object with an empty key"
             path = if (key.isEmpty()) "/$bucket" else "/$bucket/" + Sigv4.uriEncode(key, encodeSlash = false)
         } else {
             b.host("$bucket.${base.host}")
             path = "/" + Sigv4.uriEncode(key, encodeSlash = false)
         }
-        // encodedPath/encodedQuery:自己编码到底,不让 okhttp 按它自己的规则改一遍——
-        // 签名算的就是这份字符串,两边差一个字符就是 SignatureDoesNotMatch。
+        // encodedPath/encodedQuery: we encode everything ourselves and do not let
+        // OkHttp rewrite it under its own rules — the signing computes its hash
+        // over this exact string, and one differing character means SignatureDoesNotMatch.
         b.encodedPath(path)
         Sigv4.canonicalQuery(query).takeIf { it.isNotEmpty() }?.let { b.encodedQuery(it) }
         return b.build()
@@ -527,7 +560,7 @@ class S3FileSystem(
 
     // ---- XML ----
 
-    /** 解析响应体;[what] 只用于出错时的定位信息。 */
+    /** Parses the response body; [what] is only used to locate errors. */
     private fun xml(resp: Response, what: String): Element = resp.use {
         val bytes = try {
             it.body?.bytes() ?: throw FsException("$what returned no body")
@@ -535,8 +568,9 @@ class S3FileSystem(
             throw FsException("$what response truncated: ${e::class.simpleName}: ${e.message}", e)
         }
         return try {
-            // namespace-unaware:S3 用默认命名空间且各兼容实现的 URI 不完全一致,
-            // 按本地名取标签最省事也最稳。
+            // namespace-unaware: S3 uses the default namespace and the various
+            // compatible implementations do not all agree on the URI; matching
+            // by local tag name is simplest and most robust.
             DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(bytes.inputStream()).documentElement
         } catch (e: Exception) {
@@ -553,7 +587,7 @@ class S3FileSystem(
 
     private fun Element.text(tag: String): String? = first(tag)?.textContent?.trim()
 
-    /** 从 S3 的错误 XML 里抠出 Code/Message(正则足够:错误体很小且结构固定)。 */
+    /** Pulls Code/Message out of S3's error XML (regex is sufficient: the body is small and fixed-shape). */
     private fun errorText(body: String): String {
         val code = CODE_RE.find(body)?.groupValues?.get(1).orEmpty()
         val msg = MSG_RE.find(body)?.groupValues?.get(1).orEmpty()
@@ -561,21 +595,26 @@ class S3FileSystem(
     }
 
     /**
-     * 解码 `encoding-type=url` 响应里的对象名(Key / Prefix / Delimiter)。
+     * Decodes object names (Key / Prefix / Delimiter) from `encoding-type=url`
+     * responses.
      *
-     * ★ 这里是 **form 编码**(`application/x-www-form-urlencoded`),不是请求路径用的
-     * RFC 3986 —— 2026-08-16 拿真 MinIO 打出来的地面真相:
+     * ★ This is **form encoding** (`application/x-www-form-urlencoded`), not the
+     * RFC 3986 used for request paths — ground truth from a real MinIO on
+     * 2026-08-16:
      * ```
-     * my notes.txt      → my+notes.txt          空格是 '+',不是 %20
-     * a+b.txt           → a%2Bb.txt             字面加号被转义,所以 '+' 无歧义
+     * my notes.txt      → my+notes.txt          space is '+', not %20
+     * a+b.txt           → a%2Bb.txt             literal plus is escaped, so '+' is unambiguous
      * 100% done #1.txt  → 100%25+done+%231.txt
      * ```
-     * 所以必须**先**把 `+` 换成空格、**再**解 `%XX`:反过来的话 `%2B` 解出来的那个
-     * 加号会被当成空格,`a+b.txt` 就成了 `a b.txt`,列表看着没毛病、一点开就 404。
+     * So we must **first** replace `+` with a space and **then** decode `%XX`:
+     * doing it the other way around turns `%2B` into a space (treated as one),
+     * and `a+b.txt` becomes `a b.txt`, which looks fine in the listing and
+     * then 404s on click.
      *
-     * 只有对象名走这套。`NextContinuationToken` 是不受 `encoding-type` 影响的
-     * opaque 值(实测里面的 `=` 原样返回),拿它来解会把 base64 里的 `+` 变成空格、
-     * 分页当场断掉——所以那边一个字都不解,原样带回给服务端。
+     * Only object names go through this. `NextContinuationToken` is an opaque
+     * value unaffected by `encoding-type` (the `=` inside is returned as-is);
+     * decoding it would turn the `+` inside base64 into a space and pagination
+     * would break on the spot — so for that one we pass through every byte.
      */
     private fun decodeKey(s: String): String = Sigv4.uriDecode(s.replace('+', ' '))
 
@@ -591,7 +630,7 @@ class S3FileSystem(
     companion object {
         const val SCHEME = "s3"
 
-        /** 分片大小;S3 规定除最后一片外不得小于 5 MiB。 */
+        /** Part size; S3 requires that all parts except the last be at least 5 MiB. */
         private const val PART_SIZE = 8 * 1024 * 1024
 
         private val XML_TYPE = "application/xml".toMediaType()

@@ -46,7 +46,7 @@ class ZipFileSystemTest {
     fun listsRootWithDirsFirst() {
         val root = zfs.rootOf(archiveX())
         val names = zfs.list(root).map { "${it.name}:${it.isDir}" }
-        // 目录在前
+        // Directories come first
         assertEquals(listOf("dir:true", "hello.txt:false"), names)
     }
 
@@ -73,7 +73,7 @@ class ZipFileSystemTest {
 
     @Test
     fun extractViaCopyEngine() {
-        // 解压 = 用 CopyEngine 把包内条目拷到本地目录,验证抽象层跨系统拷贝
+        // Extraction = using CopyEngine to copy entries inside the package to a local directory, verifying the abstraction layer's cross-filesystem copy
         val root = zfs.rootOf(archiveX())
         val dest = File(tmp, "out").apply { mkdirs() }
         val destX = FsRegistry.of("file").resolve(dest.absolutePath)
@@ -82,14 +82,14 @@ class ZipFileSystemTest {
 
         assertTrue(File(dest, "hello.txt").exists())
         assertEquals("hi", File(dest, "hello.txt").readText())
-        // 目录递归
+        // Directory recursion
         assertEquals("aaa", File(dest, "dir/a.txt").readText())
         assertEquals("bbbbb", File(dest, "dir/sub/b.txt").readText())
     }
 
     @Test
     fun autoDetectsGbkNames() {
-        // 用 GBK 写入中文名条目(模拟老压缩包)
+        // Write a Chinese-named entry using GBK (simulating a legacy archive)
         val gbk = File(tmp, "gbk.zip")
         ZipOutputStream(gbk.outputStream(), Charset.forName("GBK")).use { z ->
             z.put("报告.txt", "neirong")
@@ -97,14 +97,14 @@ class ZipFileSystemTest {
         val gbkX = XFile("file", gbk.absolutePath, false)
         val root = zfs.rootOf(gbkX)
         val names = zfs.list(root).map { it.name }
-        assertEquals(listOf("报告.txt"), names) // 自动识别为 GBK,名字不乱码
+        assertEquals(listOf("报告.txt"), names) // Auto-detected as GBK, name is not garbled
         val text = zfs.openInput(zfs.list(root).first()).bufferedReader().use { it.readText() }
         assertEquals("neirong", text)
     }
 
     @Test
     fun writeCopyIntoZip() {
-        // 把本地文件复制进 zip(走 createFile + openOutput 的整包重写)
+        // Copy a local file into the zip (goes through the full-package rewrite of createFile + openOutput)
         val local = File(tmp, "new.txt").apply { writeText("inserted") }
         val localX = FsRegistry.of("file").resolve(local.absolutePath)
         CopyEngine.transfer(listOf(localX), zfs.rootOf(archiveX()), move = false)
@@ -112,7 +112,7 @@ class ZipFileSystemTest {
         val root = zfs.rootOf(archiveX())
         val names = zfs.list(root).map { it.name }.toSet()
         assertTrue("new.txt" in names)
-        assertTrue("hello.txt" in names) // 原条目仍在
+        assertTrue("hello.txt" in names) // the original entry is still present
         val inserted = zfs.openInput(zfs.list(root).first { it.name == "new.txt" })
             .bufferedReader().use { it.readText() }
         assertEquals("inserted", inserted)
@@ -122,16 +122,16 @@ class ZipFileSystemTest {
     fun deleteMkdirRenameInZip() {
         val root = zfs.rootOf(archiveX())
 
-        // 删除目录(递归)
+        // Delete a directory (recursively)
         val dir = zfs.list(root).first { it.isDir }
         zfs.delete(dir)
         assertTrue(zfs.list(zfs.rootOf(archiveX())).none { it.name == "dir" })
 
-        // 新建目录
+        // Create a new directory
         zfs.mkdir(zfs.rootOf(archiveX()), "newdir")
         assertTrue(zfs.list(zfs.rootOf(archiveX())).any { it.name == "newdir" && it.isDir })
 
-        // 重命名文件
+        // Rename a file
         val hello = zfs.list(zfs.rootOf(archiveX())).first { it.name == "hello.txt" }
         zfs.rename(hello, "renamed.txt")
         val names = zfs.list(zfs.rootOf(archiveX())).map { it.name }.toSet()

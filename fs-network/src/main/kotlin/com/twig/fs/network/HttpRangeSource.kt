@@ -6,16 +6,21 @@ import okhttp3.Response
 import java.io.InputStream
 
 /**
- * 基于 HTTP Range 的定位读,WebDAV 与 S3 共用(两边都是"GET + Range 头"这一套语义)。
+ * Positioned reads based on HTTP Range, shared by WebDAV and S3 (both speak the
+ * "GET + Range header" semantics).
  *
- * 维护一个小"流池",按读取位置匹配复用响应流:位置吻合的顺序读零成本,
- * 跳变才带 Range 重新 GET。
+ * Maintains a small "stream pool" that matches the read position to reuse response
+ * streams: sequential reads at a matching position cost nothing, only jumps trigger
+ * a fresh Range GET.
  *
- * 为什么是池而不是单条流:调用方(播放器主读 + 预读缓存线程)会并发地在不同位置
- * 推进,单条流会被来回打断、每次读都重开请求(播放卡顿);池让每个"读取序列"
- * 各占一条流互不干扰。网络 IO 在池锁外进行。
+ * Why a pool instead of a single stream: callers (the player's main read plus the
+ * prefetch/cache thread) advance concurrently at different positions. A single
+ * stream would get interrupted back and forth, reopening the request on every read
+ * (causing playback stutter); the pool gives each "read sequence" its own stream
+ * so they do not interfere. Network I/O runs outside the pool's lock.
  *
- * @param openAt 从给定字节位置开一条响应(实现方负责带上 `Range: bytes=<pos>-` 与鉴权)。
+ * @param openAt Opens a response from the given byte offset (the implementer is
+ * responsible for attaching `Range: bytes=<pos>-` and auth headers).
  */
 internal class HttpRangeSource(
     private val length: Long,
@@ -41,7 +46,7 @@ internal class HttpRangeSource(
         }
     }
 
-    /** 取位置吻合的池中流,没有则新开 Range GET;起点越界返回 null。 */
+    /** Picks a pooled stream whose position matches, or opens a fresh Range GET; returns null if the starting position is out of bounds. */
     private fun obtain(position: Long): Stream? {
         synchronized(pool) {
             if (closed) throw FsException("Source is closed")
@@ -49,10 +54,10 @@ internal class HttpRangeSource(
             if (i >= 0) return pool.removeAt(i)
         }
         val r = openAt(position)
-        if (r.code == 416) { r.close(); return null } // 起点超出文件末尾
+        if (r.code == 416) { r.close(); return null } // start is past end of file
         if (!r.isSuccessful) { r.close(); throw FsException("GET failed: HTTP ${r.code}") }
         val ins = r.body?.byteStream() ?: run { r.close(); throw FsException("GET returned no body") }
-        // 服务器不支持 Range 时返回 200 全量,只能顺序丢弃到目标位置
+        // When the server does not support Range, it returns 200 with the whole file; we must sequentially skip to the target position
         if (r.code == 200 && position > 0) {
             var skipped = 0L
             while (skipped < position) {
@@ -83,7 +88,7 @@ internal class HttpRangeSource(
     }
 
     companion object {
-        /** 并存的 Range 流上限(主读 + 预读 + 一次跳变余量)。 */
+        /** Upper bound on concurrent Range streams (main read + prefetch + one jump in flight). */
         private const val MAX_STREAMS = 3
     }
 }

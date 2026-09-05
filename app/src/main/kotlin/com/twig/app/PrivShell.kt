@@ -4,60 +4,67 @@ import android.content.Context
 import java.io.File
 
 /**
- * 让**本地终端**跑在特权身份上(root 或 Shizuku)。
+ * Runs the **local terminal** under a privileged identity (root or Shizuku).
  *
- * ★ 关键在于:这里不需要任何桥接、AIDL 或 fd 传递 —— 本地终端本来就有一个
- * 由 termux 的 `JNI.createSubprocess` 分配的**真 PTY**,只要把"跑什么"从
- * `/system/bin/sh` 换成 `su`(或 rish)就行,resize、作业控制、全屏程序
- * 一概照旧,因为它们依赖的是这个本地 PTY。
+ * ★ The key point: no bridging, AIDL, or fd passing is needed here — the local
+ * terminal already has a **real PTY** allocated by Termux's `JNI.createSubprocess`;
+ * we just swap "what to run" from `/system/bin/sh` to `su` (or rish), and resize,
+ * job control, full-screen programs all keep working because they depend on that
+ * local PTY.
  *
- * 两条路形态不同,但对调用方是同一件事:
- *  - **root**:`su` 直接在这个本地 PTY 里起 root shell,本文件负责。
- *  - **Shizuku**:PTY 由特权进程分配、fd 传回来,见
- *    [com.twig.app.priv.TwigPrivService];本文件只负责判断它能不能起。
+ * The two paths have different shapes but are the same thing to the caller:
+ *  - **root**: `su` directly launches a root shell inside this local PTY — this file's job.
+ *  - **Shizuku**: PTY is allocated by the privileged process and the fd passed back;
+ *    see [com.twig.app.priv.TwigPrivService] — this file only decides whether it can start.
  */
 object PrivShell {
 
     /**
-     * `su` 的绝对路径,找不到返回 null。
+     * Absolute path of `su`, or null if not found.
      *
-     * 不用 `which`:PATH 里通常没有它。也**不要拿这个结果当"有没有 root"的定论** ——
-     * Magisk 的 DenyList 会对未授权应用藏掉 `su`,探测不到不等于真没有,
-     * 所以调用方仍应把 root 选项摆出来让用户试。
+     * Not using `which`: PATH usually doesn't have it. **Do not treat this result as
+     * a verdict on "is root available"** — Magisk's DenyList hides `su` from
+     * unauthorized apps, so a miss doesn't mean it isn't there; callers should still
+     * surface the root option for the user to try.
      */
     fun suPath(): String? = SU_PATHS.firstOrNull { File(it).exists() }
 
     /**
-     * 某种特权身份现在能不能开终端。
+     * Whether a privileged identity can start a terminal right now.
      *
-     * ★ **Shizuku 那条曾经想走 rish,此路不通**(2026-08-16 实测定案):rish 的 dex
-     * 只能落到应用私有目录,而 `untrusted_app` **不允许加载 `app_data_file` 标签的
-     * 文件**(W^X 的 SELinux 落地形式),`app_process` 报 `ClassNotFoundException`。
-     * 同一份 dex、同一套环境、同一条命令,换成 `u:r:su:s0`(adb root)或
-     * `u:r:runas_app:s0`(run-as,**uid 与应用完全相同**)就正常加载 —— 变量只有
-     * SELinux 域。Termux 能用 rish 是因为它常年停在 targetSdk 28。
+     * ★ **The Shizuku path tried rish once; it's a dead end** (2026-08-16 empirical
+     * verdict): rish's dex can only land in app-private directories, and
+     * `untrusted_app` is **not allowed to load `app_data_file`-labelled files** (the
+     * concrete form of W^X in SELinux); `app_process` throws
+     * `ClassNotFoundException`. Same dex, same environment, same command line — but
+     * switching to `u:r:su:s0` (adb root) or `u:r:runas_app:s0` (run-as, **the same
+     * uid as the app**) loads fine. The only variable is the SELinux domain. Termux
+     * gets away with rish because it has been stuck on targetSdk 28 for years.
      *
-     * 现在改走 `bindUserService`:跑的是**我们自己的 APK**(`/data/app`,标签
-     * `apk_data_file`),不受此限,见 [com.twig.app.priv.TwigPrivService]。
+     * The path now is `bindUserService`: it runs **our own APK** (`/data/app`, label
+     * `apk_data_file`), which is not affected — see [com.twig.app.priv.TwigPrivService].
      */
     fun available(ctx: Context, mode: Int): Boolean = when (mode) {
         Privileged.ROOT -> suPath() != null
-        // Shizuku 终端不再走 rish(被 SELinux 挡死),改由特权进程分配 PTY —— 见
-        // com.twig.app.priv.TwigPrivService。只要 Shizuku 服务在跑就能起。
+        // Shizuku terminal no longer goes via rish (SELinux blocks it); the
+        // privileged process now allocates the PTY — see TwigPrivService. As long
+        // as the Shizuku service is running, we can start.
         Privileged.SHIZUKU -> Privileged.shizukuRunning()
         else -> true
     }
 
     /**
-     * 这条会话要跑的可执行文件与参数。返回 null 表示这种身份现在起不来。
-     * [Privileged.OFF] 走原来的 `/system/bin/sh`。
+     * Executable and arguments to run for this session. Returns null if this identity
+     * cannot start right now. [Privileged.OFF] uses the original `/system/bin/sh`.
      */
     fun command(ctx: Context, mode: Int): Pair<String, Array<String>>? = when (mode) {
         Privileged.OFF -> SHELL to arrayOf()
-        // 不传 `-p`:各家 su(Magisk/KernelSU/APatch)对它的支持不完全一致,
-        // 不认的会直接报错退出。环境本来就由 createSubprocess 传进去。
+        // Don't pass `-p`: the various su implementations (Magisk/KernelSU/APatch)
+        // disagree on whether they support it, and an unsupported one errors out.
+        // The environment is already provided by createSubprocess.
         Privileged.ROOT -> suPath()?.let { it to arrayOf<String>() }
-        // Shizuku 不走本地进程,由 TwigPrivService 分配 PTY —— 见 available() 的说明
+        // Shizuku does not run a local process; TwigPrivService allocates the PTY —
+        // see the note in available().
         else -> null
     }
 

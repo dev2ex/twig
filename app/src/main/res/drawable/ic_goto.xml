@@ -1,0 +1,10 @@
+<!-- Go to path: an arrow entering a container from the left ("jump into") -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/white">
+    <path android:fillColor="@android:color/white"
+        android:pathData="M1,10.4h7v-3.2l5,4.8 -5,4.8v-3.2h-7z" />
+    <path android:fillColor="@android:color/white"
+        android:pathData="M15,3h7v18h-7v-2.2h4.8v-13.6h-4.8z" />
+</vector>

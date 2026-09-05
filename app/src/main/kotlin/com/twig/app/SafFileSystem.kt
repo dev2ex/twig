@@ -1,24 +1,32 @@
 package com.twig.app
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import android.webkit.MimeTypeMap
 import com.twig.core.FileSystem
 import com.twig.core.FsException
+import com.twig.core.RandomSource
 import com.twig.core.XFile
+import com.twig.core.isMutable
 import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 基于 Storage Access Framework 的文件系统,用于 Android 10+ 未授予 MANAGE_EXTERNAL_STORAGE
- * 时的回退访问。条目以 document tree URI 标识(放在 [XFile.path]),真实名字放在 displayName。
+ * File system backed by the Storage Access Framework, used as a fallback on
+ * Android 10+ when MANAGE_EXTERNAL_STORAGE hasn't been granted. Entries are
+ * identified by document tree URIs (stored in [XFile.path]), with the real name
+ * in displayName.
  *
- * 通过 [DocumentsContract] + ContentResolver 无状态操作:任一 tree document URI 都自带 tree 段,
- * 故可据此构造其子项 URI,无需缓存 DocumentFile。
+ * Stateless operation through [DocumentsContract] + ContentResolver: any tree
+ * document URI already carries its tree segment, so child URIs can be built from
+ * it without caching DocumentFile.
  *
- * 写入复用 [createFile](先 createDocument 拿到 URI 再 openOutput),正是 core 层 createFile 抽象的用武之地。
+ * Writes reuse [createFile] (createDocument first to get the URI, then openOutput) —
+ * exactly the use case the core layer's createFile abstraction was built for.
  */
 class SafFileSystem(context: Context) : FileSystem {
 
@@ -29,7 +37,7 @@ class SafFileSystem(context: Context) : FileSystem {
     override val scheme: String = SCHEME
     override val displayName: String = "SAF"
 
-    /** 把 ACTION_OPEN_DOCUMENT_TREE 选中的 tree URI 挂载为根。 */
+    /** Mounts a tree URI selected via ACTION_OPEN_DOCUMENT_TREE as the root. */
     fun rootOf(treeUri: Uri): XFile {
         val docId = DocumentsContract.getTreeDocumentId(treeUri)
         val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId)
@@ -80,6 +88,36 @@ class SafFileSystem(context: Context) : FileSystem {
         resolver.openOutputStream(Uri.parse(file.path), if (append) "wa" else "w")
             ?: throw FsException(s(R.string.err_write_failed, file.name))
 
+    /**
+     * Random-access read via fd. A SAF entry is actually a local file (just
+     * delivered via the provider), and the fd from `openFileDescriptor` supports
+     * pread — same approach as `ShareSourceFileSystem`.
+     *
+     * ★ Without this, the entire SAF tree gets treated as "network source":
+     * video thumbnails degrade to "only the file header is fed" (MKV/AVI
+     * basically can't get a frame), player seek becomes "reopen and skip",
+     * archives must be materialized whole. That's half the reason "things in
+     * SAF feel like a separate app".
+     */
+    override fun openRandom(file: XFile): RandomSource {
+        val pfd = runCatching { resolver.openFileDescriptor(Uri.parse(file.path), "r") }.getOrNull()
+            ?: return super.openRandom(file)
+        val fis = java.io.FileInputStream(pfd.fileDescriptor)
+        return object : RandomSource {
+            private val ch = fis.channel
+            override fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int =
+                ch.read(java.nio.ByteBuffer.wrap(buffer, offset, length), position)
+            override fun length(): Long = pfd.statSize.takeIf { it >= 0 } ?: file.size
+            override fun close() {
+                runCatching { fis.close() }
+                runCatching { pfd.close() }
+            }
+        }
+    }
+
+    /** True random access when an fd is available (local disk); falls back to the base class reopen-and-skip when not. */
+    override fun randomAccessEfficient(): Boolean = true
+
     override fun createFile(parent: XFile, name: String): XFile {
         val mime = MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
@@ -114,7 +152,7 @@ class SafFileSystem(context: Context) : FileSystem {
                 ?.use { it.count > 0 } ?: false
         }.getOrDefault(false)
 
-    /** SAF 无法无状态求父目录;由 PaneViewModel 的回退栈处理导航。 */
+    /** SAF can't compute the parent directory statelessly; navigation is handled by PaneViewModel's back stack. */
     override fun parentOf(file: XFile): XFile? = null
 
     private fun queryName(uri: Uri): String? =
@@ -124,6 +162,80 @@ class SafFileSystem(context: Context) : FileSystem {
 
     companion object {
         const val SCHEME = "saf"
+
+        /**
+         * Whether this URI is the **document tree root itself** (the row hanging
+         * directly off the SAF group in the tree), not some child of the root: if
+         * the document id equals the tree document id, it's the root.
+         *
+         * Stateless check — no need to scan the persisted-grant list. Child URIs
+         * are built by [DocumentsContract.buildDocumentUriUsingTree] (tree segment
+         * copied verbatim from the parent, document segment replaced with the
+         * child's own id), so equality only happens at the root level.
+         */
+        fun isTreeRoot(file: XFile): Boolean = file.scheme == SCHEME && runCatching {
+            val uri = Uri.parse(file.path)
+            DocumentsContract.getTreeDocumentId(uri) == DocumentsContract.getDocumentId(uri)
+        }.getOrDefault(false)
+
+        /** Which app's DocumentsProvider granted this (see [providerApp]). */
+        data class ProviderApp(val pkg: String, val label: String)
+
+        /** authority -> provider App; cached once looked up, queried fresh on each list rebuild. */
+        private val providerApps = HashMap<String, ProviderApp?>()
+
+        /**
+         * Which **third-party app's** DocumentsProvider granted this document tree,
+         * or null if not from one.
+         *
+         * Third-party apps' document ids are often actual paths (Termux gives
+         * `/data/data/com.termux/files/home`), with nothing meaningful to display as
+         * the row's name — and "whose tree is this?" is exactly what the user
+         * cares about. So those rows use the App name + App icon instead.
+         *
+         * ★ System providers (external storage, downloads) are excluded: their
+         * document ids look like `primary:DCIM`, and the last segment is already
+         * a perfectly good name; replacing it with "External storage" is strictly worse.
+         */
+        fun providerApp(ctx: Context, file: XFile): ProviderApp? {
+            if (file.scheme != SCHEME) return null
+            val authority = runCatching { Uri.parse(file.path).authority }.getOrNull() ?: return null
+            synchronized(providerApps) {
+                if (providerApps.containsKey(authority)) return providerApps[authority]
+            }
+            val pm = ctx.packageManager
+            val ai = runCatching { pm.resolveContentProvider(authority, 0) }.getOrNull()?.applicationInfo
+            val app = ai?.takeIf { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
+                ?.let { ProviderApp(it.packageName, it.loadLabel(pm).toString()) }
+            synchronized(providerApps) { providerApps[authority] = app }
+            return app
+        }
+
+        /**
+         * Revokes the persisted grant for this document tree (**the directory itself
+         * is not touched in any way**); returns true only when the grant was actually
+         * released.
+         *
+         * ★ What we need to give back is the **tree URI** originally taken, but the
+         * row stores a document URI: releasing the latter is a **silent no-op** —
+         * the grant stays in place, refresh once and the row is back. So we look up
+         * the original by authority + tree document id in `persistedUriPermissions`,
+         * and release exactly the read/write bits it actually holds.
+         */
+        fun release(ctx: Context, file: XFile): Boolean {
+            val uri = runCatching { Uri.parse(file.path) }.getOrNull() ?: return false
+            val treeId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return false
+            val resolver = ctx.contentResolver
+            val perm = resolver.persistedUriPermissions.firstOrNull {
+                it.uri.authority == uri.authority &&
+                    runCatching { DocumentsContract.getTreeDocumentId(it.uri) }.getOrNull() == treeId
+            } ?: return false
+            val flags = (if (perm.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                (if (perm.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+            if (flags == 0) return false
+            return runCatching { resolver.releasePersistableUriPermission(perm.uri, flags) }.isSuccess
+        }
+
         private val PROJECTION = arrayOf(
             Document.COLUMN_DOCUMENT_ID,
             Document.COLUMN_DISPLAY_NAME,
@@ -133,3 +245,18 @@ class SafFileSystem(context: Context) : FileSystem {
         )
     }
 }
+
+/**
+ * Whether this entry can serve as a move source — on top of [isMutable], also
+ * excludes the **document tree root** row.
+ *
+ * It looks like an ordinary directory in the tree (SAF is writable, `isMutable()`
+ * is true), but it is actually a **grant**: move = copy + delete source, and
+ * what's deleted is the authorized root directory itself — while the grant
+ * remains, pointing at something that no longer exists. Copy/compress treat the
+ * source as read-only, so they aren't affected by this restriction.
+ *
+ * The check lives here, not in core-fs: `saf` is an :app-private source, the
+ * core layer doesn't know about it.
+ */
+fun XFile.isMovableSource(): Boolean = isMutable() && !SafFileSystem.isTreeRoot(this)

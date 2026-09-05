@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.flowOn
 private const val SEARCH_MAX_DEPTH = 64
 private const val SEARCH_MAX_RESULTS = 5000
 
-/** 含 `*`/`?` 时按通配符全名匹配;否则退化为忽略大小写的子串匹配(输入普通关键字更顺手)。 */
+/** When `*`/`?` are present, match as wildcards against the full name; otherwise fall back to case-insensitive substring match (more natural for plain keywords). */
 fun matchesSearchPattern(name: String, pattern: String): Boolean {
     if (pattern.none { it == '*' || it == '?' }) return name.contains(pattern, ignoreCase = true)
     val regex = buildString {
@@ -25,12 +25,32 @@ fun matchesSearchPattern(name: String, pattern: String): Boolean {
 }
 
 /**
- * 递归通配符搜索:BFS 遍历 [root] 下所有子目录(文件与目录名都参与匹配),边找到边 emit,
- * 供 UI 增量展示而不必等整棵子树扫完。单目录列举失败(网络抖动/权限/已断开的服务器)按
- * [FsRegistry.of] 的既有约定跳过、不中止整体搜索(与 [scanImages]/[TreemapScanner] 一致)。
- * [SEARCH_MAX_RESULTS]/[SEARCH_MAX_DEPTH] 防止超大目录树或环状链接把内存/UI 拖垮。
+ * Recursive wildcard search: BFS through every subdirectory under [root] (both file and directory names
+ * participate in matching), emitting each hit as it's found so the UI can show incremental progress without
+ * waiting for the entire subtree to finish scanning. If a single directory listing fails (network blip /
+ * permissions / disconnected server), skip it per the existing [FsRegistry.of] convention; don't abort the whole
+ * search (consistent with [scanImages] / [TreemapScanner]). [SEARCH_MAX_RESULTS] / [SEARCH_MAX_DEPTH] protect
+ * against huge directory trees or cyclic links overwhelming memory / UI.
  */
 fun scanSearch(root: XFile, pattern: String): Flow<XFile> = flow {
+    // If the source can search itself, hand off to it (media servers): the BFS below would mean one HTTP round
+    // trip per layer of the virtual tree, so a single search pulls down the entire library.
+    // ★ The wildcard syntax is our own; the server doesn't understand it — strip those characters and send the
+    // keyword, then filter the results against the original pattern (so `*night*` still works).
+    val native = runCatching {
+        (FsRegistry.of(root) as? com.twig.core.SearchSource)
+            ?.search(root, pattern.filter { it != '*' && it != '?' }.trim(), SEARCH_MAX_RESULTS)
+    }.getOrNull()
+    if (native != null) {
+        // ★ The server searches across **multiple fields** (verified: SearchTerm can hit OriginalTitle — searching
+        // "ice" for a movie scraped as "Ice Age" still finds it). Filtering the results again by `name` would
+        // discard all those hits — that's exactly why "the pre-scrape name can't be found": not because it
+        // wasn't found, but because we filtered it out ourselves. So only re-filter when **the user explicitly
+        // used wildcards** (then they want name-pattern matching).
+        val byName = pattern.any { it == '*' || it == '?' }
+        for (f in native) if (!byName || matchesSearchPattern(f.name, pattern)) emit(f)
+        return@flow
+    }
     val queue = ArrayDeque<Pair<XFile, Int>>()
     queue.addLast(root to 0)
     var count = 0

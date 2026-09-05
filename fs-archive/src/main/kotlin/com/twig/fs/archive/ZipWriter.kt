@@ -7,22 +7,27 @@ import java.util.zip.Deflater
 import java.util.zip.DeflaterOutputStream
 
 /**
- * 手写的 zip 写出器:**纯顺序写**(本地头 → 数据 → 数据描述符,最后中央目录 + EOCD),
- * 不需要回写,所以和 `java.util.zip.ZipOutputStream` 一样能直接串到远程目标的
- * `openOutput()` 上。存在的唯一理由是**加密**——JDK 那个不支持,而引入 zip4j 是几百 KB
- * 的 APK 增量。给了 [password] 就按 WinZip AES-256 加密每个文件条目(见 [ZipAes]),
- * 不给就是普通 zip。
+ * Handwritten zip writer: **strictly sequential** (local header -> data -> data descriptor,
+ * then central directory + EOCD), with no seeking back, so it can be piped straight onto the
+ * remote target's `openOutput()` the same way `java.util.zip.ZipOutputStream` can. Its only reason
+ * for existing is **encryption** — the JDK one does not support it, and pulling in zip4j would
+ * add hundreds of KB to the APK. Pass [password] to encrypt each file entry with WinZip AES-256
+ * (see [ZipAes]); omit it for a plain zip.
  *
- * 几个约定:
- *  - 条目名一律 UTF-8(通用位标记 bit 11),中文名在任何现代解压工具里都不会乱码;
- *  - 大小/CRC 走**数据描述符**(bit 3),因此写之前不需要知道文件多大,流式即可;
- *  - 加密条目按 AE-2 写:压缩方法字段填 99、真实方法藏进 0x9901 extra、CRC 填 0;
- *  - 单条目 ≥4GB 或整包 ≥4GB / 条目数 >65535 时自动上 zip64。**只在
- *    [putNextEntry] 给出的 sizeHint ≥4GB 时才给该条目开 zip64**(本地头里要预留
- *    extra 字段,写之前就得定);hint 没给准而实际写超了 4GB 会当场抛错,不会写出坏包。
+ * Conventions:
+ *  - Entry names are always UTF-8 (general purpose bit 11), so Chinese names show correctly in
+ *    any modern unarchiver;
+ *  - Size/CRC go through the **data descriptor** (bit 3), so the writer does not need to know
+ *    the file size up front — streaming is fine;
+ *  - Encrypted entries follow AE-2: compression method field set to 99, real method hidden in the
+ *    0x9901 extra, CRC set to 0;
+ *  - Single entry >=4 GB or whole archive >=4 GB / entry count >65535 auto-promotes to zip64.
+ *    **zip64 is only enabled for an entry when its sizeHint at [putNextEntry] is >=4 GB**
+ *    (the local header has to reserve the extra field, decided before writing); if the hint was
+ *    too small but the actual write exceeds 4 GB, an error is thrown immediately — no corrupt archive.
  *
- * 给了 [base] 就是**追加模式**:接着一个已有 zip 往后写,旧条目一个字节都不碰
- * (见 [Base] 与 `ZipFileSystem.appendEntry`)。
+ * Passing [base] switches to **append mode**: write after an existing zip, never touching any of
+ * the old entries' bytes (see [Base] and `ZipFileSystem.appendEntry`).
  */
 class ZipWriter(
     private val raw: OutputStream,
@@ -31,12 +36,14 @@ class ZipWriter(
 ) : OutputStream(), Closeable {
 
     /**
-     * 追加模式的底座:把新条目接到一个已有 zip 的后面。
+     * Append-mode base: a new entry to be appended after an existing zip.
      *
-     * [offset] 是写入位置在包里的字节偏移(新条目的本地头就落在这儿),
-     * [centralDirectory] 是旧包中央目录的**原始字节**——旧条目的数据没挪窝,
-     * 记录里的偏移全都还成立,原样接上即可,不用重新解析每一条;
-     * [entryCount] 是旧条目数(EOCD 里的总数要加上它)。
+     * [offset] is the byte offset in the archive where writing begins (the new entry's local
+     * header lands here),
+     * [centralDirectory] is the **raw bytes** of the old archive's central directory — the old
+     * entries' data has not moved, so the offsets in the records are still valid and we can
+     * just splice them in without re-parsing each one;
+     * [entryCount] is the old entry count (EOCD's total needs to add it).
      */
     class Base(val offset: Long, val centralDirectory: ByteArray, val entryCount: Int)
 
@@ -55,18 +62,18 @@ class ZipWriter(
 
     private val items = ArrayList<Item>()
 
-    /** 已写到包里的字节偏移;追加模式下从底座给的位置起算,新条目的 offset 才对得上。 */
+    /** Bytes written so far into the archive; in append mode starts at the base's offset, so new entries' offsets line up. */
     private var written = base?.offset ?: 0L
     private var current: Item? = null
 
-    // 当前条目的写入管线(加密时:用户 → deflate → AES → 归档流)
+    // Current entry's write pipeline (encrypted: user -> deflate -> AES -> archive stream)
     private var crc: CRC32? = null
     private var deflater: Deflater? = null
     private var pipe: OutputStream? = null
     private var aes: ZipAes.EncryptStream? = null
     private var dataStart = 0L
 
-    /** 目录条目:空数据、STORED、不加密(没有内容可加密)。 */
+    /** Directory entry: empty data, STORED, not encrypted (nothing to encrypt). */
     fun putDir(name: String, time: Long) {
         val n = if (name.endsWith("/")) name else "$name/"
         val item = Item(n, isDir = true, time = time, offset = written, zip64 = false, encrypted = false)
@@ -75,8 +82,8 @@ class ZipWriter(
     }
 
     /**
-     * 开一个文件条目;随后往 [ZipWriter] 自身 write 数据,写完调 [closeEntry]。
-     * [sizeHint] 是源文件大小(不知道传 -1),只用来决定要不要给这条开 zip64。
+     * Open a file entry; then write the entry's data into [ZipWriter] itself, and call [closeEntry] when done.
+     * [sizeHint] is the source file size (pass -1 if unknown); it only decides whether to enable zip64 for this entry.
      */
     fun putNextEntry(name: String, time: Long, sizeHint: Long = -1L) {
         check(current == null) { "previous entry not closed" }
@@ -93,9 +100,10 @@ class ZipWriter(
         dataStart = written
         current = item
         crc = CRC32()
-        val def = Deflater(Deflater.DEFAULT_COMPRESSION, true) // nowrap:zip 里存裸 deflate 流
+        val def = Deflater(Deflater.DEFAULT_COMPRESSION, true) // nowrap: zip stores raw deflate streams
         deflater = def
-        // 归档流本身不能被管线关掉(后面还要写别的条目),隔一层不传递 close
+        // The archive stream itself must not be closed by the pipeline (more entries follow), so wrap
+        // it in a layer that does not propagate close
         val sink: OutputStream = object : OutputStream() {
             override fun write(b: Int) = out(b)
             override fun write(b: ByteArray, off: Int, len: Int) = out(b, off, len)
@@ -118,16 +126,16 @@ class ZipWriter(
         pipe!!.write(b, off, len)
     }
 
-    /** 收尾当前条目:冲干净管线、补认证码,再写数据描述符。 */
+    /** Finish the current entry: flush the pipeline, append the auth code, then write the data descriptor. */
     fun closeEntry() {
         val item = current ?: return
         (pipe as DeflaterOutputStream).finish()
-        aes?.close() // 写出认证码;不关下游
+        aes?.close() // write the auth code; do not close downstream
         deflater!!.end()
-        item.crc = if (item.encrypted) 0L else crc!!.value // AE-2 的 CRC 字段填 0
+        item.crc = if (item.encrypted) 0L else crc!!.value // AE-2 sets CRC field to 0
         item.csize = written - dataStart
         if (!item.zip64 && (item.usize >= ZIP64_LIMIT || item.csize >= ZIP64_LIMIT)) {
-            // 本地头里没给 zip64 留位置,再写下去就是个坏包 —— 当场停,别交出去
+            // The local header did not reserve room for zip64, so writing further would produce a corrupt archive — stop now
             throw com.twig.core.FsException("Entry exceeds 4 GB but its size was not known in advance: ${item.name}")
         }
         writeDescriptor(item)
@@ -139,10 +147,10 @@ class ZipWriter(
         aes = null
     }
 
-    /** 写中央目录与 EOCD。**不关闭 [raw]** —— 归档流的归属在调用方。 */
+    /** Write the central directory and EOCD. **Does not close [raw]** — the archive stream belongs to the caller. */
     fun finish() {
         val cdOffset = written
-        // 追加模式:旧记录原样接上(偏移仍然成立),再跟这次新写的
+        // Append mode: splice in the old records verbatim (their offsets are still valid), then add the newly written ones
         base?.let { out(it.centralDirectory, 0, it.centralDirectory.size) }
         for (item in items) writeCentralEntry(item)
         val cdSize = written - cdOffset
@@ -154,19 +162,19 @@ class ZipWriter(
         finish()
     }
 
-    // ---- 记录写出 ----
+    // ---- record writes ----
 
     private fun writeLocalHeader(item: Item, method: Int, useDescriptor: Boolean) {
         val name = item.name.toByteArray(Charsets.UTF_8)
         val extra = localExtra(item)
         u32(0x04034b50)
-        u16(if (item.zip64) 45 else 20) // 需要的版本:zip64 要 4.5
+        u16(if (item.zip64) 45 else 20) // required version: zip64 needs 4.5
         u16(gpBits(item, useDescriptor))
         u16(method)
         u32(dosTime(item.time).toLong())
-        u32(0) // crc:数据描述符里补
-        u32(0) // 压缩大小
-        u32(0) // 原始大小
+        u32(0) // crc: filled in by the data descriptor
+        u32(0) // compressed size
+        u32(0) // original size
         u16(name.size)
         u16(extra.size)
         out(name, 0, name.size)
@@ -191,8 +199,8 @@ class ZipWriter(
             item.offset >= ZIP64_LIMIT
         val extra = centralExtra(item, big)
         u32(0x02014b50)
-        u16(if (big) 45 else 20) // 创建版本
-        u16(if (big) 45 else 20) // 需要的版本
+        u16(if (big) 45 else 20) // made-by version
+        u16(if (big) 45 else 20) // required version
         u16(gpBits(item, useDescriptor = !item.isDir))
         u16(if (item.encrypted) ZipAes.METHOD else if (item.isDir) METHOD_STORED else METHOD_DEFLATE)
         u32(dosTime(item.time).toLong())
@@ -201,10 +209,10 @@ class ZipWriter(
         u32(if (big) 0xFFFFFFFFL else item.usize)
         u16(name.size)
         u16(extra.size)
-        u16(0) // 注释
-        u16(0) // 磁盘号
-        u16(0) // 内部属性
-        u32(if (item.isDir) 0x10L else 0L) // 外部属性:目录位
+        u16(0) // comment
+        u16(0) // disk number
+        u16(0) // internal attributes
+        u32(if (item.isDir) 0x10L else 0L) // external attributes: directory bit
         u32(if (big) 0xFFFFFFFFL else item.offset)
         out(name, 0, name.size)
         out(extra, 0, extra.size)
@@ -216,7 +224,7 @@ class ZipWriter(
         if (need64) {
             val rec = written
             u32(0x06064b50)
-            u64(44) // 本记录剩余长度
+            u64(44) // remaining length of this record
             u16(45)
             u16(45)
             u32(0)
@@ -240,7 +248,7 @@ class ZipWriter(
         u16(0)
     }
 
-    /** 通用位标记:bit0 加密、bit3 数据描述符、bit11 名字是 UTF-8。 */
+    /** General purpose bit flags: bit 0 encrypted, bit 3 data descriptor, bit 11 name is UTF-8. */
     private fun gpBits(item: Item, useDescriptor: Boolean): Int {
         var bits = 1 shl 11
         if (item.encrypted) bits = bits or 1
@@ -251,7 +259,8 @@ class ZipWriter(
     private fun localExtra(item: Item): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         if (item.zip64) {
-            // 大小走数据描述符,这里只是把位置占住(规范要求本地头的 zip64 块含这两个字段)
+            // Sizes go through the data descriptor; here we only reserve the slot (the spec requires the
+            // local header's zip64 block to include those two fields)
             out.write(shortLe(0x0001)); out.write(shortLe(16))
             out.write(ByteArray(16))
         }
@@ -266,7 +275,7 @@ class ZipWriter(
     private fun centralExtra(item: Item, big: Boolean): ByteArray {
         val out = java.io.ByteArrayOutputStream()
         if (big) {
-            // 顺序固定:原始大小 → 压缩大小 → 本地头偏移(只写在中央目录里被置成 0xFFFFFFFF 的那些)
+            // Fixed order: original size -> compressed size -> local header offset (only written for the ones the central directory set to 0xFFFFFFFF)
             val body = java.io.ByteArrayOutputStream()
             body.write(longLe(item.usize))
             body.write(longLe(item.csize))
@@ -283,7 +292,7 @@ class ZipWriter(
         return out.toByteArray()
     }
 
-    // ---- 字节输出 ----
+    // ---- byte output ----
 
     private fun out(b: Int) {
         raw.write(b)
@@ -321,7 +330,7 @@ class ZipWriter(
         const val METHOD_DEFLATE = 8
         const val ZIP64_LIMIT = 0xFFFFFFFFL
 
-        /** 毫秒时间戳 → DOS 日期时间;超出 DOS 能表示的范围(1980 前)按 1980-01-01。 */
+        /** Millisecond timestamp -> DOS date/time; outside the range DOS can represent (pre-1980) -> 1980-01-01. */
         fun dosTime(millis: Long): Int {
             if (millis <= 0L) return DOS_EPOCH
             val c = java.util.Calendar.getInstance().apply { timeInMillis = millis }

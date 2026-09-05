@@ -3,19 +3,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- A thin branch with two leaves, echoing "Twig".
+         The branch and leaves are scaled via the group, so resizing only requires editing one place;
+         ★ if you change this, ic_launcher_foreground / _monochrome must follow. -->
     <path
         android:fillColor="#2E7D32"
-        android:pathData="M0,0h108v108h-108z" />
-    <!-- 一根细枝带两片叶,呼应 "Twig" -->
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M54,82 L54,40" />
-    <path
-        android:fillColor="#A5D6A7"
-        android:pathData="M54,52 C54,52 40,50 34,38 C46,36 54,46 54,52 Z" />
-    <path
-        android:fillColor="#C8E6C9"
-        android:pathData="M54,44 C54,44 64,42 70,32 C60,30 54,38 54,44 Z" />
+        android:pathData="M24,0h60a24,24 0 0 1 24,24v60a24,24 0 0 1 -24,24h-60a24,24 0 0 1 -24,-24v-60a24,24 0 0 1 24,-24z" />
+    <group
+        android:pivotX="53"
+        android:pivotY="59"
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:translateX="1"
+        android:translateY="3">
+        <path
+            android:strokeColor="#E8F5E9"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:pathData="M54,90 C50,74 50,58 56,32" />
+        <path
+            android:fillColor="#81C784"
+            android:pathData="M52,68 C40,68 27,59 23,42 C40,40 50,53 52,68 Z" />
+        <path
+            android:fillColor="#A5D6A7"
+            android:pathData="M53,55 C66,53 79,44 83,27 C66,26 55,39 53,55 Z" />
+    </group>
 </vector>

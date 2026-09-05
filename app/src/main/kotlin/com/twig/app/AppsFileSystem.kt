@@ -4,32 +4,38 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.XFile
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.RandomAccessFile
 
 /**
- * 已安装应用的虚拟只读视图:根下两个目录 —— 「已安装」(用户应用)与「系统」,
- * 每个条目是一个应用。
+ * Virtual read-only view of installed apps: two directories under the root — "Installed"
+ * (user apps) and "System", and each entry is one app.
  *
- * - 单 apk 应用 → 直接就是那个 apk 文件(读 `sourceDir` 真实路径,零成本);
- * - 分包应用(split apk) → 现拼成 **XAPK**(APKPure 格式,zip 容器 + `manifest.json`,
- *   见 [XapkPack])。只复制 base.apk 会漏掉 `split_config.*`,装回去缺资源/缺 ABI;
- *   XAPK 把整套打在一起,SAI / MT管理器 / APKPure 安装器都认,不认的工具把后缀改成
- *   .zip 也能解开。
+ * - Single-apk apps → just that apk file directly (read `sourceDir` real path, zero cost);
+ * - Split apk apps → assembled on the fly into **XAPK** (APKPure format, zip container +
+ *   `manifest.json`, see [XapkPack]). Copying just base.apk misses `split_config.*`, and
+ *   reinstalling lacks resources/ABIs; XAPK bundles everything together, and SAI /
+ *   MT Manager / APKPure installers all recognize it — tools that don't can rename the
+ *   extension to .zip and still extract.
  *
- * 读一律走 [openInput],所以复制到对侧、查看、打包全部零改动复用现有链路。
- * 写(新建/改名/删除)一律不支持:卸载不是删文件,由 UI 层起系统卸载界面
- * (见 `PaneFragment.performDelete`)。
+ * Reads all go through [openInput], so copying to the other pane, viewing and packaging
+ * reuse the existing pipeline with zero changes. Writes (create/rename/delete) are not
+ * supported: uninstall is not file deletion, and the UI layer launches the system
+ * uninstall screen (see `PaneFragment.performDelete`).
  *
- * 枚举整机应用需要 manifest 里的 `QUERY_ALL_PACKAGES` 权限(Android 11+);
- * 没有它 [PackageManager.getInstalledApplications] 只返回本应用与 `<queries>` 声明过的。
+ * Enumerating all device apps requires the `QUERY_ALL_PACKAGES` permission in the manifest
+ * (Android 11+); without it, [PackageManager.getInstalledApplications] only returns this
+ * app and those declared in `<queries>`.
  */
 class AppsFileSystem(context: Context) : FileSystem {
 
@@ -57,8 +63,9 @@ class AppsFileSystem(context: Context) : FileSystem {
         if (segs.isEmpty()) return listOf(dirOf(USER), dirOf(SYSTEM))
         val cat = segs[0]
         val wantSystem = cat == SYSTEM
-        // 一次 getInstalledPackages 拿全,不要每个包再 getPackageInfo 一次 ——
-        // 几百个应用时那是几百次 binder 往返,展开要卡好几秒
+        // Fetch them all with one getInstalledPackages call, don't getPackageInfo per package —
+        // for several hundred apps that would be hundreds of binder round-trips and the
+        // expansion would freeze for several seconds
         return pm.getInstalledPackages(0)
             .filter { it.applicationInfo?.let { ai -> isSystem(ai) } == wantSystem }
             .mapNotNull { runCatching { toXFile(it, cat) }.getOrNull() }
@@ -68,8 +75,9 @@ class AppsFileSystem(context: Context) : FileSystem {
         packOf(file)?.open() ?: FileInputStream(baseApkOf(file))
 
     /**
-     * 单 apk 走真实文件的定位读(缩略图/外部播放器等受益);XAPK 是现拼的流,
-     * 没有可定位的底层文件,交给默认实现(重开+跳过)。
+     * Single-apk apps use real-file random reads (thumbnails / external players benefit);
+     * XAPK is a stream assembled on the fly with no seekable backing file, so it falls
+     * back to the default implementation (reopen + skip).
      */
     override fun openRandom(file: XFile): RandomSource {
         if (packOf(file) != null) return super.openRandom(file)
@@ -96,7 +104,7 @@ class AppsFileSystem(context: Context) : FileSystem {
 
     override fun rename(file: XFile, newName: String): XFile = readOnly()
 
-    /** 卸载不是删文件:UI 层识别本 scheme 后改起系统卸载界面,不会走到这里。 */
+    /** Uninstall is not file deletion: the UI layer detects this scheme and launches the system uninstall screen, so this is never reached. */
     override fun delete(file: XFile): Unit =
         throw FsException(ctx.getString(R.string.apps_use_uninstall))
 
@@ -109,18 +117,20 @@ class AppsFileSystem(context: Context) : FileSystem {
         }
     }
 
-    // ---- UI 层要用的钩子 ----
+    // ---- Hooks for the UI layer ----
 
-    /** 该条目对应的包名(path 段就是包名);不是应用条目(根/分类目录)返回 null。 */
+    /** The package name this entry corresponds to (path segment is the package name); returns null for non-app entries (root / category directory). */
     fun packageOf(file: XFile): String? = segsOf(file.path).takeIf { it.size >= 2 }?.get(1)
 
-    /** 列表行要分开显示的三段(应用名 / 版本 / 包名)。 */
+    /** The three fields shown separately per row (app label / version / package name). */
     data class AppMeta(val label: String, val version: String, val pkg: String)
 
     /**
-     * 应用名与版本号 —— 列表每行都要用,所以列条目([toXFile])时就顺手记下来,
-     * 这里优先查内存表:绑定行时不能再去问 PackageManager(每行一次 binder 往返会掉帧)。
-     * 缓存由每次列目录刷新(应用升级后版本号跟着变);没列过的条目才现查一次。
+     * App label and version — every row needs them, so we record them as a side effect when
+     * listing entries ([toXFile]); here we look up the in-memory table first: when binding
+     * rows we cannot go back to PackageManager (one binder round-trip per row drops frames).
+     * The cache is refreshed each time the directory is listed (version updates with app
+     * upgrades); only entries that have never been listed are fetched once.
      */
     fun metaOf(file: XFile): AppMeta? {
         val pkg = packageOf(file) ?: return null
@@ -130,7 +140,7 @@ class AppsFileSystem(context: Context) : FileSystem {
         return refreshMeta(info, ai)
     }
 
-    /** 现算并刷新缓存。 */
+    /** Compute on demand and refresh the cache. */
     private fun refreshMeta(info: PackageInfo, ai: ApplicationInfo): AppMeta {
         val label = runCatching { pm.getApplicationLabel(ai).toString() }
             .getOrDefault(info.packageName)
@@ -138,19 +148,20 @@ class AppsFileSystem(context: Context) : FileSystem {
             .also { metaCache[info.packageName] = it }
     }
 
-    /** 该条目背后的 base apk 真实路径(缩略图等要真文件时用);取不到返回 null。 */
+    /** Real base-apk path backing this entry (used when thumbnails need a real file); returns null when unavailable. */
     fun apkPathOf(file: XFile): String? =
         packageOf(file)?.let { infoOf(it)?.applicationInfo?.sourceDir }
 
-    // ---- 内部 ----
+    // ---- Internal ----
 
-    /** 该条目要打成 XAPK 时返回打包器,单 apk 应用返回 null。 */
+    /** Returns the packer when this entry should be packed as XAPK; returns null for single-apk apps. */
     private fun packOf(file: XFile): XapkPack? =
         packageOf(file)?.let { infoOf(it) }?.let { packFor(it) }
 
     /**
-     * 分包应用 → XAPK 打包器;单 apk 返回 null。
-     * 总大小溢出 32 位(要 zip64 才装得下,现实中的应用不会有)时也退回单 apk。
+     * Split-app → XAPK packer; returns null for single-apk apps.
+     * When total size overflows 32-bit (would need zip64 to fit, which real apps never reach),
+     * also fall back to single-apk.
      */
     private fun packFor(info: PackageInfo): XapkPack? {
         val ai = info.applicationInfo ?: return null
@@ -159,24 +170,62 @@ class AppsFileSystem(context: Context) : FileSystem {
         val base = File(ai.sourceDir ?: return null)
         val files = ArrayList<Pair<String, File>>()
         files += "${info.packageName}.apk" to base
-        // 平台类型,老系统/异常包上确实可能是 null,显式按可空处理
+        // Platform type — may genuinely be null on old systems / abnormal packages, handle explicitly as nullable
         val names: Array<String>? = info.splitNames
         splits.forEachIndexed { i, path ->
             val f = File(path)
-            // 名字优先用 split 自己的文件名(split_config.arm64_v8a.apk 这种,安装器认得),
-            // 缺失时按 split 名兜底
+            // Prefer the split's own file name (e.g. split_config.arm64_v8a.apk, recognized by
+            // installers); fall back to the split name when missing
             files += (f.name.ifEmpty { "split_${names?.getOrNull(i) ?: i}.apk" }) to f
         }
         val total = files.sumOf { it.second.length() }
         val manifest = manifestJson(info, files, total).toByteArray(Charsets.UTF_8)
-        val entries = ArrayList<XapkPack.Entry>(files.size + 1)
+        val entries = ArrayList<XapkPack.Entry>(files.size + 2)
         entries += XapkPack.Entry("manifest.json", manifest, null)
+        iconPng(info, ai)?.let { entries += XapkPack.Entry("icon.png", null, it) }
         files.forEach { (n, f) -> entries += XapkPack.Entry(n, null, f) }
         val pack = XapkPack(entries)
         return if (pack.totalSize() in 1..MAX_ZIP32) pack else null
     }
 
-    /** APKPure 的 XAPK 清单;字段名沿用它那套,安装器据此还原 base + splits。 */
+    /**
+     * The app icon, rendered once into `cacheDir/xapk-icon` and packed as `icon.png` at
+     * the bundle root — APKPure's own bundles carry one, and it is the only way to show
+     * an app icon for a bundle sitting on disk (the alternative, extracting base.apk so
+     * PackageManager can parse it, means writing 100 MB+ to draw one row; see
+     * [com.twig.app.ui.FileIcons]).
+     *
+     * ★ Cached as a **file**, never as bytes in the [XapkPack.Entry]: a directory listing
+     * builds one packer per app just to read [XapkPack.totalSize], and holding a few
+     * hundred pngs in memory for that is pointless. The name carries the versionCode, so
+     * an app upgrade produces a new icon instead of a stale one.
+     *
+     * ★ Written to a temp name and renamed: the entry size lands in the zip header at
+     * listing time, and a half-written file would report a length the stream then fails
+     * to match — the copy would silently come out truncated.
+     */
+    private fun iconPng(info: PackageInfo, ai: ApplicationInfo): File? {
+        val dir = File(ctx.cacheDir, ICON_DIR).apply { mkdirs() }
+        val out = File(dir, "${info.packageName}-${versionCodeOf(info)}.png")
+        if (out.isFile && out.length() > 0) return out
+        return runCatching {
+            val icon = ai.loadIcon(pm) ?: return null
+            val bmp = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888)
+            icon.setBounds(0, 0, ICON_PX, ICON_PX)
+            icon.draw(Canvas(bmp))
+            val tmp = File(dir, "${out.name}.tmp")
+            FileOutputStream(tmp).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bmp.recycle()
+            if (tmp.renameTo(out)) {
+                out
+            } else {
+                tmp.delete()
+                null
+            }
+        }.getOrNull()
+    }
+
+    /** APKPure's XAPK manifest; field names follow its conventions, installers restore base + splits from this. */
     private fun manifestJson(info: PackageInfo, files: List<Pair<String, File>>, total: Long): String {
         val ai = info.applicationInfo
         val label = ai?.let { runCatching { pm.getApplicationLabel(it).toString() }.getOrNull() }
@@ -246,15 +295,16 @@ class AppsFileSystem(context: Context) : FileSystem {
     )
 
     /**
-     * path 用包名(唯一、稳定,便于 UI 反查),显示名给「应用名 版本.apk/.xapk」——
-     * 复制到对侧时 [com.twig.core.CopyEngine] 取的正是 [XFile.name],落地就是这个文件名。
+     * path uses the package name (unique and stable, easy for the UI to look up),
+     * displayName is "App Label Version.apk/.xapk" — when copying to the other side,
+     * [com.twig.core.CopyEngine] reads [XFile.name], so the file lands as that name.
      */
     private fun toXFile(info: PackageInfo, cat: String): XFile {
         val ai = info.applicationInfo ?: throw FsException(s(R.string.err_apps_no_info, info.packageName))
         val base = File(ai.sourceDir ?: throw FsException(s(R.string.err_apps_no_apk, info.packageName)))
         val pack = runCatching { packFor(info) }.getOrNull()
-        // 顺手刷新列表行要用的应用名/版本(见 metaOf);文件名仍用下面拼的完整名,
-        // 复制出去落地的就是它
+        // Also refresh the app label / version used by list rows (see metaOf); the file name
+        // still uses the full name assembled below, which is what lands on disk after copy.
         val meta = refreshMeta(info, ai)
         val name = buildString {
             append(meta.label.replace('/', '_'))
@@ -275,10 +325,14 @@ class AppsFileSystem(context: Context) : FileSystem {
     private fun readOnly(): Nothing = throw FsException(ctx.getString(R.string.apps_read_only))
 
     companion object {
-        /** 包名 → 列表行要用的应用名/版本;列条目时填,绑定行时只读内存。 */
+        /** package name → app label/version used by list rows; filled when listing entries, read from memory when binding rows. */
         private val metaCache = java.util.concurrent.ConcurrentHashMap<String, AppMeta>()
 
         const val SCHEME = "apps"
+
+        /** Rendered app icons for packing (see iconPng); tiny and keyed by version, so it is not trimmed. */
+        private const val ICON_DIR = "xapk-icon"
+        private const val ICON_PX = 192
         private const val USER = "user"
         private const val SYSTEM = "system"
         private const val MAX_ZIP32 = 0xFFFFFFFFL - 1

@@ -5,30 +5,34 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
 /**
- * 给 [RandomSource] 套一层"分块 LRU 缓存 + 后台预读"。
+ * Wraps [RandomSource] with a "block LRU cache + background prefetch".
  *
- * 媒体框架读 proxy fd 会发大量小读,且 mp4 的音频轨/视频轨在文件里位置不同——
- * 单个滑动缓冲会在两处间反复重填(抖动)导致视频饿死。这里按 1MB 分块缓存多块
- * (音频块、视频块各自常驻),并后台预取后续块,大块顺序读喂饱高码率视频。
+ * Media frameworks issue many small reads on the proxy fd, and mp4's audio and video
+ * tracks live at different positions in the file — a single sliding buffer would refill
+ * back and forth between the two (thrashing), starving the video. This implementation
+ * caches multiple 1 MB blocks (audio and video blocks each stay resident) and prefetches
+ * subsequent blocks in the background, so large sequential reads feed high-bitrate video.
  *
- * 并发约定:主读与预读线程会同时要块。同一块只允许一个线程真正下载,
- * 其余等它完成(否则同一 MB 被下载两次,SMB 单线程 IO 还要排队,
- * WebDAV 则打断顺序流,高码率下带宽全浪费在重复读上)。
+ * Concurrency contract: the main reader and prefetch threads may ask for blocks at the
+ * same time. Only one thread is allowed to actually download a given block; the rest wait
+ * for it to complete (otherwise the same MB gets downloaded twice, SMB's single-threaded
+ * I/O has to queue, and WebDAV breaks the sequential stream — at high bitrates bandwidth
+ * is entirely wasted on duplicate reads).
  */
 class BufferedRandomSource(
     private val src: RandomSource,
-    private val block: Int = 1 shl 20,   // 1MB 每块
-    private val maxBlocks: Int = 24,     // 约 24MB 缓存
-    private val ahead: Int = 6,          // 预读深度(块):约 1.5s@32Mbps 的余量
+    private val block: Int = 1 shl 20,   // 1MB per block
+    private val maxBlocks: Int = 24,     // about 24MB cache
+    private val ahead: Int = 6,          // prefetch depth (in blocks): about 1.5s of headroom at 32Mbps
 ) : RandomSource {
 
     private val total = src.length()
     private val cache = LinkedHashMap<Long, ByteArray>(maxBlocks + 2, 0.75f, true) // accessOrder=LRU
-    private val inflight = HashMap<Long, CountDownLatch>() // 正在下载的块
-    private val queued = HashSet<Long>()                   // 已排队待预读的块
+    private val inflight = HashMap<Long, CountDownLatch>() // blocks currently being downloaded
+    private val queued = HashSet<Long>()                   // blocks already queued for prefetch
     private val prefetch = Executors.newSingleThreadExecutor { r -> Thread(r, "twig-prefetch").apply { isDaemon = true } }
-    @Volatile private var gen = 0    // 世代:跳读(seek)时 +1,作废还在排队的旧预读
-    private var lastBi = -1L         // 上次读的块号(cache 锁保护)
+    @Volatile private var gen = 0    // generation: incremented on a seek, invalidating prefetches still queued
+    private var lastBi = -1L         // block index of the last read (cache-lock-protected)
 
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int {
         val bi = position / block
@@ -47,7 +51,7 @@ class BufferedRandomSource(
         return n
     }
 
-    /** 取一块:缓存命中直接回;有人正在下载就等它;否则自己下载。 */
+    /** Get a block: return immediately on cache hit; if someone is already downloading it, wait; otherwise download it ourselves. */
     private fun blockOf(bi: Long): ByteArray {
         while (true) {
             var waitFor: CountDownLatch? = null
@@ -58,18 +62,19 @@ class BufferedRandomSource(
             }
             if (waitFor == null) return fetch(bi)
             waitFor!!.await()
-            // 醒来后重查:正常应命中缓存;下载方失败时这里会接手重试
+            // On wake-up, recheck: normally we hit the cache; if the downloader failed,
+            // we will pick up the retry here.
         }
     }
 
-    /** 真正下载一块,放入缓存并唤醒等待者(失败也唤醒,由等待者接手)。 */
+    /** Actually download a block, put it into the cache and wake the waiters (also wakes on failure, so the waiters can pick up the retry). */
     private fun fetch(bi: Long): ByteArray {
         try {
             val off = bi * block
             val buf = ByteArray(block)
             var read = 0
             while (read < block) {
-                val k = src.readAt(off + read, buf, read, block - read) // 定位读(不持缓存锁)
+                val k = src.readAt(off + read, buf, read, block - read) // positional read (does not hold the cache lock)
                 if (k <= 0) break
                 read += k
             }

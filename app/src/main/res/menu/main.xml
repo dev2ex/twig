@@ -11,15 +11,6 @@
         android:checkable="true"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_show_hidden"
-        android:title="@string/action_show_hidden"
-        android:checkable="true"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_density"
-        android:title="@string/action_density"
-        app:showAsAction="never" />
-    <item
         android:id="@+id/action_remember_location"
         android:title="@string/action_remember_location"
         android:checkable="true"
@@ -34,15 +25,21 @@
         android:title="@string/action_theme"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_language"
-        android:title="@string/action_language"
-        app:showAsAction="never" />
-    <item
         android:id="@+id/action_pin_music_shortcut"
         android:title="@string/music_pin_shortcut"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_settings"
         android:title="@string/action_settings"
+        app:showAsAction="never" />
+    <!-- Lock is only visible when a master password is set (without one, locking serves no purpose); Exit is always present -->
+    <item
+        android:id="@+id/action_lock"
+        android:title="@string/action_lock"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_exit"
+        android:title="@string/action_exit"
         app:showAsAction="never" />
 </menu>

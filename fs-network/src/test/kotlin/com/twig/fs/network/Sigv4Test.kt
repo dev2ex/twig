@@ -4,18 +4,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * SigV4 的正确性验证。
+ * Correctness checks for SigV4.
  *
- * 请求取自 AWS 官方文档的示例("Signature Calculations for the Authorization
- * Header: Transferring Payload in a Single Chunk"),用的是那对著名的示例凭证。
- * **断言的重点是中间产物** canonical request 与 string to sign:签名算错时服务端
- * 只回一句 SignatureDoesNotMatch,不告诉你哪一步错,而这两个中间值一比就知道是
- * 编码、排序还是头集合的问题。其中 string to sign 里那串 canonical request 的
- * SHA-256(`7344ae5b…`)正是官方文档印出来的值——它对上了,就说明前半程规范化
- * 一个字节都没差。
+ * The requests are taken from AWS's own documentation example ("Signature Calculations
+ * for the Authorization Header: Transferring Payload in a Single Chunk"), using that
+ * well-known pair of example credentials. **The assertions focus on the intermediate
+ * artifacts** — the canonical request and the string to sign: when a signature is
+ * computed wrong, the server only ever replies SignatureDoesNotMatch and never says which
+ * step failed, whereas comparing these two intermediate values immediately tells you
+ * whether it's encoding, ordering, or the header set. The canonical request's SHA-256
+ * embedded in the string to sign (`7344ae5b…`) is exactly the value printed in the
+ * official documentation — matching it proves the normalization step is byte-for-byte
+ * correct.
  *
- * 末尾那两个 signature 十六进制则是**两套独立实现交叉验证**的结果(本实现 +
- * 一份照着规范另写的 Python HMAC 链,见提交记录),锁住派生密钥这最后一步不被改坏。
+ * The two signature hex strings at the end are the result of **cross-checking with two
+ * independent implementations** (this one, plus a separate Python HMAC chain written
+ * straight from the spec — see the commit history), pinning down the final key-derivation
+ * step against regressions.
  */
 class Sigv4Test {
 
@@ -24,7 +29,7 @@ class Sigv4Test {
     private val amzDate = "20130524T000000Z"
     private val region = "us-east-1"
 
-    /** 官方例子:GET Object,带 Range 头。 */
+    /** The official example: GET Object with a Range header. */
     @Test
     fun getObjectMatchesAwsVector() {
         val headers = mapOf(
@@ -69,7 +74,7 @@ class Sigv4Test {
         )
     }
 
-    /** 官方例子:GET Bucket (List Objects),带 query —— 覆盖 canonical query 的排序与编码。 */
+    /** The official example: GET Bucket (List Objects) with a query — covers canonical query sorting and encoding. */
     @Test
     fun listObjectsMatchesAwsVector() {
         val headers = mapOf(
@@ -77,7 +82,7 @@ class Sigv4Test {
             "x-amz-content-sha256" to Sigv4.EMPTY_SHA256,
             "x-amz-date" to amzDate,
         )
-        // 故意逆序传入:canonical query 必须按编码后的 key 排序
+        // Deliberately passed in reverse order: the canonical query must be sorted by encoded key
         val query = listOf("prefix" to "J", "max-keys" to "2")
         val canon = Sigv4.canonicalRequest("GET", "/", query, headers, Sigv4.EMPTY_SHA256)
         assertEquals(
@@ -106,8 +111,8 @@ class Sigv4Test {
     }
 
     /**
-     * URI 编码的三处「照抄 URLEncoder 就会错」:空格是 %20 不是 +、
-     * `~` 不编码、`/` 在路径里要留着。
+     * Three spots in URI encoding where copying URLEncoder verbatim gets it wrong: a
+     * space is %20, not +; `~` is left unencoded; and `/` must be preserved in a path.
      */
     @Test
     fun uriEncodeFollowsRfc3986() {
@@ -117,16 +122,16 @@ class Sigv4Test {
         assertEquals("a%2Fb", Sigv4.uriEncode("a/b"))
         assertEquals("a/b", Sigv4.uriEncode("a/b", encodeSlash = false))
         assertEquals("%E6%8A%A5%E5%91%8A", Sigv4.uriEncode("报告"))
-        assertEquals("%2A", Sigv4.uriEncode("*")) // URLEncoder 恰恰不编码它
+        assertEquals("%2A", Sigv4.uriEncode("*")) // this is precisely the one URLEncoder leaves unencoded
     }
 
-    /** 解码不能把 `+` 当空格——否则名字里带加号的对象一律 404。 */
+    /** Decoding must not treat `+` as a space — otherwise any object whose name has a plus sign always 404s. */
     @Test
     fun uriDecodeKeepsPlusLiteral() {
         assertEquals("a+b", Sigv4.uriDecode("a+b"))
         assertEquals("a b", Sigv4.uriDecode("a%20b"))
         assertEquals("报告.txt", Sigv4.uriDecode("%E6%8A%A5%E5%91%8A.txt"))
         assertEquals("plain", Sigv4.uriDecode("plain"))
-        assertEquals("100%", Sigv4.uriDecode("100%")) // 残缺的 % 原样留着,不能崩
+        assertEquals("100%", Sigv4.uriDecode("100%")) // a truncated % is kept as-is, must not crash
     }
 }

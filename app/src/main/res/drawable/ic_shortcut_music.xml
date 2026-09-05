@@ -1,0 +1,16 @@
+<!--
+  Launcher icon for the music shortcut (both the pinned one and the static entry
+  in res/xml/shortcuts.xml): the audio-file note in the same purple as
+  ic_file_audio.
+  ★ The colour is a **literal** fillColor, not android:tint — a launcher loading
+  this by resource drops the tint, which is exactly why ic_music_note (plain
+  white, drawn for the dark action strip and the notification small icon) and
+  even ic_file_audio (white paths + a purple tint) both arrived on the desktop as
+  a white glyph. See ShortcutIcons.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#AB47BC"
+        android:pathData="M12,3v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4L14,7h4L18,3h-6z" />
+</vector>

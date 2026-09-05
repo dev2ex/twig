@@ -11,11 +11,15 @@ captures/
 *.apk
 *.aab
 
-# 签名密钥绝不入库
+# Signing key must never enter the repo
 *.keystore
 *.jks
 keystore.properties
 
-# 本机专属:测试机地址、发布目录、本地服务凭据
+# Machine-local: test device address, release directory, local service credentials
 CLAUDE.local.md
 .claude/
+
+# Internal security reviews / audit reports — findings, file:line and repro details
+# for issues in this codebase. Never publish these alongside the source.
+docs/REVIEW_*.md

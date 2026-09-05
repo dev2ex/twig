@@ -1,18 +1,21 @@
 package com.twig.app.ui
 
 import com.twig.app.R
+import com.twig.app.isMovableSource
 import com.twig.core.XFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * 全局剪贴板(两个面板共享):长按菜单「复制到剪贴板」放进来,主界面底部的通栏点「粘贴」
- * 时以**活动面板**的当前目录为目标搬运,所以本侧/对侧都能作目的地——不像操作栏的
- * 复制/移动那样固定「本侧 → 对侧」。
+ * Global clipboard (shared between the two panes): the long-press menu's "copy to clipboard" places things here,
+ * and tapping "paste" on the bottom bar of the main screen uses the **active pane's** current directory as the
+ * destination, so either pane can act as the target — unlike the action bar's copy / move, which is fixed at
+ * "this pane → the other pane".
  *
- * 只存内存(进程内),不持久化:里面装的 [XFile] 可能来自压缩包/网络会话,跨进程重建
- * 成本高、还容易指向已经失效的连接。[move] 是剪贴板栏上的复选框状态,跟着剪贴板走而不
- * 属于某个面板,换内容不重置(常用移动的人不必每次重勾)。
+ * In-memory only (process-local), not persisted: the [XFile]s inside may come from archives / network sessions,
+ * and rebuilding them across processes is expensive and may point at stale connections. [move] is the checkbox
+ * state on the clipboard bar; it follows the clipboard rather than belonging to any pane, and is not reset when
+ * the content changes (people who often use move don't have to re-tick each time).
  */
 object FileClipboard {
 
@@ -27,11 +30,22 @@ object FileClipboard {
     val items: List<XFile> get() = _state.value.items
     val move: Boolean get() = _state.value.move
 
-    /** 覆盖式放入(不追加):剪贴板语义与系统一致,新的一次「复制到剪贴板」换掉旧内容。 */
+    /**
+     * Replace-mode put (no append): clipboard semantics match the system's — a new "copy to clipboard" replaces old content.
+     *
+     * ★ Re-evaluate "move" against the new content as a courtesy: [move] follows the clipboard rather than resetting
+     * with the content, so a previously ticked move carries over verbatim to the new entries — if any of them cannot
+     * be moved (the document-tree-root authorization, the "Apps" entries), pasting becomes a move that is doomed
+     * to fail at the source-deletion step. The bar's checkbox is greyed out at the same time.
+     */
     fun put(files: List<XFile>) {
         if (files.isEmpty()) return
-        _state.value = _state.value.copy(items = files.toList())
+        _state.value = State(items = files.toList(), move = _state.value.move && movable(files))
     }
+
+    /** Whether this batch can serve as a whole as the source of a "move" (only if every one is movable). */
+    fun movable(files: List<XFile> = items): Boolean =
+        files.isNotEmpty() && files.all { it.isMovableSource() }
 
     fun setMove(move: Boolean) {
         if (_state.value.move != move) _state.value = _state.value.copy(move = move)
@@ -42,14 +56,17 @@ object FileClipboard {
     }
 
     /**
-     * 目标目录不能落时的原因(string 资源 id),null = 可以粘。栏上据此置灰「粘贴」并把原因
-     * 写在目标那行,[PaneFragment.pasteFromClipboard] 再兜一次(按钮状态可能比绿框慢一拍)。
+     * Reason (string resource id) when the destination directory is not a valid paste target; null = can paste.
+     * The bar greys out "paste" accordingly and writes the reason on the target row;
+     * [PaneFragment.pasteFromClipboard] catches it once more (button state may lag the green frame by one beat).
      *
-     * 两种拦法:
-     * - **同一目录**:源就在目标里,复制出来只能是同名冲突/副本,移动更是原地不动;
-     * - **粘进自己**:把目录粘到它自身或它的子目录里,是会无限递归的搬法。
+     * Two kinds of blockage:
+     * - **Same directory**: the source is inside the destination, so copying can only produce name conflicts /
+     *   duplicates, and moving is a no-op where it stands.
+     * - **Paste into self**: pasting a directory into itself or one of its descendants is an infinitely recursive move.
      *
-     * 都要求 scheme 相同才算——不同来源(本地 vs SMB)路径字符串撞车不代表是同一个地方。
+     * Both require matching schemes — different sources (local vs SMB) with colliding path strings are not
+     * necessarily the same place.
      */
     fun pasteBlockReason(dest: XFile?): Int? {
         val items = _state.value.items

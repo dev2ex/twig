@@ -1,7 +1,8 @@
 <!--
-  「WiFi 共享」入口(未开启):三段细弧 + 向下三角。
-  ★ 不要在这里写 android:tint —— 它挂在操作列上,着色由 @style/StripIcon 的
-  tint(@color/primary)统一给,自带 tint 会把深浅色主题下的统一配色顶掉。
+  "WiFi sharing" entry (off): three thin arcs + a downward triangle.
+  ★ Do not put android:tint here — this icon sits on the action strip and its color is
+  given uniformly by @style/StripIcon's tint (@color/primary); an in-drawable tint would
+  override the unified light/dark theme coloring.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"

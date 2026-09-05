@@ -15,12 +15,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 长按菜单的行渲染。
+ * Row rendering for the long-press menu.
  *
- * 值得单测的点只有一个,但它很致命:行布局用了 `?attr/dialogPreferredPadding`,
- * 主题里没有这个属性 **inflate 当场抛异常**——而这一刻用户已经长按下去了,
- * 表现是"长按什么都不出来 / 直接闪退"。顺带钉住图标真的被换成了这一项自己的图标
- * (`ArrayAdapter` 复用 convertView,忘了每次都 setImageResource 的话会串图)。
+ * There is only one point worth unit-testing, but it is fatal: the row layout uses
+ * `?attr/dialogPreferredPadding`, and if the theme is missing that attribute, inflate
+ * **throws right there** — at the moment the user has just long-pressed, which shows up
+ * as "long-press does nothing / crashes outright". While we're at it, also pin down that
+ * the icon really gets swapped to this item's own icon (`ArrayAdapter` reuses the
+ * convertView, and forgetting to call setImageResource every time leaks the previous
+ * row's icon into this one).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -32,19 +35,19 @@ class ActionMenuTest {
     @Test
     fun rendersLabelAndIcon() {
         val actions = listOf(
-            MenuAct("复制", R.drawable.ic_copy) {},
-            MenuAct("删除", R.drawable.ic_delete, DANGER) {},
+            MenuAct("Copy", R.drawable.ic_copy) {},
+            MenuAct("Delete", R.drawable.ic_delete, DANGER) {},
         )
         val adapter = menuAdapter(ctx, actions)
         val parent = FrameLayout(ctx)
 
         val first = adapter.getView(0, null, parent)
-        assertEquals("复制", first.findViewById<TextView>(R.id.label).text.toString())
+        assertEquals("Copy", first.findViewById<TextView>(R.id.label).text.toString())
         assertNotNull(first.findViewById<ImageView>(R.id.icon).drawable)
 
-        // 复用第一行的视图渲染第二行:文案与图标都得换过来
+        // Reuse the first row's view to render the second row: both the text and the icon must change
         val second = adapter.getView(1, first, parent)
-        assertEquals("删除", second.findViewById<TextView>(R.id.label).text.toString())
+        assertEquals("Delete", second.findViewById<TextView>(R.id.label).text.toString())
         assertEquals(
             app.getColor(R.color.menu_icon_danger),
             second.findViewById<ImageView>(R.id.icon).imageTintList?.defaultColor,

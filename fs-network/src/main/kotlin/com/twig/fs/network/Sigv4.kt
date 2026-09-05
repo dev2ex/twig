@@ -9,27 +9,35 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * AWS Signature Version 4 —— S3 请求签名(只做 Authorization 头这一种,
- * 不做 presigned URL 和 chunked 分块签名)。
+ * AWS Signature Version 4 — S3 request signing (only the Authorization header,
+ * not presigned URLs or chunked signatures).
  *
- * 手写的理由:AWS SDK for Java 光 s3 模块连着依赖十几 MB,比整个 APK 还大;
- * 而签名用到的原语(HMAC-SHA256 / SHA-256)JDK 自带,一共不到两百行。
+ * Why hand-written: the AWS SDK for Java alone pulls in a transitive dependency
+ * footprint of over ten MB for its s3 module, larger than the entire APK; while
+ * the primitives needed for signing (HMAC-SHA256 / SHA-256) ship with the JDK, and
+ * the whole implementation is under two hundred lines.
  *
- * 规范里几个**照抄别的编码器就会错**的点:
- *  - URI 编码用的是 RFC 3986 的 unreserved 集合(`A-Za-z0-9-_.~`),
- *    `URLEncoder` 不能用:它把空格编成 `+`、`~` 也编、`*` 反而不编。
- *  - 已编码的 canonical URI **不再二次编码**(S3 独有;其他 AWS 服务要编两次)。
- *  - canonical query 按**编码后**的 key 排序,值为空也要留 `=`。
- *  - header 值要 trim 且把内部连续空格折叠成一个。
+ * A few **easy-to-get-wrong** points in the spec — copying another encoder's
+ * behavior here is how you introduce bugs:
+ *  - URI encoding uses the RFC 3986 unreserved set (`A-Za-z0-9-_.~`);
+ *    `URLEncoder` cannot be used — it encodes space as `+`, also encodes `~`,
+ *    and does not encode `*`.
+ *  - The already-encoded canonical URI **is not encoded a second time**
+ *    (S3-specific; other AWS services require double encoding).
+ *  - Canonical query is sorted by the **encoded** key; even when the value is
+ *    empty, the `=` is kept.
+ *  - Header values must be trimmed and consecutive internal whitespace collapsed
+ *    to a single space.
  */
 internal object Sigv4 {
 
-    /** sha256("") —— 无请求体时的 payload hash。 */
+    /** sha256("") — the payload hash when there is no request body. */
     const val EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
     /**
-     * 流式上传时的 payload 占位。请求体边读边发,签名那一刻算不出 hash;
-     * S3 认这个值(AWS SDK 在 HTTPS 下也是这么发的)。
+     * Payload placeholder for streaming uploads. The request body is sent while
+     * being read, so the hash cannot be computed at signing time; S3 accepts this
+     * value (the AWS SDK also sends it over HTTPS).
      */
     const val UNSIGNED = "UNSIGNED-PAYLOAD"
 
@@ -37,12 +45,13 @@ internal object Sigv4 {
 
     private val MULTI_SPACE = Regex(" +")
 
-    /** `20130524T000000Z` —— x-amz-date 的格式。 */
+    /** `20130524T000000Z` — the format of x-amz-date. */
     fun amzDate(millis: Long): String = utcFormat("yyyyMMdd'T'HHmmss'Z'", millis)
 
     /**
-     * 规范化请求。[query] 与 [headers] 传**未编码**的原值;
-     * [canonicalUri] 传**已编码**的路径(以 `/` 开头),因为它是从最终 URL 里取的。
+     * Builds the canonical request. [query] and [headers] are passed as their
+     * **unencoded** raw values; [canonicalUri] is the **already-encoded** path
+     * (starting with `/`), since it is taken from the final URL.
      */
     fun canonicalRequest(
         method: String,
@@ -60,20 +69,20 @@ internal object Sigv4 {
     }
 
     /**
-     * 规范化的 query string。调用方**同时**拿它当真实 URL 的 query 用——
-     * 两边共用一份字符串,就不会出现"签的和发的编码不一致"这种只在
-     * 特殊字符出现时才炸的问题。
+     * Canonical query string. The caller also uses this as the **real** URL's
+     * query — sharing one string on both sides avoids the "signed and sent use
+     * different encodings" class of bugs that only blow up with special characters.
      */
     fun canonicalQuery(query: List<Pair<String, String>>): String = query
         .map { (k, v) -> uriEncode(k) to uriEncode(v) }
         .sortedWith(compareBy({ it.first }, { it.second }))
         .joinToString("&") { (k, v) -> "$k=$v" }
 
-    /** 待签字符串;[amzDate] 形如 `20130524T000000Z`。 */
+    /** String to sign; [amzDate] looks like `20130524T000000Z`. */
     fun stringToSign(canonicalRequest: String, amzDate: String, region: String, service: String): String =
         "$ALGORITHM\n$amzDate\n${scope(amzDate, region, service)}\n${sha256Hex(canonicalRequest.toByteArray())}"
 
-    /** 完整的 `Authorization` 头取值。 */
+    /** Full `Authorization` header value. */
     fun authorization(
         method: String,
         canonicalUri: String,
@@ -94,7 +103,7 @@ internal object Sigv4 {
             "SignedHeaders=$signed, Signature=$sig"
     }
 
-    /** 逐日/区域/服务派生的签名密钥。 */
+    /** Derived signing key per date / region / service. */
     fun signingKey(secretKey: String, dateStamp: String, region: String, service: String): ByteArray {
         var k = hmac("AWS4$secretKey".toByteArray(), dateStamp.toByteArray())
         k = hmac(k, region.toByteArray())
@@ -106,8 +115,9 @@ internal object Sigv4 {
         "${amzDate.take(8)}/$region/$service/aws4_request"
 
     /**
-     * RFC 3986 编码。[encodeSlash] 为 false 时保留 `/`(用于路径,
-     * 路径分隔符本身不能被编码,否则 S3 找不到对象)。
+     * RFC 3986 encoding. When [encodeSlash] is false, `/` is kept as-is (used for
+     * paths — the path separator itself must not be encoded, otherwise S3 cannot
+     * locate the object).
      */
     fun uriEncode(s: String, encodeSlash: Boolean = true): String {
         val sb = StringBuilder(s.length + 8)
@@ -125,11 +135,13 @@ internal object Sigv4 {
     }
 
     /**
-     * [uriEncode] 的逆运算:只还原 `%XX`,`+` 当字面加号看待。
+     * Inverse of [uriEncode]: only `%XX` is restored, `+` is treated as a literal
+     * plus sign.
      *
-     * ★ 注意这跟**解码 S3 响应里的对象名**不是一回事,别拿它直接去解 Key
-     * (那边是 form 编码,`+` 代表空格,见 `S3FileSystem.decodeKey`)。
-     * 请求路径与响应对象名分属两个不同的编码空间。
+     * ★ Note that this is **not** the same as decoding object names in S3
+     * responses — do not use it directly on Key values (those use form encoding,
+     * where `+` means space, see `S3FileSystem.decodeKey`).
+     * Request paths and response object names live in two distinct encoding spaces.
      */
     fun uriDecode(s: String): String {
         if ('%' !in s) return s

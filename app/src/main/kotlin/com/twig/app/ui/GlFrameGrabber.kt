@@ -32,16 +32,18 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * 系统 MediaMetadataRetriever 不支持的容器(如 AVI)靠它抓一帧:自己起一个不可见的
- * ExoPlayer 解码到 SurfaceTexture(避免走 MMR 的系统级 demux 限制),再用一套最小
- * EGL/GL 管线把外部 OES 纹理转绘到普通 2D 纹理 FBO 上 `glReadPixels` 出来——
- * 不能直接把解码输出接 [android.media.ImageReader]:硬解视频吐出来的是设备相关的
- * 不透明/YUV 缓冲区,不透过 GL 采样直接读会在不少厂商设备上花屏/格式不兼容,这也是
- * media3 官方另起一整套 `media3-effect` GL 管线做 FrameExtractor 的原因;为了不引入
- * 那一整包依赖(增大体积),这里手写一条最小路径。
+ * Captures a frame from containers the system MediaMetadataRetriever doesn't support (e.g. AVI): spin up an
+ * invisible ExoPlayer decoding into a SurfaceTexture (to sidestep MMR's system-level demuxer limitations), and use
+ * a minimal EGL / GL pipeline to blit the external OES texture into a regular 2D texture FBO and read it out via
+ * `glReadPixels` — we can't plug the decoded output directly into [android.media.ImageReader]: hardware-decoded
+ * video surfaces opaque device-dependent / YUV buffers; reading them through GL sampling directly leads to
+ * glitches / format incompatibilities on many vendor devices, which is also why media3 has a whole separate
+ * `media3-effect` GL pipeline for FrameExtractor; to avoid pulling that whole dependency in (it bloats size),
+ * this is a hand-written minimal path.
  *
- * 全程单独一条 [HandlerThread] 跑:EGL 上下文/纹理只能在创建它的线程上用,
- * ExoPlayer 用同一个 Looper 构建,回调天然落在这条线程上,不用再互相 post。
+ * Everything runs on its own [HandlerThread]: EGL contexts / textures can only be used on the thread that
+ * created them; ExoPlayer is built on the same Looper, so callbacks land on this thread naturally with no
+ * cross-posting needed.
  */
 @UnstableApi
 object GlFrameGrabber {
@@ -49,11 +51,12 @@ object GlFrameGrabber {
     private const val TAG = "twig"
 
     /**
-     * @param dataSourceFactory 为 null 时用本地文件默认 [androidx.media3.datasource.FileDataSource]
-     * @param targetDivisor 取时长 1/[targetDivisor] 处的代表帧;AVI 这类容器的时长要
-     *   解完容器头(甚至 idx1)才知道,不能像 MP4/MKV 那样提前算好时间点再传进来——
-     *   所以这里先从 0 开始 prepare,时长一到手([onEvents] 里 [ExoPlayer.getDuration]
-     *   不再是 [C.TIME_UNSET])就补一次 seek,再等第一帧渲染出来抓帧。
+     * @param dataSourceFactory When null, defaults to [androidx.media3.datasource.FileDataSource] for local files.
+     * @param targetDivisor Take a representative frame at 1/[targetDivisor] of the duration; for AVI-like containers,
+     *   the duration is only known after parsing the container header (and even idx1), and can't be precomputed
+     *   and passed in like with MP4 / MKV — so we start by preparing from 0, and once the duration is in hand
+     *   (in [onEvents], [ExoPlayer.getDuration] is no longer [C.TIME_UNSET]) we issue a follow-up seek, then wait
+     *   for the first frame to render before grabbing.
      */
     fun grab(
         context: Context,
@@ -81,17 +84,17 @@ object GlFrameGrabber {
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                     .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                    // m2ts 的 SCTE-35 元数据轨解析有些文件会直接抛异常崩播放器,反正
-                    // 抓帧用不上,一并关掉(见 MediaPlayerActivity 里同样的处理)。
+                    // Some m2ts files make the SCTE-35 metadata track parser throw and crash the player; we don't need it for frame
+                    // grabbing anyway, so disable it as well (see the same handling in MediaPlayerActivity).
                     .setTrackTypeDisabled(C.TRACK_TYPE_METADATA, true)
                     .build()
                 var captured = false
                 var sought = false
                 p.addListener(object : Player.Listener {
-                    // 用 tracks(而非 onVideoSizeChanged)拿视频宽高建 Surface:
-                    // MediaCodecVideoRenderer 没有输出 Surface 时不会真正启动解码
-                    // 管线,onVideoSizeChanged 也就永远不触发——先有 Surface 才有
-                    // 尺寸回调、先有尺寸才能建 Surface,原先那版正卡死在这个死循环里。
+                    // Use tracks (not onVideoSizeChanged) to read the video's actual width/height and build the Surface:
+                    // MediaCodecVideoRenderer doesn't really start its decoding pipeline when there's no output Surface,
+                    // so onVideoSizeChanged never fires either — you need a Surface to get the size callback, but you
+                    // need the size to build the Surface; the previous version was stuck in this deadlock.
                     override fun onTracksChanged(tracks: Tracks) {
                         val g = gl ?: return
                         if (g.hasSurface()) return
@@ -148,7 +151,7 @@ object GlFrameGrabber {
         return result
     }
 
-    /** 一条线程独享的 EGL 上下文 + OES 外部纹理→普通 2D 纹理 FBO 转绘管线。 */
+    /** A single-thread-owned EGL context + OES external texture → regular 2D texture FBO blit pipeline. */
     private class GlContext {
         private var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
         private var context: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -212,7 +215,7 @@ object GlFrameGrabber {
 
         fun hasSurface() = surface != null
 
-        /** 首次拿到视频真实宽高后调用,建 SurfaceTexture/FBO,交给播放器当输出面。 */
+        /** Called after first receiving the video's real width and height; creates the SurfaceTexture / FBO and hands it to the player as the output surface. */
         fun prepareSurface(w: Int, h: Int): Surface {
             width = w; height = h
             val st = SurfaceTexture(oesTextureId)
@@ -244,7 +247,7 @@ object GlFrameGrabber {
             return surf
         }
 
-        /** SurfaceTexture 已有新帧(播放器刚渲染完 onRenderedFirstFrame)时调用。 */
+        /** Called when the SurfaceTexture has a new frame (the player just finished rendering the first frame). */
         fun captureFrame(): Bitmap? {
             val st = surfaceTexture ?: return null
             if (width <= 0 || height <= 0) return null
@@ -280,7 +283,7 @@ object GlFrameGrabber {
             val buf = ByteBuffer.allocateDirect(width * height * 4).order(ByteOrder.nativeOrder())
             GLES20.glReadPixels(0, 0, width, height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
 
-            // GL 行序是从下到上,Bitmap 要从上到下——逐行翻转
+            // GL row order goes bottom-to-top, Bitmap wants top-to-bottom — flip row by row
             val rowBytes = width * 4
             val flipped = ByteBuffer.allocateDirect(buf.capacity()).order(ByteOrder.nativeOrder())
             val row = ByteArray(rowBytes)

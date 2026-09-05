@@ -21,11 +21,13 @@ import com.twig.core.XFile
 import java.util.concurrent.Executors
 
 /**
- * 全局音乐播放引擎(单例)。持有一条常驻 [ExoPlayer](后台播放不随 Activity 销毁),
- * 用 ExoPlayer 原生队列(shuffle/repeat 三态);音频焦点与拔耳机暂停交给 ExoPlayer 内建
- * (setAudioAttributes handleAudioFocus + setHandleAudioBecomingNoisy)。
+ * Global music playback engine (singleton). Holds a resident [ExoPlayer] (background playback
+ * survives Activity destruction); uses ExoPlayer's native queue (shuffle/repeat three states);
+ * audio focus and unplug-headphone pause are delegated to ExoPlayer's built-ins
+ * (setAudioAttributes handleAudioFocus + setHandleAudioBecomingNoisy).
  *
- * 网络来源 DataSource 懒开(见 [MediaSources.lazy]);所有 FileSystem/MMR 调用走后台线程。
+ * Network sources' DataSource is opened lazily (see [MediaSources.lazy]); all FileSystem/MMR
+ * calls go through background threads.
  */
 @UnstableApi
 object MusicEngine {
@@ -35,9 +37,9 @@ object MusicEngine {
         fun onPlayStateChanged(playing: Boolean) {}
         fun onModeChanged() {}
         fun onQueueChanged() {}
-        /** 当前曲的「我的最爱」状态被改了(播放页心形、列表页菜单、通知栏心形任一处)。 */
+        /** The current track's "favorite" state was changed (player page heart, list page menu, or notification heart — anywhere). */
         fun onFavChanged() {}
-        /** 播放完最后一首(非循环)。 */
+        /** Playback finished the last track (no repeat). */
         fun onEnded() {}
     }
 
@@ -55,15 +57,15 @@ object MusicEngine {
         private set
     private var tracks: List<PlaylistTrack> = emptyList()
     private var files: List<XFile> = emptyList()
-    private var errorSkips = 0 // 连续播放失败计数;绕队列一圈都失败则停止
+    private var errorSkips = 0 // consecutive playback failure counter; stop if all tracks in the queue have been tried and failed
 
-    /** 谁改了「我的最爱」谁调一下,好让别处(播放页心形、通知栏心形)跟着变。 */
+    /** Whoever changes "favorite" calls this so other places (player page heart, notification heart) update too. */
     fun notifyFavChanged() { listeners.forEach { it.onFavChanged() } }
 
     fun addListener(l: Listener) { listeners.add(l) }
     fun removeListener(l: Listener) { listeners.remove(l) }
 
-    // ---- 播放器构建 ----
+    // ---- Player construction ----
 
     @Synchronized
     fun ensurePlayer(ctx: Context): ExoPlayer {
@@ -101,12 +103,13 @@ object MusicEngine {
                 schedulePrefetchNext()
             }
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) errorSkips = 0 // 成功加载一首,清零失败计数
+                if (state == Player.STATE_READY) errorSkips = 0 // successfully loaded a track, reset failure counter
                 if (state == Player.STATE_ENDED) listeners.forEach { it.onEnded() }
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 android.util.Log.e("twig", "music: player error ${error.errorCodeName}", error)
-                // 某首放不了(损坏/格式不支持)→ 跳下一首继续;绕队列一整圈都失败则停止
+                // A track can't play (corrupt / unsupported format) → skip to the next one and continue;
+                // stop if we've cycled through the whole queue and all failed
                 val n = tracks.size
                 if (n <= 0) return
                 errorSkips++
@@ -122,29 +125,31 @@ object MusicEngine {
         return p
     }
 
-    // ---- 队列加载 ----
+    // ---- Queue loading ----
 
-    /** 载入播放列表并从 [startIndex] 播放;conn 曲目在后台建连接,连接缺失的跳过。 */
+    /** Loads the playlist and starts playback from [startIndex]; conn tracks build connections in the background, missing ones are skipped. */
     fun play(ctx: Context, playlist: Playlist, startIndex: Int, startPosMs: Long = 0L, autoPlay: Boolean = true) {
         val appCtx = ctx.applicationContext
         io.execute {
             val resolved = ArrayList<Pair<PlaylistTrack, XFile>>()
-            val origIdx = ArrayList<Int>() // 每个可播放曲在原列表里的下标
+            val origIdx = ArrayList<Int>() // index of each playable track in the original list
             playlist.tracks.forEachIndexed { i, t ->
                 val f = resolve(appCtx, t) ?: return@forEachIndexed
                 resolved.add(t to f); origIdx.add(i)
             }
             if (resolved.isEmpty()) {
-                // 一首都解析不出来(典型:曲目在 SMB/SFTP 上而服务器连不上)——以前这里静默返回,
-                // 播放器压根没建出来,于是播放/上一首/下一首这些 `player?.` 按钮点了全无反应,
-                // 只有「播放列表」「抽屉」这类纯 UI 按钮还能动,看着像"按钮坏了"。给个提示。
+                // None could be resolved (typical: tracks on SMB/SFTP but the server can't be connected).
+                // Previously this returned silently — the player was never even built, so tapping
+                // play/prev/next (`player?.`) buttons did nothing, while pure UI buttons like
+                // "Playlist" / "Drawer" still worked, looking like "buttons are broken". Show a hint.
                 main.post {
                     android.widget.Toast.makeText(appCtx, com.twig.app.R.string.music_load_failed, android.widget.Toast.LENGTH_LONG).show()
                 }
                 return@execute
             }
-            // 起播位置:第一个"原下标 >= startIndex"的可播放曲(点到无效曲就顺延到下一个可播放的);
-            // 点到末尾无效曲、后面没有可播放的则回卷到第一个可播放曲。
+            // Start position: the first playable track whose original index is >= startIndex
+            // (tapping an invalid track advances to the next playable one); tapping the last invalid
+            // track with no playable after wraps back to the first playable one.
             val startPos = origIdx.indexOfFirst { it >= startIndex }.let { if (it < 0) 0 else it }
             main.post {
                 val p = ensurePlayer(appCtx)
@@ -165,11 +170,12 @@ object MusicEngine {
     }
 
     /**
-     * 若给定列表就是当前队列 → 跳到该曲;否则整列载入后从该曲播。
-     * 按曲目 id 匹配(而非下标):m3u8/旧列表里无法解析的曲目会在 [play] 里被跳过,
-     * 队列下标与列表下标会错位,只有按 id 对齐才不会跳错曲。
+     * If the given list is the current queue → jump to that track; otherwise load the whole list
+     * and start playing from that track. Matches by track id (not index): tracks that can't be
+     * resolved in m3u8 / old lists are skipped by [play], so queue index and list index drift;
+     * only matching by id avoids jumping to the wrong track.
      */
-    /** 播放列表改名(尤其 NOW 被提升成新 uuid)后,把当前队列 id 同步到新 id,别让它指向已删除的旧列表。 */
+    /** After a playlist is renamed (especially when NOW gets promoted to a new uuid), sync the current queue id to the new id so it doesn't point at a deleted old list. */
     fun onQueueRenamed(from: String, to: String) {
         if (queueId == from) queueId = to
     }
@@ -187,10 +193,11 @@ object MusicEngine {
         play(ctx, playlist, index)
     }
 
-    /** 后台把一首曲目解析成可读的 XFile(conn 曲目建连接);连接缺失返回 null。阻塞 IO。 */
+    /** Resolves a track to a readable XFile in the background (conn tracks build connections); returns null when connection is missing. Blocking IO. */
     fun resolveFile(ctx: Context, t: PlaylistTrack): XFile? = resolve(ctx, t)
 
-    // size 缺失时列父目录取真实大小;m3u8 同目录多曲共用一次列表结果(LRU 8 个目录)
+    // When size is missing, list the parent directory to get the real size; m3u8 with multiple
+    // tracks in the same directory share one listing result (LRU 8 directories)
     private val dirListCache = object : LinkedHashMap<String, List<XFile>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<XFile>>?) = size > 8
     }
@@ -202,15 +209,21 @@ object MusicEngine {
         val list = synchronized(dirListCache) { dirListCache[key] }
             ?: FsRegistry.of(scheme).list(XFile(scheme, parentPath, isDir = true))
                 .also { synchronized(dirListCache) { dirListCache[key] = it } }
+        // Look up by display name; for sources like media servers where "the last path segment is
+        // an id and the name is something else", also try matching by the last segment
         return list.firstOrNull { !it.isDir && it.name == name }
+            ?: list.firstOrNull { !it.isDir && it.path.substringAfterLast('/') == name }
     }
 
-    // size/lastModified 都是导入时(trackFrom/M3uPlaylist.parse)顺手存下的——一起用才能让
-    // 重建出的 XFile 与 Thumbs 缓存 key(md5(name:size:mtime))跨会话保持稳定,否则哪怕 size
-    // 存了、mtime 每次都补 0 也会跟真实文件(mtime≠0)对不上,封面照样每次判 miss 重新生成。
+    // size/lastModified are stored at import time (trackFrom/M3uPlaylist.parse) — using both is
+    // the only way to keep the rebuilt XFile and the Thumbs cache key (md5(name:size:mtime))
+    // stable across sessions; otherwise even if size is stored, mtime being defaulted to 0 every
+    // time will not match the real file (mtime≠0), and the cover will be a miss every time and
+    // be regenerated.
     private fun resolve(ctx: Context, t: PlaylistTrack): XFile? = runCatching {
         when (t.kind) {
-            // 本地:openRandom 用真实文件长度,size 缺失无妨;这里顺手 stat 一下,好让列表副标题显示大小
+            // Local: openRandom uses the real file length, so missing size is fine; we stat here
+            // as a bonus so the list subtitle can show size
             "local" -> if (t.size > 0) {
                 XFile("file", t.path, isDir = false, size = t.size, lastModified = t.lastModified)
             } else {
@@ -220,28 +233,50 @@ object MusicEngine {
             "conn" -> {
                 val conn = Connections.find(ctx, t.connLabel) ?: return null
                 val scheme = Connections.ensure(ctx, conn)
-                // 网络来源(SMB/WebDAV/…)的 openRandom().length() 直接取 XFile.size,size 必须正确,
-                // 否则数据源一读就 EOF、extractor 判空流,网络音频无法播放。size 缺失(m3u8/旧列表)时
-                // 补真实大小——注意不能用 FileSystem.resolve()(SmbFileSystem.resolve 是不 stat 的桩,
-                // 返回 isDir=true/size=0),得列父目录按文件名匹配拿到带真实 size 的条目。
+                // For network sources (SMB/WebDAV/…) openRandom().length() takes XFile.size directly;
+                // size must be correct, otherwise the data source EOFs on first read and the
+                // extractor sees an empty stream — network audio won't play. When size is missing
+                // (m3u8 / old lists) backfill the real size — note that FileSystem.resolve() can't
+                // be used (SmbFileSystem.resolve is a non-statting stub returning isDir=true/size=0);
+                // we must list the parent directory and match by file name to get the entry with
+                // its real size.
                 if (t.size > 0) {
-                    XFile(scheme, t.path, isDir = false, size = t.size, lastModified = t.lastModified)
+                    // ★ displayName must come back too: for media servers the last path segment
+                    // is the entry id (Emby uses pure numbers); losing it doesn't just make the
+                    // list display numbers, **the extension is also gone** — which makes media3
+                    // fail to recognize the container and fall back to per-byte sniffing (see the
+                    // AVI entry in CLAUDE.md). Empty string must become null, otherwise XFile.name
+                    // returns the empty string directly.
+                    XFile(
+                        scheme, t.path, isDir = false, size = t.size, lastModified = t.lastModified,
+                        displayName = t.displayName.ifEmpty { null },
+                    )
                 } else {
-                    statByListing(scheme, t.path) // 找不到(路径不存在)返回 null → 跳过该曲
+                    statByListing(scheme, t.path) // returns null if not found (path doesn't exist) → skip this track
                 }
             }
-            // 其他 App「用 Twig 打开」传进来的 content://:URI 存在 path 里,名字/扩展名
-            // 只能靠 displayName。临时读权限随调用方任务栈存活,重启后多半读不到了——
-            // 那时 openInput 抛异常,这里 runCatching 兜住返回 null,该曲被跳过
+            // content:// passed in by another app via "Open with Twig": the URI lives in path,
+            // name and extension can only come from displayName. The temporary read permission
+            // survives only with the caller's task stack; after a restart it likely can't be read
+            // anymore — openInput then throws, runCatching here catches it and returns null, and
+            // the track is skipped
             "share" -> XFile(
                 com.twig.app.ShareSourceFileSystem.SCHEME, t.path, isDir = false,
                 size = t.size, lastModified = t.lastModified, displayName = t.displayName,
+            )
+            // SAF: authorization is persistent, so reads still work after a restart; when the
+            // grant is revoked openInput throws, and like share this is caught by the outer
+            // runCatching, and the track is skipped
+            "saf" -> XFile(
+                com.twig.app.SafFileSystem.SCHEME, t.path, isDir = false,
+                size = t.size, lastModified = t.lastModified,
+                displayName = t.displayName.ifEmpty { null },
             )
             else -> null
         }
     }.getOrNull()
 
-    // ---- 传输控制(主线程)----
+    // ---- Transport control (main thread) ----
 
     fun currentIndex(): Int = player?.currentMediaItemIndex ?: 0
     fun currentTrack(): PlaylistTrack? = tracks.getOrNull(currentIndex())
@@ -275,7 +310,7 @@ object MusicEngine {
         }
     }
 
-    /** 从当前队列移除某曲目(列表页移出时同步)。 */
+    /** Removes a track from the current queue (synced when removed from the list page). */
     fun removeFromQueue(trackId: String) {
         val p = player ?: return
         val i = tracks.indexOfFirst { it.id == trackId }
@@ -287,18 +322,19 @@ object MusicEngine {
     }
 
     /**
-     * 存"记忆播放位置",按曲目 id 而非下标——currentIndex() 是过滤后(m3u8/旧列表里失效
-     * 曲目已被 [play] 跳过)队列的下标,而 [Playlist.lastIndex] 是按原始未过滤的
-     * playlist.tracks 存的、供 [play] 的 startIndex 用;两个下标域不一致,直接存
-     * currentIndex() 会导致每次恢复播放定位到错误曲目(尤其 m3u8 部分路径无效时)。
-     * PlaylistStore.saveResume 按 id 在原始列表里换算出正确下标再存。
+     * Save "remember playback position" by track id rather than index — currentIndex() is the
+     * post-filter (invalid tracks from m3u8 / old lists have been skipped by [play]) queue index,
+     * while [Playlist.lastIndex] is stored from the original unfiltered playlist.tracks for [play]'s
+     * startIndex; the two index domains don't match, so storing currentIndex() directly causes
+     * resume to point at the wrong track (especially with partially-invalid m3u8). PlaylistStore.saveResume
+     * resolves the correct index in the original list by id before storing.
      */
     fun saveResume() {
         val ctx = app ?: return
         val id = queueId.ifEmpty { return }
         val trackId = currentTrack()?.id ?: return
         val pos = positionMs()
-        com.twig.app.Prefs.setLastQueueId(ctx, id) // 冷启动恢复要知道上次到底在放哪个队列(NOW 还是某个命名列表)
+        com.twig.app.Prefs.setLastQueueId(ctx, id) // on cold-start resume we need to know which queue was being played (NOW or some named list)
         io.execute { runCatching { PlaylistStore.saveResume(ctx, id, trackId, pos) } }
     }
 
@@ -307,13 +343,13 @@ object MusicEngine {
         saveResume()
     }
 
-    /** 彻底退出:保存进度、释放播放器、清空队列(供"退出播放器"用;通知由 [MusicService] 停前台移除)。 */
+    /** Full exit: save progress, release player, clear queue (used by "Exit player"; notification is removed by [MusicService] stopping the foreground). */
     @Synchronized
     fun shutdown() {
         saveResume()
         player?.release()
         player = null
-        AudioCache.releaseAll() // 播放器停读后再释放缓存连接/文件
+        AudioCache.releaseAll() // release cache connections/files after the player stops reading them
         tracks = emptyList()
         files = emptyList()
         queueId = ""
@@ -322,20 +358,22 @@ object MusicEngine {
         listeners.forEach { it.onQueueChanged() }
     }
 
-    // ---- 预取下一首(字节 + 波形 + 封面)----
+    // ---- Prefetch next track (bytes + waveform + cover) ----
 
     private val prefetchNextRunnable = Runnable { prefetchNext() }
 
-    /** 延后几秒再预取下一首:先让当前曲把缓冲喂饱,避免开播/切歌瞬间就跟预取抢同一条
-     *  (SMB 串行化的)网络连接、拖慢当前曲起播。多次触发只保留最后一次。 */
+    /** Delay prefetching the next track by a few seconds: let the current track fill its buffer first,
+     *  to avoid the start/skip moment contending with the prefetch over the same (SMB-serialized)
+     *  network connection and slowing the current track's start. Multiple triggers keep only the last. */
     private fun schedulePrefetchNext() {
         main.removeCallbacks(prefetchNextRunnable)
         main.postDelayed(prefetchNextRunnable, 4000)
     }
 
-    /** 播放器实际的"下一首"(随机播放时非 index+1;单曲循环时即自己,跳过)在后台预取:
-     *  整曲字节进 [AudioCache]、算好波形、封面——切歌即时出声/出图,且不重复下载。
-     *  仅网络来源需要;本地文件无预取意义。 */
+    /** The player's actual "next track" (in shuffle mode not index+1; in repeat-one it's itself, so skip)
+     *  is prefetched in the background: full track bytes into [AudioCache], waveform computed, cover
+     *  ready — instant audio/cover on track change with no duplicate download. Only network sources
+     *  need this; local files have nothing to prefetch. */
     private fun prefetchNext() {
         val p = player ?: return
         val ctx = app ?: return
@@ -346,23 +384,25 @@ object MusicEngine {
         if (f.scheme == "file") return
         val dark = (ctx.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        AudioCache.prefetch(f)          // 整曲字节
-        // 波形(读也走 AudioCache,顺带把字节落进共享缓存)。★ 必须带 prefetch=true:
-        // 否则它会顶掉播放页正在算的当前曲,当前曲的波形永远算不出来。
+        AudioCache.prefetch(f)          // full track bytes
+        // Waveform (reads also go through AudioCache, incidentally dropping bytes into the shared cache).
+        // ★ Must pass prefetch=true: otherwise it would preempt the current track's waveform being
+        // computed on the player page, and the current track's waveform would never finish.
         Waveform.request(ctx, f, prefetch = true) {}
-        tracks.getOrNull(ni)?.let { MusicArt.prefetch(ctx, it.id, f, dark) } // 封面/毛玻璃/主色
+        tracks.getOrNull(ni)?.let { MusicArt.prefetch(ctx, it.id, f, dark) } // cover / blur / accent
     }
 
-    // ---- 元数据补全 ----
+    // ---- Metadata backfill ----
 
     private fun prefetchMeta(index: Int) {
         val ctx = app ?: return
         val id = queueId
-        // 当前曲优先,再补前后各一首
+        // Current track first, then one before and after
         listOf(index, index + 1, index - 1).forEach { i ->
             val t = tracks.getOrNull(i) ?: return@forEach
             val f = files.getOrNull(i) ?: return@forEach
-            // 采样率键需 API31+,老系统取不到就别拿它当"未补全"反复重读
+            // Sample-rate key requires API 31+; on older systems we can't get it, so don't use it
+            // as a "not backfilled" signal that triggers repeated rereads
             val complete = t.title.isNotEmpty() && t.durationMs > 0 &&
                 (android.os.Build.VERSION.SDK_INT < 31 || t.sampleRate > 0)
             if (complete) return@forEach
@@ -382,12 +422,39 @@ object MusicEngine {
         }
     }
 
-    /** 公开:后台读某曲目元数据(列表页补全用)。阻塞 IO。 */
+    /** Public: read a track's metadata on a background thread (used by the list page for backfill). Blocking IO. */
     fun fetchMeta(ctx: Context, file: XFile, track: PlaylistTrack): PlaylistTrack? = readMeta(ctx, file, track)
 
-    /** MMR 读标题/艺术家/时长 + 比特率/采样率(15s 超时,独立线程)。采样率键需 API 31+,
-     *  老系统取不到(返回 null)时留 0,副标题里自动省略。 */
-    private fun readMeta(ctx: Context, file: XFile, track: PlaylistTrack): PlaylistTrack? = runCatching {
+    /**
+     * Reads a track's tags. **If the source knows directly, use that** (media servers put
+     * title/artist/album/duration in their listing response); otherwise fall back to MMR and read
+     * the file bytes — the latter costs several seconds per track for network audio, and a whole
+     * album takes a long time even though the server has already parsed all that data.
+     */
+    private fun readMeta(ctx: Context, file: XFile, track: PlaylistTrack): PlaylistTrack? =
+        remoteMeta(file, track) ?: mmrMeta(ctx, file, track)
+
+    /** Tags given directly by the source ([com.twig.core.MediaInfoSource]); returns null if it can't provide any. */
+    private fun remoteMeta(file: XFile, track: PlaylistTrack): PlaylistTrack? {
+        val d = runCatching {
+            (FsRegistry.of(file) as? com.twig.core.MediaInfoSource)?.detailsOf(file)
+        }.getOrNull() ?: return null
+        // No title and no duration: this source contributed nothing, don't block MMR
+        if (d.title.isBlank() && d.durationMs <= 0L) return null
+        val audio = d.streams.firstOrNull { it.kind == com.twig.core.MediaStream.Kind.AUDIO }
+        return track.withMeta(
+            d.title.ifBlank { track.name.substringBeforeLast('.') },
+            d.artist,
+            d.album,
+            d.durationMs,
+            audio?.sampleRate ?: 0,
+            (audio?.bitrate?.takeIf { it > 0 } ?: d.bitrate).toInt(),
+        )
+    }
+
+    /** MMR reads title/artist/duration + bitrate/sample rate (15s timeout, dedicated thread). The sample-rate key requires API 31+;
+     *  on older systems it returns null — leave 0, the subtitle line auto-omits it. */
+    private fun mmrMeta(ctx: Context, file: XFile, track: PlaylistTrack): PlaylistTrack? = runCatching {
         val mmr = MediaMetadataRetriever()
         try {
             if (file.scheme == "file") mmr.setDataSource(file.path)

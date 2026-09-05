@@ -1,4 +1,4 @@
-<!-- 把这段差异搬到右侧:粗箭头,与 ic_diff_next 的细雪佛龙(跳转)区分开 -->
+<!-- Move this diff chunk to the right: thick arrow, distinguished from the thin chevron of ic_diff_next (jump) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

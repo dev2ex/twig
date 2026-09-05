@@ -23,25 +23,26 @@ import com.twig.app.databinding.ItemTrackBinding
 import com.twig.core.XFile
 import java.util.concurrent.Executors
 
-/** 播放列表页:列出曲目(序号/封面/标题/艺术家/时长),点行播放,三竖点菜单管理。 */
+/** Playlist page: lists tracks (number / cover / title / artist / duration); tap a row to play; overflow menu for management. */
 @UnstableApi
 class PlaylistActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityPlaylistBinding
     private lateinit var playlistId: String
     private var playlist: Playlist? = null
-    private val files = HashMap<String, XFile>() // trackId -> 已解析 XFile
+    private val files = HashMap<String, XFile>() // trackId -> resolved XFile
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "twig-pl").apply { isDaemon = true } }
     private lateinit var adapter: TrackAdapter
     private lateinit var plDrawer: PlaylistDrawer
     private val finisher: () -> Unit = { finish() }
     private var blurForId: String? = null
-    private var rowAccent = 0 // 从封面提取的主色调,给正在播放的行上色(0 = 用默认 accent)
-    private var bgTone = 0 // 文字实际压在上面的背景色(毛玻璃平均色 + scrim);0 = 还没出封面
-    private var tint = MusicTint.of(android.graphics.Color.parseColor("#1A1A1A")) // 前景层级色
+    private var rowAccent = 0 // accent color extracted from the cover, used to color the currently playing row (0 = use default accent)
+    private var bgTone = 0 // the background color text actually sits on (blurred average color + scrim); 0 = cover not yet ready
+    private var tint = MusicTint.of(android.graphics.Color.parseColor("#1A1A1A")) // foreground layer color
 
-    /** 列表页开着时队列自动跳下一首:高亮/毛玻璃/滚动位置都要跟着走(以前只在 onResume 刷一次,
-     *  停在页面上听完一首,▶ 还留在上一曲)。只在可见期间注册。 */
+    /** When the list page is open, the queue auto-advances: highlight / blur / scroll position all
+     *  follow along (previously only refreshed once in onResume, so if you stayed on the page and
+     *  finished a track, ▶ stayed on the previous one). Only registered while visible. */
     private val musicListener = object : MusicEngine.Listener {
         override fun onTrackChanged(index: Int, track: PlaylistTrack?) {
             adapter.syncPlaying()
@@ -57,19 +58,21 @@ class PlaylistActivity : AppCompatActivity() {
         setContentView(b.root)
         playlistId = intent.getStringExtra(EXTRA_ID) ?: return finish()
         setupImmersive()
-        b.bgBlur.setBackgroundColor(fallbackBg()) // 先铺纯色,避免进页面黑一下
+        b.bgBlur.setBackgroundColor(fallbackBg()) // paint a solid color first to avoid a black flash on entry
         b.toolbar.setNavigationOnClickListener { b.drawer.openDrawer(androidx.core.view.GravityCompat.START) }
         plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit)
         MusicUi.register(finisher)
         adapter = TrackAdapter()
         b.list.layoutManager = LinearLayoutManager(this)
         b.list.adapter = adapter
-        // 元数据/封面/强调色是后台陆续回填的,会一路触发 notifyItemChanged。默认 ItemAnimator
-        // 对每次 notifyItemChanged 都做淡出淡入的 change 动画——这才是"列表更新时跳闪一下"的
-        // 真正根源。之前只置 supportsChangeAnimations=false 没根治(仍会走动画器的 re-layout),
-        // 直接把动画器整个去掉,所有 item 变更瞬时重绑、不闪;本列表也不需要增删动画。
+        // Metadata / cover / accent come back from the background one by one, triggering notifyItemChanged
+        // along the way. The default ItemAnimator does a fade-in/out change animation for each
+        // notifyItemChanged — that's the real source of the "list updates flash" glitch. Previously
+        // setting supportsChangeAnimations=false alone didn't fix it (the animator still drives
+        // re-layout); remove the animator entirely so all item changes rebind instantly without
+        // flashing. This list doesn't need add/remove animations either.
         b.list.itemAnimator = null
-        applyTint() // 封面还没出来:先按 fallbackBg 反推一套,别让 XML 里的纯白占位色露出来
+        applyTint() // cover not out yet: derive a palette from fallbackBg first, so the pure-white placeholder in XML doesn't show through
         reload()
     }
 
@@ -78,7 +81,7 @@ class PlaylistActivity : AppCompatActivity() {
         MusicUi.unregister(finisher)
     }
 
-    /** 沉浸式:内容延伸到状态栏下,毛玻璃背景铺满;工具栏/列表按系统栏 inset 让开。 */
+    /** Immersive: content extends below the status bar (blur fills it); toolbar / list inset around system bars. */
     private fun setupImmersive() {
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
@@ -96,8 +99,9 @@ class PlaylistActivity : AppCompatActivity() {
         }
     }
 
-    /** 用当前播放曲(若正是本列表)或首个可解析曲目的封面做毛玻璃背景。
-     *  正在播放本列表时,直接复用 [MusicArt] 已算好的封面/毛玻璃/主色——秒出,不再"黑一下"。 */
+    /** Use the currently playing track's cover (if this is the current queue) or the first
+     *  resolvable track's cover as the blur background. When this list is currently playing,
+     *  reuse the cover / blur / accent already computed by [MusicArt] — instant display, no more "black flash". */
     private fun loadBlurBg() {
         val isCurrent = MusicEngine.queueId == playlistId && MusicEngine.hasQueue()
         val track = if (isCurrent) MusicEngine.currentTrack() else playlist?.tracks?.firstOrNull()
@@ -106,14 +110,14 @@ class PlaylistActivity : AppCompatActivity() {
         blurForId = id.id
         val dark = isDark()
         if (isCurrent) {
-            MusicArt.snapshot(id.id, dark)?.let { applyBg(id.id, it.blur, it.accent) } // 命中:立即
+            MusicArt.snapshot(id.id, dark)?.let { applyBg(id.id, it.blur, it.accent) } // cache hit: apply immediately
             io.execute {
                 val f = synchronized(files) { files[id.id] } ?: MusicEngine.resolveFile(applicationContext, id) ?: return@execute
                 MusicArt.load(this, id.id, f, dark) { if (!isFinishing) applyBg(id.id, it.blur, it.accent) }
             }
             return
         }
-        // 非当前队列:本地算一次,不污染 MusicArt 的"正在播放"缓存槽
+        // Not the current queue: compute locally, don't pollute MusicArt's "now playing" cache slot
         io.execute {
             val f = synchronized(files) { files[id.id] } ?: MusicEngine.resolveFile(applicationContext, id) ?: return@execute
             val cover = runCatching { Thumbs.audioCover(f, 512) }.getOrNull() ?: return@execute
@@ -129,7 +133,8 @@ class PlaylistActivity : AppCompatActivity() {
         if (bg != null) {
             b.bgBlur.setImageBitmap(bg)
             b.scrim.visibility = if (android.graphics.Color.alpha(SCRIM) > 0) View.VISIBLE else View.GONE
-            // 毛玻璃上还可能压着布局里的 scrim,文字真正压在的是"平均色 + 这层遮罩"的结果
+            // The blur may also have a scrim drawn on top in the layout; what text actually sits on
+            // is the "average color + this overlay" result
             bgTone = MusicTint.blend(MusicTint.averageColor(bg), SCRIM)
         } else {
             bgTone = 0
@@ -138,13 +143,17 @@ class PlaylistActivity : AppCompatActivity() {
     }
 
     /**
-     * 前景配色随封面变(与播放页同一套 [MusicTint]):标题/曲名/副标题/时长/序号不再是
-     * 硬编码纯白,而是由背景色反推的同色系、对比度分级色。
+     * Foreground colors follow the cover (same [MusicTint] as the player page): title / track name /
+     * subtitle / duration / number are no longer hard-coded pure white, but same-color-family colors
+     * with stepped contrast derived from the background.
      *
-     * 刷新只能走 **payload 局部重绑**:以前这里(为一处颜色变化)用 notifyDataSetChanged()
-     * 整表重绑,它常在 MusicArt.load 异步回调里触发,正好落在 scrollToCurrent() 定位还没
-     * settle 的窗口,整表重新布局会把列表重新锚定一次,这就是"打开正在更新的列表定位当前
-     * 曲目时跳闪一下"的根源;而且完整 rebind 会把封面复位成占位图再异步填回,又闪一次。
+     * Refresh can only go through **payload-based partial rebind**: previously (for a single color
+     * change) this used notifyDataSetChanged() to rebind the whole list, which was often triggered
+     * from inside the MusicArt.load async callback, right in the window when scrollToCurrent()'s
+     * positioning hadn't settled yet; the whole-table relayout would re-anchor the list once more,
+     * which is the root of "opening the list while it's still updating flashes when locating the
+     * current track"; and a full rebind would reset the cover to the placeholder image then
+     * asynchronously fill it back in, flashing a second time.
      */
     private fun applyTint() {
         tint = MusicTint.of(if (bgTone != 0) bgTone else fallbackBg())
@@ -152,7 +161,8 @@ class PlaylistActivity : AppCompatActivity() {
         b.plCount.setTextColor(tint.secondary)
         b.empty.setTextColor(tint.secondary)
         b.toolbar.navigationIcon = b.toolbar.navigationIcon?.mutate()?.apply { setTint(tint.secondary) }
-        // 状态栏/导航栏图标明暗跟着背景走:毛玻璃不再压暗后,亮色封面上白图标会看不见
+        // Light/dark of status/nav bar icons follows the background: now that the blur is no longer
+        // darkened, white icons disappear on light covers
         val light = MusicTint.isLight(if (bgTone != 0) bgTone else fallbackBg())
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = light
@@ -161,7 +171,8 @@ class PlaylistActivity : AppCompatActivity() {
         if (adapter.itemCount > 0) adapter.notifyItemRangeChanged(0, adapter.itemCount, PAYLOAD_COLORS)
     }
 
-    /** 正在播放那一行的强调色;顺带保证它压在当前背景上还看得见(背景就是这张封面糊出来的)。 */
+    /** The accent color of the currently playing row; also ensures it's still visible on the current
+     *  background (the background is itself a blur of this cover). */
     private fun effAccent(): Int {
         val raw = if (rowAccent != 0) rowAccent else ContextCompat.getColor(this, R.color.accent)
         return MusicTint.readable(raw, if (bgTone != 0) bgTone else fallbackBg())
@@ -176,8 +187,8 @@ class PlaylistActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        adapter.notifyDataSetChanged() // 刷新当前播放高亮
-        adapter.syncPlaying()          // 同步高亮行下标(供后续增量刷新)
+        adapter.notifyDataSetChanged() // refresh the now-playing highlight
+        adapter.syncPlaying()          // sync the highlight row index (for later incremental refreshes)
         plDrawer.reload()
         scrollToCurrent()
         MusicEngine.addListener(musicListener)
@@ -188,7 +199,7 @@ class PlaylistActivity : AppCompatActivity() {
         MusicEngine.removeListener(musicListener)
     }
 
-    /** 进入/返回列表页时,自动滚动到正在播放的那一曲(仅当本列表就是当前队列)。 */
+    /** When entering / returning to the list page, auto-scroll to the currently playing track (only when this list is the current queue). */
     private fun scrollToCurrent() {
         val pos = currentPos() ?: return
         b.list.post {
@@ -197,8 +208,9 @@ class PlaylistActivity : AppCompatActivity() {
         }
     }
 
-    /** 队列跳到下一首时跟随:新行已经在屏幕上就不动(别把用户正在看的位置拽走),
-     *  滚出可视范围了才平滑滚过去。 */
+    /** Follow along when the queue advances to the next track: don't move if the new row is already
+     *  on screen (don't drag the user's current view away); only smoothly scroll if it's scrolled
+     *  out of view. */
     private fun followCurrent() {
         val pos = currentPos() ?: return
         val lm = b.list.layoutManager as? LinearLayoutManager ?: return
@@ -208,7 +220,7 @@ class PlaylistActivity : AppCompatActivity() {
         b.list.smoothScrollToPosition(pos)
     }
 
-    /** 正在播放的那一曲在本列表中的下标;本列表不是当前队列则 null。 */
+    /** The index of the currently playing track in this list; null if this list isn't the current queue. */
     private fun currentPos(): Int? {
         if (MusicEngine.queueId != playlistId || !MusicEngine.hasQueue()) return null
         val id = MusicEngine.currentTrack()?.id ?: return null
@@ -226,7 +238,7 @@ class PlaylistActivity : AppCompatActivity() {
         loadBlurBg()
     }
 
-    /** 后台解析各曲目的 XFile(conn 曲目建连接),用于封面缩略图与元数据补全。 */
+    /** Resolve each track's XFile in the background (conn tracks build connections); used for cover thumbnails and metadata backfill. */
     private fun resolveFiles(tracks: List<PlaylistTrack>) {
         io.execute {
             for (t in tracks) {
@@ -255,27 +267,30 @@ class PlaylistActivity : AppCompatActivity() {
     }
 
     private fun trackMenu(track: PlaylistTrack) {
-        val items = arrayOf(
-            getString(R.string.music_play),
-            getString(R.string.music_info),
-            getString(R.string.music_send_to),
-            getString(R.string.music_share),
-            getString(R.string.music_locate),
-            if (PlaylistStore.isFav(this, track.id)) getString(R.string.music_remove_fav) else getString(R.string.music_add_fav),
-            getString(R.string.music_remove_from),
-        )
+        // Same as the player page: pair labels with actions, don't use a hardcoded index — "go to
+        // containing folder" is missing for sources like document trees (see MusicDialogs.canLocate);
+        // an index off-by-one ends up triggering the wrong action
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items += getString(R.string.music_play) to {
+            playlist?.tracks?.indexOfFirst { it.id == track.id }?.takeIf { it >= 0 }?.let { play(it) }
+            Unit
+        }
+        items += getString(R.string.music_info) to { showInfo(track) }
+        items += getString(R.string.music_send_to) to { MusicDialogs.sendToPlaylist(this, listOf(track)) }
+        items += getString(R.string.music_share) to { share(track) }
+        val file = synchronized(files) { files[track.id] }
+        if (file != null && MusicDialogs.canLocate(file)) {
+            items += getString(R.string.music_locate) to { locate(track) }
+        }
+        val favLabel = if (PlaylistStore.isFav(this, track.id)) {
+            getString(R.string.music_remove_fav)
+        } else {
+            getString(R.string.music_add_fav)
+        }
+        items += favLabel to { PlaylistStore.toggleFav(this, track); MusicEngine.notifyFavChanged() }
+        items += getString(R.string.music_remove_from) to { removeTrack(track) }
         AlertDialog.Builder(this)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> playlist?.tracks?.indexOfFirst { it.id == track.id }?.takeIf { it >= 0 }?.let { play(it) }
-                    1 -> showInfo(track)
-                    2 -> MusicDialogs.sendToPlaylist(this, listOf(track))
-                    3 -> share(track)
-                    4 -> locate(track)
-                    5 -> { PlaylistStore.toggleFav(this, track); MusicEngine.notifyFavChanged() }
-                    6 -> removeTrack(track)
-                }
-            }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .show()
     }
 
@@ -306,7 +321,7 @@ class PlaylistActivity : AppCompatActivity() {
         return "%d:%02d".format(s / 60, s % 60)
     }
 
-    /** 副标题:格式 · 频率 · 比特率 · 文件大小(未知项自动省略)。 */
+    /** Subtitle: format · frequency · bitrate · file size (unknown items auto-omitted). */
     private fun techLine(t: PlaylistTrack, sizeBytes: Long): String {
         val parts = ArrayList<String>(4)
         t.ext.takeIf { it.isNotEmpty() }?.let { parts += it.uppercase() }
@@ -323,7 +338,7 @@ class PlaylistActivity : AppCompatActivity() {
 
     private inner class TrackAdapter : RecyclerView.Adapter<TrackVH>() {
         private var items: List<PlaylistTrack> = emptyList()
-        private var playingPos = -1 // 当前高亮那一行的下标(-1 = 本列表不在播),供切歌时增量刷新
+        private var playingPos = -1 // index of the currently highlighted row (-1 = this list isn't playing), for incremental refresh on track change
 
         fun submit(list: List<PlaylistTrack>) {
             items = list
@@ -336,8 +351,9 @@ class PlaylistActivity : AppCompatActivity() {
             if (i >= 0) { items = items.toMutableList().also { it[i] = t }; notifyItemChanged(i) }
         }
 
-        /** 切歌:只把旧行与新行各刷一条。整表 notifyDataSetChanged 会重新锚定列表、
-         *  让封面/元数据回填中的行闪一下(见 [applyBg] 那段注释),这里绝不能用。 */
+        /** Track change: only refresh the old row and the new row. Whole-table notifyDataSetChanged
+         *  re-anchors the list and makes rows whose cover/metadata are being backfilled flash (see
+         *  the [applyBg] comment) — never use that here. */
         fun syncPlaying() {
             val pos = currentPos() ?: -1
             if (pos == playingPos) return
@@ -357,7 +373,7 @@ class PlaylistActivity : AppCompatActivity() {
 
         override fun getItemCount() = items.size
 
-        /** 背景/强调色变了:只改这一行的配色,不走完整 rebind(见 [applyTint])。 */
+        /** Background/accent changed: only update this row's colors, not a full rebind (see [applyTint]). */
         override fun onBindViewHolder(h: TrackVH, position: Int, payloads: MutableList<Any>) {
             if (payloads.isNotEmpty() && payloads.all { it == PAYLOAD_COLORS }) {
                 bindColors(h, items[position])
@@ -373,16 +389,19 @@ class PlaylistActivity : AppCompatActivity() {
             val f = synchronized(files) { files[t.id] }
             val title = t.title.ifEmpty { t.name }
             h.b.title.text = if (t.artist.isNotEmpty()) "${t.artist} - $title" else title
-            // 大小优先取已解析 XFile(网络来源会补真实 size);未解析出来时退回存储值
+            // Prefer size from the resolved XFile (network sources backfill the real size); if not resolved, fall back to the stored value
             val sub = techLine(t, maxOf(t.size, f?.size ?: 0L))
             h.b.artist.text = sub
             h.b.artist.visibility = if (sub.isEmpty()) View.GONE else View.VISIBLE
             h.b.duration.text = fmt(t.durationMs)
-            // 只在这个 ViewHolder 换了曲目时才把封面复位成占位图标——否则后台陆续回填元数据触发的
-            // notifyItemChanged/notifyDataSetChanged 会让本来已显示封面的行每次 rebind 都先闪一下
-            // 占位图再填回封面(音频封面首次是异步生成的,占位图这一帧会真的露出来),这才是"列表
-            // 更新时跳闪一下"的根源。同曲目 rebind 保持现有封面不动;换曲目才复位(用带 key 的 tag,
-            // 不和 Thumbs.bind 内部用的普通 tag 冲突)。
+            // Only reset the cover to the placeholder icon when this ViewHolder switches to a
+            // different track — otherwise the notifyItemChanged/notifyDataSetChanged triggered by
+            // metadata backfill from the background makes rows that already display a cover flash
+            // back to the placeholder and then back to the cover on each rebind (the audio cover is
+            // generated asynchronously the first time, so the placeholder actually shows for one
+            // frame), and that's the root cause of "list updates flash". Rebinding the same track
+            // leaves the existing cover alone; only a different track triggers a reset (uses a keyed
+            // tag so it doesn't collide with the ordinary tag Thumbs.bind uses internally).
             if (h.b.cover.getTag(R.id.cover) != t.id) {
                 h.b.cover.setImageResource(R.drawable.ic_audio)
                 h.b.cover.setTag(R.id.cover, t.id)
@@ -393,7 +412,7 @@ class PlaylistActivity : AppCompatActivity() {
             h.b.menu.setOnClickListener { trackMenu(t) }
         }
 
-        /** 按 id 匹配(而非下标):m3u8/旧列表里跳过的曲目会让队列下标与列表下标错位。 */
+        /** Match by id (not by index): skipped tracks in m3u8 / old lists cause queue and list indices to drift. */
         private fun isPlaying(t: PlaylistTrack): Boolean =
             MusicEngine.queueId == playlistId && MusicEngine.hasQueue() &&
                 MusicEngine.currentTrack()?.id == t.id
@@ -415,9 +434,11 @@ class PlaylistActivity : AppCompatActivity() {
         private const val EXTRA_ID = "playlist_id"
         private const val PAYLOAD_COLORS = "colors"
         /**
-         * 毛玻璃上那层额外遮罩(@id/scrim)。alpha=0 = 不叠:文字颜色现在由 MusicTint 按
-         * 实际背景色反推,不靠压暗背景保证可读性,压暗只会把封面颜色洗掉。想找回:改成
-         * 0x66000000(布局里 @id/scrim 的原色),视图与 bgTone 会自动跟着一起算。
+         * The extra overlay on top of the blur (@id/scrim). alpha=0 = no overlay: text colors are
+         * now derived by MusicTint from the actual background color, not by darkening the background
+         * to guarantee readability — darkening only washes out the cover colors. To restore: change
+         * to 0x66000000 (the original @id/scrim color in the layout), and the view and bgTone will
+         * automatically account for it together.
          */
         private const val SCRIM = 0x00000000
         fun start(ctx: Context, playlistId: String) {

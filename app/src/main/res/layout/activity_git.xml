@@ -17,7 +17,7 @@
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
 
-    <!-- 更改 / 历史 双 tab -->
+    <!-- Two tabs: Changes / History -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="42dp"

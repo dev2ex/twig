@@ -24,12 +24,14 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 树上**不能出现两行同一个 key**。
+ * The tree must **never show two rows with the same key**.
  *
- * 行的 key 是 DiffUtil 的身份依据,重复了就会渲染错乱——症状是"同一个压缩包,
- * 一处展开好好的,另一处展开却是空的"。最容易撞上的组合:别的 App「用 Twig 打开」
- * 一个压缩包(挂到树顶的 [PaneViewModel.mountExternal]),而这个包**原本就在**
- * 某个已展开的目录里,于是同一个 key 在树顶和原位置各出现一次。
+ * A row's key is what DiffUtil uses for identity; a duplicate makes rendering go wrong —
+ * the symptom is "the same archive is expanded fine in one place but empty in the other".
+ * The easiest way to hit it: another app "opens with Twig" an archive (mounted at the top
+ * of the tree via [PaneViewModel.mountExternal]) while that same archive **already lives**
+ * inside an already-expanded directory, so the same key shows up once at the top and once
+ * at its original spot.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -75,32 +77,33 @@ class PaneViewModelDuplicateRowTest {
     )
 
     @Test
-    fun `外部打开的包与它在树里的原位置不会撞 key`() = runTest(dispatcher) {
-        // 外部存储已展开 —— 那个 zip 本来就在这棵树里看得见
+    fun `externally opened archive does not collide with its original spot in the tree`() = runTest(dispatcher) {
+        // External storage is already expanded -- that zip is already visible in this tree
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
-        assertTrue("前提:这个包本来就在树里", keys().any { it.contains(archive.absolutePath) })
+        assertTrue("precondition: the archive should already be in the tree", keys().any { it.contains(archive.absolutePath) })
 
-        // 别的 App「用 Twig 打开」同一个包:挂到树顶
+        // Another app "opens with Twig" the same archive: mounted at the top of the tree
         vm.mountExternal(archiveX())
         advanceUntilIdle()
 
-        assertEquals("同一个 key 出现了两行,DiffUtil 会认错行", emptySet<String>(), dupes())
+        assertEquals("the same key showed up twice, DiffUtil will mis-identify the rows", emptySet<String>(), dupes())
     }
 
     /**
-     * ★ 真实现场:外部打开挂到树顶之后,用户**又把那个包原本所在的目录展开**
-     * (手风琴在 mountExternal 时会把它收起来,所以上一个用例撞不到)。
-     * 这时同一个 key 的行在树顶和原位置各来一次。
+     * Real-world scenario: after the external open mounts it at the top of the tree, the
+     * user **also expands the directory the archive originally lived in** (the accordion
+     * would have collapsed it on mountExternal, so the previous test case cannot hit this).
+     * At that point the same key appears once at the top and once at its original spot.
      */
     @Test
-    fun `外部打开后再展开包所在的目录,仍然不能撞 key`() = runTest(dispatcher) {
+    fun `expanding the archive's original directory after an external open still must not collide keys`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
         vm.mountExternal(archiveX())
         advanceUntilIdle()
 
-        // 把外部存储重新展开(手风琴刚把它收起来了)
+        // Re-expand external storage (the accordion just collapsed it)
         val storage = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
             .first { it.file.path == ext.path }
         if (!storage.expanded) {
@@ -110,17 +113,18 @@ class PaneViewModelDuplicateRowTest {
 
         val zipRows = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
             .filter { it.file.path == archive.absolutePath }
-        assertTrue("前提:树顶和原位置应该各有一行", zipRows.size >= 2)
-        assertEquals("两行撞了 key —— DiffUtil 会认错行,表现就是有一处展开是空的", emptySet<String>(), dupes())
+        assertTrue("precondition: there should be one row at the top and one at the original spot", zipRows.size >= 2)
+        assertEquals("the two rows collided on key -- DiffUtil will mis-identify them, showing as one empty expansion", emptySet<String>(), dupes())
     }
 
     /**
-     * 两个面板 = 两个 ViewModel,但 `FsRegistry` 里的 `ZipFileSystem` 是**同一个实例**
-     * (挂载登记的宿主表、各种缓存都在那上面)。一侧打开过之后另一侧再打开同一个包,
-     * 不能因为共享状态被前一次改过就列成空的。
+     * Two panes = two ViewModels, but the `ZipFileSystem` inside `FsRegistry` is **the same
+     * instance** (the mount-host table and various caches all live on it). Opening the same
+     * archive on one side and then the other must not list as empty just because shared
+     * state was mutated by the earlier open.
      */
     @Test
-    fun `两侧面板先后展开同一个包,两边都有内容`() = runTest(dispatcher) {
+    fun `expanding the same archive on both panes in turn, both show content`() = runTest(dispatcher) {
         val other = PaneViewModel(app).apply { io = dispatcher }
 
         vm.bootstrap(listOf("file\t${ext.path}"))
@@ -138,16 +142,16 @@ class PaneViewModelDuplicateRowTest {
 
         other.toggle(other.zipNode())
         advanceUntilIdle()
-        assertEquals("另一侧展开同一个包却是空的", listOf("a.txt", "b.txt"), other.innerNames())
+        assertEquals("the same archive expanded on the other pane came up empty", listOf("a.txt", "b.txt"), other.innerNames())
 
-        // 反过来再刷一次:先展开的那侧刷新后也不能变空
+        // Refresh again the other way: the side expanded first must not go empty after a refresh
         vm.refresh()
         advanceUntilIdle()
         assertEquals(listOf("a.txt", "b.txt"), vm.innerNames())
     }
 
     @Test
-    fun `外部打开的包照样能展开出内容`() = runTest(dispatcher) {
+    fun `externally opened archive still expands its content`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
         vm.mountExternal(archiveX())
@@ -155,6 +159,6 @@ class PaneViewModelDuplicateRowTest {
 
         val names = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
             .filter { it.file.scheme == "zip" }.map { it.file.name }
-        assertTrue("包内条目一个都没出来:$names", names.containsAll(listOf("a.txt", "b.txt")))
+        assertTrue("no entries came out of the archive: $names", names.containsAll(listOf("a.txt", "b.txt")))
     }
 }

@@ -12,16 +12,20 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * 位图字幕(PGS 等)叠加层,铺满屏幕。
- * cue 的 position/line/size/bitmapHeight 是相对视频帧的比例,经 [setVideoRect]
- * 给的"视频显示矩形"映射到屏幕坐标(裁切/拉伸模式下矩形可大于/变形于屏幕)。
+ * Bitmap subtitle (e.g. PGS) overlay layer that fills the screen.
+ * A cue's position/line/size/bitmapHeight are ratios relative to the video frame; the
+ * "video display rectangle" passed to [setVideoRect] maps them to screen coordinates
+ * (in crop/stretch modes the rectangle can be larger than or distorted relative to the screen).
  *
- * 绘制规则:
- * - 字幕位图**始终保持原始宽高比**,以纵向缩放系数统一缩放(拉伸填充模式下
- *   画面变形但字幕不变形),位置按帧映射的中心点对齐。
- * - 位图底边靠下的 cue 视为主对白:任何画面模式下都重锚到屏幕底部;
- *   其余(画面注释)保持原样原位,裁切模式下允许被裁。
- * - 整数像素对齐;缩小超过一半时分级降采样(mip)避免锯齿。
+ * Drawing rules:
+ * - The subtitle bitmap **always keeps its original aspect ratio**, uniformly scaled by
+ *   the vertical scale factor (in stretch-fill mode the picture distorts but the subtitle
+ *   does not), with position aligned to the center of the frame-mapped rectangle.
+ * - Cues whose bitmap bottom edge sits low are treated as main dialogue: in any picture
+ *   mode they are re-anchored to the bottom of the screen; the rest (scene annotations)
+ *   stay put in their original position, and may be clipped in crop mode.
+ * - Integer-pixel alignment; when downscaling beyond half, step down via mipmaps to avoid
+ *   aliasing.
  */
 class BitmapCueView @JvmOverloads constructor(
     context: Context,
@@ -32,13 +36,16 @@ class BitmapCueView @JvmOverloads constructor(
     private val video = RectF()
     private val dst = RectF()
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val bitmapCache = HashMap<Bitmap, Bitmap>() // 原位图 → 处理(黑化/降采样)后
+    private val bitmapCache = HashMap<Bitmap, Bitmap>() // original bitmap → processed (darkened / downsampled)
 
     fun setCues(list: List<Cue>) {
         if (cues.isEmpty() && list.isEmpty()) return
         cues = list
-        // 移动字幕是同一块位图连发几十上百组新坐标(解析器对位图做了复用,对象身份不变)——
-        // 这里别整表 clear,只把不再出现的位图摘掉,降采样结果才留得住,不然每组都重算一遍。
+        // Moving subtitles reuse the same bitmap object across dozens or hundreds of new
+        // coordinate sets (the parser reuses the bitmap, so the object identity stays the
+        // same) — do not clear the whole cache here, only evict bitmaps that no longer
+        // appear, so the mipmap results survive and do not have to be recomputed for each
+        // coordinate set.
         if (bitmapCache.isNotEmpty()) {
             val alive = list.mapNotNullTo(HashSet()) { it.bitmap }
             bitmapCache.keys.retainAll(alive)
@@ -46,7 +53,7 @@ class BitmapCueView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** 视频画面在屏幕上的显示矩形(居中,裁切/拉伸模式下会超出屏幕或变形)。 */
+    /** The display rectangle of the video picture on screen (centered; in crop/stretch modes it can exceed the screen or be distorted). */
     fun setVideoRect(left: Float, top: Float, w: Float, h: Float) {
         video.set(left, top, left + w, top + h)
         invalidate()
@@ -58,16 +65,19 @@ class BitmapCueView @JvmOverloads constructor(
         val vh = video.height()
         val sw = width.toFloat()
         val sh = height.toFloat()
-        // 一屏可能同时有多块字幕(对白 + 画面注释、上下两块、左右分栏),先把每块的目标
-        // 矩形都算出来,主对白那组**整组一起**重锚到屏幕底部——逐块各自贴底会把本来错开
-        // 的几块压到同一行叠在一起。
+        // A single screen can contain multiple subtitle blocks (dialogue + scene annotations,
+        // top and bottom blocks, left and right columns). Compute the target rectangle for
+        // every block first, then re-anchor the main-dialogue group **as a whole** to the
+        // bottom of the screen — anchoring each block individually to the bottom would
+        // squish blocks that were originally offset onto the same row, overlapping each other.
         val bmps = ArrayList<Bitmap>(cues.size)
         val rects = ArrayList<RectF>(cues.size)
         val scales = ArrayList<Float>(cues.size)
-        val dialogue = ArrayList<Int>(cues.size) // 判定为主对白的那几块在上面几个表里的下标
+        val dialogue = ArrayList<Int>(cues.size) // indices of the blocks classified as main dialogue in the tables above
         for (cue in cues) {
             val bmp = cue.bitmap ?: continue
-            // 统一缩放系数:优先纵向(bitmapHeight 相对帧高),不受横向拉伸影响
+            // Unified scale factor: prefer vertical (bitmapHeight relative to frame height),
+            // unaffected by horizontal stretching
             val s = when {
                 cue.bitmapHeight != Cue.DIMEN_UNSET -> cue.bitmapHeight * vh / bmp.height
                 cue.size != Cue.DIMEN_UNSET -> cue.size * vw / bmp.width
@@ -75,7 +85,8 @@ class BitmapCueView @JvmOverloads constructor(
             }
             val cw = bmp.width * s
             val ch = bmp.height * s
-            // 帧映射的矩形(可能被画面模式变形),取其中心点来放置保比例的字幕
+            // The frame-mapped rectangle (may be distorted by picture mode); place the
+            // aspect-ratio-preserving subtitle by its center point
             val fw = if (cue.size != Cue.DIMEN_UNSET) cue.size * vw else cw
             val fh = if (cue.bitmapHeight != Cue.DIMEN_UNSET) cue.bitmapHeight * vh else ch
             var fx = if (cue.position != Cue.DIMEN_UNSET) video.left + cue.position * vw
@@ -93,15 +104,18 @@ class BitmapCueView @JvmOverloads constructor(
             val cx = fx + fw / 2
             val cy = fy + fh / 2
             val r = RectF(cx - cw / 2, cy - ch / 2, cx + cw / 2, cy + ch / 2)
-            // 主对白判定按位图底边(有些片源的 PGS 对象接近整帧大小,中心点判定会失效)
+            // Main-dialogue classification uses the bitmap bottom edge (some sources' PGS
+            // objects are nearly full-frame, so center-point classification would fail)
             if ((fy + fh) > video.top + vh * 0.75f) dialogue.add(rects.size)
             bmps.add(bmp)
             rects.add(r)
             scales.add(s)
         }
         if (dialogue.isNotEmpty()) {
-            // 主对白整组一起平移:贴屏幕底部(留 2% 边距)、水平方向整组保持在屏幕内,
-            // 组内各块的相对位置(上下两行、左右分栏)原样保留。
+            // Translate the main-dialogue group as a whole: anchor to the bottom of the
+            // screen (leave 2% margin), keep the entire group inside the screen horizontally,
+            // and preserve the relative positions of blocks within the group (top/bottom
+            // rows, left/right columns).
             var bottom = Float.NEGATIVE_INFINITY
             var left = Float.POSITIVE_INFINITY
             var right = Float.NEGATIVE_INFINITY
@@ -112,14 +126,14 @@ class BitmapCueView @JvmOverloads constructor(
             }
             val dy = sh * 0.98f - bottom
             var dx = if (left < 0f) -left else 0f
-            if (right + dx > sw) dx = sw - right // 组比屏幕宽时右边优先(与原逐块实现的先后顺序一致)
+            if (right + dx > sw) dx = sw - right // when the group is wider than the screen, prioritize the right edge (matches the order of the original per-block implementation)
             for (i in dialogue) rects[i].offset(dx, dy)
         }
         for (i in rects.indices) {
             val r = rects[i]
             val bmp = bmps[i]
             val s = scales[i]
-            // 整数像素对齐,避免半像素采样造成的边缘发虚
+            // Integer-pixel alignment to avoid half-pixel sampling causing fuzzy edges
             dst.set(
                 r.left.roundToInt().toFloat(), r.top.roundToInt().toFloat(),
                 (r.left.roundToInt() + r.width().roundToInt()).toFloat(),
@@ -129,7 +143,7 @@ class BitmapCueView @JvmOverloads constructor(
         }
     }
 
-    /** 缩小超过一半时分级降采样(mip)避免锯齿;结果按原位图缓存。 */
+    /** When downscaling beyond half, step down via mipmaps to avoid aliasing; results are cached by original bitmap. */
     private fun prepared(bmp: Bitmap, scale: Float): Bitmap {
         if (scale > 0.5f) return bmp
         bitmapCache[bmp]?.let { return it }

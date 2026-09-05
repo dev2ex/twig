@@ -7,6 +7,9 @@
 extern "C" {
 #include "libsmb2/include/smb2/smb2.h"
 #include "libsmb2/include/smb2/libsmb2.h"
+#include "libsmb2/include/smb2/libsmb2-raw.h"
+#include "libsmb2/include/smb2/libsmb2-dcerpc.h"
+#include "libsmb2/include/smb2/libsmb2-dcerpc-srvsvc.h"
 }
 
 #include <fcntl.h>
@@ -77,8 +80,10 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeDisconnect(
     LOGI("Disconnected");
 }
 
-// 硬销毁:只释放 context(不 logoff、不 smb2_close),供媒体专用连接收尾用。
-// 避免 smb2_close/smb2_disconnect_share 里的 wait_for_reply 在收尾时释放陈旧 reply pdu 导致堆崩溃。
+// Hard destroy: only release the context (no logoff, no smb2_close), used for
+// tearing down media-only connections at the end of their lifetime.
+// Avoids the heap-corruption seen when wait_for_reply inside
+// smb2_close / smb2_disconnect_share releases a stale reply pdu during teardown.
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_twig_fs_smb_NativeSmbClient_nativeDestroy(
@@ -89,7 +94,7 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeDestroy(
 }
 
 // ── directory listing ─────────────────────────────────────────────────────────
-// Each entry encoded as "name\tisDir\tsize\tmtime" (\t = 0x09, 文件名几乎不含).
+// Each entry encoded as "name\tisDir\tsize\tmtime" (\t = 0x09; file names almost never contain one).
 
 extern "C"
 JNIEXPORT jobjectArray JNICALL
@@ -179,8 +184,10 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeReadFile(
     auto* ctx = reinterpret_cast<smb2_context*>(handle);
     auto* fh  = reinterpret_cast<smb2fh*>(fhHandle);
     if (length <= 0) return 0;
-    // 让 libsmb2 只写原生缓冲(其 reply iovector 直接指向此指针),读完再拷回 Java 数组,
-    // 避免它写进 GetByteArrayElements 可能返回的 JVM 副本导致的堆交互问题。
+    // Let libsmb2 write into a native buffer (its reply iovector points straight
+    // at this pointer) and copy back into the Java array afterwards — avoids the
+    // heap-interaction issues that arise when it writes into the JVM-side copy
+    // that GetByteArrayElements may return.
     auto* tmp = static_cast<uint8_t*>(malloc(static_cast<size_t>(length)));
     if (!tmp) return -1;
     int n = smb2_read(ctx, fh, tmp, static_cast<uint32_t>(length));
@@ -190,7 +197,8 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeReadFile(
     return n;
 }
 
-// ── 定位读(pread):供媒体随机 seek,避免 skip 的 O(n) 重下载 ────────────────
+// ── Positioned read (pread): used by media random-seek so we don't pay O(n)
+//   re-downloads to skip ───────────────────────────────────────────────────────
 
 extern "C"
 JNIEXPORT jint JNICALL
@@ -289,6 +297,59 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeRename(
     int ret = smb2_rename(ctx, from, to);
     reljstr(env, jFrom, from); reljstr(env, jTo, to);
     return ret;
+}
+
+// ── share enumeration (srvsvc NetrShareEnum) ─────────────────────────────────
+// Only works on a context connected to IPC$ (see NativeSmbClient.listShares).
+// Each entry encoded as "name\ttype"; the type bits are interpreted in Kotlin.
+
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_com_twig_fs_smb_NativeSmbClient_nativeListShares(
+        JNIEnv* env, jobject /*thiz*/, jlong handle) {
+
+    if (!handle) return nullptr;
+    auto* ctx = reinterpret_cast<smb2_context*>(handle);
+
+    struct srvsvc_NetrShareEnum_rep* rep = smb2_share_enum_sync(ctx, SHARE_INFO_1);
+    if (!rep) {
+        LOGE("smb2_share_enum_sync failed: %s", smb2_get_error(ctx));
+        return nullptr;
+    }
+    if (rep->status != 0) {
+        LOGE("NetrShareEnum status 0x%08x", rep->status);
+        smb2_free_data(ctx, rep);
+        return nullptr;
+    }
+
+    struct srvsvc_SHARE_INFO_1_CONTAINER* ctr = &rep->ses.ShareInfo.Level1;
+    uint32_t count = 0;
+    if (ctr->Buffer) {
+        // EntriesRead is what the server claims; max_count is what the decoder really
+        // allocated. Trusting the former alone would walk off the end of a short reply.
+        count = ctr->EntriesRead < ctr->Buffer->max_count ? ctr->EntriesRead
+                                                          : ctr->Buffer->max_count;
+        if (!ctr->Buffer->share_info_1) count = 0;
+    }
+
+    jclass strClass = env->FindClass("java/lang/String");
+    jobjectArray result = env->NewObjectArray((jsize) count, strClass, nullptr);
+
+    for (uint32_t i = 0; i < count; i++) {
+        struct srvsvc_SHARE_INFO_1* si = &ctr->Buffer->share_info_1[i];
+        std::string s(si->netname.utf8 ? si->netname.utf8 : "");
+        s += '\t';
+        char numbuf[32];
+        snprintf(numbuf, sizeof(numbuf), "%u", (unsigned) si->type);
+        s += numbuf;
+
+        jstring jEntry = env->NewStringUTF(s.c_str());
+        env->SetObjectArrayElement(result, (jsize) i, jEntry);
+        env->DeleteLocalRef(jEntry);
+    }
+
+    smb2_free_data(ctx, rep);
+    return result;
 }
 
 extern "C"

@@ -1,9 +1,11 @@
 package com.twig.app.ui
 
 /**
- * 手写 Markdown → 自足 HTML 字符串转换(供 [TextViewerActivity] 预览模式的 WebView 用),
- * 不引三方库。只覆盖常见 GFM 子集:标题/粗斜体/行内代码/链接/图片/引用/列表/分隔线/
- * 围栏代码块/表格,不追求 CommonMark 完整规范(嵌套列表、脚注等不支持)。
+ * Hand-written Markdown → self-contained HTML string conversion (used by the WebView in
+ * [TextViewerActivity] preview mode), no third-party library. Only covers a common GFM subset:
+ * headings / bold-italic / inline code / links / images / blockquotes / lists / horizontal rules /
+ * fenced code blocks / tables; not pursuing the full CommonMark spec (nested lists, footnotes,
+ * etc. are not supported).
  */
 object MarkdownHtml {
 
@@ -39,7 +41,7 @@ object MarkdownHtml {
                     code.append(lines[i]).append('\n')
                     i++
                 }
-                if (i < lines.size) i++ // 跳过闭合围栏行
+                if (i < lines.size) i++ // skip the closing fence line
                 val langClass = if (lang.isNotEmpty()) " class=\"language-${escape(lang)}\"" else ""
                 body.append("<pre><code$langClass>").append(escape(code.toString())).append("</code></pre>\n")
                 continue
@@ -103,7 +105,7 @@ object MarkdownHtml {
 
             closeLists()
             if (trimmed.isBlank()) { i++; continue }
-            // 段落:合并连续非空、非块起始行(markdown 软换行 = 空格)
+            // Paragraph: merge consecutive non-blank, non-block-start lines (markdown soft line breaks = space)
             val para = StringBuilder(trimmed)
             i++
             while (i < lines.size && lines[i].isNotBlank() && !isBlockStart(lines[i].trimStart())) {
@@ -125,8 +127,9 @@ object MarkdownHtml {
     private fun splitRow(row: String): List<String> =
         row.trim().removePrefix("|").removeSuffix("|").split('|').map { it.trim() }
 
-    /** 行内语法:反引号代码、粗斜体、![alt](src) 图片、[text](url) 链接。先转义再扫描——
-     * markdown 标记字符(`*_[]()`)不受 HTML 转义影响,顺序安全。 */
+    /** Inline grammar: backtick code, bold/italic, ![alt](src) images, [text](url) links.
+     * Escape first, then scan — markdown marker characters (`*_[]()`) are not affected by HTML
+     * escaping, so the order is safe. */
     private fun inline(raw: String): String {
         val text = escape(raw)
         val n = text.length
@@ -173,7 +176,7 @@ object MarkdownHtml {
         return out.toString()
     }
 
-    /** 从 `[` 起解析 `[text](url)`,返回 (text, url, 结束下标) 或 null(格式不完整)。 */
+    /** Parses `[text](url)` starting from `[`; returns (text, url, endIndex) or null (incomplete format). */
     private fun parseLink(text: String, bracketStart: Int, end: Int): Triple<String, String, Int>? {
         val labelEnd = text.indexOf(']', bracketStart + 1)
         if (labelEnd < 0 || labelEnd + 1 >= end || text[labelEnd + 1] != '(') return null
@@ -192,6 +195,15 @@ object MarkdownHtml {
             else -> append(c)
         }
     }
+
+    /**
+     * The actual background color of the preview page, one-to-one with `body`'s `background` in
+     * [CSS] below — putting them in the same file is so that any change is visible in both places
+     * at once (callers use this to tint the navigation bar). [dark] is provided by the caller
+     * based on whether the current mode is dark: this is exactly what the WebView's
+     * `prefers-color-scheme` tracks.
+     */
+    fun pageBg(dark: Boolean): Int = if (dark) 0xFF0D1117.toInt() else 0xFFFFFFFF.toInt()
 
     private const val CSS = """
         :root { color-scheme: light dark; }

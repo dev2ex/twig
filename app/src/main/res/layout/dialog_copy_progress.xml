@@ -7,7 +7,7 @@
     android:paddingEnd="20dp"
     android:paddingTop="12dp">
 
-    <!-- 当前文件名(头部省略,保留结尾);「转到后台」在标题行右端,见 dialog_progress_title -->
+    <!-- Current file name (ellipsized at the start, keeping the end); "Send to background" lives on the right end of the title row, see dialog_progress_title -->
     <TextView
         android:id="@+id/tv_file"
         android:layout_width="match_parent"
@@ -17,7 +17,7 @@
         android:textColor="@color/text_primary"
         android:textSize="13sp" />
 
-    <!-- 当前文件进度 -->
+    <!-- Current file progress -->
     <ProgressBar
         android:id="@+id/bar_file"
         style="?android:attr/progressBarStyleHorizontal"
@@ -26,7 +26,7 @@
         android:layout_marginTop="8dp"
         android:max="1000" />
 
-    <!-- 整体进度 -->
+    <!-- Overall progress -->
     <ProgressBar
         android:id="@+id/bar_total"
         style="?android:attr/progressBarStyleHorizontal"
@@ -35,7 +35,7 @@
         android:layout_marginTop="4dp"
         android:max="1000" />
 
-    <!-- 剩余目录/文件数 -->
+    <!-- Remaining directories / files count -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -81,7 +81,7 @@
         android:textColor="@color/text_secondary"
         android:textSize="14sp" />
 
-    <!-- 速度 + 剩余时间 -->
+    <!-- Speed + remaining time -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -104,7 +104,7 @@
             android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- 目标目录 -->
+    <!-- Destination directory -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -112,7 +112,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <!-- 图标按目标来源类型设置(FileIcons.sourceIconRes),这里只是占位 -->
+        <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
         <ImageView
             android:id="@+id/iv_dest"
             android:layout_width="22dp"

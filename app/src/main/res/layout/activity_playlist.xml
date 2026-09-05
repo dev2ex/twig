@@ -6,7 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 主内容 -->
+    <!-- Main content -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -40,7 +40,7 @@
                 android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
                 app:navigationIcon="@drawable/ic_menu">
 
-                <!-- 居中显示 列表名 + 曲目数 -->
+                <!-- Centered: playlist name + track count -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -85,7 +85,7 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- 侧边栏 -->
+    <!-- Side drawer -->
     <LinearLayout
         android:id="@+id/drawerContent"
         android:layout_width="290dp"

@@ -12,8 +12,9 @@ import org.junit.Test
 import java.security.MessageDigest
 
 /**
- * 打真服务端的集成测试(MinIO / AWS S3 / R2 …)。**没配环境变量就整个跳过**,
- * 所以 `./gradlew test` 在任何机器上都照常绿。
+ * Integration tests against a real server (MinIO / AWS S3 / R2, …). **Skipped entirely
+ * when the environment variables aren't set**, so `./gradlew test` stays green on any
+ * machine.
  *
  * ```
  * TWIG_S3_ENDPOINT=http://127.0.0.1:9000 TWIG_S3_KEY=<key> \
@@ -21,11 +22,14 @@ import java.security.MessageDigest
  *   ./gradlew :fs-network:test --tests "*S3LiveTest*"
  * ```
  *
- * 为什么值得单独有这么一条:[S3FileSystemTest] 是拿 mockwebserver 对着**我们自己**
- * 的报文认知断言的,它证明不了签名能被真实服务端接受——SigV4 少签一个头、canonical
- * 字符串差一个字节,mock 一样绿,真机上却是清一色的 403 SignatureDoesNotMatch。
+ * Why this is worth having on its own: [S3FileSystemTest] asserts against **our own**
+ * understanding of the wire format using mockwebserver — it cannot prove a signature is
+ * accepted by a real server. SigV4 missing one signed header, or a canonical string off
+ * by one byte, is just as green against the mock but turns into a wall of 403
+ * SignatureDoesNotMatch on the real thing.
  *
- * 所有写操作都关在 [PREFIX] 下,跑完即删,不碰桶里其它东西。
+ * Every write operation stays confined under [PREFIX] and is deleted once the run
+ * finishes, leaving the rest of the bucket untouched.
  */
 class S3LiveTest {
 
@@ -34,7 +38,7 @@ class S3LiveTest {
 
     private lateinit var fs: S3FileSystem
 
-    /** 本次跑的沙盒目录,跑完整棵删掉。 */
+    /** The sandbox directory for this run; the whole subtree is deleted afterward. */
     private val dir get() = XFile(S3FileSystem.SCHEME, "/$PREFIX", isDir = true)
 
     @Before
@@ -59,9 +63,9 @@ class S3LiveTest {
         if (this::fs.isInitialized) runCatching { fs.delete(dir) }
     }
 
-    // ---- 读 ----
+    // ---- read ----
 
-    /** 最基本的一条:签名能被真实服务端接受。挂在这里 = SigV4 有问题。 */
+    /** The most basic check: the signature is accepted by a real server. Failing here means SigV4 is broken. */
     @Test
     fun canListBucket() {
         val names = fs.list(fs.root()).map { it.name }
@@ -69,7 +73,7 @@ class S3LiveTest {
         assertTrue(names.contains(PREFIX))
     }
 
-    /** 桶留空时根目录列出所有桶(凭证得有 ListAllMyBuckets 权限)。 */
+    /** When the bucket is left empty, the root lists all buckets (the credentials need ListAllMyBuckets permission). */
     @Test
     fun canListAllBuckets() {
         val all = S3FileSystem(
@@ -88,8 +92,9 @@ class S3LiveTest {
     }
 
     /**
-     * 名字里带空格 / 加号 / 百分号 / 中文的对象都要能**列出来并且读得到**。
-     * 读得到才是关键:名字解码错的话列表看着没问题,一点开就 404。
+     * Objects whose names contain spaces / plus signs / percent signs / Chinese characters
+     * must all be **listable and readable**. Readability is the real test: with a name
+     * decoding bug the listing can look fine and still 404 the moment you open the file.
      */
     @Test
     fun handlesAwkwardObjectNames() {
@@ -108,7 +113,7 @@ class S3LiveTest {
         }
     }
 
-    /** HTTP Range 定位读:播放器 seek 与网络视频缩略图全靠它。 */
+    /** Positional reads via HTTP Range: player seeking and network video thumbnails both depend on this. */
     @Test
     fun randomAccessReadsExactBytes() {
         val data = ByteArray(300_000) { (it * 7 % 251).toByte() }
@@ -121,14 +126,14 @@ class S3LiveTest {
             assertTrue(n > 0)
             assertArrayEquals(data.copyOfRange(123_456, 123_456 + n), buf.copyOf(n))
 
-            // 往回跳:池里没有吻合位置的流,必须重开一个 Range 请求
+            // Jumping backward: no pooled stream sits at that position, so a new Range request must be opened
             val back = ByteArray(16)
             val m = src.readAt(10, back, 0, 16)
             assertArrayEquals(data.copyOfRange(10, 10 + m), back.copyOf(m))
         }
     }
 
-    // ---- 写 ----
+    // ---- write ----
 
     @Test
     fun smallUploadRoundTrips() {
@@ -139,7 +144,7 @@ class S3LiveTest {
         assertEquals(8L, fs.list(dir).first { it.name == "small.txt" }.size)
     }
 
-    /** 超过一片(8 MiB)会转分片上传——真服务端才会校验 ETag 与分片顺序。 */
+    /** Beyond one part (8 MiB) it switches to multipart upload — only a real server actually validates ETags and part ordering. */
     @Test
     fun multipartUploadRoundTrips() {
         val data = ByteArray(9 * 1024 * 1024) { (it * 31 % 251).toByte() }
@@ -148,7 +153,7 @@ class S3LiveTest {
 
         assertEquals(data.size.toLong(), fs.list(dir).first { it.name == "big.bin" }.size)
         val got = fs.openInput(f).use { it.readBytes() }
-        // 内容比对用摘要:9 MB 的数组直接 assertArrayEquals,失败时输出能刷满整个屏幕
+        // Compare content by digest: assertArrayEquals directly on a 9 MB array would flood the output on failure
         assertEquals(sha256(data), sha256(got))
     }
 
@@ -160,15 +165,15 @@ class S3LiveTest {
         assertEquals(0, fs.openInput(f).use { it.readBytes() }.size)
     }
 
-    // ---- 目录 ----
+    // ---- directories ----
 
-    /** S3 没有目录,空目录靠占位符撑着——建完必须还看得见。 */
+    /** S3 has no directories; an empty directory is held up by a placeholder object — it must still be visible after creation. */
     @Test
     fun emptyDirectorySurvivesListing() {
         fs.mkdir(dir, "empty-dir")
         val d = fs.list(dir).firstOrNull { it.name == "empty-dir" }
         assertTrue("empty directory disappeared", d != null && d.isDir)
-        // 占位符本身不该作为一个 0 字节文件冒出来
+        // The placeholder itself must not show up as a 0-byte file
         assertTrue(fs.list(d!!).isEmpty())
     }
 
@@ -196,7 +201,7 @@ class S3LiveTest {
         assertFalse(fs.list(dir).any { it.name == "doomed" })
     }
 
-    // ---- 改名 / 移动 ----
+    // ---- rename / move ----
 
     @Test
     fun renameMovesObjectServerSide() {
@@ -242,7 +247,7 @@ class S3LiveTest {
         )
     }
 
-    /** 接口约定:同名目标已存在必须抛,不得静默吃掉那个文件。 */
+    /** Contract: must throw when a target of the same name already exists, never silently swallow the file. */
     @Test
     fun renameOntoExistingFails() {
         val a = XFile(S3FileSystem.SCHEME, "/$PREFIX/a.txt", isDir = false)
@@ -251,7 +256,7 @@ class S3LiveTest {
         fs.openOutput(b).use { it.write("B".toByteArray()) }
 
         assertTrue(runCatching { fs.rename(a, "b.txt") }.isFailure)
-        assertEquals("B", fs.openInput(b).use { String(it.readBytes()) }) // 没被覆盖
+        assertEquals("B", fs.openInput(b).use { String(it.readBytes()) }) // wasn't overwritten
         assertTrue(fs.exists(a))
     }
 

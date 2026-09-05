@@ -1,21 +1,29 @@
 package com.twig.app.share
 
 /**
- * 页面的样式与脚本。单独一个文件是因为它们是**资源**不是逻辑——夹在渲染函数中间会把
- * [WebUi] 那点真正的结构淹掉。
+ * Page styles and scripts. They live in their own file because they are
+ * **assets**, not logic — wedged between the rendering functions they would
+ * drown out the small amount of real structure in [WebUi].
  *
- * 两条自我约束:
- *  - **不引任何外部资源**。对端多半只连着这台手机的热点或一个没有外网的局域网,
- *    一个 CDN 引用就是一张白页。图标全是内联 SVG symbol,字体用系统栈。
- *  - **JS 写 ES5**(var / function,不用箭头函数与模板字符串)。这页面是对端访问
- *    文件的唯一入口,为一点语法糖在老浏览器上整页报废不值当。
+ * Two self-imposed rules:
+ *  - **No external resources**. The other end is usually connected to this
+ *    phone's hotspot or to a LAN with no internet access, so a single CDN
+ *    reference is a blank page. Icons are all inline SVG symbols and the
+ *    font is the system stack.
+ *  - **JS in ES5** (var / function, no arrow functions or template strings).
+ *    This page is the other end's only entry point to the files, and
+ *    trading a bit of syntax sugar for a chance to die completely on older
+ *    browsers is not worth it.
  */
 internal object WebPage {
 
     /**
-     * 图标。用一组 `<symbol>` 定义、`<use>` 引用:同一个图标在页面里出现几十次也只有
-     * 一份路径数据,比每行内联一段 SVG 小得多,也比 emoji 稳(emoji 在各平台上大小、
-     * 基线、配色都不一样,行高会被撑得参差不齐——这正是上一版看着"原始"的原因之一)。
+     * Icons. Defined as a set of `<symbol>`s and referenced with `<use>`:
+     * even if the same icon appears dozens of times on the page, only one
+     * copy of the path data is stored, which is far smaller than inlining
+     * a SVG per row — and far more reliable than emoji (emoji vary in size,
+     * baseline and colour across platforms, which makes line height uneven
+     * — that is partly why the previous version looked "primitive").
      */
     val SPRITE = """
         <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -52,9 +60,12 @@ internal object WebPage {
           <symbol id="i-up" viewBox="0 0 24 24">
             <path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2z"/>
           </symbol>
-          <!-- ★ 这些图标是 fill 渲染的,路径必须围出**面积**。原来的下载图标把竖杆写成
-               `M12 3v10.2`(一条零宽度线段),结果只画出了箭头尖,行尾看着像个孤零零的
-               "˅"。画新图标时先确认每一笔都有宽度,别照搬 stroke 版本的路径。 -->
+          <!-- ★ These icons are rendered with fill, so each path must enclose
+               an **area**. The old download icon drew the vertical bar as
+               `M12 3v10.2` (a zero-width line segment), which only painted
+               the arrowhead — the row end looked like a lonely "˅". When
+               drawing new icons, make sure every stroke has a width, do not
+               copy a stroke-version path verbatim. -->
           <symbol id="i-dl" viewBox="0 0 24 24">
             <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
           </symbol>
@@ -110,9 +121,11 @@ internal object WebPage {
           }
         }
         *{box-sizing:border-box}
-        /* ★ 必须带 !important:下面 button 定了 display:inline-flex,优先级比
-           浏览器默认样式表里的 [hidden]{display:none} 高,不压回去的话
-           `<button hidden>` 会一直显示(「删除所选」在没选中时也露在工具栏上) */
+        /* ★ Must use !important: the button rule below sets
+           display:inline-flex, which has higher specificity than the
+           browser's default [hidden]{display:none}. Without !important,
+           `<button hidden>` would stay visible ("Delete selected" leaking
+           into the toolbar when nothing is checked). */
         [hidden]{display:none!important}
         html,body{margin:0;padding:0}
         body{background:var(--bg);color:var(--fg);
@@ -122,7 +135,7 @@ internal object WebPage {
         a{color:inherit;text-decoration:none}
         svg.ic{width:20px;height:20px;fill:currentColor;display:block}
 
-        /* 顶栏 */
+        /* Top bar */
         header{position:sticky;top:0;z-index:20;background:var(--card);
           border-bottom:1px solid var(--line)}
         .hd{max-width:1080px;margin:0 auto;padding:12px 20px;display:flex;
@@ -152,7 +165,7 @@ internal object WebPage {
           border-radius:12px;background:var(--danger-soft);color:var(--danger);
           font-size:13.5px;word-break:break-all;border:1px solid var(--danger-line)}
 
-        /* 工具区 */
+        /* Toolbar */
         .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
         button{font:inherit;display:inline-flex;align-items:center;gap:6px;
           padding:7px 14px;border:1px solid var(--line);border-radius:9px;
@@ -173,7 +186,7 @@ internal object WebPage {
         #bar{height:5px;border-radius:99px;background:var(--track);overflow:hidden}
         #fill{height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .15s}
 
-        /* 筛选条 */
+        /* Filter bar */
         .bar2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
           padding:12px 14px;border-bottom:1px solid var(--line)}
         #filter{font:inherit;flex:1;min-width:150px;padding:7px 12px;border-radius:9px;
@@ -181,7 +194,7 @@ internal object WebPage {
         #filter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
         #stats{font-size:12.5px;color:var(--muted);white-space:nowrap}
 
-        /* 列表 */
+        /* Listing */
         table{width:100%;border-collapse:collapse}
         thead th{font-size:12px;font-weight:500;color:var(--muted);text-align:left;
           padding:9px 14px;border-bottom:1px solid var(--line);white-space:nowrap;
@@ -215,9 +228,11 @@ internal object WebPage {
         td.sz,td.dt{font-size:13px;color:var(--muted);white-space:nowrap;
           font-variant-numeric:tabular-nums}
         td.ac{width:1%;white-space:nowrap;text-align:right;padding-left:0}
-        /* ★ padding:0 不能省:.act 里既有 <a> 也有 <button>,而上面通用的
-           `button{padding:7px 14px}` 会照样命中——29px 的方块里塞 28px 内边距,
-           图标被挤成 1px 宽,表现为"改名/删除按钮凭空消失,只有下载(<a> 版)还在"。 */
+        /* ★ padding:0 cannot be omitted: .act contains both <a> and
+           <button>, and the universal `button{padding:7px 14px}` above
+           would still match — 28px of padding in a 29px square crushes the
+           icon to 1px wide, and the symptom is "rename / delete buttons
+           vanish into thin air, only the download (<a> version) survives". */
         .act{display:inline-flex;align-items:center;justify-content:center;
           width:29px;height:29px;padding:0;border-radius:8px;color:var(--muted);
           border:0;background:none;cursor:pointer;opacity:.55;
@@ -232,7 +247,7 @@ internal object WebPage {
         tr.up td.ic svg{color:var(--muted)}
         #empty{padding:52px 20px;text-align:center;color:var(--muted);font-size:14px}
 
-        /* 预览浮层 */
+        /* Preview lightbox */
         #lb{position:fixed;inset:0;z-index:60;display:none;
           background:rgba(8,10,14,.86);backdrop-filter:blur(3px);
           align-items:center;justify-content:center;padding:28px}
@@ -250,7 +265,7 @@ internal object WebPage {
         #lbx:hover{background:rgba(255,255,255,.22)}
         #lbx svg{width:20px;height:20px;fill:currentColor}
 
-        /* 提示条 */
+        /* Toast */
         #toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,80px);
           z-index:80;max-width:min(560px,88vw);padding:11px 18px;border-radius:11px;
           background:#22262e;color:#f2f4f7;font-size:13.5px;box-shadow:0 8px 24px rgba(0,0,0,.28);
@@ -267,7 +282,7 @@ internal object WebPage {
         }
     """.trimIndent()
 
-    /** 排序 + 筛选 + 预览浮层 + 提示条。只读共享也有这些,所以放在公共部分。 */
+    /** Sort + filter + preview lightbox + toast. Read-only shares have these too, so they live in the common section. */
     val JS_COMMON = """
         function ${'$'}(s){return document.querySelector(s);}
         function ${'$'}${'$'}(s){return [].slice.call(document.querySelectorAll(s));}

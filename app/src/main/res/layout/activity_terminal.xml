@@ -15,7 +15,7 @@
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up">
 
-        <!-- 会话切换下拉:标题位放会话列表,选中即切换 -->
+        <!-- Session switcher dropdown: sits in the title slot, picking one switches to it -->
         <Spinner
             android:id="@+id/session_spinner"
             android:layout_width="wrap_content"
@@ -23,13 +23,21 @@
             android:popupBackground="@color/toolbar" />
     </androidx.appcompat.widget.Toolbar>
 
-    <com.termux.view.TerminalView
-        android:id="@+id/terminal"
+    <!-- Outer wrapper around the terminal: freezes the terminal view's size when the
+             screen is off or the app is backgrounded — see TermSizeFreezeLayout -->
+    <com.twig.app.ui.TermSizeFreezeLayout
+        android:id="@+id/terminal_box"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_weight="1">
 
-    <!-- 附加键条:实体键盘没有的控制键,两行 -->
+        <com.termux.view.TerminalView
+            android:id="@+id/terminal"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </com.twig.app.ui.TermSizeFreezeLayout>
+
+    <!-- Extra-keys bar: control keys not present on a physical keyboard, two rows -->
     <LinearLayout
         android:id="@+id/extra_keys"
         android:layout_width="match_parent"

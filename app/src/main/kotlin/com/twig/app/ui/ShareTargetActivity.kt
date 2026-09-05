@@ -15,9 +15,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.twig.app.Format
 import com.twig.app.R
 import com.twig.app.SavedConnection
@@ -27,13 +24,13 @@ import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.core.isWritableDir
-import kotlinx.coroutines.launch
 
 /**
- * 接收其他 App 的分享(图片/任意文件),弹出目录选择界面("复制到"):
- * 复用主界面同一套 [PaneFragment] 树导航,分享进来的 content:// URI 经
- * [ShareSourceFileSystem] 包成 XFile,交给 [CopyEngine] 流式写入所选目标目录——
- * 不新增拷贝逻辑,只新增一个只读来源。
+ * Receives a share from another app (image / arbitrary file) and shows the
+ * directory-picker UI ("Copy to"): it reuses the same [PaneFragment] tree
+ * navigation as the main screen, the inbound content:// URI is wrapped into an
+ * XFile via [ShareSourceFileSystem] and streamed by [CopyEngine] into the chosen
+ * destination directory — no new copy logic, just one new read-only source.
  */
 class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
 
@@ -81,7 +78,8 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         com.twig.app.TwigApp.registerBaseFs(this)
         shareFs = FsRegistry.of(ShareSourceFileSystem.SCHEME) as ShareSourceFileSystem
 
-        // 只留导航相关的几个操作;复制/移动/重命名/删除/占用图在"选目标目录"场景下不需要
+        // Keep only navigation actions; copy/move/rename/delete/treemap aren't needed in
+// the "pick a destination directory" scenario.
         b.strip.sizeIconsLikeRows(this)
         b.strip.asSort.visibility = View.GONE
         b.strip.asCopy.visibility = View.GONE
@@ -96,9 +94,8 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
 
         b.btnCancel.setOnClickListener { finish() }
         b.btnConfirm.setOnClickListener { onConfirm() }
-        setConfirmEnabled(false) // 默认禁用,直到选中一个可写目录
 
-        ensurePermissionThenInit()
+        SecurityUi.gate(this) { ensurePermissionThenInit() }
     }
 
     private fun pane(): PaneFragment? = supportFragmentManager.findFragmentByTag(PANE_TAG) as? PaneFragment
@@ -107,27 +104,17 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         if (supportFragmentManager.findFragmentByTag(PANE_TAG) == null) {
             supportFragmentManager.beginTransaction()
                 .replace(R.id.pane, PaneFragment.newInstance(0), PANE_TAG)
-                .commitNow() // 同步提交,后面立刻取 viewModel 观察 currentDir
+                .commitNow() // Commit synchronously — the very next lines read viewModel and observe currentDir.
         }
         observeCurrentDir()
     }
 
-    /** 只有选中一个真实存在且可写的目录时才允许点"复制到此";其余情况(未选择/只读来源等)禁用。 */
+    /** The "Copy here" button is only enabled when the selected directory actually exists and is writable; see [enableOnWritableDir]. */
     private fun observeCurrentDir() {
-        val vm = pane()?.viewModel ?: return
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.state.collect { st -> setConfirmEnabled(st.currentDir?.isWritableDir() == true) }
-            }
-        }
+        pane()?.let { enableOnWritableDir(it, b.btnConfirm) }
     }
 
-    private fun setConfirmEnabled(enabled: Boolean) {
-        b.btnConfirm.isEnabled = enabled
-        b.btnConfirm.alpha = if (enabled) 1f else 0.4f
-    }
-
-    // ---- PaneFragment.Host:单面板场景,大部分回调无意义 ----
+    // ---- PaneFragment.Host: single-pane scenario, most callbacks are no-ops ----
 
     override fun siblingOf(self: PaneFragment): PaneFragment? = null
 
@@ -152,7 +139,7 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
     override fun isPaneActive(self: PaneFragment): Boolean = true
     override fun focusPane(pane: PaneFragment) {}
 
-    // ---- 确认:拷贝到当前选中目录 ----
+    // ---- Confirm: copy to the currently selected directory ----
 
     private fun onConfirm() {
         val dest = pane()?.viewModel?.currentDir
@@ -164,11 +151,15 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     /**
-     * 与主界面同一套:活儿交给 [Transfers] 的后台会话(前台服务 + 通知栏进度条),
-     * 进度框/冲突框都由内嵌的 [PaneFragment] 出([PaneFragment.showTransferBox])。
+     * Same as the main screen: the work goes to [Transfers]' background session
+     * (foreground service + notification progress), and the progress dialog /
+     * conflict dialog are surfaced by the embedded [PaneFragment]
+     * ([PaneFragment.showTransferBox]).
      *
-     * ★ 分享进来的 `content://` 读权限跟**本任务栈**走:任务还在,后台跑着的复制就读得到;
-     * 用户把这张卡片从最近任务划掉,权限连同进程一起没,这一趟也就断了(和改造前一样)。
+     * ★ The `content://` read permission from an inbound share follows **this task
+     * stack**: while the task is alive, the background copy can still read; if the
+     * user swipes this card off the recents list, the permission goes away with
+     * the process, and the in-flight copy is gone too (same as before the change).
      */
     private fun startCopy(dest: XFile) {
         val items = incoming.map { shareFs.wrap(it.uri, it.name, it.size) }
@@ -191,19 +182,19 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         pane()?.showTransferBox()
     }
 
-    /** 复制完就收工(取消/失败留在原地,让用户看得见并能重试)。 */
+    /** Wrap up on successful copy (cancel/failure stay in place so the user can see them and retry). */
     override fun onTransferFinished(session: Transfers.Session) {
         if (session.finished?.isSuccess == true && !session.cancelled.get()) finish()
     }
 
-    /** 与面板路径栏同一写法(网络来源带服务器名);面板还没就绪时退回不带服务器名的形式。 */
+    /** Written the same way as the panel's path bar (network sources carry the server name); falls back to the no-server-name form when the panel isn't ready yet. */
     private fun pathLabel(f: XFile): String = pane()?.displayPath(f) ?: when {
         f.scheme == "file" -> f.path
         f.scheme == "saf" -> f.name
         else -> "${Format.schemeLabel(f.scheme)}:${f.path}"
     }
 
-    // ---- 接收分享内容 ----
+    // ---- Resolve the share payload ----
 
     private fun resolveIncoming(intent: Intent): List<IncomingItem> {
         val uris: List<Uri> = when (intent.action) {
@@ -239,7 +230,7 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         return IncomingItem(uri, finalName, size)
     }
 
-    // ---- 存储权限(与 MainActivity 一致的判定/申请流程) ----
+    // ---- Storage permission (same check / request flow as MainActivity) ----
 
     private fun hasStoragePermission(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {

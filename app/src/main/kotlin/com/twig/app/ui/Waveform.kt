@@ -17,42 +17,56 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * 波形计算:全量解码算 RMS,归一化成 [BUCKETS] 个 0..255 的桶。磁盘缓存
- * `cacheDir/waves/<md5(名:大小:mtime)>`(与缩略图同 key 规则);单线程后台。
- * 任何失败静默返回(UI 退回平条),不影响播放。
+ * Waveform calculation: full decode to compute RMS, normalised into [BUCKETS]
+ * buckets of 0..255. Disk cache `cacheDir/waves/<md5(name:size:mtime)>` (same
+ * key rule as thumbnails); single-threaded in the background. Any failure
+ * returns silently (UI falls back to a flat bar), playback is unaffected.
  *
- * ★ 前台(播放页当前曲)与预取(下一首)各占一个槽、**互不取消**:旧版共用一个全局 token,
- * 谁后发谁把前面正在算的顶掉——而 `MusicEngine` 开播 4s 就给下一首发预取,网络曲解码要
- * 几十秒,于是当前曲的波形每次都在半路被预取掐死(不回调也不缓存),表现为"正在听的这首
- * 永远没波形,退出再进来还是没有"。排队顺序由单线程 FIFO 保证:先来的当前曲先算完。
+ * ★ Foreground (current track on the player) and prefetch (next track) each
+ * occupy their own slot and **do not cancel each other**: the old version
+ * shared a global token, and whoever issued later would displace the one in
+ * progress — `MusicEngine` issues a prefetch 4s into playback, network tracks
+ * take dozens of seconds to decode, so the current track's waveform was always
+ * killed mid-flight by the prefetch (no callback, no cache), appearing as
+ * "the track I'm listening to never has a waveform, and still doesn't after
+ * I exit and come back". Single-threaded FIFO guarantees order: an earlier
+ * foreground request finishes first.
  */
 object Waveform {
 
     const val BUCKETS = 240
 
-    // 完整度门槛:解码被网络中断/提前 EOS 时只填得出前面一截桶,这种半截结果可以显示但
-    // 绝不能写缓存——key 只含「名:大小:mtime」,缓存下来就永远是半截,不会自然失效。
+    // Completeness threshold: when decoding is interrupted by network issues / early
+    // EOS, only the first few buckets can be filled; such partial results can be
+    // displayed but must never be cached — the key only contains "name:size:mtime",
+    // so once cached it stays partial forever and won't expire naturally.
     private const val COMPLETE_RATIO = 0.9
 
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "twig-waveform").apply { isDaemon = true }
     }
     private val main = Handler(Looper.getMainLooper())
-    @Volatile private var uiKey: String? = null   // 前台想要的那首
-    @Volatile private var uiSeq = 0               // 前台请求序号(供预取让位)
-    @Volatile private var preKey: String? = null  // 预取想要的那首
+    @Volatile private var uiKey: String? = null   // the track the foreground wants
+    @Volatile private var uiSeq = 0               // foreground request sequence number (for prefetch yielding)
+    @Volatile private var preKey: String? = null  // the track the prefetch wants
 
     /**
-     * 请求波形;命中缓存立即回调,否则后台解码。同一槽内多次调用只有最后一次的结果会回。
-     * [prefetch] = 下一首的预取:不会取消前台正在算的那首,自己则在前台换曲时让位。
+     * Request the waveform; cache hits fire the callback immediately, otherwise
+     * decode in the background. Multiple calls within the same slot only deliver
+     * the last one's result. [prefetch] = next-track prefetch: doesn't cancel
+     * the track the foreground is currently computing, but yields itself when the
+     * foreground switches to a different track.
      */
     fun request(ctx: Context, file: XFile, prefetch: Boolean = false, onReady: (ByteArray) -> Unit) {
-        AudioCache.init(ctx) // 网络波形与播放共用 AudioCache,先保证目录就绪
+        AudioCache.init(ctx) // network waveforms and playback share AudioCache, ensure the directory is ready first
         val key = keyOf(file)
         if (prefetch) preKey = key else { uiKey = key; uiSeq++ }
         executor.execute {
-            // 预取任务:自己还是当前预取目标就继续;但前台在我开跑后又换了别的曲(uiSeq 变了)
-            // 就让出这条单线程——除非前台要的正是我这首(切到下一首的常见情形),那接着算完。
+            // Prefetch task: continue if I'm still the current prefetch target; but
+            // if the foreground switched to another track after I started (uiSeq
+            // changed), yield this single thread — unless the foreground now wants
+            // exactly this track (the common case when skipping to the next), then
+            // finish the decode.
             val seq0 = uiSeq
             val alive: () -> Boolean =
                 if (prefetch) ({ key == preKey && (key == uiKey || uiSeq == seq0) })
@@ -72,16 +86,17 @@ object Waveform {
 
     fun cancel() { uiKey = null; preKey = null }
 
-    // 目录名带版本号:normalize() 对比度曲线改过,旧缓存是低对比度数据,换目录名让它自然失效
+    // Directory name carries a version: normalize()'s contrast curve changed, old
+    // cache has low-contrast data, renaming the directory lets it expire naturally
     private fun dir(ctx: Context) = File(ctx.cacheDir, "waves2").apply { mkdirs() }
 
     private fun keyOf(f: XFile): String =
         MessageDigest.getInstance("MD5").digest("${f.name}:${f.size}:${f.lastModified}".toByteArray())
             .joinToString("") { "%02x".format(it) }
 
-    // ---- 解码 ----
+    // ---- Decoding ----
 
-    /** [complete] = 桶基本填满(解码走到了声明时长的末尾);只有它为 true 才写缓存。 */
+    /** [complete] = buckets essentially filled (decoding reached the declared duration's end); only when true is the result written to cache. */
     private class Wave(val data: ByteArray, val complete: Boolean)
 
     private fun compute(file: XFile, alive: () -> Boolean): Wave? {
@@ -91,9 +106,12 @@ object Waveform {
             if (file.scheme == "file") {
                 extractor.setDataSource(file.path)
             } else {
-                // 网络来源:走 AudioCache 的每曲共享磁盘缓存——波形解码顺序读整首的同时,把字节
-                // 落进和播放器共用的那份缓存里,播放/seek 不必再下一遍(close 为空操作,连接归
-                // AudioCache 统管)。总长未知时 AudioCache 内部退化为 BufferedRandomSource 直读。
+                // Network source: uses AudioCache's per-track shared disk cache — while the
+                // waveform decode reads the entire track sequentially, the bytes are dropped
+                // into the same cache shared with the player, so playback/seek don't have to
+                // re-download (close is a no-op; connections are managed by AudioCache). When
+                // the total length is unknown, AudioCache internally falls back to a direct
+                // BufferedRandomSource read.
                 val src = AudioCache.source(file)
                 netSource = src
                 extractor.setDataSource(NetSource(src))
@@ -158,8 +176,9 @@ object Waveform {
                 }
             }
             codec.stop(); codec.release()
-            // 一个样本都没解出来 = 失败,不是"平波形":旧版这里让 normalize 吐一条平的 40 数组
-            // 当成功结果写进缓存,失败就此被永久固化下来。
+            // No samples decoded at all = failure, not a "flat waveform": the old version
+            // let normalize emit a flat array of 40s here and treated it as a successful
+            // result, writing it to cache — so failures were permanently baked in.
             val filled = counts.count { it > 0 }
             if (filled == 0) { Log.w("twig", "waveform: no samples decoded: ${file.name}"); return null }
             return Wave(normalize(sumsq, counts), filled >= BUCKETS * COMPLETE_RATIO)
@@ -174,17 +193,20 @@ object Waveform {
 
     private fun normalize(sumsq: DoubleArray, counts: LongArray): ByteArray {
         val rms = DoubleArray(BUCKETS) { if (counts[it] > 0) sqrt(sumsq[it] / counts[it]) else 0.0 }
-        // 全 0 只可能是整首数字静音(有样本但幅度为 0),那是合法的完整结果,给条平的
+        // All-zeros can only be a digital-silence track (samples exist but amplitude is 0);
+        // that's a legitimate complete result, give it a flat bar
         val max = rms.max().takeIf { it > 0 } ?: return ByteArray(BUCKETS) { 40 }
         return ByteArray(BUCKETS) {
-            // 拉大对比度:线性比例(不再开根压缩动态范围)叠一个 >1 的指数曲线——
-            // 安静段被进一步压矮、响的段仍接近满高,层次感更明显。映射到 8..255。
+            // Boost contrast: a linear ratio (no longer square-root compressing dynamic range)
+            // combined with a >1 exponential curve — quiet sections are squashed further,
+            // loud sections stay near full height, so the layering reads more clearly.
+            // Mapped to 8..255.
             val v = (rms[it] / max).pow(1.6)
             (8 + v * 247).toInt().coerceIn(0, 255).toByte()
         }
     }
 
-    /** RandomSource → android.media.MediaDataSource(供网络来源全量解码)。 */
+    /** RandomSource → android.media.MediaDataSource (for full decoding of network sources). */
     private class NetSource(private val src: RandomSource) : MediaDataSource() {
         override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
             if (size == 0) return 0

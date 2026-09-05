@@ -23,7 +23,7 @@
         android:background="@color/bar"
         android:visibility="gone">
 
-        <!-- 文本/HEX 两种解释方式,点一下就换;两者搜的都是同一份字节流 -->
+        <!-- Two interpretations: text and HEX, switched by a tap; both search the same byte stream -->
         <TextView
             android:id="@+id/search_mode"
             android:layout_width="wrap_content"
@@ -101,9 +101,11 @@
             android:scrollbars="none" />
 
         <!--
-          自绘快速滚动条:RecyclerView 原生滚动条既拖不动、又会在超大文件(行数上亿)
-          下把滚动范围算溢出。这里的滑块高度固定,位置只按"首个可见行 / 总行数"映射,
-          与文件大小无关,所以 10GB 的文件照样一拖到底。
+          Self-drawn fast scroll bar: RecyclerView's native scrollbar is neither
+          draggable nor accurate at huge scales (hundreds of millions of lines overflow
+          the computed range). Here the thumb height is fixed and its position is mapped
+          only from "first visible row / total rows", independent of file size — so a
+          10GB file still scrolls in one drag.
         -->
         <com.twig.app.ui.FastScrollBar
             android:id="@+id/fastscroll"

@@ -6,7 +6,7 @@
 不引入 Material 库,依赖压到最低。能手写就手写——WebDAV、S3 签名、git、restic
 全部从零实现。
 
-**版本 1.1.1**(versionCode 270)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**版本 1.6.0**(versionCode 285)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- TODO: 截图 / GIF 放这里。四个最有说服力的演示:
@@ -19,11 +19,11 @@
 
 ## 为什么是 Twig
 
-**一棵树,所有来源。** 本地存储、压缩包、FTP、SFTP、SMB、WebDAV、S3、restic 仓库,
-对 UI 来说是同一个东西。任意两者之间的复制走同一条代码路径——SMB 上的目录可以直接
+**一棵树,所有来源。** 本地存储、压缩包、FTP、SFTP、SMB、WebDAV、S3、restic 仓库、
+Jellyfin/Emby 服务器,对 UI 来说是同一个东西。任意两者之间的复制走同一条代码路径——SMB 上的目录可以直接
 压成本地 zip,远程压缩包里的文件可以流式传到 FTP 服务器。
 
-**它一直很小。** 单设备下载约 6.7 MB,而这里面**包含**了 FFmpeg 音频解码器、
+**它一直很小。** 单设备下载约 6.9 MB,而这里面**包含**了 FFmpeg 音频解码器、
 一套 SMB 实现和一个视频播放器。同类文件管理器普遍是这个数字的几倍。加依赖之前
 先算它的 APK 增量。
 
@@ -40,6 +40,11 @@
   经内嵌 AC-3 core 的 TrueHD)、PGS 位图字幕——这些 media3 都不直接支持。
 - **root / Shizuku 特权访问是本地文件系统的回落**,不是另起一棵树。所以
   `/data/data/…` 往 SMB 复制、缩略图、搜索全都零改动可用。
+- **媒体服务器当文件系统用。** Jellyfin 与 Emby 的媒体库像别的来源一样浏览,播放进度
+  与服务器双向同步,海报、标签、歌词、外挂字幕全部走 API 拿,而不是去读媒体文件本身。
+  **一份实现通吃两家,且零新增依赖。**
+- **目录对比 + 单向同步**(Beyond Compare 式),而且两侧可以是**任意来源**——SMB 上的
+  目录对本地目录、文档树对压缩包都行;同步分增量与镜像两种,目标侧更新的那些单独确认。
 - **WiFi 共享**:Twig 反过来当 HTTP 与 WebDAV 服务器,电脑可以直接挂载——而且能下载
   位于 SMB 共享上、甚至压缩包内部的文件,因为对服务端来说它们都只是 `openInput()`。
 
@@ -47,23 +52,27 @@
 
 ## 体积
 
-1.1.1 release 构建(R8 + 资源裁剪)实测:
+1.5.0 release 构建(R8 + 资源裁剪)实测:
 
 | | 大小 |
 |---|---|
-| Release APK(`arm64-v8a` + `x86_64`) | 9.0 MB |
-| **单设备下载(`arm64-v8a`)** | **≈ 6.7 MB** |
+| Release APK(`arm64-v8a` + `x86_64`) | 9.1 MB |
+| **单设备下载(`arm64-v8a`)** | **≈ 6.9 MB** |
 
-构成:
+构成(APK 内的压缩后大小):
 
 | 组件 | 大小 |
 |---|---|
-| `classes.dex` | 2.6 MB |
-| Bouncy Castle | 1.3 MB |
+| `classes.dex`(自研代码 + 全部 JVM 依赖) | 2.7 MB |
 | `libffmpegJNI.so` | 1.4 MB |
+| Bouncy Castle 的数据文件 | 1.2 MB |
+| 资源(`resources.arsc` + `res`) | 865 KB |
 | `libsamba_jni.so`(libsmb2) | 464 KB |
-| 资源(`resources.arsc` + `res`) | 793 KB |
 | `libtwigzstd` / `libtermux` / `libtwigpty` | 108 KB |
+
+Bouncy Castle 那一项几乎全是 `picnic` 后量子签名算法的三张查找表
+(`lowmcL{1,3,5}.bin.properties`)。引入完整 Bouncy Castle 只是因为 Android 自带的
+阉割版缺 X25519,所以这 1.2 MB 是纯粹的死重——见路线图。
 
 每种来源都是独立的 Gradle 模块,所以构建时可以裁掉用不着的部分——去掉媒体播放与
 网络来源,上表中的绝大部分就没了。
@@ -72,7 +81,7 @@
 
 ## 一句话架构
 
-所有来源——本地、压缩包、FTP、SFTP、SMB、WebDAV、S3、restic——实现同一套
+所有来源——本地、压缩包、FTP、SFTP、SMB、WebDAV、S3、restic、Jellyfin——实现同一套
 `FileSystem` + `XFile` 接口,`CopyEngine` 通过 `openInput()` / `openOutput()`
 在任意两者之间搬字节。
 
@@ -91,7 +100,10 @@
 | **本地** | 读写全功能 | `java.io.File` |
 | **ZIP** | **读 + 写**,老包 GBK 名自动识别 | 当文件系统挂载,点开即进入 |
 | **7z** | 读 + **打包写入**(LZMA2) | commons-compress + xz |
-| **RAR** | 只读(RAR4) | junrar |
+| **tar** | 只读 | 条目在包里是连续存放的,直接切片读——里面套着的压缩包不必先解出来就能打开 |
+| **gz / xz / bz2 / zst** | 只读 | 不是归档而是单条数据流:挂成只有一个条目的包,于是 `foo.tar.gz` 打开是 `foo.tar`,再展开就是 tar,`.tgz`/`.txz`/`.tbz2`/`.tzst` 同理 |
+| **zstd** | 只读 | 流式解压,复用 restic 已经带进包里的那份 libzstd,不多打一份 |
+| **RAR** | 只读(RAR4 + RAR5) | junrar,单独一个模块——只有 `full` 版带,`libre` 版没有 RAR |
 | **加密压缩包** | 读 zip/7z/rar,**创建** AES-256 zip/7z | WinZip AES 与老式 ZipCrypto 全手写 |
 | **FTP** | 读写全功能 | Apache Commons Net |
 | **SFTP** | 读写全功能 | SSHJ(带完整 Bouncy Castle 解决 X25519) |
@@ -99,8 +111,10 @@
 | **WebDAV** | 读写全功能 | 手写 PROPFIND/MKCOL/MOVE,不引 SDK |
 | **S3 兼容对象存储** | 读写全功能 | 手写 SigV4 + REST——AWS S3、MinIO、R2、OSS、COS、B2 |
 | **restic** | 只读,解密 | 从零实现;仓库格式 v1 与 v2 |
+| **Jellyfin / Emby** | 只读虚拟树 | 手写 REST;一份实现通吃两家,零新增依赖 |
 | **SAF 文档树** | 读写 | 没有 `MANAGE_EXTERNAL_STORAGE` 时的系统级回退 |
 | **特权(root / Shizuku)** | 读写 | 不是独立来源,而是普通 API 够不着的本地路径的回落 |
+| **已安装应用** | 只读虚拟树 | PackageManager;分包应用现打成 XAPK,复制出来的包不会漏掉 `split_config.*` |
 
 网络来源展开即连接,支持多服务器(每台一个唯一 scheme),配置持久化。解压就是一次
 跨来源复制,压缩也是——所以"把 SMB 上的目录压缩到本地"不需要任何特例代码。
@@ -120,19 +134,53 @@
 - **属性卡片**内嵌在文件行下方:EXIF、媒体轨道、应用信息、哈希——全走系统 API,
   且绝不为了填一个字段去整读文件。
 - **占用图**(SpaceSniffer 式 treemap)内嵌在面板里,双指缩放,长按菜单与树共用。
+- **SD 卡与 U 盘**在树根上各占一行,名字与容量取系统给的。不新增任何权限——普通 API
+  读不动的卷,可以用 SAF 授权,或者走特权侧列。
+- **跳转到路径**:任何根行(服务器、内部存储、可移动卷、文档树、收藏)都能输入一条路径,
+  树逐级展开到那个目录或那个文件所在的行;路上遇到没连的服务器会先连上。
 - **Twig 可以当文件选择器**,对外接 `GET_CONTENT`,对内替掉 SAF——所以能选到
   SMB 共享里、压缩包里的文件,而系统选择器看不见这些来源。
+
+### 对比
+
+- **目录对比**(Beyond Compare 式):两侧逐行对齐,中间一列状态符号;横屏并排,竖屏一次
+  显示一侧但状态列始终在。两侧可以是任意来源,小文件按**内容**比,而不是只看大小与时间。
+- **单向同步**方向写死「同步到左侧 / 同步到右侧」,不跟着活动侧走(同步是不可逆的)。
+  默认**增量**:只推源侧独有与两侧不同的,目标侧多余的保留;关掉即**镜像**,多余的一并
+  删除。目标侧更新的那些单独列出,不勾就不覆盖。
+- **保存的对比**与收藏并排放在树根上,常看的一对点一下就打开,也能直接从那行发起同步。
+- **文本对比**双栏、长行横向同步滚动、逐差异块合并;**图片对比**并排,缩放平移联动。
 
 ### 查看器与播放器
 
 所有查看器都经 `FsRegistry` 读取,本地、压缩包内、远程文件一视同仁。
 
-- 文本查看器,手写词法着色,多主题
-- Hex 查看器
+- 文本查看器,手写词法着色,多主题,捏合缩放字号,带 Markdown 预览模式
+- **文本编码是设置项,不是猜**:统一走 `TextCodec`——BOM → 严格 UTF-8 → 你在设置里排好的
+  候选(默认 GBK)。编辑不再只限 UTF-8:保存用读进来那个编码写回;原编码表示不了新输入的
+  字符时会问你要不要转成 UTF-8,而不是静默替换成 `?`
+- Hex 查看器,虚拟滚动、可拖动滚动条、文本/HEX 搜索
 - 图片查看器(降采样防 OOM),幻灯片边扫边播,找到第一张就先显示
 - **视频/音频播放器**(media3 + FFmpeg 软解),覆盖 AVI、真 M2TS、HDMV 私有音轨与
   PGS 字幕;系统解码器崩溃时两级自动降级
+- **剧集自动连播**:Jellyfin/Emby 的队列由服务端给出,其余来源按文件名里的编号
+  (`SxxExx`、`E01`、纯数字)分组。上/下一集按钮只在真的算得出队列时才出现
 - 音乐播放器,带波形显示
+
+### 媒体服务器(Jellyfin / Emby)
+
+一份实现通吃两家——Emby 正是 Jellyfin 当年 fork 的上游,那批端点同源同名——而且
+**零新增依赖**:OkHttp 本来就在,`org.json` 是 Android 运行期自带的。
+
+- 树按**服务器上实际存在的媒体库**组织,用你自己起的库名,而不是写死的几个类型。
+  电影库点进去直接是所有电影,剧集库是所有剧(只有多季时才分季),音乐库是
+  专辑 / 专辑艺术家 / 艺术家 / 文件夹四个分类。
+- **播放进度双向同步。**「继续观看」就是服务器上那份,不是本机另存的一份;而且保持
+  服务端给的顺序,不套用你在文件浏览里选的排序。
+- **海报、标签、歌词、外挂字幕全部走 API。** 这些信息若去读媒体文件本身,在网络上
+  每首歌要花几秒。「继续观看」用横版剧照,媒体库用竖版海报并按原始比例显示。
+- **搜索走服务端的索引**,所以刮削成中文名的片子,用原名照样搜得到。
+- **设计上只读**:服务端没有上传 API,而 `DELETE /Items/{id}` 删的是媒体库里的真实文件。
 
 ### 终端
 
@@ -140,7 +188,7 @@
 - **特权终端**(root / Shizuku)始终是单独一项、身份写在文案里——绝不把普通 shell
   悄悄换成 root
 - 字体与配色可导入(任何 termux `colors.properties` 都能用);双指缩放字号,
-  行列变化即同步远端 PTY
+  行列变化即同步远端 PTY;附加键条上的方向键长按可连发
 - **命令快捷方式**:给 SFTP 目录或服务器挂一条命令,在终端里跑或后台静默执行,
   可固定到桌面
 
@@ -160,6 +208,20 @@
 或另一台 Twig 都能直接挂载。**默认只读**,可选 Basic 认证,前台服务 + WiFi 锁,
 UDP 探测让另一台 Twig 扫一下就能把它存成连接。
 
+### 安全
+
+- 密码、API key、token、私钥口令**加密落盘**:一把随机 256 位 DEK 加密这些字段,DEK 外面
+  套硬件 Keystore 密钥(默认,无感)或 scrypt(用户设的主密码)。开关主密码只换「谁包住
+  DEK」,字段密文一个字节都不重写。零新增依赖:scrypt 用的是包里早就有的 Bouncy Castle。
+- 主密码是**程序锁,六个入口全守**——主界面、「用 Twig 打开」、「复制到此」、文件选择器、
+  终端快捷方式、远程命令快捷方式。漏掉一个,主密码就只锁了正门。菜单里的「锁定」只丢掉
+  内存中的密钥,音乐照放、终端还在、共享继续。
+- **指纹解锁**走平台 `BiometricPrompt`(不引 androidx.biometric,APK 增量为 0),与主密码
+  并存;主密码始终是根钥匙。
+- **配置备份**(`.twigbak`):连接与设置导出成 JSON,可选用单独的导出密码加密;保存位置走
+  Twig 自己的目录选择器——所以能直接存到 SMB / WebDAV / S3。导入是合并不是替换,
+  token、host key 与 DEK 一律不导出。
+
 ---
 
 ## 模块
@@ -168,8 +230,9 @@ UDP 探测让另一台 Twig 扫一下就能把它存成连接。
 |---|---|
 | `:core-fs` | 纯 JVM:`XFile` / `FileSystem` / `FsRegistry` / `CopyEngine` |
 | `:fs-local` | `LocalFileSystem` + `priv/`:root/Shizuku 共用的特权 shell 回落 |
-| `:fs-archive` | `ArchiveFileSystem` + zip(读写、加密)/ 7z / RAR,以及 `ArchiveWriter` |
-| `:fs-network` | `FtpFileSystem` / `SftpFileSystem` / `WebDavFileSystem` / `S3FileSystem` |
+| `:fs-archive` | `ArchiveFileSystem` + zip(读写、加密)/ 7z / tar / gz·xz·bz2·zst 单文件压缩,以及 `ArchiveWriter` |
+| `:fs-archive-rar` | `RarFileSystem`(RAR4 + RAR5)——单独成模块纯粹是为了让 `libre` 版能整块去掉 |
+| `:fs-network` | `FtpFileSystem` / `SftpFileSystem` / `WebDavFileSystem` / `S3FileSystem` / `JellyfinFileSystem` |
 | `:fs-smb` | `SmbFileSystem`——libsmb2,经 NDK/JNI |
 | `:fs-restic` | restic 仓库读取器(纯 Kotlin) |
 | `:fs-zstd` | `NativeZstd`——zstd,经 JNI |
@@ -182,9 +245,15 @@ UDP 探测让另一台 Twig 扫一下就能把它存成连接。
 
 ```bash
 ./gradlew :app:assembleDebug      # 可安装的 debug APK
-./gradlew :app:assembleRelease    # R8 优化的 release
+./gradlew :app:assembleFullRelease     # R8 优化的 release(带 RAR)
+./gradlew :app:assembleLibreRelease    # F-Droid 版(无 RAR,100% 自由软件)
 ./gradlew :app:bundleRelease      # 上架用 AAB(按设备拆分,下载更小)
 ```
+
+release 只有在仓库根存在 `keystore.properties` 时才签名(内含 `storeFile` /
+`storePassword` / `keyAlias` / `keyPassword`)。没有它时产出的是**无签名包**
+`app-<flavor>-release-unsigned.apk`,**不会**回落到公开的 Android debug key。
+自己签,或者本地测试直接用 debug 包。
 
 测试:
 
@@ -236,8 +305,9 @@ Twig 采用 **GPL-3.0-only**,见 [LICENSE](LICENSE)。
 I have read the CLA (CLA.md) and I agree to its terms.
 ```
 
-实现决策及其来龙去脉——包括一长串代价高昂的排错记录——记在 [CLAUDE.md](CLAUDE.md)。
-改终端、缩略图、TS 解复用这类子系统之前,先读对应那节。
+实现决策记在 [CLAUDE.md](CLAUDE.md),那一长串代价高昂的排错记录按领域拆在
+[docs/lessons/](docs/lessons/) 下,一个领域一个文件。改终端、缩略图、TS 解复用这类
+子系统之前,先读对应那份。
 
 ---
 
@@ -245,7 +315,8 @@ I have read the CLA (CLA.md) and I agree to its terms.
 
 - `:fs-cloud` —— Google Drive / Dropbox / OneDrive,走纯 REST,不用各家 SDK
 - 全局搜索
-- 体积:Bouncy Castle 瘦身(Conscrypt-only,需真机验证)
+- 体积:干掉 Bouncy Castle 那 1.2 MB 的 `picnic` 查找表,或者整个换成 Conscrypt
+  ——两条路都需要真机验证 SSH 握手仍然找得到 X25519
 
 ---
 
@@ -287,5 +358,23 @@ I have read the CLA (CLA.md) and I agree to its terms.
 - **1.01+** —— 往已有 zip 里加文件改成真追加(100MB 包实测 1875ms → 1ms);展开压缩包
   等于选中包根;**S3 兼容对象存储**(手写 SigV4);root / Shizuku 特权访问,含基于
   `bindUserService`、在特权侧分配 PTY 的特权终端。
+
+- **1.1** —— **Jellyfin 与 Emby** 成为一等来源:树按服务器自己的媒体库组织,播放进度
+  双向同步,海报/标签/歌词/字幕改从 API 拿而不是读媒体文件,搜索走服务端索引,剧集
+  自动连播。零新增依赖。连播对普通来源也可用(按文件名里的编号分组);另外只读来源上
+  的写操作入口现在直接不出现,而不是点下去才报错。
+- **1.2** —— **目录对比同步**:增量或镜像,方向写死左右两项而不跟着活动侧,目标侧更新的
+  那些单独确认。**RAR5** 支持(junrar 升到 8.1.0,顺带修掉「密码错了却说对」);拆出
+  `libre` / `full` 两个 flavor,junrar 单独成模块移出 libre,F-Droid 版 100% 自由软件。
+  导航栏底色跟着当前页面走,底部不再是一道黑边。
+- **1.3** —— **安全**:保存的密码经两层 Keystore 密钥加密落盘;主密码升级为程序锁,六个
+  入口全守;指纹解锁;`.twigbak` 配置备份走 Twig 自己的目录选择器(所以能直接存到
+  SMB / WebDAV)。**SD 卡与 U 盘**在树根上直接给入口。行高与文字大小拆成两档独立偏好,
+  一次调好的项目从菜单收进设置页;自适应图标 + Android 13 主题图标;应用图标长按菜单
+  新增「终端」。
+- **1.4** —— 别的应用授权的文档树按**那个应用**命名并用它的图标,不再显示一长串 document
+  id;授权也能从侧栏交还。
+- **1.5** —— 任意根行都能**跳转到路径**;收藏与保存的对比可以指到文档树里面;终端附加键条
+  打磨(方向键长按连发、整条键条共用一个字号),息屏再亮不再丢掉模拟器尺寸。
 
 </details>

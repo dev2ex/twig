@@ -1,20 +1,24 @@
 package com.twig.core
 
 /**
- * 全局文件系统注册表:scheme -> FileSystem。
+ * Global file system registry: scheme -> FileSystem.
  *
- * 各模块(fs-local / fs-archive / fs-network ...)在初始化时把自己的实现注册进来,
- * UI 拿到一个 [XFile] 后通过 [of] 找到对应的 FileSystem 来操作它。
- * 这样 :app 不需要直接依赖具体实现,实现了"按需挂载、按需打包"。
+ * Each module (fs-local / fs-archive / fs-network ...) registers its implementation
+ * during initialization; once the UI receives an [XFile], it uses [of] to find the
+ * matching FileSystem to operate on it. This keeps `:app` from depending directly
+ * on any concrete implementation, enabling "mount on demand, package on demand".
  */
 object FsRegistry {
 
     /**
-     * ★ 必须线程安全:注册发生在 IO 线程(展开服务器节点、挂载 restic、识别 git 仓库
-     * 都在 `Dispatchers.IO` 上跑,两个面板还能同时展开不同服务器),而 [of] 的读取
-     * 发生在主线程(建树时逐行取 FileSystem)。裸 HashMap 在这里是真实的数据竞争。
-     * 用 synchronizedMap 而不是 ConcurrentHashMap:要保住 LinkedHashMap 的插入顺序,
-     * [all] 的语义是"按注册先后列出来源"。
+     * ★ Must be thread-safe: registration happens on IO threads (expanding server
+     * nodes, mounting restic, identifying git repositories all run on
+     * `Dispatchers.IO`, and both panes can expand different servers simultaneously),
+     * while reads from [of] happen on the main thread (taking FileSystem row by row
+     * while building the tree). A bare HashMap here is a real data race.
+     * Use synchronizedMap rather than ConcurrentHashMap: we must preserve
+     * LinkedHashMap's insertion order, since [all] means "list sources in
+     * registration order".
      */
     private val systems: MutableMap<String, FileSystem> =
         java.util.Collections.synchronizedMap(LinkedHashMap())
@@ -24,12 +28,16 @@ object FsRegistry {
     }
 
     /**
-     * 注销一个 scheme 并返回被移除的实现(没有则 null);调用方负责断开连接。
+     * Unregister a scheme and return the removed implementation (null if none);
+     * the caller is responsible for closing the connection.
      *
-     * 用在"改了服务器配置,下次展开要用新配置重连"这条路上:scheme 是按连接标签
-     * 确定性生成的,只改密码时标签不变、scheme 也不变,不注销的话
-     * [Connections.ensure] 那句"已注册就复用"会一直把**旧配置建的**实例还回去,
-     * 表现为改了密码/主机密钥却不生效,直到重启应用。
+     * Used on the path "server config changed, the next expansion must reconnect
+     * with the new config": the scheme is derived deterministically from the
+     * connection label, so changing only the password leaves both the label and
+     * scheme unchanged. Without unregistering, the "if already registered, reuse"
+     * line in [Connections.ensure] keeps handing back the instance built with the
+     * **old** config, which surfaces as "I changed the password / host key but
+     * it has no effect until I restart the app".
      */
     fun unregister(scheme: String): FileSystem? = systems.remove(scheme)
 
@@ -38,6 +46,6 @@ object FsRegistry {
 
     fun of(file: XFile): FileSystem = of(file.scheme)
 
-    /** 所有已注册的文件系统,用于侧栏列出可访问的来源。 */
+    /** All registered file systems; used by the sidebar to list accessible sources. */
     fun all(): List<FileSystem> = synchronized(systems) { systems.values.toList() }
 }

@@ -1,4 +1,4 @@
-<!-- 键盘 + 向下箭头:键盘正弹着时工具栏那颗按钮的「收起」态 -->
+<!-- Keyboard + down arrow: the "collapse" state of the toolbar button while the keyboard is raised -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

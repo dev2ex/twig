@@ -3,25 +3,55 @@ package com.twig.app
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 
-/** 轻量偏好存储(SharedPreferences)。 */
+/** Lightweight preferences (SharedPreferences). */
 object Prefs {
     private const val FILE = "twig_prefs"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_DENSITY = "row_density"
+    private const val KEY_TEXT_SIZE = "row_text_size"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    /** 行高密度:0=紧凑(默认) 1=正常 2=宽松。 */
+    /** Row height density: 0=compact (default) 1=normal 2=roomy. Only affects row
+     * height / icon size; font size is controlled by [textSize]. */
     fun density(ctx: Context): Int = sp(ctx).getInt(KEY_DENSITY, 0)
 
+    /**
+     * ★ Before changing row height, **pin [textSize] to its current value**: when it
+     * was never set it tracks row height (so the split doesn't shift the look), and
+     * without this pin adjusting row height would bump the font one notch too — but
+     * the whole point of the split is that they're independent. The value pinned is
+     * the row height level from *before* the change, so the user sees no visible jump.
+     */
     fun setDensity(ctx: Context, level: Int) {
-        sp(ctx).edit().putInt(KEY_DENSITY, level.coerceIn(0, 2)).apply()
+        val e = sp(ctx).edit()
+        if (!sp(ctx).contains(KEY_TEXT_SIZE)) e.putInt(KEY_TEXT_SIZE, density(ctx))
+        e.putInt(KEY_DENSITY, level.coerceIn(0, 2)).apply()
     }
 
     /**
-     * 目录对比的上次选项(JSON,编码见 `CompareSession.optionsToJson`);空 = 用默认。
-     * 整块存 JSON 而不是拆成一堆键:这组选项只被对比页整体读写,拆开只会多出一堆
-     * 要同步维护的键名,而且加一项就得改三处。
+     * List font size: 0=small 1=medium 2=large.
+     *
+     * ★ When it was never set it **tracks [density]** — they used to be the same
+     * setting (changing row height changed both), and giving font size a hardcoded
+     * default on the split would make upgrading users jump one notch on the spot
+     * (someone who picked "roomy" would end up with smaller text). But this only
+     * applies to the **default lookup**: once the user touches either one (sets font
+     * size explicitly, or gets pinned by [setDensity] while changing row height),
+     * they are fully independent — **changing row height never changes font size**.
+     */
+    fun textSize(ctx: Context): Int = sp(ctx).getInt(KEY_TEXT_SIZE, density(ctx))
+
+    fun setTextSize(ctx: Context, level: Int) {
+        sp(ctx).edit().putInt(KEY_TEXT_SIZE, level.coerceIn(0, 2)).apply()
+    }
+
+    /**
+     * Last options for directory compare (JSON, encoding in `CompareSession.optionsToJson`);
+     * empty = use defaults. Stored as a single JSON blob rather than split across
+     * keys: these options are only read/written as a unit by the compare page —
+     * splitting would just produce a bunch of keys to keep in sync, and adding an
+     * option would mean changing three places.
      */
     fun compareOptions(ctx: Context): String = sp(ctx).getString("compare_options", "") ?: ""
 
@@ -35,82 +65,97 @@ object Prefs {
     private const val KEY_VIDEO_SCALE = "video_scale_mode"
     private const val KEY_TERM_KEEP_AWAKE = "terminal_keep_awake"
 
-    /** 终端页屏幕常亮,默认关(避免无谓耗电)。 */
+    /** Keep screen on for the terminal page, default off (avoid pointless battery drain). */
     fun terminalKeepAwake(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_TERM_KEEP_AWAKE, false)
 
     fun setTerminalKeepAwake(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean(KEY_TERM_KEEP_AWAKE, on).apply()
     }
 
-    /** 终端字号(px),双指缩放调整后记住;0 = 没设过,用屏幕密度算默认值。 */
+    /** Terminal font size (px), remembered after pinch-zoom; 0 = never set, fall back to a screen-density-derived default. */
     fun terminalTextSize(ctx: Context): Int = sp(ctx).getInt("terminal_text_size", 0)
 
     fun setTerminalTextSize(ctx: Context, px: Int) {
         sp(ctx).edit().putInt("terminal_text_size", px).apply()
     }
 
-    /** 终端自定义字体文件路径(应用私有目录内);空 = 系统等宽。见 TerminalFont。 */
+    /** Custom terminal font path (inside app-private dir); empty = system monospace. See TerminalFont. */
     fun terminalFont(ctx: Context): String = sp(ctx).getString("terminal_font", "") ?: ""
 
     fun setTerminalFont(ctx: Context, path: String) {
         sp(ctx).edit().putString("terminal_font", path).apply()
     }
 
-    /** 终端配色方案文件路径(应用私有目录内);空 = termux 默认。见 TermColors。 */
+    /** Terminal color scheme path (inside app-private dir); empty = termux default. See TermColors. */
     fun terminalColors(ctx: Context): String = sp(ctx).getString("terminal_colors", "") ?: ""
 
     fun setTerminalColors(ctx: Context, path: String) {
         sp(ctx).edit().putString("terminal_colors", path).apply()
     }
 
-    /** 文本查看器自动换行,默认开。 */
+    /** Text viewer's auto-wrap, default on. */
     fun viewerWrap(ctx: Context): Boolean = sp(ctx).getBoolean("viewer_wrap", true)
 
     fun setViewerWrap(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("viewer_wrap", on).apply()
     }
 
-    /** 文本查看器字号(sp),双指缩放调整后记住,默认 13(与布局初始值一致)。 */
+    /** Text viewer line-number gutter, default on. */
+    fun viewerLineNumbers(ctx: Context): Boolean = sp(ctx).getBoolean("viewer_line_numbers", true)
+
+    fun setViewerLineNumbers(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("viewer_line_numbers", on).apply()
+    }
+
+    /** Text viewer font size (sp), remembered after pinch-zoom; default 13 (matches the layout initial value). */
     fun viewerTextSize(ctx: Context): Float = sp(ctx).getFloat("viewer_text_size", 13f)
 
     fun setViewerTextSize(ctx: Context, size: Float) {
         sp(ctx).edit().putFloat("viewer_text_size", size).apply()
     }
 
-    /** 十六进制查看器字号(sp),默认 12——比文本小一号,一屏能多摆几列字节。 */
+    /** PDF reader: one page per screen instead of continuous scrolling. Default off — continuous is the reading default. */
+    fun pdfPageMode(ctx: Context): Boolean = sp(ctx).getBoolean("pdf_page_mode", false)
+
+    fun setPdfPageMode(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("pdf_page_mode", on).apply()
+    }
+
+    /** Hex viewer font size (sp), default 12 — one notch smaller than text, fits more byte columns per screen. */
     fun hexTextSize(ctx: Context): Float = sp(ctx).getFloat("hex_text_size", 12f)
 
     fun setHexTextSize(ctx: Context, size: Float) {
         sp(ctx).edit().putFloat("hex_text_size", size).apply()
     }
 
-    /** 网络音乐磁盘缓存保留的最近首数(播放/波形/seek 共用同一份下载,不重复下),默认 5。 */
+    /** Most-recent N tracks kept in the network music disk cache (playback/waveform/seek
+     * share one download, no duplicates), default 5. */
     fun audioCacheCount(ctx: Context): Int = sp(ctx).getInt("audio_cache_count", 5)
 
     fun setAudioCacheCount(ctx: Context, n: Int) {
         sp(ctx).edit().putInt("audio_cache_count", n.coerceIn(1, 20)).apply()
     }
 
-    /** 代码查看器配色主题(CodeHighlighter.THEMES 下标),默认 0 = Monokai。 */
+    /** Code viewer color theme (CodeHighlighter.THEMES index), default 0 = Monokai. */
     fun codeTheme(ctx: Context): Int = sp(ctx).getInt("code_theme", 0)
 
     fun setCodeTheme(ctx: Context, i: Int) {
         sp(ctx).edit().putInt("code_theme", i).apply()
     }
 
-    /** 文本对比用上下两栏(默认关 = 左右并排 / 竖屏单侧切换)。 */
+    /** Show diff as top/bottom panels instead of side-by-side (default off = side-by-side, single panel on portrait). */
     fun diffStacked(ctx: Context): Boolean = sp(ctx).getBoolean("diff_stacked", false)
 
     fun setDiffStacked(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("diff_stacked", on).apply()
     }
 
-    // 终端 window-change(resize)能力,按服务器 scheme 记忆(探测结果)
+    // Terminal window-change (resize) capability, remembered per server scheme (probe result)
     const val RESIZE_UNKNOWN = 0
     const val RESIZE_OK = 1
     const val RESIZE_BROKEN = 2
 
-    /** 该服务器对 window-change 的容忍度:未探测 / 支持 / 一发就断(永不再发)。 */
+    /** This server's tolerance for window-change: not yet probed / supported / one send disconnects (don't send again). */
     fun termResizeCap(ctx: Context, scheme: String): Int =
         sp(ctx).getInt("term_resize_cap_$scheme", RESIZE_UNKNOWN)
 
@@ -119,22 +164,22 @@ object Prefs {
     }
 
 
-    /** 图片按屏幕方向旋转适配(横图在竖屏时旋转显示),默认开。 */
-    /** 视频画面模式:0=最佳适配 1=裁切填满 2=拉伸填充。 */
+    /** Rotate images to match screen orientation (landscape photo rotates in portrait), default on. */
+    /** Video display mode: 0=best fit 1=crop to fill 2=stretch to fill. */
     fun videoScaleMode(ctx: Context): Int = sp(ctx).getInt(KEY_VIDEO_SCALE, 0)
 
     fun setVideoScaleMode(ctx: Context, mode: Int) {
         sp(ctx).edit().putInt(KEY_VIDEO_SCALE, mode).apply()
     }
 
-    /** 按住画面临时加速的倍数,存百分比(200 = 2×),默认 2×。 */
+    /** Temporary speed-up multiplier when holding the screen, stored as percent (200 = 2×), default 2×. */
     fun longPressSpeed(ctx: Context): Float = sp(ctx).getInt("longpress_speed", 200) / 100f
 
     fun setLongPressSpeed(ctx: Context, percent: Int) {
         sp(ctx).edit().putInt("longpress_speed", percent).apply()
     }
 
-    /** 记住视频播放进度、下次从上次的位置接着播,默认开(记录见 [PlaybackStore])。 */
+    /** Remember video playback position and resume next time, default on (records see [PlaybackStore]). */
     fun resumePlayback(ctx: Context): Boolean = sp(ctx).getBoolean("resume_playback", true)
 
     fun setResumePlayback(ctx: Context, on: Boolean) {
@@ -148,7 +193,7 @@ object Prefs {
     }
 
 
-    /** 全屏(隐藏系统状态栏),默认关。 */
+    /** Fullscreen (hide system status bar), default off. */
     fun fullscreen(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_FULLSCREEN, false)
 
     fun setFullscreen(ctx: Context, on: Boolean) {
@@ -156,21 +201,21 @@ object Prefs {
     }
 
 
-    /** 是否记住上次打开的位置(默认开)。 */
+    /** Whether to remember the last opened location (default on). */
     fun rememberLocation(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_REMEMBER, true)
 
     fun setRememberLocation(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean(KEY_REMEMBER, on).apply()
     }
 
-    /** 上次的活动面板(0=左,1=右),随"记住上次位置"一起生效。 */
+    /** Last active pane (0=left, 1=right); takes effect together with "remember location". */
     fun activePane(ctx: Context): Int = sp(ctx).getInt("active_pane", 0)
 
     fun setActivePane(ctx: Context, i: Int) {
         sp(ctx).edit().putInt("active_pane", i).apply()
     }
 
-    /** 保存某面板的上次位置(展开的本地目录 + 当前目录)。 */
+    /** Persists a pane's last location (expanded local directories + current directory). */
     fun saveLocation(ctx: Context, pane: Int, expandedPaths: List<String>, currentPath: String?) {
         sp(ctx).edit()
             .putString("loc_exp_$pane", expandedPaths.joinToString("\n"))
@@ -184,71 +229,98 @@ object Prefs {
     fun locationCurrent(ctx: Context, pane: Int): String? =
         sp(ctx).getString("loc_cur_$pane", null)?.takeIf { it.isNotEmpty() }
 
-    // restic 备份密码(按仓库路径保存,用户可选)
-    private fun resticSp(ctx: Context) = ctx.getSharedPreferences("twig_restic_pw", Context.MODE_PRIVATE)
+    // restic backup passwords (keyed by repo path, user optional). Values are
+    // encrypted on disk with Secrets; see ConnectionStore.
+    const val FILE_RESTIC_PW = "twig_restic_pw"
+    private fun resticSp(ctx: Context) = ctx.getSharedPreferences(FILE_RESTIC_PW, Context.MODE_PRIVATE)
 
     fun resticPassword(ctx: Context, repoPath: String): String? =
-        resticSp(ctx).getString(repoPath, null)
+        resticSp(ctx).getString(repoPath, null)?.let { com.twig.app.secure.Secrets.dec(ctx, it) }
 
     fun setResticPassword(ctx: Context, repoPath: String, pw: String?) {
-        resticSp(ctx).edit().apply { if (pw == null) remove(repoPath) else putString(repoPath, pw) }.apply()
+        resticSp(ctx).edit().apply {
+            if (pw == null) remove(repoPath) else putString(repoPath, com.twig.app.secure.Secrets.enc(ctx, pw))
+        }.apply()
     }
 
-    // 加密压缩包的密码(按归档路径保存,用户可选;与 restic 那套同样的取舍)
-    private fun archiveSp(ctx: Context) = ctx.getSharedPreferences("twig_archive_pw", Context.MODE_PRIVATE)
+    /** All restic passwords (plaintext), for backup export. */
+    fun resticPasswords(ctx: Context): Map<String, String> =
+        resticSp(ctx).all.keys.mapNotNull { k -> resticPassword(ctx, k)?.let { k to it } }.toMap()
+
+    // Encrypted archive passwords (keyed by archive path, user optional; same trade-off as the restic ones).
+    const val FILE_ARCHIVE_PW = "twig_archive_pw"
+    private fun archiveSp(ctx: Context) = ctx.getSharedPreferences(FILE_ARCHIVE_PW, Context.MODE_PRIVATE)
 
     fun archivePassword(ctx: Context, archivePath: String): String? =
-        archiveSp(ctx).getString(archivePath, null)
+        archiveSp(ctx).getString(archivePath, null)?.let { com.twig.app.secure.Secrets.dec(ctx, it) }
 
     fun setArchivePassword(ctx: Context, archivePath: String, pw: String?) {
-        archiveSp(ctx).edit().apply { if (pw == null) remove(archivePath) else putString(archivePath, pw) }.apply()
+        archiveSp(ctx).edit().apply {
+            if (pw == null) remove(archivePath) else putString(archivePath, com.twig.app.secure.Secrets.enc(ctx, pw))
+        }.apply()
     }
 
-    // ---- 缩略图 ----
+    /** All archive passwords (plaintext), for backup export. */
+    fun archivePasswords(ctx: Context): Map<String, String> =
+        archiveSp(ctx).all.keys.mapNotNull { k -> archivePassword(ctx, k)?.let { k to it } }.toMap()
 
-    /** 缩略图总开关,默认关;关闭时列表与现状完全一致。 */
+    // ---- Thumbnails ----
+
+    /** Thumbnail master switch, default off; when off, the list looks exactly like the pre-thumbnail era. */
+    /**
+     * Auto-play the next episode when one finishes. Default **on** — marathon
+     * watching is the default expectation for series; users who don't want it turn
+     * it off once, but defaulting off makes the feature invisible to most people.
+     */
+    fun autoNextEpisode(ctx: Context): Boolean = sp(ctx).getBoolean("auto_next_ep", true)
+
+    fun setAutoNextEpisode(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("auto_next_ep", on).apply()
+    }
+
     fun thumbs(ctx: Context): Boolean = sp(ctx).getBoolean("thumbs_on", false)
 
     fun setThumbs(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("thumbs_on", on).apply()
     }
 
-    /** 网格模式:0=关闭(树内大图标) 1=仅媒体文件 2=全部文件。 */
+    /** Grid mode: 0=off (big icons in tree) 1=media files only 2=all files. */
     fun thumbsGrid(ctx: Context): Int = sp(ctx).getInt("thumbs_grid", 0)
 
     fun setThumbsGrid(ctx: Context, mode: Int) {
         sp(ctx).edit().putInt("thumbs_grid", mode.coerceIn(0, 2)).apply()
     }
 
-    /** 网格里是否显示文件名,默认显示。 */
+    /** Show filenames in grid mode, default on. */
     fun thumbsGridNames(ctx: Context): Boolean = sp(ctx).getBoolean("thumbs_grid_names", true)
 
     fun setThumbsGridNames(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("thumbs_grid_names", on).apply()
     }
 
-    /** 是否对网络文件生成缩略图(整文件下载解码),默认关;关闭时仍读 EXIF 内嵌图。 */
+    /** Generate thumbnails for network files (download full file, decode), default off;
+     * when off, still reads EXIF-embedded thumbnails. */
     fun thumbsNetwork(ctx: Context): Boolean = sp(ctx).getBoolean("thumbs_network", false)
 
     fun setThumbsNetwork(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("thumbs_network", on).apply()
     }
 
-    /** 优先使用文件内置(EXIF)缩略图,默认关(内置图小,放大显示较糊)。 */
+    /** Prefer embedded (EXIF) thumbnails, default off (embedded ones are small and look blurry when upscaled). */
     fun thumbsEmbedded(ctx: Context): Boolean = sp(ctx).getBoolean("thumbs_embedded", false)
 
     fun setThumbsEmbedded(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("thumbs_embedded", on).apply()
     }
 
-    /** 显示隐藏文件(点开头的文件与目录),默认关。 */
+    /** Show hidden files (dotfiles and dot-directories), default off. */
     fun showHidden(ctx: Context): Boolean = sp(ctx).getBoolean("show_hidden", false)
 
     fun setShowHidden(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("show_hidden", on).apply()
     }
 
-    /** 列表行之间画淡分割线,默认关。 */
+    /** Draw a subtle divider between list rows, default off. */
     fun rowDivider(ctx: Context): Boolean = sp(ctx).getBoolean("row_divider", false)
 
     fun setRowDivider(ctx: Context, on: Boolean) {
@@ -256,9 +328,37 @@ object Prefs {
     }
 
     /**
-     * 特权访问模式:[Privileged.OFF] / [Privileged.ROOT] / [Privileged.SHIZUKU],默认关。
-     * 记住选择是为了下次启动自动接上,**不代表授权还在** —— Magisk 可以"仅一次"授权,
-     * Shizuku 服务重启后也要重新握手,所以恢复时一律重新连一遍、失败就静默留在关闭态。
+     * Text decoding priority: when the bytes are not Unicode, try each in this order
+     * (see [TextCodec]). Default is GB18030 only — a strict superset of GBK, so it
+     * still matches the old scattered "UTF-8 fails, fall back to GBK" behavior.
+     *
+     * ★ Empty list (user cleared all candidates) and "never set" are two different
+     * things: the first stores an empty string, the second has no key at all; only
+     * the second gets the default. Writing `getString(key, "GB18030")` would make it
+     * pop back up after a clear-then-reboot.
+     *
+     * ★ `GBK` is **rewritten to GB18030 on read** rather than dropped: it was in the
+     * candidate list until 0.98.0, so it sits in existing installs' preferences, and
+     * the picker only keeps names that are still candidates — silently filtering it
+     * out would leave those users with an empty list and no Chinese decoding at all.
+     */
+    fun textCharsets(ctx: Context): List<String> {
+        val raw = sp(ctx).getString("text_charsets", null) ?: return listOf("GB18030")
+        return raw.split(',').filter { it.isNotEmpty() }
+            .map { if (it == "GBK") "GB18030" else it }
+            .distinct()
+    }
+
+    fun setTextCharsets(ctx: Context, names: List<String>) {
+        sp(ctx).edit().putString("text_charsets", names.joinToString(",")).apply()
+    }
+
+    /**
+     * Privileged access mode: [Privileged.OFF] / [Privileged.ROOT] / [Privileged.SHIZUKU],
+     * default off. Remembering the choice is so the next launch auto-connects —
+     * **not** a guarantee that authorization is still valid: Magisk can be "one-shot",
+     * and Shizuku re-handshakes after service restart, so restoration always retries
+     * the connect and silently falls back to OFF on failure.
      */
     fun privilegedMode(ctx: Context): Int = sp(ctx).getInt("privileged_mode", Privileged.OFF)
 
@@ -266,57 +366,74 @@ object Prefs {
         sp(ctx).edit().putInt("privileged_mode", mode).apply()
     }
 
-    /** 影响主界面布局的偏好签名;从设置页返回时若变化,MainActivity 重建生效。 */
+    /** Signature of preferences that affect main UI layout; when it changes after
+     * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
-        density(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), showHidden(ctx),
-        rowDivider(ctx),
+        density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx),
+        showHidden(ctx), rowDivider(ctx),
     ).joinToString(",")
 
-    /** 上次活动的播放队列 id(NOW 或某个命名播放列表),供冷启动恢复播放定位到正确列表。 */
+    /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */
     fun lastQueueId(ctx: Context): String? = sp(ctx).getString("last_queue_id", null)?.takeIf { it.isNotEmpty() }
 
     fun setLastQueueId(ctx: Context, id: String) {
         sp(ctx).edit().putString("last_queue_id", id).apply()
     }
 
-    // ---- 幻灯片 ----
+    // ---- Slideshow ----
 
-    /** 幻灯片自动播放间隔(毫秒),默认 3000。 */
+    /** Slideshow autoplay interval (ms), default 3000. */
     fun slideshowIntervalMs(ctx: Context): Long = sp(ctx).getLong("slideshow_interval_ms", 3000L)
 
     fun setSlideshowIntervalMs(ctx: Context, ms: Long) {
         sp(ctx).edit().putLong("slideshow_interval_ms", ms).apply()
     }
 
-    /** 从目录菜单进入幻灯片时是否默认随机播放,默认关(播放中可随时用按钮切换)。 */
+    /** Default to shuffle when entering slideshow from a directory menu, default off (toggleable mid-playback). */
     fun slideshowShuffle(ctx: Context): Boolean = sp(ctx).getBoolean("slideshow_shuffle", false)
 
     fun setSlideshowShuffle(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("slideshow_shuffle", on).apply()
     }
 
-    /** 顺序播完最后一张后是否回到开头继续,默认开;关闭则停在最后一张。 */
+    /** After playing through in order, loop back to the start, default on; off = stop on the last slide. */
     fun slideshowLoop(ctx: Context): Boolean = sp(ctx).getBoolean("slideshow_loop", true)
 
     fun setSlideshowLoop(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("slideshow_loop", on).apply()
     }
 
-    /** 自动播放期间屏幕是否常亮,默认开。 */
+    /** Keep screen on during autoplay, default on. */
     fun slideshowKeepAwake(ctx: Context): Boolean = sp(ctx).getBoolean("slideshow_keep_awake", true)
 
     fun setSlideshowKeepAwake(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("slideshow_keep_awake", on).apply()
     }
 
-    /** 递归扫描图片数量上限(防超大目录树无限扫描),默认 3000。 */
+    /** Cap on images found by recursive scan (prevents unbounded scans of huge trees), default 3000. */
     fun slideshowMaxImages(ctx: Context): Int = sp(ctx).getInt("slideshow_max_images", 3000)
 
     fun setSlideshowMaxImages(ctx: Context, n: Int) {
         sp(ctx).edit().putInt("slideshow_max_images", n).apply()
     }
 
-    /** 主题模式,取值为 AppCompatDelegate.MODE_NIGHT_*;默认跟随系统。 */
+    /**
+     * Stable device identifier for this device, generated on first use and immutable after.
+     *
+     * Jellyfin / Emby use it to tell "which device is playing" — if it changes
+     * every connection, the server accumulates a long list of one-shot device
+     * records, and "now playing" sessions can't reconnect to the previous one.
+     * Not using `ANDROID_ID`: that's a permission-gated privacy identifier, and
+     * here we just need a random string we can recognize ourselves.
+     */
+    fun deviceId(ctx: Context): String {
+        sp(ctx).getString("device_id", null)?.let { if (it.isNotEmpty()) return it }
+        val id = java.util.UUID.randomUUID().toString()
+        sp(ctx).edit().putString("device_id", id).apply()
+        return id
+    }
+
+    /** Theme mode, value is AppCompatDelegate.MODE_NIGHT_*; default follow system. */
     fun themeMode(ctx: Context): Int =
         sp(ctx).getInt(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 

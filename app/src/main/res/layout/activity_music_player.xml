@@ -5,12 +5,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 主内容 -->
+    <!-- Main content -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- 毛玻璃背景:全屏铺满(含状态栏区域,沉浸式) -->
+        <!-- Frosted glass background: full-screen (including the status bar area, immersive) -->
         <ImageView
             android:id="@+id/bgBlur"
             android:layout_width="match_parent"
@@ -24,7 +24,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <!-- 顶行 -->
+            <!-- Top row -->
             <LinearLayout
                 android:id="@+id/topBar"
                 android:layout_width="match_parent"
@@ -57,7 +57,7 @@
                     android:contentDescription="@string/music_info" />
             </LinearLayout>
 
-            <!-- 封面 / 歌词(左右滑动切歌) -->
+            <!-- Cover / lyrics (swipe left or right to change track) -->
             <FrameLayout
                 android:id="@+id/centerArea"
                 android:layout_width="match_parent"
@@ -65,10 +65,13 @@
                 android:layout_weight="1"
                 android:padding="24dp">
 
-                <!-- fitCenter:原 cover 是什么比例就按比例居中显示,不强制正方形/不裁切拉伸。
-                     圆角由代码侧(MusicPlayerActivity.setRoundedCover)烧进位图本身——只圆
-                     图片实际落地的那个矩形,letterbox 留白部分保持透明,不用 clipToOutline
-                     (那种方式裁的是整个 View 边界,裁在透明留白上圆角肉眼不可见)。 -->
+                <!-- fitCenter: display the cover at its native aspect ratio, centered; no forced
+                     square, no crop / stretch. The rounded corners are baked into the
+                     bitmap itself by code (MusicPlayerActivity.setRoundedCover) — only
+                     the rectangle where the image actually lands is rounded; the
+                     letterbox area stays transparent. clipToOutline is not used (it clips
+                     the entire view bounds, so rounded corners are invisible when they
+                     land on transparent letterbox). -->
                 <ImageView
                     android:id="@+id/cover"
                     android:layout_width="match_parent"
@@ -84,7 +87,7 @@
                     android:visibility="gone" />
             </FrameLayout>
 
-            <!-- 控制区 -->
+            <!-- Controls area -->
             <LinearLayout
                 android:id="@+id/controls"
                 android:layout_width="match_parent"
@@ -105,7 +108,7 @@
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
-                <!-- 艺术家一行:左=加入我的最爱,右=当前播放列表 -->
+                <!-- Artist row: left = add to favorites, right = current playlist -->
                 <LinearLayout
                     android:id="@+id/artistRow"
                     android:layout_width="match_parent"
@@ -157,9 +160,11 @@
                     android:textSize="12sp"
                     android:layout_marginBottom="6dp" />
 
-                <!-- 播放操作栏:shuffle/repeat 固定宽度贴边(与 wave 左右边界对齐,
-                     marginStart/End = -10dp 抵消图标在按钮框内的居中留白);
-                     prev/play/next 用两侧弹性占位挤到中间靠拢,不再整行等分。 -->
+                <!-- Playback action row: shuffle / repeat have a fixed width and sit at the edges
+                     (aligned with the waveform's left and right edges, with marginStart /
+                     End = -10dp to cancel the centering inset around the icon); prev /
+                     play / next are squeezed to the middle by elastic spacers on both
+                     sides instead of equal-share across the row. -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -228,14 +233,14 @@
                         android:contentDescription="@null" />
                 </LinearLayout>
 
-                <!-- 波形进度条(在操作栏下面);细一点 -->
+                <!-- Waveform seek bar (below the action row); slightly thinner -->
                 <com.twig.app.ui.WaveformSeekBar
                     android:id="@+id/wave"
                     android:layout_width="match_parent"
                     android:layout_height="34dp"
                     android:layout_marginTop="6dp" />
 
-                <!-- 最下一行:当前时间 / 曲目序号·总数 / 时长 -->
+                <!-- Bottom row: current time / track index of total / duration -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -272,7 +277,7 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- 抽屉 -->
+    <!-- Drawer -->
     <LinearLayout
         android:id="@+id/drawerContent"
         android:layout_width="290dp"
@@ -297,7 +302,7 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- 退出播放器 -->
+        <!-- Exit player -->
         <LinearLayout
             android:id="@+id/drawerExit"
             android:layout_width="match_parent"

@@ -1,12 +1,12 @@
 package com.termux.terminal
 
 /**
- * 同包桥接:ByteQueue(TerminalSession 的键盘输入队列)是包私有的,
- * 这里以 com.termux.terminal 包名提供一个读取入口给 Twig 的 SSH 终端。
+ * Same-package bridge: ByteQueue (TerminalSession's keyboard input queue) is package-private,
+ * so we use the com.termux.terminal package name to expose a read entry point to Twig's SSH terminal.
  */
 object TermBridge {
 
-    /** 返回该会话"终端→进程"队列的阻塞读函数;队列关闭时返回 <=0。 */
+    /** Returns the blocking reader for this session's "terminal→process" queue; returns <=0 when the queue is closed. */
     fun inputReader(session: TerminalSession): (ByteArray) -> Int {
         val f = TerminalSession::class.java.getDeclaredField("mTerminalToProcessIOQueue")
         f.isAccessible = true

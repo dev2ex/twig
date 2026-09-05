@@ -42,92 +42,127 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * 缩略图引擎:内存 LruCache + 磁盘缓存(cacheDir/thumbs,LRU 上限 100MB)。
+ * Thumbnail engine: in-memory LruCache + on-disk cache (`cacheDir/thumbs`, 100 MB LRU cap).
  *
- * 缓存 key = md5(文件名:大小:修改时间)——与路径无关,同一文件换挂载点/换路径仍
- * 命中同一份缓存,文件变更后自动失效。
+ * Cache key = md5(name:size:mtime) — path-independent, so the same file hit under a
+ * different mount point / path still hits the same cache, and changing the file invalidates it.
  *
- * 生成规则(最大边长 [MAX_EDGE]):
- * - 图片(网络来源):**先无条件试 EXIF 内嵌缩略图**(只读文件头 256KB,流量可忽略,
- *   不受"优先使用内置缩略图"开关限制——那个开关只管本地文件的画质/速度取舍,本地
- *   全量解码本来就很便宜;网络场景先试内嵌图没有任何坏处),命中就直接用,不碰
- *   网络;没有内嵌图(非 jpg、或 jpg 没带)时才看"对网络文件生成缩略图"开关——关闭
- *   则放弃(这是设计使然,不是 bug),开启才整图下载解码。**这是网络缩略图快慢的
- *   关键**:多数相机/手机拍的 jpg 都带内嵌图,先试命中率很高,只看开关直接整图
- *   下载是不少人觉得"很慢"的根源;
- * - 图片(本地/SAF):"优先使用内置缩略图"开启时先试内嵌图,否则直接全量采样解码
- *   (本地开销小,不像网络要考虑流量/延迟);原图本身已在 256 以内则直接用解码
- *   结果,不再另存一份缩略图文件(省磁盘、避免二次有损压缩);
- * - 视频帧:取时长 1/[VIDEO_FRAME_DIVISOR] 处而不是开头([pickRepresentativeFrame])——
- *   开头常是黑场淡入/片头 Logo,同一部剧集集集都长一个样,不够有代表性。取不到才
- *   退回时间 0。本地/SAF 走 `MediaMetadataRetriever.setDataSource(String)`,
- *   retriever 能直接 seek 到任意时间点,不需要额外准备。网络来源同样受"对网络文件
- *   生成"开关控制([genVideoNetworkFrame]):先精确读文件头 [VIDEO_HEAD_CAP](含
- *   ftyp,时间 0 附近的关键帧数据,取不到 1/10 处时的最终兜底)+ moov 本体(容器
- *   元数据,常见在头部"faststart"或尾部"边录边写、最后补 moov"两种布局;精确偏移/
- *   大小由 [scanTopBoxes] 扫描 box 头——只读 8/16 字节,靠 box size 跳转不读内容——
- *   得到,不是固定猜一个尾部大小:长/高码率视频的 moov 可以到十几 MB,猜小了整段
- *   拿不到,扫描失败才退化成猜 `VIDEO_TAIL_FALLBACK_CAP` 兜底)+ 目标时间点的关键帧
- *   数据(由 [findKeyframeOffset] **精确解析 moov 采样表**算出真实字节偏移后精准
- *   下载一个小窗口——早先按 mdat 大小线性估算比例算"大致偏移",实测 VBR 视频
- *   (前后段码率不均匀)偏差可达 9MB 以上,固定窗口根本盖不住,这才是"取 1/10 处
- *   经常失败、退回黑色开头"的真正原因;用 ffprobe 抽真实关键帧位置核对过,采样表
- *   算出的偏移和真实值完全一致)。曾经加过"取到黑帧就换时间点重试"这层,但采样表
- *   精确定位后命中率已经很高,那层重试只剩开销没有收益,故去掉。
- *   MP4 上述精确路径的**前提是 ISO BMFF 的 moov/mdat**(ISO 14496-12);MKV/AVI 等
- *   其它容器解析不出 moov。对它们:若来源支持高效定位读([FileSystem.randomAccessEfficient],
- *   SMB pread / WebDAV Range),就把一个**真随机访问 + 块缓存**的数据源
- *   ([NetVideoDataSource])交给 MMR,让它自己解封装 + seek(内部 MediaExtractor
- *   原生支持 MKV,HEVC 走硬件 MediaCodec),只读它需要的字节;来源无高效定位读
- *   (FTP/SFTP)则只喂头部、基本只能取时间 0(可能黑),但不会把整个文件拖下来。
- *   **MP4 精确路径故意不用 [FileSystem.openRandom] 让 retriever 自己按需 seek**——
- *   试过,retriever 内部会散落地调用很多次 seek+read,moov 在尾部时若来源退化成
- *   "重开跳过"相当于要把整个文件传一遍;所以 MP4 我们自己精确取所需片段(次数
- *   固定)。MKV 走 [NetVideoDataSource] 时用块缓存 + 累计读取上限约束这个开销。
- *   另外发现无参 `frameAtTime`(等价 `getFrameAtTime(-1, OPTION_CLOSEST_SYNC)`)
- *   配合自定义 `MediaDataSource` 经常干净地返回 null(数据明明完整,不抛异常也不
- *   超时)——全程改用显式时间点 + 两种 OPTION 尝试,不用无参版本;
- * - 音频封面(mp3/flac/m4a 等):先取内嵌封面(ID3 APIC / FLAC PICTURE / m4a covr,
- *   MMR 解析,本地给路径、网络给随机访问数据源按需读),没有内嵌封面再退回同目录的
- *   cover/folder/front/albumart.jpg|png|webp(专辑目录常见约定;按目录缓存查找结果,
- *   一个专辑目录几十首歌只列目录/下载封面一次)。网络来源受"对网络文件生成"开关控制;
- * - PDF 首页:要求本地可随机访问的真文件(PdfRenderer 要 fd),网络来源在 [eligible]
- *   里同步判定必然失败,不进线程池排队;
- * - **应用图标(APK 文件 / 「应用」树条目)不在这里出缩略图**:图标由 [FileIcons] 直接问
- *   PackageManager 要(同样是异步 + 有缓存),不受缩略图开关影响、任何时候都显示。走缩略图
- *   管线只是把同一张图再生成一遍、再占一份磁盘缓存和生成队列名额,没有意义。
+ * Generation rules (max edge length [MAX_EDGE]):
+ * - Images (network sources): **always try the EXIF embedded thumbnail first** (just reads
+ *   the first 256 KB; bandwidth negligible, and unaffected by the "prefer embedded
+ *   thumbnail" toggle — that toggle only governs the quality/speed trade-off for local
+ *   files, where full decoding is already cheap; on the network trying the embedded
+ *   image first is harmless). If it hits, use it without touching the network. With no
+ *   embedded image (not a jpg, or jpg without one) the "generate thumbnails for network
+ *   files" toggle kicks in — off means give up (that's by design, not a bug), on means
+ *   download and decode the whole image. **This is the key to network thumbnail speed**:
+ *   most camera/phone JPGs carry an embedded image, so the first try hits often, and
+ *   blindly downloading the whole image based on the toggle alone is why many people
+ *   think it's "very slow".
+ * - Images (local/SAF): "prefer embedded thumbnail" on — try embedded first; off —
+ *   decode a downsampled full image directly (local cost is small; unlike network, no
+ *   bandwidth/latency concerns). If the original is already ≤256, use the decode result
+ *   directly without saving a separate thumbnail file (saves disk and a second lossy pass).
+ * - Video frame: take the frame at 1/[VIDEO_FRAME_DIVISOR] of the duration rather than
+ *   the start ([pickRepresentativeFrame]) — the start is usually a black fade-in or
+ *   title logo, identical across every episode of the same show, not representative.
+ *   Fall back to time 0 only if that fails. Local/SAF uses
+ *   `MediaMetadataRetriever.setDataSource(String)` — the retriever can seek to any time
+ *   directly, no extra prep needed. Network sources also obey the "generate for network
+ *   files" toggle ([genVideoNetworkFrame]): precisely read the file head [VIDEO_HEAD_CAP]
+ *   (containing ftyp, the keyframe data near time 0, final fallback when 1/10 isn't
+ *   available) + the moov body itself (container metadata, commonly either "faststart"
+ *   at the head or "live-recording, moov patched in at the end" at the tail; precise
+ *   offset/size come from [scanTopBoxes] reading only the 8/16-byte box header and
+ *   jumping by box size, NOT a guess at a tail size: long/high-bitrate videos can have
+ *   moovs over a dozen MB, guess too small and the whole thing can't be fetched;
+ *   fallback is to guess `VIDEO_TAIL_FALLBACK_CAP` when scan fails) + the keyframe data
+ *   at the target time (precisely computed by [findKeyframeOffset] via **exact moov
+ *   sample-table parsing** to compute the true byte offset, then download a small
+ *   targeted window — the older approach of "estimate by linear mdat size ratio" had
+ *   up to 9 MB error on VBR videos (uneven bitrate across segments), a fixed window
+ *   couldn't cover it at all — that was the real reason "grabbing 1/10 often failed
+ *   and fell back to a black opening"; cross-checked with ffprobe's real keyframe
+ *   positions, the sample-table-derived offset matched exactly). A "retry at another
+ *   time when black frame" layer used to exist, but with precise sample-table
+ *   positioning the hit rate is already high, so the retry only adds cost with no
+ *   benefit, and was removed.
+ *   The MP4 precise path above **requires ISO BMFF moov/mdat** (ISO 14496-12); MKV/AVI
+ *   and other containers don't expose moov. For those: if the source supports efficient
+ *   random read ([FileSystem.randomAccessEfficient], SMB pread / WebDAV Range), hand
+ *   a **true random access + block cache** data source ([NetVideoDataSource]) to MMR so
+ *   it can demux + seek itself (the internal MediaExtractor natively supports MKV;
+ *   HEVC goes through hardware MediaCodec), reading only the bytes it needs; sources
+ *   without efficient random read (FTP/SFTP) only get the head fed, basically only
+ *   time 0 (may be black), but never pull the whole file down.
+ *   **The MP4 precise path deliberately does NOT use [FileSystem.openRandom] and let
+ *   the retriever seek on demand** — tried it, the retriever scatters many small
+ *   seek+read calls, and when moov is at the tail, if the source degenerates to
+ *   "reopen + skip" that's essentially transmitting the whole file; so for MP4 we
+ *   precisely fetch the segments we need (fixed call count). MKV via [NetVideoDataSource]
+ *   uses a block cache + cumulative read cap to constrain the same cost.
+ *   Also discovered that no-arg `frameAtTime` (equivalent to
+ *   `getFrameAtTime(-1, OPTION_CLOSEST_SYNC)`) combined with a custom `MediaDataSource`
+ *   cleanly returns null fairly often (data is clearly complete, no exception, no
+ *   timeout) — switched entirely to explicit time points + two OPTION attempts; no more
+ *   no-arg version.
+ * - Audio covers (mp3/flac/m4a, etc.): try the embedded cover first (ID3 APIC / FLAC
+ *   PICTURE / m4a covr, parsed by MMR — local gets a path, network gets an on-demand
+ *   random-access data source); no embedded cover → fall back to cover/folder/front/
+ *   albumart.{jpg|png|webp} in the same directory (common album-folder convention; the
+ *   directory-cache the lookup result so a directory with dozens of songs only does
+ *   the directory listing / cover download once). Network sources obey the "generate
+ *   for network files" toggle.
+ * - PDF first page: requires a real, locally random-accessible file (PdfRenderer needs
+ *   an fd); network sources fail synchronously in [eligible], never entering the thread
+ *   pool queue.
+ * - **App icons (APK files / "Apps" tree entries) are NOT produced here**: icons come
+ *   from [FileIcons] asking the PackageManager directly (also async + cached), unaffected
+ *   by the thumbnail toggle and always shown. Routing them through the thumbnail
+ *   pipeline just regenerates the same image, burns another chunk of disk cache, and
+ *   uses another slot in the generation queue — pointless.
  *
- * 网络协议本身的开销也会拖慢速度,和这里的缩略图逻辑无关但值得知道:`FtpFileSystem`
- * 每次 openInput/list 都是即连即断(每个文件都要重新握手 + 登录),没有做连接池;
- * SFTP(持久 SSH 连接)/WebDAV(OkHttp 连接池)/SMB(持久 smb-io 连接)都复用连接,
- * 通常比 FTP 快不少。后台并发数固定 2([executor]),不是"一个一个生成"但也没有很高。
+ * Network protocol overhead itself also drags on speed — unrelated to the thumbnail
+ * logic here but worth knowing: `FtpFileSystem` openInput/list every time means connect
+ * and disconnect on demand (every file re-handshakes + re-logs), no connection pool.
+ * SFTP (persistent SSH connection) / WebDAV (OkHttp connection pool) / SMB (persistent
+ * smb-io connection) all reuse connections, usually much faster than FTP. Background
+ * concurrency is fixed at 2 ([executor]) — not strictly serial, but not high either.
  *
- * 首次失败只带 [FAIL_COOLDOWN_MS] 冷却期,不立刻拉黑:网络失败常是一次性的(弱网超时、
- * 连接被重置——尤其 SMB 0.45.4 之前那次线程串行化 bug 修复前更容易撞上),冷却期一过
- * 下次绑定会重新尝试,不会因为一次网络抖动就再也生成不出来。但如果冷却期过后**再次**
- * 失败(连续 [BLACKLIST_THRESHOLD] 次),大概率是文件本身解不出来而非网络抖动——尤其
- * 视频一次失败就要卡满 [VIDEO_TIMEOUT_MS](15s),只按内存冷却的话每次重启/冷却期过后
- * 都会在同一个文件上再卡一次。这种情况写入持久化 [blacklist](`cacheDir/thumbs_blacklist`,
- * 存 key 而非路径,文件被替换/修复后 key 自然变化不会被冤枉),之后直接跳过不再尝试,
- * 直到用户手动清缓存([clearCache])。
+ * First failure only carries a [FAIL_COOLDOWN_MS] cooldown, no immediate blacklist:
+ * network failures are often one-off (weak-network timeout, connection reset — SMB's
+ * pre-0.45.4 thread-serialization bug hit this often), so once the cooldown passes the
+ * next bind retries, rather than being unable to ever generate again because of a
+ * single network hiccup. But if it fails **again** after the cooldown (i.e.
+ * [BLACKLIST_THRESHOLD] consecutive failures), the file itself is probably not
+ * decodable, not network noise — especially a video failure will eat the full
+ * [VIDEO_TIMEOUT_MS] (15s); under pure in-memory cooldown, every restart / cooldown
+ * expiration will burn 15s on the same file. In that case, write to the persistent
+ * [blacklist] (`cacheDir/thumbs_blacklist`, stores the key rather than path so a
+ * replaced/fixed file naturally gets a new key and isn't wrongly blamed), and skip
+ * forever after, until the user manually clears cache ([clearCache]).
  *
- * 目录折叠时 `PaneViewModel` 会调 [cancelPending] 把该目录(含仍展开的子目录/压缩包,
- * 递归)下还没开始跑的任务从线程池队列摘掉;已经在跑的不打断,跑完照常进缓存
- * (等于顺手预热,下次展开直接命中)。
+ * When a directory collapses, `PaneViewModel` calls [cancelPending] to drop not-yet-started
+ * tasks (under that directory, including still-expanded subdirectories / archives,
+ * recursive) from the thread-pool queue; already-running tasks are not interrupted
+ * — they finish normally and still land in the cache (effectively prewarming; next
+ * expansion hits immediately).
  */
 object Thumbs {
 
     private const val MAX_EDGE = 256
-    private const val HEAD_BYTES = 256 * 1024 // EXIF 内嵌缩略图只读文件头
-    private const val NET_DECODE_CAP = 64L * 1024 * 1024 // 网络整图解码的大小上限
-    private const val DISK_CAP = 100L * 1024 * 1024 // 磁盘缓存上限(超限按 LRU 清到 80%)
-    private const val FAIL_COOLDOWN_MS = 60_000L // 失败冷却期:期间不重试,过后允许再试一次
+    private const val HEAD_BYTES = 256 * 1024 // EXIF embedded thumbnail: read the file head only.
+    private const val NET_DECODE_CAP = 64L * 1024 * 1024 // Size cap for decoding whole network images.
+    private const val DISK_CAP = 100L * 1024 * 1024 // Disk cache cap (LRU-trim to 80% when exceeded).
+    private const val FAIL_COOLDOWN_MS = 60_000L // Failure cooldown: don't retry within, allow retry after.
 
-    /** 网络整块下载用的读取缓冲区。**实测这是 SMB(以及其他网络来源)缩略图慢的
-     * 关键因素**:Kotlin `InputStream.readBytes()` 默认按 8KB 一块读,对网络流意味着
-     * 一张 5MB 的照片要来回 600+ 次——每次都是一次 `NativeSmbClient.exec()` 线程调度
-     * 往返 + 一次 SMB2 Read 协议请求/响应,时延一放大(哪怕局域网也有毫秒级)乘以
-     * 几百次就是几百毫秒到几秒。调大到 256KB 能把往返次数砍到十几次。 */
+    /** Read buffer for whole network downloads. **This is empirically the key
+     * bottleneck for SMB (and other network sources) thumbnails**: Kotlin's
+     * `InputStream.readBytes()` defaults to 8KB chunks, which for a network stream
+     * means a 5 MB photo requires 600+ round-trips — each one a `NativeSmbClient.exec()`
+     * thread-scheduling round-trip plus an SMB2 Read request/response; multiplied by
+     * hundreds that's hundreds of ms to several seconds of latency amplification even
+     * on a LAN. Bumping to 256 KB cuts the round-trips to a handful of dozen. */
     private const val NET_READ_CHUNK = 256 * 1024
     private val JPG = setOf("jpg", "jpeg")
 
@@ -137,20 +172,13 @@ object Thumbs {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
     }
 
-    /** key -> 上次失败时间戳;冷却期内不重试(避免滚动时反复打开坏文件/慢网络),
-     * 过后允许重新尝试——网络失败常是一次性的,不该永久拉黑一个文件。 */
+    /** key -> last failure timestamp; no retry within the cooldown window (avoids repeatedly opening a bad file / slow network while scrolling), allowed after — network failures are often one-off, a file shouldn't be permanently blacklisted. */
     private val failed = Collections.synchronizedMap(HashMap<String, Long>())
 
-    /** key -> 连续失败次数(成功一次清零);用来判断是否该升级进 [blacklist]。 */
+    /** key -> consecutive failure count (cleared on success); used to decide whether to escalate into [blacklist]. */
     private val failCount = Collections.synchronizedMap(HashMap<String, Int>())
 
-    /** 连续失败达 [BLACKLIST_THRESHOLD] 次后写入的持久化黑名单——单次失败仍按
-     * [FAIL_COOLDOWN_MS] 冷却重试(可能只是网络抖动),但冷却期一过重试**还是**失败,
-     * 大概率是这个文件本身解不出来(如没有对应解码器的编码、损坏文件),而视频一次
-     * 解码失败就要卡满 [VIDEO_TIMEOUT_MS](15s)——只按内存冷却的话,App 重启或冷却期
-     * 一过就会在同一个文件上再卡一次 15s。写盘持久化后不再受重启/冷却期影响,直到
-     * 用户手动清缓存([clearCache])才会再给它一次机会。key 含 size+mtime,文件被
-     * 替换/修复后天然换新 key,不会被冤枉拉黑。 */
+    /** Persistent blacklist written after [BLACKLIST_THRESHOLD] consecutive failures — single failures still retry via the [FAIL_COOLDOWN_MS] cooldown (might just be network noise), but if it fails again after cooldown expires, the file itself is probably undecodable (e.g. unsupported codec, corrupt file), and a single video decode failure burns the full [VIDEO_TIMEOUT_MS] (15s) — under pure in-memory cooldown, every app restart / cooldown expiration will eat another 15s on the same file. After persistence it's no longer affected by restart / cooldown, only clearing cache manually ([clearCache]) gives it another chance. The key includes size+mtime, so a replaced/fixed file naturally gets a new key and isn't falsely blamed. */
     private const val BLACKLIST_THRESHOLD = 2
     private const val BLACKLIST_FILE = "thumbs_blacklist"
     private var blacklist: MutableSet<String>? = null
@@ -182,40 +210,59 @@ object Thumbs {
         return System.currentTimeMillis() - at < FAIL_COOLDOWN_MS
     }
 
-    /** key -> 等待回填的视图(仅主线程访问);已有任务在跑时后续视图只挂队列。 */
+    /** key -> views waiting for fill-back (main thread only); when a task is already running, later views just queue. */
     private val waiters = HashMap<String, MutableList<ImageView>>()
 
-    /** key -> 已提交但可能还没开始跑的任务(仅主线程访问,与 [waiters] 同一约束)。
-     * 目录折叠时用来把还没开始跑的任务从线程池队列摘掉([cancelPending]);已经在跑
-     * 的任务不受影响——不强行中断,交给它自己跑完、正常收尾清理这里的条目。 */
+    /** key -> submitted but possibly not-yet-running tasks (main thread only, same constraints as [waiters]).
+     * When a directory collapses, used to drop not-yet-started tasks from the thread-pool queue ([cancelPending]); tasks already running are not affected — don't force-interrupt them, let them finish and clean up their entry normally. */
     private val queued = HashMap<String, Runnable>()
 
-    /** 2 线程并行,FIFO 队列(先提交先处理)。 */
+    /** 2 threads in parallel, FIFO queue (first submitted, first processed). */
     private val executor: ThreadPoolExecutor = ThreadPoolExecutor(
         2, 2, 0L, TimeUnit.MILLISECONDS, LinkedBlockingQueue(),
     ) { r -> Thread(r, "twig-thumbs").apply { isDaemon = true } }
     private val main = Handler(Looper.getMainLooper())
 
     /**
-     * 上次裁剪磁盘缓存的时刻。原来是个一次性布尔:整个进程只裁一次,长时间开着连续
-     * 浏览大量媒体目录时,100MB 上限在下次冷启动前形同虚设。改成按间隔重跑。
+     * Last time the disk cache was trimmed. Was originally a one-shot boolean: the whole
+     * process trimmed exactly once, so the 100 MB cap was effectively useless for long
+     * sessions browsing through large media directories until the next cold start.
+     * Switched to interval-based re-running.
      */
     @Volatile private var lastTrimAt = 0L
     private const val TRIM_INTERVAL_MS = 10 * 60 * 1000L
 
-    fun canThumb(f: XFile): Boolean = !f.isDir &&
-        (
+    fun canThumb(f: XFile): Boolean =
+        if (f.isDir) {
+            // Directories normally have no thumbnail, but media-server
+            // episodes/albums/photo-albums **are themselves directories**, and they
+            // have ready-made posters (see [hasCover]). Sorting is unaffected: in
+            // `SortRules.groupOf` isDir is the higher-priority bucket, so directories
+            // still come before files and still take a full row.
+            hasCover(f)
+        } else {
             OpenFiles.isImage(f) || OpenFiles.isVideo(f) || OpenFiles.isAudio(f) ||
-                f.extension == "pdf"
-            )
+                f.extension == "pdf" || hasCover(f)
+        }
 
-    /** 提前判断该文件是否有机会生成成功;网络来源的 PDF 必然失败(需要本地可随机
-     * 访问的真文件),不值得排进后台线程池排队——否则会被同池里较慢的网络图片下载
-     * 卡住,白白排队。视频受"对网络文件生成"开关控制(和图片一样,走网络就有真实
-     * 流量),不像 PDF 那样天生做不到。 */
+    /** Whether this entry's source can provide its own cover (Jellyfin / Emby poster). */
+    /** Source has its own cover (media-server poster); whether a directory produces an image and whether a file uses the poster aspect ratio both depend on this. */
+    fun hasCover(f: XFile): Boolean =
+        runCatching { FsRegistry.of(f) is com.twig.core.CoverSource }.getOrDefault(false)
+
+    /** Pre-check whether this file has any chance of generating successfully; network-source PDFs inevitably fail (require a real, locally random-accessible file), not worth queuing in the background thread pool — otherwise they'd block behind slower network image downloads in the same pool, just queueing pointlessly. Videos obey the "generate thumbnails for network files" toggle (just like images, going over the network means real bandwidth), unlike PDFs which are fundamentally unable to do it. */
     private fun eligible(ctx: Context, file: XFile): Boolean {
         val localish = file.scheme == "file" || file.scheme == "saf"
         return when {
+            // ★ Covers are NOT constrained by the "generate thumbnails for network
+            // files" toggle — same reasoning as reading the EXIF embedded image for
+            // network images: that toggle blocks "downloading the media file's own
+            // bytes for one thumbnail" (a video costs several MB), whereas posters
+            // are server-side, on-demand, already resized small (tens of KB) — same
+            // magnitude as the JSON the list page already pulls. If we gated them,
+            // after adding a media server the list would just be a sea of generic
+            // file icons — this whole feature would be pointless.
+            hasCover(file) -> true
             OpenFiles.isImage(file) -> true
             OpenFiles.isVideo(file) -> localish || Prefs.thumbsNetwork(ctx)
             OpenFiles.isAudio(file) -> localish || Prefs.thumbsNetwork(ctx)
@@ -224,8 +271,20 @@ object Thumbs {
         }
     }
 
-    /** 异步绑定缩略图;命中内存缓存立即回填,否则保留占位图标后台加载/生成。 */
-    fun bind(view: ImageView, file: XFile) {
+    /**
+     * Asynchronously bind a thumbnail; on memory-cache hit fill immediately, otherwise
+     * keep the placeholder icon and load / generate in the background.
+     *
+     * @param growPx Once the image arrives, allow this cell to **grow to this width**
+     *   (px); 0 = keep the caller-given size. Used for directories: most directories
+     *   have no cover, and growing on bind would make a screenful of folder icons
+     *   individually huge (users have reported "looks really big"), so **stay small
+     *   first, then grow once the cover actually arrives** — [fillAspect] already
+     *   changes `layoutParams` in a `post{}`, so adjusting the width in the same
+     *   pass doesn't cost an extra layout.
+     */
+    fun bind(view: ImageView, file: XFile, growPx: Int = 0) {
+        view.setTag(R.id.thumb_grow, growPx)
         if (!canThumb(file)) return
         val key = keyOf(file)
         mem.get(key)?.let { fill(view, it, key); return }
@@ -262,8 +321,7 @@ object Thumbs {
         executor.execute(job)
     }
 
-    /** 目录折叠时调用:把 [files] 里还没开始跑的生成任务从线程池队列里摘掉,省得
-     * 排队干等一堆已经不可见的行。已经在跑的任务不受影响(不强行中断)。 */
+    /** Called when a directory collapses: drop not-yet-started generation tasks for [files] from the thread pool queue, so we're not queuing work for rows that are no longer visible. Tasks already running are unaffected (not force-interrupted). */
     fun cancelPending(files: Collection<XFile>) {
         for (f in files) {
             val key = keyOf(f)
@@ -275,7 +333,7 @@ object Thumbs {
         }
     }
 
-    /** 磁盘缓存占用(设置页展示)。 */
+    /** Disk cache usage (shown on the settings page). */
     fun cacheBytes(ctx: Context): Long = diskDir(ctx).listFiles()?.sumOf { it.length() } ?: 0L
 
     fun clearCache(ctx: Context) {
@@ -288,9 +346,7 @@ object Thumbs {
         diskDir(ctx).listFiles()?.forEach { it.delete() }
     }
 
-    /** 单文件"刷新缩略图":清掉内存/磁盘缓存及失败/黑名单标记,下次绑定会
-     * 重新生成。用户可见的强制刷新入口(菜单项),与 [clearCache] 的全量清空不同,
-     * 只影响这一个文件。 */
+    /** Single-file "refresh thumbnail": clear memory/disk cache and failure/blacklist marks; the next bind will regenerate. User-visible forced-refresh entry (menu item), unlike [clearCache]'s full wipe this only affects this one file. */
     fun invalidate(ctx: Context, file: XFile) {
         val key = keyOf(file)
         mem.remove(key)
@@ -305,9 +361,7 @@ object Thumbs {
         runCatching { File(diskDir(ctx), key).delete() }
     }
 
-    /** 目录"刷新缩略图":后台线程递归遍历,对每个文件调用
-     * [invalidate];完成后回主线程执行 [onDone](通常用来刷新列表显示)。网络目录遍历
-     * 可能较慢,不能在主线程做,复用 [executor]。 */
+    /** Directory "refresh thumbnails": a background thread walks recursively, calling [invalidate] on each file; on completion [onDone] runs on the main thread (usually used to refresh the list display). Walking a network directory can be slow and must not happen on the main thread — reuse [executor]. */
     fun invalidateDir(ctx: Context, dir: XFile, onDone: () -> Unit = {}) {
         executor.execute {
             runCatching { walkInvalidate(ctx, dir) }
@@ -316,16 +370,20 @@ object Thumbs {
     }
 
     private fun walkInvalidate(ctx: Context, dir: XFile) {
+        // ★ Directories themselves may have covers (media-server episodes/seasons/
+        // albums/photo-albums/collections/libraries, see [hasCover]), and their key is
+        // `scheme:path:mtime` — recursing only children would never clear a poster
+        // change on the server; symptom: "Refresh thumbnails does nothing for shows/music".
+        invalidate(ctx, dir)
         val list = runCatching { FsRegistry.of(dir).list(dir) }.getOrDefault(emptyList())
         for (f in list) {
             if (f.isDir) walkInvalidate(ctx, f) else invalidate(ctx, f)
         }
     }
 
-    // ---- 内部 ----
+    // ---- Internals ----
 
-    /** 树式行(有 `infoBox` 兄弟视图)按图片宽高比调整高度,不裁切/顶部裁切,见
-     * [fillAspect];网格格子等其它场景维持原来的固定方形 + CENTER_CROP。 */
+    /** Tree-style rows (with an `infoBox` sibling view) adjust height to the image's aspect ratio — no crop, or top-crop; see [fillAspect]; grid cells and other contexts keep the original fixed square + CENTER_CROP. */
     private fun fill(view: ImageView, bmp: Bitmap, key: String) {
         view.setPadding(0, 0, 0, 0)
         val box = (view.parent as? ViewGroup)?.findViewById<View>(R.id.infoBox)
@@ -339,14 +397,12 @@ object Thumbs {
     }
 
 
-    /** 树式列表缩略图:宽度不变,高度按原图宽高比算——横图变矮完整显示(不裁切);
-     * 竖图变高,上限是右侧信息区([box])当前高度,超过上限则顶部裁切填满(絶不会比
-     * 现在的方形宽度更矮,因为竖图按比例算出的高度天然 ≥ 宽度)。等 [box] 完成本轮
-     * 布局([View.post])才读它的实测高度,避免读到上一次绑定的旧值;用 [key] 做
-     * tag 校验,若视图在 post 触发前已被回收绑到别的文件就放弃(防止串图)。 */
+    /** Tree-list thumbnail: width unchanged, height computed from the image's aspect ratio — landscape images get shorter and show fully (no crop); portrait images get taller, capped at the right-side info area's ([box]) current height; over the cap, top-crop fills it (never shorter than the current square width, since a portrait ratio naturally yields height ≥ width). Wait for [box] to finish this pass's layout ([View.post]) before reading its measured height — avoid reading the previous bind's stale value; use [key] as the tag check, if the view was recycled to another file before `post` fires, give up (prevents cross-pollination of images). */
     private fun fillAspect(view: ImageView, bmp: Bitmap, box: View, key: String) {
         val lp = view.layoutParams
-        val w = lp.width
+        // Directory covers (movie/show posters are 2:3 portrait): at bind time still the small-icon size, only grow when the image actually arrives.
+        val grow = (view.getTag(R.id.thumb_grow) as? Int) ?: 0
+        val w = if (grow > 0) grow else lp.width
         val bw = bmp.width
         val bh = bmp.height
         if (w <= 0 || bw <= 0 || bh <= 0) {
@@ -360,10 +416,19 @@ object Thumbs {
         view.post {
             if (view.tag != marker) return@post
             view.tag = null
-            val maxH = maxOf(box.height, w)
+            // The "grow" path needs a more generous height cap, otherwise a 2:3 poster
+            // (natural = 1.5w) gets clamped back to a square by maxOf(box.height, w)
+            // and top/bottom get MATRIX-cropped — defeating the point of a portrait.
+            // Still keep an upper bound (2× width) so an extreme long-strip image
+            // can't blow a row up to half the screen.
+            val maxH = if (grow > 0) maxOf(box.height, grow * 2) else maxOf(box.height, w)
             val natural = (w.toLong() * bh / bw).toInt().coerceAtLeast(1)
             val h = minOf(natural, maxH)
-            if (lp.height != h) { lp.height = h; view.layoutParams = lp }
+            if (lp.width != w || lp.height != h) {
+                lp.width = w
+                lp.height = h
+                view.layoutParams = lp
+            }
             if (natural <= maxH) {
                 view.scaleType = ImageView.ScaleType.FIT_CENTER
             } else {
@@ -376,8 +441,26 @@ object Thumbs {
     }
 
     private fun keyOf(f: XFile): String {
-        val d = MessageDigest.getInstance("MD5")
-            .digest("${f.name}:${f.size}:${f.lastModified}".toByteArray())
+        // Files use "name:size:mtime" — path-independent, so opening the same file
+        // from a different source still hits.
+        // ★ Directories CANNOT use this: they have no byte size (always 0), and
+        // mtime is often the same across siblings, so a whole layer of
+        // episodes/albums would share one key and all covers look identical.
+        // Directories switch to scheme+path.
+        // ★★ Media-server **files** also can't use this (2026-08-19): the same movie
+        // appears in both "Continue watching" and the Movies library, with identical
+        // name/size/mtime — but the two locations need **different** images (the
+        // former is a horizontal still, the latter a vertical poster). Sharing one
+        // key means they overwrite each other; symptom: "the same film looks
+        // horizontal sometimes and vertical other times". Their paths carry virtual
+        // directory prefixes so they're already distinct; "same file from another
+        // source still hits" doesn't apply to GUID-path virtual trees anyway.
+        val seed = if (f.isDir || hasCover(f)) {
+            "${f.scheme}:${f.path}:${f.lastModified}"
+        } else {
+            "${f.name}:${f.size}:${f.lastModified}"
+        }
+        val d = MessageDigest.getInstance("MD5").digest(seed.toByteArray())
         return d.joinToString("") { "%02x".format(it) }
     }
 
@@ -387,13 +470,14 @@ object Thumbs {
         val disk = File(diskDir(ctx), key)
         if (disk.isFile) {
             BitmapFactory.decodeFile(disk.path)?.let {
-                disk.setLastModified(System.currentTimeMillis()) // 磁盘 LRU 记一次使用
+                disk.setLastModified(System.currentTimeMillis()) // Disk LRU: record one use.
                 return it
             }
         }
         val raw = generate(ctx, file) ?: return null
-        // 图片本身已在 256 以内:无需另存一份缩略图文件(节省磁盘 + 避免二次 JPEG 有损压缩),
-        // 直接把解码结果交给内存缓存即可。
+        // Image itself is already ≤256: no need to save a separate thumbnail file
+        // (saves disk + avoids a second lossy JPEG pass), hand the decode result
+        // straight to the memory cache.
         if (OpenFiles.isImage(file) && maxOf(raw.width, raw.height) <= MAX_EDGE) return raw
         val bmp = scaleTo(raw)
         val png = bmp.hasAlpha()
@@ -406,23 +490,44 @@ object Thumbs {
     }
 
     private fun generate(ctx: Context, file: XFile): Bitmap? = when {
+        // Source-supplied poster first: for movies/shows it's both faster and better-
+        // looking than "download several MB and extract a frame"; for directories
+        // (episodes/albums/photo-albums) it's the only way to produce an image at all.
+        hasCover(file) -> genCover(file) ?: genFallback(ctx, file)
+        else -> genFallback(ctx, file)
+    }
+
+    /** Server-side pre-made poster; returns null on miss (no primary image / request failed), caller falls back. */
+    private fun genCover(file: XFile, maxEdge: Int = MAX_EDGE): Bitmap? = runCatching {
+        val src = FsRegistry.of(file) as? com.twig.core.CoverSource ?: return null
+        src.openCover(file, maxEdge)?.use { BitmapFactory.decodeStream(it) }
+    }.getOrElse {
+        Log.w("twig", "thumbs: cover failed for ${file.name}: ${it.message}")
+        null
+    }
+
+    private fun genFallback(ctx: Context, file: XFile): Bitmap? = when {
         OpenFiles.isImage(file) -> genImage(ctx, file)
         OpenFiles.isVideo(file) -> genVideo(ctx, file)
         OpenFiles.isAudio(file) -> genAudio(file)
-        file.extension == "pdf" -> genPdf(file)
+        file.extension == "pdf" -> genPdf(ctx, file)
         else -> null
     }
 
     private fun genImage(ctx: Context, file: XFile): Bitmap? {
         val localish = file.scheme == "file" || file.scheme == "saf"
         if (!localish) {
-            // 网络来源:内置缩略图只读文件头几十 KB,几乎零成本,总是先试一把——
-            // 不受"优先使用内置缩略图"开关限制(那个开关是本地文件的画质/速度取舍,
-            // 本地全量解码本来就很便宜)。网络场景没有不试的理由:大多数相机/手机
-            // 拍的 jpg 都带内置缩略图,先试命中就不用整图下载,这是网络缩略图快慢
-            // 的关键——只看"对网络文件生成"开关整图下载,是不少人觉得"很慢"的根源。
+            // Network sources: the embedded thumbnail only reads tens of KB of the
+            // head, near-zero cost — always try it first. Not constrained by the
+            // "prefer embedded thumbnail" toggle (that toggle is the
+            // quality/speed trade-off for local files, where full decode is already
+            // cheap). For network there's no reason not to try: most camera/phone
+            // JPGs carry an embedded thumbnail, hitting first avoids downloading
+            // the full image — the key to network thumbnail speed. Downloading the
+            // full image just based on the "generate for network files" toggle is
+            // why many people think it's "very slow".
             embedded(file)?.let { return it }
-            if (!Prefs.thumbsNetwork(ctx)) return null // 开关关闭且没有内置图:不下载
+            if (!Prefs.thumbsNetwork(ctx)) return null // Toggle off and no embedded image: don't download.
             if (file.size > NET_DECODE_CAP) return null
             val bytes = FsRegistry.of(file).openInput(file).use { readCapped(it, NET_DECODE_CAP, file.size) }
             val bmp = decodeSampled { ByteArrayInputStream(bytes) } ?: return null
@@ -434,7 +539,7 @@ object Thumbs {
         return rotate(bmp, if (file.extension in JPG) orientationOf(head(file)) else 0)
     }
 
-    /** jpg 的 EXIF 内嵌缩略图(只读文件头);没有则 null。 */
+    /** jpg's EXIF embedded thumbnail (reads the file head only); null if not present. */
     private fun embedded(file: XFile): Bitmap? {
         if (file.extension !in JPG) return null
         val bytes = head(file) ?: return null
@@ -447,30 +552,23 @@ object Thumbs {
         }.getOrNull()
     }
 
-    /** 网络视频精确读两段:文件头 [VIDEO_HEAD_CAP](含 ftyp,以及 moov 在尾部布局时
-     * 紧随其后的关键帧数据)+ moov 本体——moov 的真实偏移/大小由 [scanMoovBox] 扫描
-     * box 头精确得到,而不是猜一个固定尾部大小:长视频/高码率视频的 moov(采样表,
-     * 大致跟帧数成正比)可以到十几 MB 甚至更大,固定猜 4MB 这类小文件够、大文件完全
-     * 覆盖不到——这正是"多数 mp4 能生成、少数(尤其是长/大文件)生成不了"的真正原因。
-     * 扫描失败(结构异常)才退化成猜 [VIDEO_TAIL_FALLBACK_CAP] 兜底。 */
+    /** Precisely read two segments for network video: the file head [VIDEO_HEAD_CAP] (containing ftyp, and when moov is at the tail, the keyframe data immediately after) + the moov body itself — the moov's true offset/size are computed exactly by [scanMoovBox] scanning box headers, NOT guessed at a fixed tail size: long/high-bitrate videos can have moovs (sample tables, roughly proportional to frame count) of over a dozen MB, a fixed 4 MB guess is enough for small files but completely misses large ones — that's the real reason "most mp4s generate but a few (especially long/large ones) don't". When the scan fails (malformed structure), fall back to guessing [VIDEO_TAIL_FALLBACK_CAP]. */
     private const val VIDEO_HEAD_CAP = 8L * 1024 * 1024
     private const val VIDEO_TAIL_FALLBACK_CAP = 4L * 1024 * 1024
-    private const val VIDEO_MOOV_CAP = 64L * 1024 * 1024 // moov 大小的合理上限,异常大就放弃,不无限下载
+    private const val VIDEO_MOOV_CAP = 64L * 1024 * 1024 // Sane upper bound on moov size; give up if absurdly large, don't download forever.
 
-    /** MediaMetadataRetriever 超时上限:遇到截断/畸形的容器(网络视频只喂了前
-     * [VIDEO_HEAD_CAP],moov 没读全时尤其容易撞上)有时会在原生层长时间探测格式甚至
-     * 卡住不返回——它没有取消 API。之前整个 genVideo 直接跑在 [executor] 的 2 个
-     * twig-thumbs 线程上,一个视频卡住就等于占掉一半线程池,连图片缩略图都会跟着
-     * 停摆,表现为"等很久都不出来,不知道是不是还在生成"。现在把它丢到独立的
-     * [videoExecutor] 上跑,主线程池只等 [VIDEO_TIMEOUT_MS] 就撤——等不到就判失败
-     * (走 [FAIL_COOLDOWN_MS] 冷却重试),twig-thumbs 池不再被拖住;卡住的那次调用
-     * 留在 twig-video 的独立线程上自生自灭(daemon 线程,不影响进程退出)。
+    /** Below this, slimming the moov ([planSlimMoov]) is not worth the extra round trips — the whole thing is one sequential read anyway. */
+    private const val VIDEO_MOOV_SLIM_MIN = 4L * 1024 * 1024
+
+    /** While slimming, non-trak moov children up to this size are kept verbatim (mvhd, iods, mvex … are all tiny); anything larger — in practice udta with an embedded cover — is stubbed out like the audio traks. */
+    private const val VIDEO_MOOV_KEEP_BOX = 256L * 1024
+
+    /** Bytes read from the front of a trak to decide whether it is the video one: hdlr sits behind tkhd (+ optional edts) + mdia/mdhd, a few hundred bytes in. */
+    private const val VIDEO_TRAK_PROBE = 16L * 1024
+
+    /** MediaMetadataRetriever timeout: encountering a truncated / malformed container (network video only fed the first [VIDEO_HEAD_CAP], especially when moov isn't fully read) can probe the format at the native layer for a long time, or even hang — it has no cancel API. Previously genVideo ran directly on [executor]'s 2 twig-thumbs threads, so one stuck video tied up half the pool, dragging image thumbnails to a halt too — symptom: "wait forever, not sure if it's still generating". Now it's moved to its own [videoExecutor]; the main pool only waits [VIDEO_TIMEOUT_MS] before giving up — timeouts are treated as failures (go through [FAIL_COOLDOWN_MS] retry), and twig-thumbs is no longer dragged down; the stuck call is left on the dedicated twig-video thread to its fate (daemon thread, doesn't block process exit).
      *
-     * **实测坑**:加了按候选时间点现下载数据窗口的黑场重试后,6 秒经常不够用——
-     * 每个候选都要现下载一个 [VIDEO_MID_WINDOW] 窗口,几个候选加起来的网络耗时容易
-     * 超过 6 秒,导致大量视频直接超时判失败(比之前"退回黑色开头"还差,变成整个
-     * 没有缩略图)。现在把上限放宽到 15 秒——这个等待只占用 [videoExecutor] 自己的
-     * 线程,不占用 twig-thumbs 共享池的名额,加长不影响其它文件的缩略图并发。 */
+     * **Empirical pitfall**: after adding the black-frame retry with on-demand data windows for candidate time points, 6 seconds often wasn't enough — each candidate requires a fresh download of a [VIDEO_MID_WINDOW] window, and the network time for several candidates easily exceeds 6s, causing many videos to time out (worse than "fall back to a black opening", now there's no thumbnail at all). The cap is now relaxed to 15 seconds — this wait only occupies [videoExecutor]'s own thread, not a slot in the twig-thumbs shared pool, so lengthening doesn't affect other files' thumbnail concurrency. */
     private const val VIDEO_TIMEOUT_MS = 15_000L
     private val videoExecutor = Executors.newCachedThreadPool { r ->
         Thread(r, "twig-video").apply { isDaemon = true }
@@ -486,31 +584,28 @@ object Thumbs {
         null
     }
 
-    /** 目标时间点:取时长的 1/[VIDEO_FRAME_DIVISOR] 处而不是开头——开头常是黑场淡入/
-     * 片头 Logo。曾经加过"取到黑帧就换时间点重试"(isMostlyBlack)那层,但
-     * [findKeyframeOffset] 精确解析出关键帧真实字节偏移后命中率已经很高,那层重试
-     * 只剩下"每次都多下载几个窗口"的开销、没有实际收益,故去掉(实测反馈确认)。 */
+    /** Target time point: take the frame at 1/[VIDEO_FRAME_DIVISOR] of the duration rather than the start — the start is usually a black fade-in / title logo. Used to have a "if black frame, retry at another time" layer (isMostlyBlack), but once [findKeyframeOffset] precisely parsed the keyframe's true byte offset, the hit rate is already very high, so that retry layer only adds the cost of "always downloading several extra windows" with no real gain, and was removed (confirmed by user testing). */
     private const val VIDEO_FRAME_DIVISOR = 10L
 
-    /** [findKeyframeOffset] 精确算出关键帧字节偏移后,前后各留的安全边界——只是防止
-     * 解码器需要 SPS/PPS 或往前多探一点,不用像比例估算那样留大窗口。 */
+    /** Safety margin before/after the keyframe byte offset precisely computed by [findKeyframeOffset] — just enough for the decoder to grab SPS/PPS or probe slightly further back, no need for a big margin like the ratio-estimate fallback. */
     private const val VIDEO_KEYFRAME_MARGIN = 128L * 1024
-    private const val VIDEO_KEYFRAME_WINDOW = 8L * 1024 * 1024 // 4K/60fps I 帧可达数 MB,窗口给大点少走回落读
+    private const val VIDEO_KEYFRAME_WINDOW = 8L * 1024 * 1024 // 4K/60fps I-frames can reach several MB; give a bigger window to avoid the fallback read.
 
-    /** [findKeyframeOffset] 解析失败时的兜底:按 mdat 大小估算比例算出大致偏移,
-     * 前后各留一半窗口兜住码率不均匀的误差(实测这个误差可能到 9MB 以上,兜底本身
-     * 并不可靠,只是"没有更好办法时的最后手段")。 */
+    /** [findKeyframeOffset] parse-failure fallback: estimate the offset by mdat size ratio, leave a half-window margin on each side to absorb uneven bitrate (empirically this error can reach 9 MB+, the fallback itself
+     * is unreliable — just a last resort when there's nothing better). */
     private const val VIDEO_MID_WINDOW = 8L * 1024 * 1024
 
     private fun genVideoBlocking(ctx: Context, file: XFile): Bitmap? {
         val frame = try {
             if (file.extension == "avi") {
-                // 系统 MediaMetadataRetriever 不支持 AVI 解封装(本地/网络都一样),
-                // 只能绕开它走 GlFrameGrabber(见其注释)。
+                // The system MediaMetadataRetriever does not support AVI demuxing
+                // (local or network, both), so we have to bypass it and use
+                // GlFrameGrabber (see its comments).
                 genVideoAviFrame(ctx, file)
             } else if (file.extension == "m2ts") {
-                // 真 BDAV M2TS 每包 192 字节,MMR 支不支持因设备而异不保底——统一走
-                // GlFrameGrabber + M2tsStrippingDataSource,和播放器那条路径一致。
+                // Real BDAV M2TS uses 192-byte packets, MMR support is
+                // device-dependent and not guaranteed — use GlFrameGrabber +
+                // M2tsStrippingDataSource uniformly, same path as the player.
                 genVideoM2tsFrame(ctx, file)
             } else if (file.scheme == "file") {
                 withRetriever { r ->
@@ -529,18 +624,27 @@ object Thumbs {
     }
 
     private fun genVideoAviFrame(ctx: Context, file: XFile): Bitmap? {
+        // ★ The same [MediaSources.extractors] the player uses, not the default factory: AVI needs
+        // its MPEG-4 video repaired before the decoder sees it (packed bitstream split apart,
+        // stuffing chunks dropped), and a file whose first frames are 1-byte `7f` stuffing kills
+        // the codec outright — which is what "this one never produced a thumbnail" was.
         if (file.scheme == "file") {
             val mediaItem = MediaItem.fromUri(Uri.fromFile(File(file.path)))
-            return GlFrameGrabber.grab(ctx, mediaItem, null, VIDEO_FRAME_DIVISOR, VIDEO_TIMEOUT_MS)
+            return GlFrameGrabber.grab(
+                ctx, mediaItem, null, VIDEO_FRAME_DIVISOR, VIDEO_TIMEOUT_MS, MediaSources.extractors(),
+            )
         }
         val mediaItem = MediaItem.fromUri("twig:///media.avi")
         return FsRegistry.of(file).openRandom(file).use { raw ->
-            // idx1 常在文件尾部,seek 到目标时间前得先跳到尾部读它——裸 RandomSource
-            // 一堆小读来回,网络上很容易把预算耗在这上面,套一层预读缓存(和播放器
-            // 用的是同一个)。
+            // idx1 is usually at the file's tail, and seeking to the target time
+            // requires reading it first — a bare RandomSource means many small
+            // reads back and forth, easily burning the budget on the network; wrap
+            // with a read-ahead cache (same one the player uses).
             val src = BufferedRandomSource(raw)
             val factory = DataSource.Factory { RandomSourceDataSource(src) }
-            GlFrameGrabber.grab(ctx, mediaItem, factory, VIDEO_FRAME_DIVISOR, VIDEO_TIMEOUT_MS)
+            GlFrameGrabber.grab(
+                ctx, mediaItem, factory, VIDEO_FRAME_DIVISOR, VIDEO_TIMEOUT_MS, MediaSources.extractors(),
+            )
         }
     }
 
@@ -560,7 +664,8 @@ object Thumbs {
                 MediaItem.fromUri("twig:///media.ts")
             }
             return if (rawPacketSize != RAW_M2TS_PACKET_SIZE) {
-                // 有些工具把普通 188 字节 TS 流也存成 .m2ts 后缀,不用剥,走默认 sniff。
+                // Some tools save ordinary 188-byte TS streams with a .m2ts
+                // extension — no stripping needed, default sniff.
                 GlFrameGrabber.grab(ctx, mediaItem, baseFactory, VIDEO_FRAME_DIVISOR, VIDEO_TIMEOUT_MS)
             } else {
                 val totalRawLength = if (local) File(file.path).length() else file.size
@@ -576,8 +681,7 @@ object Thumbs {
         }
     }
 
-    /** 每次取帧用一个独立的 MediaMetadataRetriever 实例(setDataSource 只能调一次,
-     * 精确 MKV 失败要退回随机访问就得换新实例);用完即 release。 */
+    /** Use a fresh MediaMetadataRetriever instance per frame grab (setDataSource can only be called once; precise MKV fallback to random-access requires a new instance); release after use. */
     private inline fun <T> withRetriever(block: (MediaMetadataRetriever) -> T): T {
         val r = MediaMetadataRetriever()
         try {
@@ -587,13 +691,9 @@ object Thumbs {
         }
     }
 
-    /** 尝试时长 1/[VIDEO_FRAME_DIVISOR] 处,取不到才退回时间 0;[prepareFor] 在尝试前
-     * 调用(网络来源用来现下载目标时间点附近的数据窗口,本地文件不需要,传空实现
-     * 即可——retriever 能直接 seek 到任意时间)。
+    /** Try at 1/[VIDEO_FRAME_DIVISOR] of the duration, fall back to time 0 only on failure; [prepareFor] is called before each attempt (network sources use it to download the data window near the target time on demand; local files don't need it, pass an empty impl — the retriever can seek directly to any time).
      *
-     * 无参 frameAtTime(即 getFrameAtTime(-1, OPTION_CLOSEST_SYNC))配合自定义
-     * MediaDataSource 实测经常干净地直接返回 null(不抛异常也不超时,数据也确认
-     * 完整)——所以这里全程用显式时间点 + 两种 OPTION 尝试,不用无参版本。 */
+     * No-arg `frameAtTime` (i.e. `getFrameAtTime(-1, OPTION_CLOSEST_SYNC)`) with a custom `MediaDataSource` empirically often cleanly returns null (no exception, no timeout, data confirmed complete) — so this path uses explicit time points + two OPTION attempts only, never the no-arg version. */
     private fun pickRepresentativeFrame(
         r: MediaMetadataRetriever,
         file: XFile,
@@ -617,8 +717,9 @@ object Thumbs {
         val fs = FsRegistry.of(file)
         val size = file.size
         return fs.openRandom(file).use { src ->
-            // 先嗅一小段判容器:ISO BMFF(mp4/mov)第一个 box 就是 ftyp(第 4~8 字节);
-            // Matroska/WebM(MKV)以 EBML magic 1A45DFA3 开头。
+            // First sniff a small segment to detect the container: ISO BMFF (mp4/mov)
+            // has ftyp as its first box (bytes 4..8); Matroska/WebM (MKV) starts with
+            // EBML magic 1A45DFA3.
             val sniff = readAtCapped(src, 0, 64)
             if (sniff.isEmpty()) {
                 Log.w("twig", "thumbs: video head empty ${file.name}")
@@ -630,17 +731,21 @@ object Thumbs {
             when {
                 isoBmff -> withRetriever { r -> genFrameMp4(r, file, src, size) }
                 isMatroska && fs.randomAccessEfficient() ->
-                    // MKV 优先精确解析 EBML(SeekHead→Cues→目标 Cluster),只下 init+Cues+
-                    // 目标簇三段(通常 ~2MB,固定几次定位读);解析不出(无 Cues 索引等)
-                    // 才退回让 MMR 自己随机访问解封装。
+                    // MKV first tries precise EBML parsing (SeekHead → Cues → target
+                    // Cluster), downloading only init + Cues + target cluster (usually
+                    // ~2 MB, fixed number of seeks); falls back to letting MMR demux +
+                    // seek itself only when parsing fails (no Cues index, etc.).
                     withRetriever { r -> genFrameMkv(r, file, src, size) }
                         ?: withRetriever { r -> genFrameRandomAccess(r, file, src, size) }
                 fs.randomAccessEfficient() ->
-                    // 其它容器(AVI 等)没写离线解析:把带块缓存的真随机访问数据源交给
-                    // MMR 自己解封装 + seek(FTP/SFTP 无高效定位读不走这条,免拖垮流量)。
+                    // Other containers (AVI, etc.) don't have offline parsing written:
+                    // hand a block-cached true random-access data source to MMR to let
+                    // it demux + seek itself (FTP/SFTP without efficient random access
+                    // don't take this path — avoid crushing their bandwidth).
                     withRetriever { r -> genFrameRandomAccess(r, file, src, size) }
                 else ->
-                    // 无高效定位读的非 MP4 来源:只能喂头部,基本只取到时间 0(可能黑)。
+                    // Non-MP4 sources without efficient random access: only feed the
+                    // head, basically only get time 0 (may be black).
                     withRetriever { r ->
                         r.setDataSource(headOnlySource(readAtCapped(src, 0, minOf(VIDEO_HEAD_CAP, size)), size))
                         pickRepresentativeFrame(r, file, durationMsOf(r))
@@ -649,11 +754,7 @@ object Thumbs {
         }
     }
 
-    /** MKV(Matroska/WebM,EBML 容器)网络取帧:精确解析出目标关键帧所在 Cluster,
-     * 只下载 init(EBML 头 + SeekHead + Info + Tracks)+ Cues 索引 + 目标 Cluster 三段
-     * 喂给 MMR。和 MP4 的采样表路径同理:确定性、字节最少、定位读次数固定,不让 MMR
-     * 自己在慢速网络上乱 seek(那是"MKV 很慢 / 大文件生成不了"的原因)。解析失败
-     * (无 Cues 索引、结构异常)返回 null,由调用方退回随机访问兜底。 */
+    /** MKV (Matroska/WebM, EBML container) network frame grab: precisely parses the target keyframe's Cluster, downloading only init (EBML header + SeekHead + Info + Tracks) + the Cues index + the target Cluster, three segments, fed to MMR. Same rationale as the MP4 sample-table path: deterministic, minimum bytes, fixed number of seeks, never let MMR scatter-seek over a slow network (that's why "MKV is slow / large files can't generate"). Parse failure (no Cues index, malformed structure) returns null, caller falls back to random access. */
     private fun genFrameMkv(r: MediaMetadataRetriever, file: XFile, src: RandomSource, size: Long): Bitmap? {
         val plan = runCatching { planMkv(src, size) }.getOrNull()
         if (plan == null) {
@@ -662,15 +763,21 @@ object Thumbs {
         }
         val cluster = readAtCapped(src, plan.clusterStart, plan.clusterLen)
         if (cluster.size < 16) return null
-        // 只取目标簇里的"那一个视频关键帧块",时间戳全部归零,合成成:簇头 +
-        // Timestamp(0)+ 关键帧块。给 MMR 的合成文件里就只有一帧、且在 t=0——它没有
-        // 别的帧可解、也不会往后 seek/前向解码,彻底避免"解到非关键帧/后续帧出绿屏"。
-        // 关键帧块靠扫描簇内块头精确定位(看 track 是视频轨 + keyframe 标志),不依赖
-        // CueRelativePosition(有些文件不写该字段,之前默认 0 会撞到 Timestamp 出绿屏)。
+        // Take only "that one video keyframe block" from the target cluster, zero out
+        // all timestamps, synthesize as: cluster header + Timestamp(0) + keyframe block.
+        // The synthesized file fed to MMR has only one frame and it's at t=0 — there's
+        // no other frame to decode, no seek/forward-decode — totally avoids "decoding
+        // a non-keyframe/following frame produces a green screen".
+        // The keyframe block is precisely located by scanning cluster-internal block
+        // headers (check track is a video track + keyframe flag), not relying on
+        // CueRelativePosition (some files don't write that field; defaulting to 0
+        // would hit Timestamp and produce a green screen).
         val kfBlock = extractVideoKeyframeBlock(cluster, plan.videoTrack) ?: return null
 
-        // 合成一个自足小 MKV:EBML 头 + Segment(未知大小)+ Info + Tracks + 只含关键帧块的
-        // 小 Cluster。SeekHead 不放进去(它指向原文件绝对偏移,合成后是错的)。
+        // Synthesize a self-contained mini MKV: EBML header + Segment (unknown size) +
+        // Info + Tracks + a small Cluster containing only the keyframe block. SeekHead
+        // is NOT included (its offsets point into the original file and would be wrong
+        // in the synthesized version).
         val bos = ByteArrayOutputStream(kfBlock.size + plan.tracksEnd + 64)
         bos.write(plan.head, 0, plan.ebmlEnd)
         bos.write(SEGMENT_UNKNOWN_HEADER)
@@ -693,10 +800,7 @@ object Thumbs {
         return frame
     }
 
-    /** 在 Cluster 里扫出第一个"视频轨关键帧"块(SimpleBlock 有 keyframe 标志 / BlockGroup
-     * 无 ReferenceBlock),把它的块内相对时间戳(track 号后 2 字节)清零后**整块复制**返回。
-     * 只取这一块:合成文件里就只有一帧、且在 t=0,MMR 无从解到别的帧(绿屏根治)。找不到
-     * 返回 null。 */
+    /** Scan the Cluster for the first "video track keyframe" block (SimpleBlock with the keyframe flag / BlockGroup without ReferenceBlock), zero out its in-block relative timestamp (the 2 bytes after the track number) and return the block **verbatim**. Taking only this one block: the synthesized file has just one frame at t=0, MMR has no other frame to decode (cure for green screen). Returns null if none found. */
     private fun extractVideoKeyframeBlock(cluster: ByteArray, videoTrack: Long): ByteArray? {
         val ch = ebmlHeader(cluster, 0) ?: return null
         if (ch.id != CLUSTER_ID) return null
@@ -725,7 +829,7 @@ object Thumbs {
                     }
                 }
                 BLOCKGROUP_ID -> {
-                    // 含 Block(0xA1)且无 ReferenceBlock(0xFB)= 关键帧
+                    // Contains Block (0xA1) and no ReferenceBlock (0xFB) = keyframe.
                     var q = e.bodyStart.toInt()
                     var blockPos = -1
                     var hasRef = false
@@ -752,7 +856,7 @@ object Thumbs {
         return null
     }
 
-    /** 把块内(SimpleBlock 或 BlockGroup 的 Block)track 号之后的 2 字节相对时间戳清零。 */
+    /** Zero out the 2-byte relative timestamp in a block (SimpleBlock, or Block inside a BlockGroup) that follows the track number. */
     private fun zeroBlockTimecode(block: ByteArray, tcOffset: Int) {
         if (tcOffset + 1 < block.size) {
             block[tcOffset] = 0
@@ -764,15 +868,15 @@ object Thumbs {
         0x1F, 0x43, 0xB6.toByte(), 0x75, 0x01, 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
         0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
     )
-    private val TIMESTAMP_ZERO = byteArrayOf(0xE7.toByte(), 0x81.toByte(), 0x00) // Timestamp 元素,值=0
+    private val TIMESTAMP_ZERO = byteArrayOf(0xE7.toByte(), 0x81.toByte(), 0x00) // Timestamp element, value = 0.
 
-    /** Segment 元素头 + "未知大小"(0x01 后跟 7 个 0xFF):合成流按数据源 EOF 结束。 */
+    /** Segment element header + "unknown size" (0x01 followed by seven 0xFF): the synthesized stream ends at the data source's EOF. */
     private val SEGMENT_UNKNOWN_HEADER = byteArrayOf(
         0x18, 0x53, 0x80.toByte(), 0x67, 0x01, 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
         0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(),
     )
 
-    /** 纯内存数据源(合成 MKV 用),readAt 全命中内存。 */
+    /** Pure in-memory data source (for synthesized MKV); readAt always hits memory. */
     private fun inMemorySource(data: ByteArray) = object : MediaDataSource() {
         override fun readAt(position: Long, buffer: ByteArray, offset: Int, len: Int): Int {
             if (position >= data.size) return -1
@@ -784,11 +888,9 @@ object Thumbs {
         override fun close() = Unit
     }
 
-    // ---- MKV(EBML)精确定位:SeekHead → Cues → 目标 Cluster ----
+    // ---- MKV (EBML) precise location: SeekHead → Cues → target Cluster ----
 
-    /** 为合成"自足小 MKV"备好的料:EBML 头 + Info + Tracks(都在 [head] 里,给出各自的
-     * 起止)+ 目标 Cluster 的绝对区间。合成后只喂给 MMR 这一小段,它就无法去扫原文件
-     * 的海量 Cluster(那是 REMUX 慢的根源)。 */
+    /** Pre-staged material for synthesizing a "self-contained mini MKV": EBML header + Info + Tracks (all in [head], with their respective start/end offsets) + the absolute range of the target Cluster. After synthesis only this small segment is fed to MMR, so it can't scan the original file's massive number of Clusters (that's the root cause of REMUX being slow). */
     private data class MkvPlan(
         val head: ByteArray,
         val ebmlEnd: Int,
@@ -829,33 +931,33 @@ object Thumbs {
     private const val BLOCK_ID = 0xA1L
     private const val REFERENCEBLOCK_ID = 0xFBL
 
-    private const val MKV_HEAD_CAP = 64L * 1024 // EBML 头 + SeekHead + Info + Tracks 通常都在这以内
+    private const val MKV_HEAD_CAP = 64L * 1024 // EBML header + SeekHead + Info + Tracks usually all fit within.
     private const val MKV_CUES_CAP = 16L * 1024 * 1024
     private const val MKV_CLUSTER_CAP = 24L * 1024 * 1024
 
-    /** 解析出 init / Cues / 目标 Cluster 三段的绝对字节区间和目标时间(µs);
-     * 无 SeekHead/Cues 或结构异常时返回 null(交给随机访问兜底)。 */
+    /** Parse the absolute byte ranges of the init / Cues / target Cluster three segments and the target time (µs);
+     * returns null when there's no SeekHead/Cues or the structure is malformed (fallback to random access). */
     private fun planMkv(src: RandomSource, size: Long): MkvPlan? {
         val head = readAtCapped(src, 0, minOf(MKV_HEAD_CAP, size))
         if (head.size < 8) return null
 
-        // EBML 头 + Segment 头
+        // EBML header + Segment header.
         var p = 0
         var h = ebmlHeader(head, p) ?: return null
         if (h.id != EBML_ID) return null
-        p = (h.bodyStart + h.contentSize).toInt() // 跳过 EBML 头体
+        p = (h.bodyStart + h.contentSize).toInt() // Skip past EBML header body.
         h = ebmlHeader(head, p) ?: return null
         if (h.id != SEGMENT_ID) return null
-        val segBase = h.bodyStart // Segment 内偏移都相对这里
+        val segBase = h.bodyStart // All Segment-internal offsets are relative to here.
 
-        // 扫描 Segment 顶层子元素(在 head 缓冲内),收集 SeekHead/Info/Tracks 与首个 Cluster
+        // Scan Segment top-level children (within the head buffer), collecting SeekHead/Info/Tracks and the first Cluster.
         var seekHead: EbmlBox? = null
         var info: EbmlBox? = null
         var tracks: EbmlBox? = null
         var q = segBase.toInt()
         while (q < head.size) {
             val e = ebmlHeader(head, q) ?: break
-            if (e.id == CLUSTER_ID) break // 到第一个 Cluster 就停,前面的元数据已收齐
+            if (e.id == CLUSTER_ID) break // Stop at the first Cluster; the metadata in front is already collected.
             when (e.id) {
                 SEEKHEAD_ID -> seekHead = e
                 INFO_ID -> info = e
@@ -868,17 +970,17 @@ object Thumbs {
         val tk = tracks ?: return null
         val sh = seekHead ?: return null
         val inf = info ?: return null
-        // Info/Tracks 必须完整落在 head 缓冲内(才能切出来合成),否则放弃走精确路径
+        // Info/Tracks must lie entirely within the head buffer (so they can be carved out for synthesis); otherwise abandon the precise path.
         val infoEnd = (inf.bodyStart + inf.contentSize).toInt()
         val tracksEnd = (tk.bodyStart + tk.contentSize).toInt()
         if (infoEnd > head.size || tracksEnd > head.size) return null
 
-        // SeekHead → Cues 的 Segment 相对偏移
+        // SeekHead → Segment-relative offset of Cues.
         val cuesRel = parseSeekHead(head, sh, CUES_ID) ?: return null
         val cuesAbs = segBase + cuesRel
         if (cuesAbs < 0 || cuesAbs >= size) return null
 
-        // Info → timestampScale(ns/tick,默认 1e6)+ duration(tick)
+        // Info → timestampScale (ns/tick, default 1e6) + duration (tick).
         var scale = 1_000_000L
         var durationTicks = 0.0
         if (info != null) {
@@ -887,19 +989,20 @@ object Thumbs {
             durationTicks = parsed.second
         }
 
-        // 读 Cues 元素(定位读)
+        // Read Cues element (random-access read).
         val cuesHdrBuf = readAtCapped(src, cuesAbs, 16)
         val ch = ebmlHeader(cuesHdrBuf, 0) ?: return null
         if (ch.id != CUES_ID || ch.unknownSize) return null
         val cuesBodyStart = cuesAbs + ch.bodyStart
         val cuesLen = ch.contentSize
         if (cuesLen <= 0 || cuesLen > MKV_CUES_CAP) return null
-        // 视频轨号:Cues 会分别索引各条轨(含字幕轨稀疏索引);只挑视频轨的 CuePoint,
-        // 否则可能选到字幕轨的 CueRelativePosition、指向字幕块而非关键帧(实测"绿屏/
-        // 解不出"就是这原因)。
+        // Video track number: Cues indexes each track separately (including sparse subtitle
+        // indexing); pick only the video track's CuePoint, otherwise we might end up at a
+        // subtitle track's CueRelativePosition pointing at a subtitle block rather than a
+        // keyframe (empirically the cause of "green screen / can't decode").
         val videoTrack = parseVideoTrackNumber(head, tk)
         val cuesData = readAtCapped(src, cuesBodyStart, cuesLen)
-        val cuePoints = parseCues(cuesData, videoTrack) // (timeTicks, clusterSegRelPos, relPos),仅视频轨
+        val cuePoints = parseCues(cuesData, videoTrack) // (timeTicks, clusterSegRelPos, relPos), video track only.
         if (cuePoints.isEmpty()) return null
 
         val lastTime = cuePoints.last().time
@@ -911,7 +1014,7 @@ object Thumbs {
         val clusterAbs = segBase + chosen.clusterPos
         if (clusterAbs < 0 || clusterAbs >= size) return null
 
-        // 目标 Cluster 头 → 真实大小
+        // Target Cluster header → real size.
         val clHdrBuf = readAtCapped(src, clusterAbs, 16)
         val cl = ebmlHeader(clHdrBuf, 0) ?: return null
         if (cl.id != CLUSTER_ID) return null
@@ -927,7 +1030,7 @@ object Thumbs {
 
     private data class MkvCue(val time: Long, val clusterPos: Long, val relPos: Long)
 
-    /** Tracks 里 TrackType==1(视频)的 TrackNumber;找不到默认 1。 */
+    /** The TrackNumber of the Track with TrackType==1 (video) inside Tracks; defaults to 1 if not found. */
     private fun parseVideoTrackNumber(buf: ByteArray, tracks: EbmlBox): Long {
         var p = tracks.bodyStart.toInt()
         val end = (tracks.bodyStart + tracks.contentSize).toInt().coerceAtMost(buf.size)
@@ -953,19 +1056,19 @@ object Thumbs {
         return 1L
     }
 
-    /** EBML 元素头:id(保留长度标记位)+ 内容大小 + 头长;[start] 元素起始、[bodyStart] 内容起始。 */
+    /** EBML element header: id (with the length-marker bit preserved) + content size + header length; [start] is the element's start, [bodyStart] is the content's start. */
     private data class EbmlBox(val id: Long, val start: Long, val bodyStart: Long, val contentSize: Long, val unknownSize: Boolean)
 
     private fun ebmlHeader(buf: ByteArray, p: Int): EbmlBox? {
         val idv = ebmlVint(buf, p, keepMarker = true) ?: return null
         val szPos = p + idv.second
         val szv = ebmlVint(buf, szPos, keepMarker = false) ?: return null
-        val unknown = szv.third // all-ones = unknown size
+        val unknown = szv.third // all-ones = unknown size.
         return EbmlBox(idv.first, p.toLong(), (szPos + szv.second).toLong(), szv.first, unknown)
     }
 
-    /** 读一个 EBML vint。keepMarker=true 用于元素 ID(保留长度描述位),false 用于大小。
-     * 返回 (值, 字节数, 是否全 1 即 unknown-size)。 */
+    /** Read one EBML vint. keepMarker=true for element IDs (keep the length-marker bit), false for sizes.
+     * Returns (value, byte count, is-all-ones = unknown-size). */
     private fun ebmlVint(buf: ByteArray, p: Int, keepMarker: Boolean): Triple<Long, Int, Boolean>? {
         if (p < 0 || p >= buf.size) return null
         val b0 = buf[p].toInt() and 0xFF
@@ -985,7 +1088,7 @@ object Thumbs {
         return v
     }
 
-    /** SeekHead 里找 [wantId] 的 Segment 相对偏移。 */
+    /** Look up the Segment-relative offset of [wantId] inside the SeekHead. */
     private fun parseSeekHead(buf: ByteArray, sh: EbmlBox, wantId: Long): Long? {
         var p = sh.bodyStart.toInt()
         val end = (sh.bodyStart + sh.contentSize).toInt().coerceAtMost(buf.size)
@@ -1032,9 +1135,7 @@ object Thumbs {
         return scale to dur
     }
 
-    /** 解析 Cues → **仅 [videoTrack] 轨**的 CuePoint(时间 tick、Cluster 的 Segment 相对
-     * 偏移、关键帧块在 Cluster 内的相对偏移),按时间升序。一个 CuePoint 可能含多条
-     * CueTrackPositions(视频/字幕各一),必须挑视频轨那条。 */
+    /** Parse Cues → CuePoints **only for the [videoTrack] track** (time tick, Cluster's Segment-relative offset, keyframe block's offset within Cluster), in ascending time order. One CuePoint can contain multiple CueTrackPositions (video / subtitle each), the video-track one must be picked. */
     private fun parseCues(buf: ByteArray, videoTrack: Long): List<MkvCue> {
         val out = ArrayList<MkvCue>()
         var p = 0
@@ -1077,30 +1178,52 @@ object Thumbs {
         return out
     }
 
-    /** MP4/MOV(ISO BMFF)网络取帧:解析 moov 采样表精确定位关键帧,只下载所需片段。 */
+    /** MP4/MOV (ISO BMFF) network frame grab: parse the moov sample table to precisely locate the keyframe, only download the required segments. */
     private fun genFrameMp4(r: MediaMetadataRetriever, file: XFile, src: RandomSource, size: Long): Bitmap? {
-        // moov(采样表等元数据)常见在文件头(faststart)或文件尾(边录边写、最后补
-        // moov)。头部还承担第二个角色:不管 moov 在哪,时间 0 附近的关键帧数据都紧跟
-        // 在文件开头 ftyp 之后,所以头部不能省(取不到 1/10 处时的兜底)。moov/mdat 的
-        // 精确位置/大小用 [scanTopBoxes] 扫描 box 头拿到,再用采样表([findKeyframeOffset])
-        // 精确定位目标时间点的关键帧字节偏移,只下载那一小段。
+        // moov (sample-table metadata, etc.) is commonly at the file head (faststart)
+        // or at the file tail (live-recording, moov patched in at the end). The head
+        // plays a second role: regardless of where moov is, the keyframe data near
+        // time 0 always follows the leading ftyp, so the head is essential (final
+        // fallback when 1/10 isn't available). moov/mdat's precise offset/size come
+        // from scanning box headers with [scanTopBoxes]; then the sample table
+        // ([findKeyframeOffset]) precisely locates the target time's keyframe byte
+        // offset, and we only download that small slice.
         var frame: Bitmap? = null
         run {
-            val head = readAtCapped(src, 0, minOf(VIDEO_HEAD_CAP, size))
+            val boxes = scanTopBoxes(src, size)
+            val moov = boxes["moov"]
+            // The head's second role only exists when moov is at the tail. With moov at the
+            // head (faststart) the head read is a byte-for-byte duplicate of moov's first
+            // VIDEO_HEAD_CAP bytes, which the moov read fetches again anyway — 8 MB of pure
+            // duplicate traffic on every large file. Read only up to moov's start there
+            // (ftyp, a few dozen bytes).
+            val headCap = if (moov != null && moov.first in 1 until VIDEO_HEAD_CAP) moov.first else VIDEO_HEAD_CAP
+            val head = readAtCapped(src, 0, minOf(headCap, size))
             if (head.isEmpty()) {
                 Log.w("twig", "thumbs: video head empty ${file.name}")
                 return null
             }
-            val boxes = scanTopBoxes(src, size)
-            val moov = boxes["moov"]
-            val metaStart: Long
+            // Segments pinned into the data source, in the file's real layout (a slimmed
+            // moov contributes several, an ordinary one contributes exactly itself).
+            val metaRegions: List<Pair<Long, ByteArray>>
             val meta: ByteArray
             if (moov != null && moov.second in 1..VIDEO_MOOV_CAP) {
-                metaStart = moov.first
-                meta = readAtCapped(src, metaStart, moov.second)
+                val slim = if (moov.second >= VIDEO_MOOV_SLIM_MIN) planSlimMoov(src, moov.first, moov.second) else null
+                if (slim != null) {
+                    meta = slim.compact
+                    metaRegions = slim.regions
+                    Log.d(
+                        "twig",
+                        "thumbs: mp4 moov slimmed ${moov.second} -> ${slim.bytes} bytes ${file.name}",
+                    )
+                } else {
+                    meta = readAtCapped(src, moov.first, moov.second)
+                    metaRegions = listOf(moov.first to meta)
+                }
             } else {
-                metaStart = maxOf(0L, size - minOf(VIDEO_TAIL_FALLBACK_CAP, size))
+                val metaStart = maxOf(0L, size - minOf(VIDEO_TAIL_FALLBACK_CAP, size))
                 meta = readAtCapped(src, metaStart, size - metaStart)
+                metaRegions = listOf(metaStart to meta)
                 Log.w(
                     "twig",
                     "thumbs: video ${file.name} moov scan failed(size=${moov?.second}), " +
@@ -1108,12 +1231,15 @@ object Thumbs {
                 )
             }
 
-            // head + moov 预取进 NetVideoDataSource;目标关键帧窗口在拿到时长后再 pin。
-            // 关键:未命中的位置回落定位读(不像之前 return -1 硬判 EOF)——4K/60fps 的
-            // I 帧可能比预取窗口大(实测某 34GB DoVi mp4 关键帧超过 2MB 被截断就解不出),
-            // 回落读能把超出窗口的关键帧字节补上;MP4 靠 moov 直接 seek(不像 MKV 顺序扫),
-            // 回落读次数很少,仍然快。
-            val ds = NetVideoDataSource(src, size, listOf(0L to head, metaStart to meta))
+            // Pre-fetch head + moov into NetVideoDataSource; the target keyframe window
+            // is pinned after we have the duration. Key: missing positions fall back
+            // to random-access reads (rather than the old `return -1` hard-EOF) — a
+            // 4K/60fps I-frame can be larger than the prefetch window (empirically, a
+            // 34 GB DoVi mp4's keyframe >2 MB gets truncated and undecodable); the
+            // fallback reads supply those extra keyframe bytes; MP4 uses moov for
+            // direct seek (not sequential scan like MKV), so fallback reads are rare
+            // and still fast.
+            val ds = NetVideoDataSource(src, size, listOf(0L to head) + metaRegions)
             r.setDataSource(ds)
 
             val durationMs = runCatching {
@@ -1129,7 +1255,7 @@ object Thumbs {
                     winStart = maxOf(0L, exact - VIDEO_KEYFRAME_MARGIN)
                     winLen = minOf(VIDEO_KEYFRAME_WINDOW, size - winStart)
                 } else if (mdat != null) {
-                    // 采样表解析失败:按 mdat 大小估算比例(兜底,不精确)
+                    // Sample-table parse failed: estimate by mdat size ratio (fallback, imprecise).
                     val targetByte = (mdat.first + mdat.second / VIDEO_FRAME_DIVISOR)
                         .coerceIn(mdat.first, mdat.first + mdat.second)
                     winStart = maxOf(mdat.first, targetByte - VIDEO_MID_WINDOW / 2)
@@ -1146,8 +1272,7 @@ object Thumbs {
         return frame
     }
 
-    /** 非 MP4 容器(AVI 等,或 MKV 精确解析失败)网络取帧:纯随机访问,让 MMR 自己
-     * 解封装 + seek(内部 MediaExtractor 原生支持 MKV)。 */
+    /** Non-MP4 containers (AVI, etc., or MKV precise-parse failure) network frame grab: pure random access, let MMR demux + seek itself (the internal MediaExtractor natively supports MKV). */
     private fun genFrameRandomAccess(r: MediaMetadataRetriever, file: XFile, src: RandomSource, size: Long): Bitmap? {
         val ds = NetVideoDataSource(src, size, emptyList())
         r.setDataSource(ds)
@@ -1166,7 +1291,7 @@ object Thumbs {
         r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
     }.getOrNull()
 
-    /** 只服务文件头 [head] 的数据源(非 MP4 且来源无高效定位读时的兜底,基本只能取时间 0)。 */
+    /** Data source serving only the file head [head] (fallback when the source isn't MP4 and lacks efficient random access — basically can only get time 0). */
     private fun headOnlySource(head: ByteArray, size: Long) = object : MediaDataSource() {
         override fun readAt(position: Long, buffer: ByteArray, offset: Int, len: Int): Int {
             if (position >= head.size) return -1
@@ -1178,20 +1303,16 @@ object Thumbs {
         override fun close() = Unit
     }
 
-    /** 网络视频数据源:先服务预取的 [pinned] 内存段(MKV 精确路径的 init/Cues/目标
-     * Cluster),未命中的位置回落到底层 [RandomSource] 定位读(256KB 块 LRU 缓存合并
-     * 相邻/重复读)。这样即便 MMR 读到我们没预取的位置也不会因返回 -1(=EOF)而解码
-     * 失败——之前 MKV 精确路径每次都 fallback 就是因为 MMR 会读三段之外的字节、被
-     * 硬判 EOF。累计回落读取超过 [LIVE_CAP] 才中止(防无 Cues 的文件触发全文件扫描)。
-     * [stats] 暴露未命中位置/回落字节,用于诊断"MMR 到底还需要哪些区间"。
-     * close() 空实现——底层 src 由外层 use{} 关闭;readAt 加锁(MMR 回调不保证同线程)。 */
+    /** Network video data source: first serves the prefetched [pinned] in-memory segments (MKV precise path's init / Cues / target Cluster); positions that miss fall back to random-access reads on the underlying [RandomSource] (256 KB block LRU cache coalesces adjacent/repeated reads). This way even if MMR reads positions we didn't prefetch, it won't fail to decode by returning -1 (= EOF) — previously the MKV precise path always fell back because MMR would read beyond the three prefetched segments and get hard-EOFed. Aborts only when cumulative fallback reads exceed [LIVE_CAP] (to prevent files without Cues from triggering a full-file scan).
+     * [stats] exposes the miss positions / fallback bytes for diagnosing "what regions does MMR actually still need".
+     * close() is a no-op — the underlying src is closed by the outer use{}; readAt is locked (MMR callbacks don't guarantee the same thread). */
     private class NetVideoDataSource(
         private val src: RandomSource,
         private val totalSize: Long,
         pinned: List<Pair<Long, ByteArray>>,
     ) : MediaDataSource() {
         private val regions = ArrayList(pinned.filter { it.second.isNotEmpty() })
-        /** 构造后追加一段预取(MP4 目标关键帧窗口在拿到时长/偏移后才下载)。 */
+        /** Append another prefetched segment after construction (the MP4 target keyframe window is downloaded only after we have the duration/offset). */
         fun pin(start: Long, data: ByteArray) = synchronized(lock) { if (data.isNotEmpty()) regions.add(start to data) }
         private val blockBits = 18
         private val blockSize = 1 shl blockBits
@@ -1214,7 +1335,7 @@ object Thumbs {
                     return n
                 }
             }
-            // 未命中预取段:回落到定位读(块缓存)
+            // Missed the prefetched region: fall back to random-access reads (block cache).
             if (missCount < 20) missLog.append(position).append('+').append(len).append(' ')
             missCount++
             if (liveBytes > LIVE_CAP) return -1
@@ -1247,16 +1368,16 @@ object Thumbs {
         override fun close() = Unit
 
         companion object {
-            private const val MAX_BLOCKS = 24 // 24 × 256KB = 6MB 滑动缓存窗口
-            private const val LIVE_CAP = 160L * 1024 * 1024 // 回落读取上限,超了放弃
+            private const val MAX_BLOCKS = 24 // 24 × 256KB = 6MB sliding cache window.
+            private const val LIVE_CAP = 160L * 1024 * 1024 // Fallback-read cap; abort when exceeded.
         }
     }
 
-    // ---- MP4 box 树解析(仅用于从已下载的 moov 里精确定位关键帧字节偏移) ----
+    // ---- MP4 box-tree parsing (used only for precisely locating the keyframe byte offset inside the downloaded moov) ----
 
     private data class MBox(val type: String, val start: Int, val end: Int, val bodyStart: Int)
 
-    /** 列出 [from, to) 范围内的直接子 box(只看头部,不递归)。 */
+    /** List direct child boxes in [from, to) (headers only, no recursion). */
     private fun mBoxChildren(buf: ByteArray, from: Int, to: Int): List<MBox> {
         val list = ArrayList<MBox>()
         var pos = from
@@ -1289,12 +1410,8 @@ object Thumbs {
         return v
     }
 
-    /** [meta] 是完整的 moov box(含它自己的 8 字节头)。解析 trak/mdia/stbl 找到视频
-     * 轨道的采样表(stts 时间->采样号、stss 同步采样表、stsc/stco(或 co64)采样->
-     * chunk->文件偏移、stsz 采样大小),精确算出 [targetTimeUs] 最近的关键帧在文件
-     * 里的真实字节偏移——用 ffprobe 抽真实关键帧位置核对过完全一致。结构不支持
-     * (缺某个 box、多轨道选轨失败等)时返回 null,调用方退化成旧的比例估算兜底。 */
-    private fun findKeyframeOffset(meta: ByteArray, targetTimeUs: Long): Long? = runCatching {
+    /** [meta] is the complete moov box (including its own 8-byte header). Parses trak/mdia/stbl to find the video track's sample tables (stts: time→sample #; stss: sync sample table; stsc/stco (or co64): sample→chunk→file offset; stsz: sample size) and precisely computes the byte offset of the keyframe closest to [targetTimeUs] in the file — cross-checked against real keyframe positions pulled by ffprobe, matches exactly. Returns null if the structure doesn't support it (missing box, multi-track selection failed, etc.); caller falls back to the older ratio-estimation fallback. */
+    internal fun findKeyframeOffset(meta: ByteArray, targetTimeUs: Long): Long? = runCatching {
         val top = mBoxChildren(meta, 8, meta.size)
         val trak = top.filter { it.type == "trak" }.firstOrNull { isVideoTrak(meta, it) } ?: return null
         val mdia = mBoxChildren(meta, trak.bodyStart, trak.end).first { it.type == "mdia" }
@@ -1318,21 +1435,24 @@ object Thumbs {
         byteOffsetForSample(meta, stsc, stco, co64, stsz, syncIndex1)
     }.getOrNull()
 
+    /** [trakHead] holds bytes from the very start of a trak box and may be truncated ([VIDEO_TRAK_PROBE]) — hdlr sits a few hundred bytes in, and [mBoxChildren] clamps children to what is present. */
+    private fun isVideoTrak(trakHead: ByteArray): Boolean =
+        trakHead.size > 8 && isVideoTrak(trakHead, MBox("trak", 0, trakHead.size, 8))
+
     private fun isVideoTrak(meta: ByteArray, trak: MBox): Boolean = runCatching {
         val mdia = mBoxChildren(meta, trak.bodyStart, trak.end).first { it.type == "mdia" }
         val hdlr = mBoxChildren(meta, mdia.bodyStart, mdia.end).first { it.type == "hdlr" }
         String(meta, hdlr.bodyStart + 8, 4, Charsets.ISO_8859_1) == "vide"
     }.getOrDefault(false)
 
-    /** mdhd(version 0 或 1)里的 timescale。 */
+    /** Timescale in mdhd (version 0 or 1). */
     private fun mdhdTimescale(meta: ByteArray, mdhd: MBox): Long {
         val version = meta[mdhd.bodyStart].toInt() and 0xFF
         val off = if (version == 1) mdhd.bodyStart + 20 else mdhd.bodyStart + 12
         return readU32(meta, off)
     }
 
-    /** stts(time-to-sample):按 (sample_count, sample_delta) 累加,找到目标采样时间
-     * 落在哪个采样上,返回 1-based 采样号。 */
+    /** stts (time-to-sample): accumulate by (sample_count, sample_delta) to find the sample whose time covers the target sample time, returns the 1-based sample number. */
     private fun sampleIndexAtTime(meta: ByteArray, stts: MBox, targetSampleTime: Long): Long {
         var p = stts.bodyStart + 4
         val count = readU32(meta, p).toInt()
@@ -1355,8 +1475,7 @@ object Thumbs {
         return idx - 1
     }
 
-    /** stss(sync sample table,1-based 升序采样号列表):找 <= 目标采样号里最大的一个
-     * (即目标之前最近的关键帧);目标比第一个关键帧还早就用第一个。 */
+    /** stss (sync sample table, ascending 1-based sample-number list): find the largest sample number <= target (i.e. the nearest preceding keyframe); if the target is earlier than the first keyframe, use the first. */
     private fun nearestSyncSample(meta: ByteArray, stss: MBox, sampleIndex1: Long): Long {
         var p = stss.bodyStart + 4
         val count = readU32(meta, p).toInt()
@@ -1370,8 +1489,7 @@ object Thumbs {
         return if (best >= 0) best else sampleIndex1
     }
 
-    /** 按 stsc(采样->chunk 映射)+ stco/co64(chunk->文件偏移)+ stsz(采样大小)
-     * 算出 [sampleIndex1](1-based)这个采样的绝对文件字节偏移。 */
+    /** Per stsc (sample→chunk mapping) + stco/co64 (chunk→file offset) + stsz (sample size), compute the absolute file byte offset of the sample at 1-based index [sampleIndex1]. */
     private fun byteOffsetForSample(
         meta: ByteArray,
         stsc: MBox,
@@ -1431,7 +1549,7 @@ object Thumbs {
         return chunkOffset + offsetInChunk
     }
 
-    /** 从 [src] 的 [start] 起最多读 [cap] 字节(定位读版的 [readCapped])。 */
+    /** Read at most [cap] bytes starting at [start] in [src] (position-based variant of [readCapped]). */
     private fun readAtCapped(src: RandomSource, start: Long, cap: Long): ByteArray {
         if (cap <= 0) return ByteArray(0)
         val bos = ByteArrayOutputStream(minOf(cap, NET_READ_CHUNK.toLong()).toInt())
@@ -1446,10 +1564,103 @@ object Thumbs {
         return bos.toByteArray()
     }
 
-    /** 扫描顶层 box(ftyp/moov/mdat/free/…):只读 box 头(8 或 64 位大小扩展的 16 字节),
-     * 用 box size 直接跳到下一个 box 头,不读 box 内容——代价是几次几十字节的定位读。
-     * 返回 类型->(偏移,大小) 的映射(一次扫描顺带拿到 moov 和 mdat);结构异常时
-     * 返回已扫到的部分(可能不含 moov/mdat)。 */
+    /** Result of [planSlimMoov]: [compact] is a self-contained moov holding only the boxes we kept (for our own sample-table parsing), [regions] are the segments to pin into [NetVideoDataSource] **in the file's real layout**, and [bytes] is what the plan actually downloaded. */
+    internal class SlimMoov(val compact: ByteArray, val regions: List<Pair<Long, ByteArray>>, val bytes: Long)
+
+    /** Download only the part of a large moov that a frame grab needs.
+     *
+     * A moov's sample tables are roughly proportional to sample count **per track**, so a
+     * multi-audio release pays for tracks nobody is about to decode: measured on a 28 GB
+     * 4K/60fps HEVC release with 8 audio tracks, moov is 42.76 MB of which the video trak is
+     * 9.70 MB — the other 33 MB (audio sample tables + a 1.16 MB udta cover) is downloaded,
+     * parsed and then ignored. Over SMB that alone blew past [VIDEO_TIMEOUT_MS], which is
+     * what "this mp4 never produces a thumbnail" actually was.
+     *
+     * The trick is that we do **not** have to hand MMR a shorter moov — the file layout must
+     * stay byte-identical, since moov's own size is what tells MMR where mdat starts. Instead
+     * every child box we don't want is served as an 8-byte `free` box header **of the same
+     * size**: a standard ISO BMFF skip box, so MMR jumps straight over it and never reads the
+     * body. Only the header is downloaded; the body stays a hole. (A miss inside the hole is
+     * harmless anyway — [NetVideoDataSource] falls back to a positioned read.)
+     *
+     * Returns null when the structure isn't the plain one this assumes (64-bit moov header,
+     * children that don't tile the box exactly, no video trak); the caller then downloads the
+     * whole moov as before. Verified on the desktop: the frame decoded from the slimmed
+     * layout is byte-identical to the one from the full moov.
+     */
+    internal fun planSlimMoov(src: RandomSource, moovStart: Long, moovSize: Long): SlimMoov? = runCatching {
+        val moovEnd = moovStart + moovSize
+        val moovHeader = readAtCapped(src, moovStart, 8)
+        if (moovHeader.size < 8) return null
+        // A 64-bit size extension would put the first child at +16; rare enough for a moov
+        // (it would have to exceed 4 GB) that we just decline instead of handling it.
+        if (readU32(moovHeader, 0) == 1L) return null
+
+        var pos = moovStart + 8
+        var downloaded = moovHeader.size.toLong()
+        val children = ArrayList<Triple<String, Long, Long>>()
+        var guard = 0
+        while (pos + 8 <= moovEnd && guard++ < 64) {
+            val hdr = ByteArray(8)
+            if (readAtExact(src, pos, hdr, 8) < 8) return null
+            downloaded += 8
+            var boxSize = readU32(hdr, 0)
+            val type = String(hdr, 4, 4, Charsets.ISO_8859_1)
+            if (boxSize == 1L || boxSize == 0L) return null // 64-bit / to-end child: not worth handling.
+            if (boxSize < 8 || pos + boxSize > moovEnd) return null
+            children.add(Triple(type, pos, boxSize))
+            pos += boxSize
+        }
+        // The children must tile the moov exactly; anything else means we misread the
+        // structure and must not start declaring parts of it `free`.
+        if (pos != moovEnd || children.isEmpty()) return null
+
+        val videoTrakStart = children.firstOrNull { (type, start, boxSize) ->
+            if (type != "trak") return@firstOrNull false
+            val probe = readAtCapped(src, start, minOf(VIDEO_TRAK_PROBE, boxSize))
+            downloaded += probe.size
+            isVideoTrak(probe)
+        }?.second ?: return null
+
+        val regions = ArrayList<Pair<Long, ByteArray>>()
+        val body = ByteArrayOutputStream()
+        regions.add(moovStart to moovHeader)
+        for ((type, start, boxSize) in children) {
+            val keep = start == videoTrakStart || (type != "trak" && boxSize <= VIDEO_MOOV_KEEP_BOX)
+            if (keep) {
+                val bytes = readAtCapped(src, start, boxSize)
+                if (bytes.size.toLong() != boxSize) return null
+                downloaded += bytes.size
+                regions.add(start to bytes)
+                body.write(bytes)
+            } else {
+                // Same size, type `free` — MMR skips the body, we never fetch it.
+                val stub = ByteArray(8)
+                writeU32(stub, 0, boxSize)
+                stub[4] = 'f'.code.toByte(); stub[5] = 'r'.code.toByte()
+                stub[6] = 'e'.code.toByte(); stub[7] = 'e'.code.toByte()
+                regions.add(start to stub)
+            }
+        }
+
+        // The compact copy is only ever parsed by us ([findKeyframeOffset] walks its
+        // children and reads the video trak's sample tables); chunk offsets inside are
+        // absolute file positions, so dropping boxes around them changes nothing.
+        val compact = ByteArray(8 + body.size())
+        writeU32(compact, 0, compact.size.toLong())
+        System.arraycopy(moovHeader, 4, compact, 4, 4)
+        System.arraycopy(body.toByteArray(), 0, compact, 8, body.size())
+        SlimMoov(compact, regions, downloaded)
+    }.getOrNull()
+
+    private fun writeU32(buf: ByteArray, off: Int, value: Long) {
+        buf[off] = (value ushr 24).toByte()
+        buf[off + 1] = (value ushr 16).toByte()
+        buf[off + 2] = (value ushr 8).toByte()
+        buf[off + 3] = value.toByte()
+    }
+
+    /** Scan top-level boxes (ftyp/moov/mdat/free/…): read only box headers (8 bytes, or 16 if a 64-bit size extension is present), use the box size to jump straight to the next box header, never read box bodies — the cost is a few dozen-byte random-access reads. Returns a type→(offset, size) map (one scan grabs moov and mdat along the way); on a structurally broken file, returns whatever was scanned so far (which may exclude moov/mdat). */
     private fun scanTopBoxes(src: RandomSource, fileSize: Long): Map<String, Pair<Long, Long>> {
         val result = HashMap<String, Pair<Long, Long>>()
         var pos = 0L
@@ -1486,18 +1697,15 @@ object Thumbs {
         return total
     }
 
-    // ---- 音频封面 ----
+    // ---- Audio cover ----
 
-    /** 同目录封面文件的候选主名(按优先级)与扩展名。 */
+    /** Candidate stems (priority order) and extensions for the same-directory cover file. */
     private val COVER_STEMS = listOf("cover", "folder", "front", "albumart")
     private val COVER_EXTS = setOf("jpg", "jpeg", "png", "webp")
-    private const val COVER_BYTES_CAP = 32L * 1024 * 1024 // 封面图大小上限,防止误配置指向巨大文件
+    private const val COVER_BYTES_CAP = 32L * 1024 * 1024 // Cover image size cap, to guard against misconfig pointing at a huge file.
 
-    /** "scheme:目录路径" -> 同目录封面文件的原始字节(null = 确认没有,负结果也缓存);
-     * 一个专辑目录几十首歌 / 播放器·通知·播放列表多个调用方只列目录 + 下载一次。缓存
-     * 字节而非解码结果——文件管理器缩略图要 256px、播放器/通知/播放列表要 1024px
-     * ([audioCover]),大小不同没法共用同一张位图,但都能从同一份字节各自解码,不用
-     * 各自重新 list+下载。LRU 上限 32 个目录,只在会话内存有效。 */
+    /** "scheme:directory-path" → raw bytes of the same-directory cover file (null = confirmed missing; negative results are cached too).
+     * One album directory has dozens of songs / the player, notification, playlist are multiple callers; they all only list the directory and download once. We cache the bytes rather than the decoded result — file-manager thumbnails want 256px, the player/notification/playlist want 1024px ([audioCover]); the different sizes can't share a single bitmap, but they can each decode from the same bytes without re-listing and re-downloading. LRU cap is 32 directories, session-memory only. */
     private val dirCoverBytes = object : LinkedHashMap<String, ByteArray?>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray?>?) = size > 32
     }
@@ -1521,8 +1729,7 @@ object Thumbs {
         return bytes
     }
 
-    /** 音频封面:先取内嵌封面,没有再退回同目录封面图。MMR 对截断/慢速数据源可能
-     * 卡住(无取消 API),和视频一样丢到 [videoExecutor] 上限时等待,不占 twig-thumbs 池。 */
+    /** Audio cover: take the embedded cover first, fall back to the same-directory cover image. MMR can hang on truncated/slow data sources (no cancel API), so like the video path it's submitted to [videoExecutor] with a time limit and doesn't occupy the twig-thumbs pool. */
     private fun genAudio(file: XFile): Bitmap? = try {
         videoExecutor.submit(Callable { genAudioBlocking(file) }).get(VIDEO_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
@@ -1538,12 +1745,7 @@ object Thumbs {
         return dirCover(file)
     }
 
-    /** 全尺寸音频封面(内嵌 APIC/covr/PICTURE 优先,退同目录 cover 文件),供音乐播放器
-     * 主界面/毛玻璃背景/通知([MusicService])/播放列表([PlaylistActivity])用。降采样到
-     * [maxEdge] 而非缩略图的 256。三个调用方各自是**单线程**队列——MMR 卡住(无取消 API,
-     * 和 [genVideo]/[genAudio] 同一风险,网络音频尤其容易撞上)会把那条队列永远堵死、
-     * 后续所有曲目再也等不到封面(这是"加载封面很慢"背后真正的坑,不只是慢而是可能
-     * 卡死),故和 [genAudio] 一样丢到 [videoExecutor] 限时等待,不再是裸阻塞调用。 */
+    /** Full-size audio cover (embedded APIC/covr/PICTURE preferred, falling back to the same-directory cover file), for the music player main UI / frosted background / notification ([MusicService]) / playlist ([PlaylistActivity]). Downsamples to [maxEdge] rather than the thumbnail's 256. The three callers each have a single-thread queue — if MMR hangs (no cancel API, same risk as [genVideo]/[genAudio], network audio in particular tends to hit it), it permanently blocks that queue and every subsequent track is left waiting forever for its cover (this is the real pitfall behind "loading covers is slow" — it's not just slow, it can actually deadlock); therefore, like [genAudio], it's submitted to [videoExecutor] with a time limit instead of being a naked blocking call. */
     fun audioCover(file: XFile, maxEdge: Int = 1024): Bitmap? = try {
         videoExecutor.submit(Callable { audioCoverBlocking(file, maxEdge) }).get(VIDEO_TIMEOUT_MS, TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
@@ -1555,6 +1757,8 @@ object Thumbs {
     }
 
     private fun audioCoverBlocking(file: XFile, maxEdge: Int): Bitmap? {
+        // The source (media server) already carries an album cover as a ready-made small image — use it, while the path below would have to drag in the whole song's bytes just to find the embedded image.
+        genCover(file, maxEdge)?.let { return it }
         val pic = runCatching {
             if (file.scheme == "file") {
                 withRetriever { r -> r.setDataSource(file.path); r.embeddedPicture }
@@ -1568,8 +1772,7 @@ object Thumbs {
             }
         }.getOrNull()
         if (pic != null) decodeSampledTo({ ByteArrayInputStream(pic) }, maxEdge)?.let { return it }
-        // 退回同目录 cover/folder/front/albumart——复用 [resolveDirCoverBytes] 的目录级缓存,
-        // 同一目录内切歌不用重新 list+下载。
+        // Fall back to same-directory cover/folder/front/albumart — reuse [resolveDirCoverBytes]'s directory-level cache so that switching songs within the same directory doesn't need to re-list + re-download.
         return resolveDirCoverBytes(file)?.let { b -> decodeSampledTo({ ByteArrayInputStream(b) }, maxEdge) }
     }
 
@@ -1583,9 +1786,7 @@ object Thumbs {
         return runCatching { open().use { BitmapFactory.decodeStream(it, null, opts) } }.getOrNull()
     }
 
-    /** MMR 取内嵌封面(mp3 ID3 APIC / FLAC PICTURE / m4a covr)。本地直接给路径;
-     * 其它来源给随机访问数据源让 MMR 自己按需读——mp3/flac 的封面都在文件头,m4a 的
-     * covr 在 moov(可能在尾部),[NetVideoDataSource] 的块缓存 + 读取上限约束流量。 */
+    /** MMR reads the embedded cover (mp3 ID3 APIC / FLAC PICTURE / m4a covr). Local files get the path directly; other sources get a random-access data source so MMR reads on demand — mp3/flac covers sit in the file header, but m4a's covr lives in moov (possibly at the tail), and [NetVideoDataSource]'s block cache + read cap keep the traffic bounded. */
     private fun embeddedAudioCover(file: XFile): Bitmap? {
         val pic = runCatching {
             if (file.scheme == "file") {
@@ -1605,13 +1806,23 @@ object Thumbs {
         return decodeSampled { ByteArrayInputStream(pic) }
     }
 
-    /** 同目录封面图(256px 缩略图用),字节来自 [resolveDirCoverBytes] 的目录级缓存。 */
+    /** Same-directory cover image (256px thumbnail use); bytes come from [resolveDirCoverBytes]'s directory-level cache. */
     private fun dirCover(file: XFile): Bitmap? =
         resolveDirCoverBytes(file)?.let { b -> decodeSampled { ByteArrayInputStream(b) } }
 
-    private fun genPdf(file: XFile): Bitmap? {
-        if (file.scheme != "file") return null
-        ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+    /**
+     * PDF needs a seekable fd (PdfRenderer has no streaming interface), so network sources inherently can't do it ([eligible] already filters them out). ★ But SAF entries are actually local files and the provider can hand back an fd — previously this only matched `scheme == "file"`, so every SAF pdf ended up in the generation queue only to return null, burning a slot and incurring the 60s failure cooldown for nothing.
+     */
+    private fun genPdf(ctx: Context, file: XFile): Bitmap? {
+        val opened = when (file.scheme) {
+            "file" -> runCatching {
+                ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY)
+            }.getOrNull()
+            com.twig.app.SafFileSystem.SCHEME ->
+                runCatching { ctx.contentResolver.openFileDescriptor(Uri.parse(file.path), "r") }.getOrNull()
+            else -> null
+        } ?: return null
+        opened.use { pfd ->
             val renderer = PdfRenderer(pfd)
             try {
                 if (renderer.pageCount == 0) return null
@@ -1631,7 +1842,7 @@ object Thumbs {
         }
     }
 
-    // ---- 解码工具 ----
+    // ---- Decoding helpers ----
 
     private fun decodeSampled(open: () -> InputStream): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -1643,7 +1854,7 @@ object Thumbs {
         return runCatching { open().use { BitmapFactory.decodeStream(it, null, opts) } }.getOrNull()
     }
 
-    /** 从 [ins] 最多读 [cap] 字节,用 [NET_READ_CHUNK] 大缓冲区——网络流专用,减少往返。 */
+    /** Read at most [cap] bytes from [ins] using a [NET_READ_CHUNK]-sized buffer — dedicated to network streams, fewer round-trips. */
     private fun readCapped(ins: InputStream, cap: Long, sizeHint: Long = 0L): ByteArray {
         val bos = ByteArrayOutputStream(if (sizeHint in 1..cap) sizeHint.toInt() else NET_READ_CHUNK)
         val buf = ByteArray(NET_READ_CHUNK)

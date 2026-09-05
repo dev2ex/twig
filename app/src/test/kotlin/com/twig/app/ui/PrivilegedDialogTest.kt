@@ -16,15 +16,19 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 
 /**
- * ★ 回归:「特权访问」对话框里的选项**必须真的在屏幕上**。
+ * ★ Regression: the options in the "Privileged Access" dialog **must actually be on
+ * screen**.
  *
- * 第一版同时调了 `setMessage()`(那段 Shizuku 说明)和 `setSingleChoiceItems()`。
- * AlertDialog 的内容面板只放得下一样东西,两个都设时 message 赢,**列表整个不渲染** ——
- * 用户看到的是一段说明加一个「取消」,一个选项都点不到。代码读起来毫无破绽,
- * 而后果是整个功能没有入口:选不了 → 从不请求 Shizuku 授权 → 在 Shizuku 的应用
- * 列表里也永远不出现,三个症状看着像三个 bug。
+ * The first version called both `setMessage()` (the Shizuku explanation) and
+ * `setSingleChoiceItems()`. An AlertDialog's content panel only has room for one of them;
+ * when both are set, message wins and **the list simply does not render** -- the user sees
+ * an explanation and a "Cancel" button, with no option clickable at all. The code reads
+ * flawlessly, yet the consequence is that the whole feature has no entry point: nothing can
+ * be selected -> Shizuku authorization is never requested -> the app never shows up in
+ * Shizuku's app list either -- three symptoms that look like three separate bugs.
  *
- * 所以这条测的不是"builder 上设没设选项",而是**对话框拿出来后 ListView 里有几行**。
+ * So this test does not check "did the builder get given options", but **how many rows the
+ * ListView actually has once the dialog comes up**.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -34,9 +38,11 @@ class PrivilegedDialogTest {
         Robolectric.buildActivity(SettingsActivity::class.java).setup().get()
 
     /**
-     * 按标题文案找到设置页里的那一行(手写布局,没有 id 可用)。找到标题 TextView 后
-     * **往上走到第一个真正装了点击监听的祖先** —— 不写死"往上两层",布局嵌套一改
-     * 那种写法会静默点到不相干的 View 上,测试反而变成假绿。
+     * Finds the row on the settings page by its title text (a hand-written layout, no id
+     * available). After finding the title TextView, **walk up to the first ancestor that
+     * actually has a click listener** -- not hardcoded as "two levels up", since that kind
+     * of code silently clicks the wrong View the moment the layout nesting changes, turning
+     * the test into a false positive.
      */
     private fun rowWithTitle(activity: SettingsActivity, title: String): android.view.View? {
         val root = activity.findViewById<android.view.View>(android.R.id.content)
@@ -51,15 +57,16 @@ class PrivilegedDialogTest {
         return cur
     }
 
-    /** AppCompat 的对话框不归 ShadowAlertDialog 管,只能从最近弹出的 Dialog 拿。 */
+    /** AppCompat's dialog is not managed by ShadowAlertDialog; it can only be obtained from the most recently shown Dialog. */
     private fun latestDialog(): AlertDialog? = ShadowDialog.getLatestDialog() as? AlertDialog
 
     /**
-     * ★ 判据必须是"**挂进视图树没有**",不能是 `listView != null`。
+     * ★ The assertion must be "**is it attached in the view tree**", not `listView != null`.
      *
-     * AlertController 在有 message 时**照样把 ListView 构造出来**,只是不往内容面板里
-     * 加 —— 于是 `dialog.listView` 非空、adapter 里三行俱全,而屏幕上一个选项都没有。
-     * 拿非空当判据,这条测试在出 bug 的那版上会照样绿。
+     * AlertController **still constructs the ListView** even when there's a message, it just
+     * does not add it to the content panel -- so `dialog.listView` is non-null with all three
+     * rows in its adapter, while zero options are on screen. Using non-null as the check
+     * would leave this test green on the buggy version too.
      */
     private fun isShown(dialog: AlertDialog, target: android.view.View?): Boolean {
         if (target == null) return false
@@ -73,32 +80,33 @@ class PrivilegedDialogTest {
     }
 
     @Test
-    fun `特权访问对话框把三个选项真的渲染出来`() {
+    fun `the privileged access dialog actually renders all three options`() {
         val activity = openSettings()
         val title = activity.getString(R.string.settings_privileged)
         val row = rowWithTitle(activity, title)
-        assertNotNull("设置页里没找到「$title」这一行", row)
+        assertNotNull("could not find the \"$title\" row on the settings page", row)
 
         row!!.performClick()
 
         val dialog = latestDialog()
-        assertNotNull("点了没弹出对话框", dialog)
+        assertNotNull("no dialog appeared after clicking", dialog)
         val listView = dialog!!.listView
         assertTrue(
-            "选项列表没有出现在对话框里——多半是又给它设了 message,内容面板被占掉了",
+            "the option list did not appear in the dialog -- likely a message was set on it again, occupying the content panel",
             isShown(dialog, listView),
         )
-        assertEquals("应当是 关闭 / Root / Shizuku 三选一", 3, listView.adapter.count)
+        assertEquals("should be a choice of three: Off / Root / Shizuku", 3, listView.adapter.count)
         assertEquals(activity.getString(R.string.priv_mode_off), listView.adapter.getItem(0).toString())
         assertEquals(activity.getString(R.string.priv_mode_shizuku), listView.adapter.getItem(2).toString())
     }
 
     /**
-     * 说明文字不能因为挪走就丢了 —— 它解释的是"Shizuku 不是 root",
-     * 没有它用户会以为选了 Shizuku 就能看任意应用的私有数据。
+     * The explanatory text must not get lost just because it was moved -- it explains that
+     * "Shizuku is not root", and without it a user might think choosing Shizuku grants
+     * access to any app's private data.
      */
     @Test
-    fun `Shizuku 说明仍然出现在对话框里`() {
+    fun `the Shizuku note still appears in the dialog`() {
         val activity = openSettings()
         rowWithTitle(activity, activity.getString(R.string.settings_privileged))!!.performClick()
 
@@ -110,27 +118,28 @@ class PrivilegedDialogTest {
             if (v is android.view.ViewGroup) for (i in 0 until v.childCount) walk(v.getChildAt(i))
         }
         dialog.window?.decorView?.let { walk(it) }
-        assertTrue("说明文字没了", texts.any { it == note })
+        assertTrue("the explanatory text is gone", texts.any { it == note })
     }
 
     /**
-     * `setMessage` + 列表同时用会出什么事,直接钉在这里 —— 免得以后有人"顺手把说明
-     * 挪回 setMessage",而那看上去是个无害的简化。
+     * Pins down exactly what happens when `setMessage` and a list are used together -- so
+     * nobody later "conveniently moves the note back into setMessage", which would look like
+     * a harmless simplification.
      */
     @Test
-    fun `同时设置 message 与选项时列表会消失`() {
+    fun `setting both message and options together makes the list disappear`() {
         val activity = openSettings()
         AlertDialog.Builder(activity)
             .setTitle("t")
-            .setMessage("一段说明")
+            .setMessage("some note")
             .setSingleChoiceItems(arrayOf("a", "b", "c"), 0, null)
             .show()
 
         val dialog = latestDialog()!!
-        // 注意它**不是 null** —— 列表被造出来了,只是没挂上去。这正是这条坑难查的原因。
-        assertNotNull("列表对象本身还在", dialog.listView)
+        // note it is **not null** -- the list was constructed, just never attached. This is exactly why this pitfall is hard to find.
+        assertNotNull("the list object itself is still there", dialog.listView)
         assertTrue(
-            "AlertDialog 竟然同时显示了 message 和列表——那这条坑不存在了,主测试的判据该收紧",
+            "the AlertDialog somehow showed both the message and the list -- then this pitfall no longer exists and the main test's assertion should be tightened",
             !isShown(dialog, dialog.listView),
         )
     }

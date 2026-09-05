@@ -1,13 +1,13 @@
 # Twig 🌿
 
-**English** · [简体中文](README.zh-CN.md)
+**English** · [Simplified Chinese](README.zh-CN.md)
 
 A size-first, dual-pane file manager for Android — in the spirit of X-plore.
 Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.1.1** (versionCode 270) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.6.0** (versionCode 285) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- TODO: screenshots / GIFs go here. Four that make the case:
@@ -20,12 +20,12 @@ restic are all implemented from scratch.
 
 ## Why Twig
 
-**One tree, every source.** Local storage, archives, FTP, SFTP, SMB, WebDAV, S3
-and restic repositories are all the same thing to the UI. Copying between any two
+**One tree, every source.** Local storage, archives, FTP, SFTP, SMB, WebDAV, S3,
+restic repositories and Jellyfin/Emby servers are all the same thing to the UI. Copying between any two
 of them is the same code path — an SMB folder can be compressed straight into a
 local zip, a file inside a remote archive can be streamed to an FTP server.
 
-**It stays small.** A per-device download is about 6.7 MB *including* an FFmpeg
+**It stays small.** A per-device download is about 6.9 MB *including* an FFmpeg
 audio decoder, an SMB implementation and a video player. Comparable file managers
 ship several times that. Dependencies are added only after their APK cost is
 measured.
@@ -46,6 +46,15 @@ measured.
 - **Privileged access via root or Shizuku** as a *fallback for the local
   filesystem*, not a separate tree — so `/data/data/…` copies to SMB, thumbnails
   and search all work with no extra code.
+- **Media servers as a filesystem.** Jellyfin and Emby libraries browse like any
+  other source, with playback position synced back to the server and posters,
+  tags, lyrics and external subtitles all coming from the API instead of by
+  reading the media file. One implementation covers both, and it added **zero
+  dependencies**.
+- **Directory compare with one-way sync**, Beyond Compare style, between *any* two
+  sources — an SMB share against a local folder, a document tree against an archive —
+  with incremental or mirror mode and a separate confirmation for files that are newer
+  on the target.
 - **Wi-Fi sharing**: Twig becomes an HTTP and WebDAV server, so a desktop can
   mount it — and download files that live on an SMB share or inside an archive,
   because to the server they are all just `openInput()`.
@@ -54,23 +63,28 @@ measured.
 
 ## Size
 
-Measured on the 1.1.1 release build (R8 + resource shrinking):
+Measured on the 1.5.0 release build (R8 + resource shrinking):
 
 | | Size |
 |---|---|
-| Release APK (`arm64-v8a` + `x86_64`) | 9.0 MB |
-| **Per-device download (`arm64-v8a`)** | **≈ 6.7 MB** |
+| Release APK (`arm64-v8a` + `x86_64`) | 9.1 MB |
+| **Per-device download (`arm64-v8a`)** | **≈ 6.9 MB** |
 
-Where it goes:
+Where it goes (compressed sizes inside the APK):
 
 | Component | Size |
 |---|---|
-| `classes.dex` | 2.6 MB |
-| Bouncy Castle | 1.3 MB |
+| `classes.dex` (all our code plus every JVM dependency) | 2.7 MB |
 | `libffmpegJNI.so` | 1.4 MB |
+| Bouncy Castle data files | 1.2 MB |
+| Resources (`resources.arsc` + `res`) | 865 KB |
 | `libsamba_jni.so` (libsmb2) | 464 KB |
-| Resources (`resources.arsc` + `res`) | 793 KB |
 | `libtwigzstd` / `libtermux` / `libtwigpty` | 108 KB |
+
+Nearly all of the Bouncy Castle figure is three lookup tables for the `picnic`
+post-quantum signature scheme (`lowmcL{1,3,5}.bin.properties`). Twig pulls in the
+full Bouncy Castle only because Android's cut-down build lacks X25519, so this is
+1.2 MB of pure dead weight — see the roadmap.
 
 Because every source is a separate Gradle module, a build can drop what it does
 not need — omitting media playback and the network sources removes the large
@@ -80,7 +94,8 @@ majority of the above.
 
 ## Architecture in one sentence
 
-Every source — local, archive, FTP, SFTP, SMB, WebDAV, S3, restic — implements
+Every source — local, archive, FTP, SFTP, SMB, WebDAV, S3, restic, Jellyfin —
+implements
 the same `FileSystem` + `XFile` interface, and `CopyEngine` moves bytes between
 any two of them through `openInput()` / `openOutput()`.
 
@@ -101,7 +116,10 @@ and the app can be built in trimmed configurations by dropping modules.
 | **Local** | Full read/write | `java.io.File` |
 | **ZIP** | **Read + write**, legacy GBK names detected | Mounted as a filesystem; opens like a folder |
 | **7z** | Read + **create** (LZMA2) | commons-compress + xz |
-| **RAR** | Read-only (RAR4) | junrar |
+| **tar** | Read-only | Entries are contiguous, so they are read by slicing — a nested archive inside opens without being unpacked first |
+| **gz / xz / bz2 / zst** | Read-only | One stream, not an archive: mounted as a single entry, so `foo.tar.gz` opens to `foo.tar` and expands again — `.tgz`/`.txz`/`.tbz2`/`.tzst` included |
+| **zstd** | Read-only | Streaming decode through the same bundled libzstd that restic uses — no second copy of the library |
+| **RAR** | Read-only (RAR4 + RAR5) | junrar, in its own module — `full` builds only, the `libre` build has no RAR |
 | **Encrypted archives** | Read zip/7z/rar, **create** AES-256 zip/7z | WinZip AES and legacy ZipCrypto written by hand |
 | **FTP** | Full read/write | Apache Commons Net |
 | **SFTP** | Full read/write | SSHJ (with full Bouncy Castle for X25519) |
@@ -109,8 +127,10 @@ and the app can be built in trimmed configurations by dropping modules.
 | **WebDAV** | Full read/write | Hand-written PROPFIND/MKCOL/MOVE, no SDK |
 | **S3-compatible** | Full read/write | Hand-written SigV4 + REST — AWS S3, MinIO, R2, OSS, COS, B2 |
 | **restic** | Read-only, decrypted | Written from scratch; repo format v1 and v2 |
+| **Jellyfin / Emby** | Read-only virtual tree | Hand-written REST; one implementation covers both, no new dependencies |
 | **SAF document tree** | Read/write | System-level fallback without `MANAGE_EXTERNAL_STORAGE` |
 | **Privileged (root / Shizuku)** | Read/write | Not a separate source — a fallback for local paths ordinary APIs cannot reach |
+| **Installed apps** | Read-only virtual tree | PackageManager; a split app is packed into an XAPK on the fly, so copying one out keeps its `split_config.*` |
 
 Network sources connect on expand, support multiple servers (each gets a unique
 scheme), and persist their configuration. Extraction is just a cross-source copy;
@@ -137,23 +157,75 @@ needs no special case.
   all from system APIs, and never reading a whole file just to fill a field.
 - **Treemap disk usage** (SpaceSniffer style) embedded in the pane, pinch to zoom,
   with the same long-press actions as the tree.
+- **SD cards and USB drives** get their own rows at the root, named and sized by the
+  system. No new permission — a volume the ordinary APIs cannot read can be granted
+  through SAF or reached with elevation.
+- **Go to path**: type a path on any root — a server, internal storage, a removable
+  volume, a document tree, a favourite — and the tree expands its way down to that
+  directory or file, connecting the server on the way if it is not open yet.
 - **Twig works as a file picker**, both for other apps (`GET_CONTENT`) and for its
   own imports — which is how you can pick a file from inside an SMB share or an
   archive, something the system picker cannot do.
+
+### Compare
+
+- **Directory compare** in the Beyond Compare style: two trees aligned row by row with
+  a status column between them — side by side in landscape, one side at a time in
+  portrait with the status column always visible. Either side can be *any* source, and
+  small files are compared by content rather than by size and timestamp.
+- **One-way sync** in a direction you pick explicitly (left or right, never "the active
+  side"), **incremental** by default — push what is missing or different and leave the
+  target's extra files alone — or **mirror**, which deletes them. Items that are newer
+  on the target are listed separately and are *not* overwritten unless you tick them.
+- **Saved comparisons** sit on the tree next to favourites, so a pair you check often is
+  one tap away and can be synced straight from its row.
+- **Text compare** with two columns, synchronised horizontal scrolling and per-hunk merge
+  arrows; **image compare** side by side with linked zoom and pan.
 
 ### Viewers and player
 
 Every viewer reads through `FsRegistry`, so local, in-archive and remote files
 all work the same way.
 
-- Text viewer with hand-written syntax highlighting, multiple themes
-- Hex viewer
+- Text viewer with hand-written syntax highlighting, multiple themes, pinch-to-zoom and
+  a Markdown preview mode
+- **Text encoding is a preference, not a guess**: one decoder (`TextCodec`) tries BOM,
+  then strict UTF-8, then the fallbacks you ordered (GBK by default). Editing is not
+  limited to UTF-8 — a file is written back in the encoding it was read with, and if the
+  original encoding cannot represent something you typed, Twig asks instead of silently
+  substituting `?`
+- Hex viewer with virtual scrolling, a draggable scrollbar and text/HEX search
 - Image viewer with downsampling, plus a slideshow that starts on the first image
   found while still scanning
 - **Video/audio player** (media3 + FFmpeg software decoding) covering AVI, real
   Blu-ray M2TS, HDMV private audio tracks and PGS subtitles, with two-stage
   automatic fallback when a system decoder crashes
+- **Episode auto-play**: the queue comes from the server on Jellyfin/Emby, and
+  from filename numbering (`SxxExx`, `E01`, bare digits) everywhere else. Previous
+  and next buttons appear only when a queue could actually be worked out
 - Music player with waveform display
+
+### Media servers (Jellyfin / Emby)
+
+One implementation covers both — Emby is where Jellyfin was forked from, so the
+endpoints share a lineage — and it adds **no dependencies**: OkHttp was already
+here, and `org.json` ships with Android.
+
+- The tree mirrors **the libraries that actually exist on the server**, under the
+  names you gave them — not a fixed list of types. A movie library expands to
+  every movie, a TV library to every series (seasons only when there is more than
+  one), a music library to Albums / Album artists / Artists / Folders.
+- **Playback position syncs both ways.** Continue Watching is the server's list,
+  not a second private copy, and it keeps the server's ordering rather than the
+  sort you picked for file browsing.
+- **Posters, tags, lyrics and external subtitles all come from the API.** Reading
+  the media file to get any of this used to cost seconds per track over a network.
+  Continue Watching shows landscape stills; libraries show portrait posters at
+  their true aspect ratio.
+- **Search uses the server's index**, so a film scraped to a localised title is
+  still found under its original name.
+- Read-only by design: there is no upload API, and `DELETE /Items/{id}` would
+  delete the real file on the server.
 
 ### Terminal
 
@@ -162,7 +234,8 @@ all work the same way.
 - **Privileged terminal** via root or Shizuku, always a separate, clearly labelled
   entry — never a silent upgrade of the ordinary shell
 - Importable fonts and colour schemes (any Termux `colors.properties` works);
-  pinch to resize, which resyncs the remote PTY
+  pinch to resize, which resyncs the remote PTY; hold an arrow key on the accessory bar
+  to repeat it
 - **Command shortcuts**: attach a command to an SFTP directory or server, run it
   in a terminal or silently in the background, and pin it to the home screen
 
@@ -186,6 +259,24 @@ Explorer or another copy of Twig can mount it. **Read-only by default**, optiona
 Basic auth, foreground service with a Wi-Fi lock, and UDP discovery so another
 Twig can find it and save it as a connection.
 
+### Security
+
+- Passwords, API keys, tokens and key passphrases are **encrypted at rest**. A random
+  256-bit data key encrypts the fields and is itself wrapped either by a hardware-backed
+  Keystore key (the default, invisible) or by scrypt over a master password. Turning the
+  master password on or off only rewraps that one key — not a byte of field ciphertext is
+  rewritten. No new dependency: scrypt comes from the Bouncy Castle already in the APK.
+- The master password is an **app lock checked at every entry point** — the main UI,
+  "open with Twig", "copy to…", the file picker, the terminal shortcut and the remote
+  command shortcuts. Miss one and the lock only guards the front door. **Lock** drops the
+  key from memory while music, terminals and sharing keep running.
+- **Fingerprint unlock** through the platform `BiometricPrompt` (not androidx.biometric —
+  zero APK cost) exists alongside the master password, which stays the root key.
+- **Config backup** (`.twigbak`): connections and settings as JSON, optionally encrypted
+  with a separate export password, and written through Twig's own directory picker — so a
+  backup can go straight to SMB, WebDAV or S3. Import merges rather than replaces, and
+  tokens, host keys and the data key are never exported.
+
 ---
 
 ## Modules
@@ -194,8 +285,9 @@ Twig can find it and save it as a connection.
 |---|---|
 | `:core-fs` | Pure JVM: `XFile` / `FileSystem` / `FsRegistry` / `CopyEngine` |
 | `:fs-local` | `LocalFileSystem` plus `priv/` — the root/Shizuku privileged shell fallback |
-| `:fs-archive` | `ArchiveFileSystem` + zip (read/write, encryption) / 7z / RAR, and `ArchiveWriter` |
-| `:fs-network` | `FtpFileSystem` / `SftpFileSystem` / `WebDavFileSystem` / `S3FileSystem` |
+| `:fs-archive` | `ArchiveFileSystem` + zip (read/write, encryption) / 7z, and `ArchiveWriter` |
+| `:fs-archive-rar` | `RarFileSystem` (RAR4 + RAR5) — a separate module purely so the `libre` build can drop it |
+| `:fs-network` | `FtpFileSystem` / `SftpFileSystem` / `WebDavFileSystem` / `S3FileSystem` / `JellyfinFileSystem` |
 | `:fs-smb` | `SmbFileSystem` — libsmb2 via NDK/JNI |
 | `:fs-restic` | restic repository reader (pure Kotlin) |
 | `:fs-zstd` | `NativeZstd` — zstd via JNI |
@@ -208,9 +300,16 @@ Twig can find it and save it as a connection.
 
 ```bash
 ./gradlew :app:assembleDebug      # installable debug APK
-./gradlew :app:assembleRelease    # R8-optimised release
+./gradlew :app:assembleFullRelease     # R8-optimised release (with RAR)
+./gradlew :app:assembleLibreRelease    # F-Droid variant (no RAR, 100% FLOSS)
 ./gradlew :app:bundleRelease      # AAB for store upload (smaller per-device download)
 ```
+
+Release builds are signed only if a `keystore.properties` file exists at the repo
+root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). Without it the
+release tasks emit an **unsigned** APK — `app-<flavor>-release-unsigned.apk` —
+rather than falling back to the public Android debug key. Sign it yourself, or use
+a debug build for local testing.
 
 Tests:
 
@@ -268,10 +367,10 @@ To sign, add one line to your pull request description:
 I have read the CLA (CLA.md) and I agree to its terms.
 ```
 
-Implementation decisions and the reasoning behind them — including a long list of
-bugs that were expensive to find — are recorded in [CLAUDE.md](CLAUDE.md). Read
-the relevant section before changing subsystems like the terminal, thumbnails or
-the TS demuxer.
+Implementation decisions and the reasoning behind them are recorded in
+[CLAUDE.md](CLAUDE.md), and the long list of bugs that were expensive to find lives one
+file per area under [docs/lessons/](docs/lessons/). Read the matching file before
+changing subsystems like the terminal, thumbnails or the TS demuxer.
 
 ---
 
@@ -279,7 +378,9 @@ the TS demuxer.
 
 - `:fs-cloud` — Google Drive / Dropbox / OneDrive over plain REST, no vendor SDKs
 - Global search
-- Size: slim down Bouncy Castle (Conscrypt-only, needs on-device verification)
+- Size: drop the 1.2 MB of Bouncy Castle `picnic` lookup tables, or replace the
+  whole dependency with Conscrypt — either way it needs on-device verification
+  that the SSH handshake still finds X25519
 
 ---
 
@@ -334,5 +435,31 @@ the TS demuxer.
   target; **S3-compatible object storage** with hand-written SigV4; privileged
   access via root and Shizuku, including a privileged terminal built on
   `bindUserService` with a PTY allocated on the privileged side.
+
+- **1.1** — **Jellyfin and Emby** as a first-class source: the tree mirrors the
+  server's own libraries, playback position syncs back, posters/tags/lyrics/
+  subtitles come from the API instead of from the media file, search uses the
+  server's index, and episodes auto-play. No new dependencies. Episode auto-play
+  also works on ordinary sources by reading the numbering out of filenames, and
+  write actions now disappear on read-only sources instead of failing when tapped.
+- **1.2** — **Directory-compare sync**: incremental or mirror, with the direction pinned
+  to "left" and "right" rather than the active side, and files that are newer on the
+  target confirmed separately. **RAR5** support (junrar 8.1.0 — which also fixed a wrong
+  password being reported as correct), and the `libre` / `full` flavour split that moves
+  junrar into its own module so the F-Droid build is 100% FLOSS. The navigation bar now
+  takes the colour of whatever page sits above it, instead of being a black strip.
+- **1.3** — **Security**: saved credentials encrypted behind a two-layer Keystore key,
+  the master password promoted to an app-wide lock guarding all six entry points,
+  fingerprint unlock, and `.twigbak` config backup written through Twig's own picker
+  (so it can land on SMB or WebDAV). **SD cards and USB drives** as root entries. Row
+  height and text size split into independent preferences and the one-off settings pulled
+  out of the menu into the settings page; adaptive and themed launcher icon; a Terminal
+  entry on the app icon's long-press menu.
+- **1.4** — A document tree granted by another app is named after that app and wears its
+  icon instead of showing a raw document id, and a grant can be handed back from the
+  sidebar.
+- **1.5** — **Go to path** from any root row; favourites and saved comparisons can point
+  inside a document tree; terminal accessory bar polish (hold an arrow to repeat, one
+  shared text size) and the emulator size surviving a screen off/on cycle.
 
 </details>

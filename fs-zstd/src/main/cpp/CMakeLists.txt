@@ -9,7 +9,7 @@ add_library(twigzstd SHARED zstd_jni.cpp ${ZSTD_SRC})
 target_include_directories(twigzstd PRIVATE
     ${ZSTD} ${ZSTD}/common ${ZSTD}/decompress)
 
-# 纯 C 解压:关闭 x86_64 汇编优化(不引入 .S),单线程
+# Pure C decompression: disable the x86_64 assembly optimisation (no .S), single-threaded
 target_compile_definitions(twigzstd PRIVATE
     ZSTD_DISABLE_ASM
     ZSTD_MULTITHREAD=0

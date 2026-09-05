@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 深色主题:仅覆盖随主题变化的颜色,品牌绿沿用 -->
+    <!-- Dark theme: only overrides the colors that change with the theme; brand green is kept -->
     <color name="primary">#2E7D32</color>
     <color name="primary_dark">#102A12</color>
     <color name="accent">#66BB6A</color>
@@ -15,8 +15,8 @@
     <color name="bar">#262626</color>
     <color name="toolbar">#1C1C1C</color>
     <color name="action_text">#66BB6A</color>
-    <!-- 活动面板路径栏:深色主题走中性灰阶(不带品牌绿),提亮到明显区别于面板底色;
-         非活动贴近栏底色 -->
+    <!-- Active pane path bar: dark theme uses a neutral gray (no brand green), brightened so it is clearly distinct from the pane background;
+         inactive is close to the bar's background color -->
     <color name="path_bar_active">#3D3D3D</color>
     <color name="path_bar">#262626</color>
     <color name="cmp_diff">#FFB74D</color>
@@ -24,7 +24,10 @@
     <color name="cmp_only">#64B5F6</color>
     <color name="cmp_only_bg">#332196F3</color>
     <color name="cmp_missing_bg">#0DFFFFFF</color>
-    <!-- 长按菜单的图标:默认跟正文一个灰度;删除/卸载这类不可逆动作单独染红 -->
+    <!-- Long-press menu icons: default shares the body-text gray; irreversible actions (delete / uninstall) are colored red on their own -->
     <color name="menu_icon">#BDBDBD</color>
     <color name="menu_icon_danger">#EF5350</color>
+    <color name="media_dir">#C4C7C5</color>
+    <!-- PDF reader backdrop: a white page has to separate from it, so it cannot be surface/bg -->
+    <color name="pdf_backdrop">#0D0D0D</color>
 </resources>

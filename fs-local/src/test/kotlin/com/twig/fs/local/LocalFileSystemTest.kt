@@ -11,9 +11,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 本地文件系统。重点在**不能悄悄吃掉用户文件**的那几条:
- * `File.renameTo` 底下是 POSIX `rename(2)`,默认行为就是原子替换已存在的目标,
- * 照着写下来"改个名字"会无声删掉另一个文件。
+ * The local filesystem. The focus is on the cases where **a user's file must not be
+ * silently swallowed**: `File.renameTo` is backed by POSIX `rename(2)`, whose default
+ * behavior is to atomically replace an existing target — implementing "rename" as a
+ * straight pass-through would silently delete another file.
  */
 class LocalFileSystemTest {
 
@@ -37,57 +38,59 @@ class LocalFileSystemTest {
         assertEquals("hi", File(tmp, "b.txt").readText())
     }
 
-    /** 回归:改名到已存在的名字必须报错,不能把那个文件替换掉。 */
+    /** Regression: renaming to an already-existing name must throw an error, not replace that file. */
     @Test
     fun renameRefusesToOverwrite() {
-        val a = File(tmp, "a.txt").apply { writeText("源") }
+        val a = File(tmp, "a.txt").apply { writeText("source") }
         val b = File(tmp, "b.txt")
-        val victim = "别把我覆盖了".toByteArray()
+        val victim = "don't overwrite me".toByteArray()
         b.writeBytes(victim)
 
         val e = runCatching { fs.rename(x(a), "b.txt") }.exceptionOrNull()
 
-        assertTrue("应抛 FsException,实际: $e", e is FsException)
-        assertTrue(a.exists())                    // 源还在
-        assertArrayEquals(victim, b.readBytes())  // 目标原封不动
+        assertTrue("should throw FsException, actually got: $e", e is FsException)
+        assertTrue(a.exists())                    // source still present
+        assertArrayEquals(victim, b.readBytes())  // destination untouched
     }
 
-    /** 同上:CopyEngine 的就地移动快路径撞上同名目标时要让路,而不是覆盖。 */
+    /** Same as above: CopyEngine's in-place-move fast path must yield rather than overwrite when it hits a same-name target. */
     @Test
     fun moveWithinRefusesToOverwrite() {
         val dst = File(tmp, "dst").apply { mkdirs() }
-        val src = File(tmp, "a.txt").apply { writeText("源") }
-        val victim = "别把我覆盖了".toByteArray()
+        val src = File(tmp, "a.txt").apply { writeText("source") }
+        val victim = "don't overwrite me".toByteArray()
         File(dst, "a.txt").writeBytes(victim)
 
-        // 返回 false = 不支持就地移动,交回 CopyEngine 走"拷贝 + 删源"(那条路上有冲突询问)
+        // Returning false = in-place move is not supported, hand back to CopyEngine's "copy + delete source" path (which has conflict prompting)
         assertFalse(fs.moveWithin(x(src), x(dst), "a.txt"))
         assertTrue(src.exists())
         assertArrayEquals(victim, File(dst, "a.txt").readBytes())
     }
 
     /**
-     * 回归:删目录时**不能跟着符号链接进去删目标里的内容**。
-     * `File.isDirectory`/`listFiles()` 都跟随链接,不判一下就会把链接指向的那个目录清空。
+     * Regression: deleting a directory **must not follow a symlink into deleting the
+     * target's contents**.
+     * `File.isDirectory`/`listFiles()` both follow links, so without an explicit check
+     * the directory the link points to would get emptied.
      */
     @Test
     fun deleteDoesNotFollowSymlinks() {
         val outside = File(tmp, "outside").apply { mkdirs() }
-        val treasure = File(outside, "treasure.txt").apply { writeText("别删我") }
+        val treasure = File(outside, "treasure.txt").apply { writeText("do not delete me") }
 
         val victim = File(tmp, "victim").apply { mkdirs() }
-        File(victim, "own.txt").writeText("这个该删")
+        File(victim, "own.txt").writeText("this one should be deleted")
         val link = File(victim, "link")
         val made = runCatching {
             java.nio.file.Files.createSymbolicLink(link.toPath(), outside.toPath())
         }.isSuccess
-        org.junit.Assume.assumeTrue("当前环境建不了符号链接,跳过", made)
+        org.junit.Assume.assumeTrue("current environment cannot create symlinks, skipping", made)
 
         fs.delete(x(victim))
 
-        assertFalse(victim.exists())          // 目录本身删掉了
-        assertTrue(outside.isDirectory)       // 链接指向的目录还在
-        assertEquals("别删我", treasure.readText()) // 里面的东西一个没少
+        assertFalse(victim.exists())          // the directory itself is deleted
+        assertTrue(outside.isDirectory)       // the directory the link pointed to is still there
+        assertEquals("do not delete me", treasure.readText()) // nothing inside it is missing
     }
 
     @Test
@@ -101,8 +104,9 @@ class LocalFileSystemTest {
     }
 
     /**
-     * 写入钩子(:app 拿它通知系统媒体库)。判据是**流关闭之后才报,且只报一次**——
-     * 打开时报的话,媒体库扫到的是个 0 字节的空壳。
+     * The write hook (:app uses it to notify the system media library). The rule is
+     * **reported only after the stream is closed, and only once** — reporting at open
+     * time would have the media library scan a 0-byte empty shell.
      */
     @Test
     fun changeHookFiresAfterStreamClosed() {
@@ -112,14 +116,14 @@ class LocalFileSystemTest {
             val f = File(tmp, "a.txt")
             val out = fs.openOutput(x(f), append = false)
             out.write("hi".toByteArray())
-            assertTrue(seen.isEmpty()) // 还没关流,不该报
+            assertTrue(seen.isEmpty()) // stream not closed yet, must not report
             out.close()
-            out.close() // 重复关闭不该重复报
+            out.close() // closing again must not report again
             assertEquals(listOf(f.absolutePath), seen)
             assertEquals("hi", f.readText())
 
             seen.clear()
-            fs.rename(x(f), "b.txt") // 改名要报两条:旧路径撤下、新路径收录
+            fs.rename(x(f), "b.txt") // rename must report two entries: old path withdrawn, new path added
             assertEquals(listOf(f.absolutePath, File(tmp, "b.txt").absolutePath), seen)
 
             seen.clear()
@@ -133,8 +137,9 @@ class LocalFileSystemTest {
     @Test
     fun setModifiedTimeWritesBackTimestamp() {
         val f = File(tmp, "a.txt").apply { writeText("hi") }
-        // 秒级取整:File.setLastModified 在部分文件系统(如老 ext 变体)按秒粒度存储,
-        // 用一个整秒的值断言,避免因为底层截断毫秒而误判失败
+        // Rounded to the second: File.setLastModified stores at second granularity on
+        // some filesystems (e.g. older ext variants); asserting against a whole-second
+        // value avoids a false failure from the underlying layer truncating milliseconds
         val target = 1_700_000_000_000L
 
         assertTrue(fs.setModifiedTime(x(f), target))

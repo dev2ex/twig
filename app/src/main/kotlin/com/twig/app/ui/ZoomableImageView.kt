@@ -13,12 +13,17 @@ import android.view.ScaleGestureDetector
 import androidx.appcompat.widget.AppCompatImageView
 
 /**
- * 可缩放图片视图(参照 SambaGallery 交互,自绘不引第三方库):
- * - 双击在 居中(FIT,无裁切) / 填充(CROP,一方向裁切) / 实际尺寸(1:1,可拖看) 间循环
- * - 拖动平移(图片超出视图时);捏合自由缩放
- * - 单击回调([onTap]);未放大时的横向快滑回调翻页([onPage])
- * - 放大到基础位图被插值时([scale] > 1)向外要一块高清区域([onNeedHiRes]),
- *   拿到后叠画在基础位图之上——基础位图为省内存是降采样解的,放大看细节靠这层。
+ * Zoomable image view (modelled on SambaGallery interactions, self-drawn without
+ * a third-party library):
+ * - Double-tap cycles between FIT (centred, no cropping) / CROP (one direction
+ *   cropped) / ACTUAL (1:1, draggable to see local details).
+ * - Drag pans (when the image exceeds the view); pinch for free zoom.
+ * - Single-tap callback ([onTap]); when not zoomed in, a horizontal quick swipe
+ *   triggers page-turn ([onPage]).
+ * - When zoomed in enough that the base bitmap gets interpolated ([scale] > 1),
+ *   requests a hi-res region from outside ([onNeedHiRes]) and overlays it on
+ *   top of the base bitmap — the base bitmap is decoded down-sampled to save
+ *   memory, and zoom-in details come from this layer.
  */
 class ZoomableImageView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null,
@@ -26,21 +31,24 @@ class ZoomableImageView @JvmOverloads constructor(
 
     var onTap: (() -> Unit)? = null
 
-    /** 长按回调(弹操作菜单)。 */
+    /** Long-press callback (pops up an action menu). */
     var onLongPress: (() -> Unit)? = null
 
-    /** 翻页回调:dir=-1 上一张,+1 下一张。 */
+    /** Page-turn callback: dir=-1 previous, +1 next. */
     var onPage: ((Int) -> Unit)? = null
 
     /**
-     * 需要高清区块:参数是可视区域(已外扩余量)在**当前显示位图**坐标系里的矩形,
-     * 以及当前缩放倍数(供决定区块自身的降采样)。异步解好后回调 [setHiRes]。
+     * Need a hi-res region: parameter is the visible area (with padding) as a rect
+     * in **the current displayed bitmap**'s coordinate system, plus the current
+     * zoom factor (used to determine the region's own down-sampling). Once decoded
+     * asynchronously, calls back via [setHiRes].
      */
     var onNeedHiRes: ((RectF, Float) -> Unit)? = null
 
     /**
-     * 视口变了(缩放/平移/换模式)。图片对比页拿它把另一侧同步过去;
-     * [applyViewport] 引起的变化**不会**回调,否则两侧会互相喂招停不下来。
+     * Viewport changed (zoom / pan / mode switch). The image-compare page uses it
+     * to sync the other side; changes caused by [applyViewport] do **not** callback,
+     * otherwise both sides would feed each other endlessly.
      */
     var onViewport: (() -> Unit)? = null
     private var syncing = false
@@ -52,12 +60,12 @@ class ZoomableImageView @JvmOverloads constructor(
     private var tx = 0f
     private var ty = 0f
     private var mode = 0 // 0 FIT, 1 CROP, 2 ACTUAL
-    /** 位图→原图像素的倍数(解码降采样倍数);实际尺寸模式按此放大,呈现原图真实大小。 */
+    /** Bitmap → original image pixels ratio (decoded down-sampling ratio); the actual-size mode scales up by this to render the image at its true size. */
     private var actualScale = 1f
 
     private var hiRes: Bitmap? = null
-    private var hiResRect: RectF? = null // 在显示位图坐标系中,与 hiRes 一一对应
-    private var hiResScale = 0f          // 请求这块时的 scale,用于判断是否该按新倍数重解
+    private var hiResRect: RectF? = null // in displayed bitmap coordinates, corresponds 1:1 with hiRes
+    private var hiResScale = 0f          // the scale when this region was requested, used to decide whether to re-decode at the new factor
     private val hiResPaint = Paint().apply { isFilterBitmap = true }
     private val hiResReq = Runnable { requestHiRes() }
 
@@ -66,16 +74,18 @@ class ZoomableImageView @JvmOverloads constructor(
     private val maxScale get() = maxOf(cropScale, actualScale) * 2f
 
     /**
-     * 缩放下限。★ 不能一律取 [fitScale]:[MODE_FIT_ACTUAL] 下比容器小的图就是要按 1:1 显示,
-     * 而那个 scale 小于 fitScale——下限卡在 fitScale 的话,它一被同步/捏合就弹回铺满。
+     * Zoom lower bound. ★ Cannot unconditionally use [fitScale]: under [MODE_FIT_ACTUAL]
+     * an image smaller than the container should display at 1:1, and that scale is
+     * smaller than fitScale — capping the lower bound at fitScale would snap it back
+     * to fill as soon as it's synced / pinched.
      */
     private val minScale get() =
         if (initialMode == MODE_FIT_ACTUAL) minOf(fitScale, actualScale) else fitScale
 
-    /** 换图后用哪种模式,以及双击循环从哪儿起步。默认 [MODE_FIT]。 */
+    /** Which mode to use after changing the image, and where the double-tap cycle starts. Defaults to [MODE_FIT]. */
     var initialMode = MODE_FIT
 
-    /** 双击循环的档位。对比场景里 CROP(裁切铺满)没意义,换成在"实际/适应"之间来回。 */
+    /** The double-tap cycle's stages. CROP is meaningless in compare scenarios, so it switches to cycling between "actual / fit". */
     private val modeCycle get() =
         if (initialMode == MODE_FIT_ACTUAL) intArrayOf(MODE_FIT_ACTUAL, MODE_FIT, MODE_ACTUAL)
         else intArrayOf(MODE_FIT, MODE_CROP, MODE_ACTUAL)
@@ -96,7 +106,7 @@ class ZoomableImageView @JvmOverloads constructor(
             return true
         }
 
-        // ★ 同名成员:不写 this@ZoomableImageView 会解析到监听器自己的 onLongPress
+        // ★ Same-named member: omitting this@ZoomableImageView would resolve to the listener's own onLongPress
         override fun onLongPress(e: MotionEvent) {
             this@ZoomableImageView.onLongPress?.invoke()
         }
@@ -107,7 +117,7 @@ class ZoomableImageView @JvmOverloads constructor(
         }
 
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-            // 未放大(横向无溢出)时,横向快滑翻页
+            // When not zoomed in (no horizontal overflow), a horizontal quick swipe pages through
             if (imgW * scale <= width + 1f && kotlin.math.abs(vx) > kotlin.math.abs(vy) &&
                 kotlin.math.abs(vx) > 500f
             ) {
@@ -122,7 +132,7 @@ class ZoomableImageView @JvmOverloads constructor(
         override fun onScale(d: ScaleGestureDetector): Boolean {
             val f = d.scaleFactor
             val ns = (scale * f).coerceIn(minScale, maxScale)
-            // 以捏合焦点为中心缩放
+            // Zoom around the pinch focus
             tx = d.focusX - (d.focusX - tx) * (ns / scale)
             ty = d.focusY - (d.focusY - ty) * (ns / scale)
             scale = ns
@@ -133,8 +143,9 @@ class ZoomableImageView @JvmOverloads constructor(
     })
 
     /**
-     * 设置新图片:重置为 [initialMode]。
-     * @param actual 位图→原图像素的倍数(解码降采样倍数),用于"实际尺寸"模式按原图真实大小显示。
+     * Set a new image: reset to [initialMode].
+     * @param actual bitmap → original image pixels ratio (decoded down-sampling ratio),
+     *   used by the "actual size" mode to render the image at its true size.
      */
     fun setImage(bmp: Bitmap, actual: Float = 1f) {
         clearHiRes()
@@ -145,7 +156,7 @@ class ZoomableImageView @JvmOverloads constructor(
         if (width > 0) applyMode()
     }
 
-    /** 交付一块高清区域([rect] 必须是发起 [onNeedHiRes] 时给出的那个矩形)。 */
+    /** Deliver a hi-res region ([rect] must be the rectangle given when [onNeedHiRes] was issued). */
     fun setHiRes(bmp: Bitmap, rect: RectF) {
         hiRes = bmp
         hiResRect = rect
@@ -154,7 +165,7 @@ class ZoomableImageView @JvmOverloads constructor(
 
     private fun clearHiRes() {
         removeCallbacks(hiResReq)
-        // 不 recycle:这张可能正被上一帧的 canvas 引用,交给 GC 更稳
+        // Don't recycle: this bitmap may still be referenced by the previous frame's canvas, GC is safer
         hiRes = null
         hiResRect = null
         hiResScale = 0f
@@ -165,15 +176,15 @@ class ZoomableImageView @JvmOverloads constructor(
         val h = hiRes ?: return
         val r = hiResRect ?: return
         canvas.save()
-        canvas.concat(m) // 与基础位图同一变换,高清块按位图坐标落位
+        canvas.concat(m) // same transform as the base bitmap, hi-res region falls into bitmap coordinates
         canvas.drawBitmap(h, null, r, hiResPaint)
         canvas.restore()
     }
 
-    /** 缩放/平移停下来后按需要一块高清区域;缩回到不插值就丢掉,省内存。 */
+    /** Request a hi-res region after zoom/pan settles; drop it when zoomed back out so the bitmap isn't interpolated, saving memory. */
     private fun scheduleHiRes() {
         removeCallbacks(hiResReq)
-        if (actualScale <= 1f || scale <= 1.01f) { // 原图没有更多像素,或位图还没被放大
+        if (actualScale <= 1f || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
             if (hiRes != null) { clearHiRes(); invalidate() }
             return
         }
@@ -182,7 +193,7 @@ class ZoomableImageView @JvmOverloads constructor(
 
     private fun requestHiRes() {
         if (imgW == 0f) return
-        // 可视区域反变换回位图坐标,再外扩一圈——小幅平移就不必重解
+        // Reverse-transform the visible area back to bitmap coordinates, then pad it — small pans don't need a re-decode
         val pad = HIRES_PAD
         val vw = width / scale; val vh = height / scale
         val rect = RectF(
@@ -193,7 +204,7 @@ class ZoomableImageView @JvmOverloads constructor(
         )
         if (rect.width() < 1f || rect.height() < 1f) return
         val have = hiResRect
-        // 已有的块盖得住当前视野、且倍数没大变,就别重解
+        // If the existing region covers the current view and the scale hasn't changed much, don't re-decode
         if (have != null && have.contains(rect) && scale / hiResScale in 0.7f..1.4f) return
         hiResScale = scale
         onNeedHiRes?.invoke(rect, scale)
@@ -208,9 +219,10 @@ class ZoomableImageView @JvmOverloads constructor(
         scale = when (mode) {
             MODE_FIT -> fitScale
             MODE_CROP -> cropScale
-            // 按原图真实像素显示,但不超过容器——大图缩到刚好放下,小图保持 1:1 不被拉大
+            // Display at the image's true pixel size, but not exceeding the container — large
+            // images scale down just enough to fit, small images stay at 1:1 and aren't enlarged
             MODE_FIT_ACTUAL -> minOf(actualScale, fitScale)
-            else -> actualScale // 实际尺寸:按原图真实像素大小(可拖看局部)
+            else -> actualScale // actual size: at the image's true pixel size (draggable to see local details)
         }
         val sw = imgW * scale; val sh = imgH * scale
         tx = (width - sw) / 2f
@@ -228,25 +240,29 @@ class ZoomableImageView @JvmOverloads constructor(
     }
 
     /**
-     * 把视口变化推给外面。**只在用户手势之后调**,换图与布局(首次拿到尺寸时的 applyMode)
-     * 一律不推——两张图各按自己的实际大小落位是初始状态的一部分,谁后加载完谁就把对侧
-     * 顶成自己的视口,那两边就都不是实际大小了。
+     * Push viewport changes outward. **Only call after user gestures**, never for
+     * image swap or layout (applyMode on first sizing) — each side settling at its
+     * own actual size is part of the initial state; whichever finishes loading
+     * later would push its viewport onto the other side, and then neither would
+     * be at actual size.
      */
     private fun notifyViewport() {
         if (!syncing) onViewport?.invoke()
     }
 
     /**
-     * 当前视口在图片里的位置,**归一化到图片自身尺寸**:[左上角 u, 左上角 v, 视口覆盖的宽度比]。
-     * 归一化是为了让两张**尺寸不同**的图也能对齐同一块内容——同一张照片改过分辨率时,
-     * 按视图像素位移同步会立刻错位。
+     * The current viewport's position within the image, **normalised to the image's
+     * own dimensions**: [top-left u, top-left v, viewport-covered width ratio].
+     * Normalising lets two **differently-sized** images align to the same content —
+     * syncing by viewport pixel offsets would misalign immediately when the same
+     * photo changes resolution.
      */
     fun viewport(): FloatArray? {
         if (imgW <= 0f || imgH <= 0f || scale <= 0f || width == 0) return null
         return floatArrayOf(-tx / scale / imgW, -ty / scale / imgH, width / (scale * imgW))
     }
 
-    /** 把视口挪到 [viewport] 描述的位置。对侧图更小时 scale 会被 fit 下限挡住,那是物理限制。 */
+    /** Move the viewport to the position described by [viewport]. If the other image is smaller, scale is clamped by the fit lower bound — that's a physical limit. */
     fun applyViewport(v: FloatArray) {
         if (imgW <= 0f || imgH <= 0f || width == 0 || v[2] <= 0f) return
         syncing = true
@@ -257,7 +273,7 @@ class ZoomableImageView @JvmOverloads constructor(
         syncing = false
     }
 
-    /** 左右边缘留给系统边缘返回手势,这个宽度内按下的触摸整个不处理,避免翻页手势和它抢。 */
+    /** Left/right edges are left for the system edge-back gesture; touches inside this width are not handled at all, so the page-turn gesture and it don't fight. */
     private val edgeGuardPx get() = 24f * resources.displayMetrics.density
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -268,22 +284,22 @@ class ZoomableImageView @JvmOverloads constructor(
         }
         scaleGesture.onTouchEvent(event)
         gesture.onTouchEvent(event)
-        // 放大后允许平移,阻止父级拦截
+        // Allow pan after zoom-in, prevent parent interception
         if (imgW * scale > width + 1f) parent?.requestDisallowInterceptTouchEvent(true)
         return true
     }
 
     companion object {
-        private const val HIRES_DELAY_MS = 150L // 手势停下来才解,别在捏合过程中反复触发
-        private const val HIRES_PAD = 0.15f     // 可视区域外扩比例(外扩是平方级涨内存,别贪)
+        private const val HIRES_DELAY_MS = 150L // only decode after the gesture settles, don't fire repeatedly during a pinch
+        private const val HIRES_PAD = 0.15f     // visible area padding ratio (padding is quadratic in memory, don't be greedy)
 
-        /** 适应容器(可能把小图放大铺满)。 */
+        /** Fit the container (may enlarge small images to fill). */
         const val MODE_FIT = 0
-        /** 裁切铺满。 */
+        /** Crop to fill. */
         const val MODE_CROP = 1
-        /** 原图真实像素大小。 */
+        /** The image's true pixel size. */
         const val MODE_ACTUAL = 2
-        /** 真实像素大小,但超过容器就缩到刚好放下。 */
+        /** True pixel size, but scale down to just fit when exceeding the container. */
         const val MODE_FIT_ACTUAL = 3
     }
 }

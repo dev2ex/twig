@@ -1,6 +1,8 @@
 <!--
-  「共享已开启」。与关闭态刻意用**不同的剪影**(实心扇形 vs 三段细弧)而不是同一形状
-  换颜色:操作列图标只有 20dp,靠色相区分余光里根本看不出来,轮廓不一样才认得出。
+  "Sharing on". Deliberately uses a **different silhouette** from the off state (solid fan
+  vs three thin arcs) rather than the same shape in a different color: action strip icons
+  are only 20dp, so hue alone is invisible in peripheral vision — only a different outline
+  is recognizable.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"

@@ -6,22 +6,23 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * restic 仓库的解密原语。
+ * Decryption primitives for a restic repository.
  *
- * 加密格式:每个存储对象 = nonce(16) || 密文 || Poly1305-MAC(16),AES-256-CTR 加密。
- * 只读查看器**不校验 MAC**,仅解密;密码是否正确通过"解出的 JSON 能否解析"判断。
+ * Encryption format: each stored object = nonce(16) || ciphertext || Poly1305-MAC(16), AES-256-CTR.
+ * The read-only viewer **does not verify the MAC** — it only decrypts;
+ * whether the password is correct is judged by whether the decrypted JSON parses.
  */
 internal object ResticCrypto {
 
-    /** scrypt 派生 64 字节;前 32 字节即 AES 加密密钥(用于解 keyfile 的 data)。 */
+    /** scrypt-derived 64 bytes; the first 32 bytes are the AES key (used to decrypt the keyfile's data). */
     fun deriveKey(password: ByteArray, salt: ByteArray, n: Int, r: Int, p: Int): ByteArray =
         SCrypt.generate(password, salt, n, r, p, 64)
 
-    /** AES-256-CTR 解密一个 nonce||ct||mac 对象,返回明文(丢弃 MAC,不校验)。 */
+    /** AES-256-CTR decryption of a nonce||ct||mac object, returning the plaintext (MAC discarded, not verified). */
     fun decrypt(key: ByteArray, blob: ByteArray): ByteArray {
         require(blob.size >= 32) { "restic: ciphertext too short" }
         val iv = blob.copyOfRange(0, 16)
-        val ct = blob.copyOfRange(16, blob.size - 16) // 末 16 字节为 MAC
+        val ct = blob.copyOfRange(16, blob.size - 16) // last 16 bytes are the MAC
         val cipher = Cipher.getInstance("AES/CTR/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
         return cipher.doFinal(ct)
@@ -31,7 +32,7 @@ internal object ResticCrypto {
         d.size >= 4 && d[0] == 0x28.toByte() && d[1] == 0xB5.toByte() &&
             d[2] == 0x2F.toByte() && d[3] == 0xFD.toByte()
 
-    /** 标准 Base64 解码(自实现,避开 java.util.Base64 的 API 26 要求)。 */
+    /** Standard Base64 decoding (handwritten to avoid java.util.Base64's API 26 requirement). */
     fun base64(s: String): ByteArray {
         val table = IntArray(128) { -1 }
         val alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

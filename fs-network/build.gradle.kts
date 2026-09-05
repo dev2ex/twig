@@ -13,14 +13,18 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 
 dependencies {
     implementation(project(":core-fs"))
-    implementation(libs.commons.net) // 纯 Java FTP,无 .so
-    implementation(libs.sshj)        // SFTP(纯 Java,内含 BouncyCastle)
-    implementation("org.bouncycastle:bcprov-jdk18on:1.75") // 显式引用:运行时顶掉 Android 阉割版 BC
-    implementation(libs.okhttp)      // WebDAV(手写 PROPFIND,不引入重 SDK)
+    implementation(libs.commons.net) // pure-Java FTP, no .so
+    implementation(libs.sshj)        // SFTP (pure Java, includes BouncyCastle)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.75") // explicit reference: replaces Android's stripped BC at runtime
+    implementation(libs.okhttp)      // WebDAV / S3 / Jellyfin (hand-written REST, no heavy SDK)
+
+    // org.json ships with Android at runtime; the compile and unit-test classpaths provide it themselves (Jellyfin REST responses)
+    compileOnly("org.json:json:20240303")
 
     testImplementation(project(":fs-local"))
-    testImplementation(libs.ftpserver.core) // 内嵌 FTP 服务器
-    testImplementation(libs.sshd.sftp)      // 内嵌 SFTP 服务器(Apache MINA)
-    testImplementation(libs.mockwebserver)  // WebDAV 模拟服务器
+    testImplementation(libs.ftpserver.core) // embedded FTP server
+    testImplementation(libs.sshd.sftp)      // embedded SFTP server (Apache MINA)
+    testImplementation(libs.mockwebserver)  // WebDAV / Jellyfin mock server
+    testImplementation("org.json:json:20240303")
     testImplementation("junit:junit:4.13.2")
 }

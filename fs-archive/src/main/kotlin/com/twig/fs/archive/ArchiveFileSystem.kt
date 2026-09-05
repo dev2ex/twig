@@ -9,16 +9,18 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 压缩包文件系统的公共基类:把"归档!/包内路径"的路径解析、目录树合成、读取、
- * 退回宿主目录等逻辑收敛于此。子类(zip/7z/rar)只需提供两件事:
- *  - [readEntries]:枚举归档内全部条目
- *  - [openEntry]:打开某个包内文件的输入流
+ * Common base class for archive filesystems: pulls together path parsing for "archive!/inner-path",
+ * tree synthesis, reads, falling back to the host directory, and similar logic. Subclasses
+ * (zip/7z/rar) only need to provide two things:
+ *  - [readEntries]: enumerate every entry inside the archive
+ *  - [openEntry]: open an input stream for one archive-internal file
  *
- * 默认只读;可写的格式(如 zip)覆写写操作。归档本身假定位于本地("file")。
+ * Read-only by default; formats that can write (e.g. zip) override the write operations.
+ * The archive itself is assumed to live locally ("file").
  */
 abstract class ArchiveFileSystem : FileSystem {
 
-    /** 一个归档内的条目。name 以 '/' 分隔;目录的 name 以 '/' 结尾。 */
+    /** One entry inside an archive. `name` is '/'-separated; directory names end with '/'. */
     protected data class ArchiveEntry(
         val name: String,
         val isDir: Boolean,
@@ -30,16 +32,16 @@ abstract class ArchiveFileSystem : FileSystem {
 
     protected abstract fun openEntry(archivePath: String, inner: String): InputStream
 
-    /** 挂载时登记的非本地宿主(路径 → 宿主 XFile),供定位读通道与条目缓存使用。 */
+    /** Non-local hosts registered at mount time (path -> host XFile), used by the random-access channel and entry cache. */
     private val hosts = HashMap<String, XFile>()
-    /** 远程归档的条目缓存(远程目录解析有网络成本;本地每次现读)。 */
+    /** Entry cache for remote archives (remote directory parsing has network cost; local reads fresh each time). */
     private val entryCache = HashMap<String, List<ArchiveEntry>>()
-    /** 已解锁归档的密码(归档路径 → 密码);进程内有效,是否落盘由 app 层决定。 */
+    /** Unlocked archive passwords (archive path -> password); valid for the process lifetime, persistence is the app layer's choice. */
     private val passwords = HashMap<String, String>()
 
     /**
-     * 把一个归档文件挂载为包根。宿主可以是任意来源:本地直接读文件;
-     * SMB/WebDAV 等经 openRandom 定位读流式解析(zip/7z),无需整包下载。
+     * Mount an archive file as the archive root. The host can be any source: local is read directly;
+     * SMB/WebDAV and others go through openRandom's positional read for streaming parse (zip/7z), without downloading the whole archive.
      */
     fun rootOf(archive: XFile): XFile {
         synchronized(hosts) {
@@ -49,17 +51,18 @@ abstract class ArchiveFileSystem : FileSystem {
         return dirXFile(archive.path, "")
     }
 
-    // ---- 密码(加密归档) ----
+    // ---- password (encrypted archives) ----
 
     /**
-     * 记下某个归档的密码;传 null 清除。**不校验**——校验走 [checkPassword],
-     * 让调用方能把「密码错」与「读取失败」分开提示。
+     * Record an archive's password; pass null to clear. **Does not verify** — verification is in
+     * [checkPassword], so the caller can distinguish "wrong password" from "read failed".
      */
     fun setPassword(archivePath: String, password: String?) {
         synchronized(passwords) {
             if (password == null) passwords.remove(archivePath) else passwords[archivePath] = password
         }
-        // 头加密的格式(7z/rar)条目清单本身就是解密结果,换密码后要重新解析
+        // For header-encrypted formats (7z/rar) the entry listing itself is a decryption result,
+        // so changing the password means re-parsing
         synchronized(entryCache) { entryCache.remove(archivePath) }
     }
 
@@ -69,22 +72,24 @@ abstract class ArchiveFileSystem : FileSystem {
     fun hasPassword(archivePath: String): Boolean = passwordOf(archivePath) != null
 
     /**
-     * 该归档是否要密码才能读全内容。子类各自判断(zip 看条目的加密位,7z/rar 看头)。
-     * 只读**不**改状态,可以在挂载前问。
+     * Whether this archive requires a password to read all its content. Each subclass decides
+     * (zip looks at entry encryption bits, 7z/rar at the header). Read-only — does not change
+     * any state, so it can be called before mounting.
      */
     open fun needsPassword(archivePath: String): Boolean = false
 
-    /** 校验密码对不对(不改状态);不支持加密的格式恒 true。 */
+    /** Verify whether the password is correct (does not change state); formats that do not support encryption always return true. */
     open fun checkPassword(archivePath: String, password: String): Boolean = true
 
-    /** 取密码,没有就抛 [ArchivePasswordException] 让 UI 去问。 */
+    /** Fetch the password, or throw [ArchivePasswordException] for the UI to prompt. */
     protected fun requirePassword(archivePath: String): String =
         passwordOf(archivePath) ?: throw ArchivePasswordException(archivePath)
 
     /**
-     * "这个路径上现在是哪个包"的标识(路径 + 大小 + 修改时间),给「要不要密码」这类
-     * **探测结果**当缓存 key 用。同名文件被换成另一个包时缓存自动失效——探测本身
-     * 要读归档头,不这么记就得每次现探。
+     * Identity for "which archive is on this path now" (path + size + modification time); used as
+     * the cache key for **probe results** like "needs a password". When a same-named file is
+     * swapped for a different archive the cache automatically invalidates — the probe itself reads
+     * the archive header, so without this key the probe would have to run every time.
      */
     protected fun stampOf(archivePath: String): String {
         val host = hostOf(archivePath)
@@ -93,11 +98,11 @@ abstract class ArchiveFileSystem : FileSystem {
         return "$archivePath:${f.length()}:${f.lastModified()}"
     }
 
-    /** 归档宿主:挂载时登记的远程 XFile,否则视为本地文件。 */
+    /** Archive host: the remote XFile registered at mount time, or treated as a local file. */
     protected fun hostOf(archivePath: String): XFile =
         synchronized(hosts) { hosts[archivePath] } ?: XFile(HOST_SCHEME, archivePath, isDir = false)
 
-    /** 打开归档的定位读通道(本地 FileChannel / 远程 RandomSource 适配)。 */
+    /** Open the archive's random-access channel (local FileChannel / remote RandomSource adapted). */
     protected fun openChannel(archivePath: String): java.nio.channels.SeekableByteChannel {
         val host = hostOf(archivePath)
         if (host.scheme == HOST_SCHEME) {
@@ -108,7 +113,7 @@ abstract class ArchiveFileSystem : FileSystem {
         return RandomSourceChannel(src, size)
     }
 
-    /** 取条目列表:远程归档带缓存(重复展开不重复解析),本地每次现读。 */
+    /** Get the entry list: remote archives are cached (re-expanding does not re-parse), local reads fresh each time. */
     protected fun entries(archivePath: String): List<ArchiveEntry> {
         if (hostOf(archivePath).scheme == HOST_SCHEME) return readEntries(archivePath)
         synchronized(entryCache) { entryCache[archivePath]?.let { return it } }
@@ -192,7 +197,7 @@ abstract class ArchiveFileSystem : FileSystem {
         }
     }
 
-    // ---- 默认只读;可写格式覆写 ----
+    // ---- read-only by default; writable formats override ----
 
     override fun openOutput(file: XFile, append: Boolean): OutputStream =
         throw FsException("$displayName is read-only (write not supported)")
@@ -206,7 +211,7 @@ abstract class ArchiveFileSystem : FileSystem {
     override fun rename(file: XFile, newName: String): XFile =
         throw FsException("$displayName is read-only (rename not supported)")
 
-    // ---- 工具(子类可用) ----
+    // ---- utilities (subclasses may use) ----
 
     protected fun dirXFile(archive: String, inner: String) = XFile(
         scheme = scheme,
@@ -224,7 +229,7 @@ abstract class ArchiveFileSystem : FileSystem {
         canWrite = writable(archive),
     )
 
-    /** 规范化条目名:统一 '/';去掉前导 '/';目录确保以 '/' 结尾。 */
+    /** Normalize entry names: unify '/'; drop leading '/'; directories end with '/'. */
     private fun normalize(e: ArchiveEntry): String {
         var n = e.name.replace('\\', '/').removePrefix("/")
         if (e.isDir && !n.endsWith("/")) n += "/"
@@ -232,21 +237,22 @@ abstract class ArchiveFileSystem : FileSystem {
     }
 
     /**
-     * 该归档实例是否支持写入,决定 [dirXFile]/[fileXFile] 的 canWrite(供 UI 置灰用)。
-     * 默认只读;zip 覆写为"宿主是本地文件"(整包重写实现,远程宿主不支持)。
+     * Whether this archive instance supports writing; determines canWrite on [dirXFile]/[fileXFile]
+     * (used by the UI to grey things out). Read-only by default; zip overrides to "host is a local
+     * file" (the whole-archive rewrite implementation does not support remote hosts).
      */
     protected open fun writable(archivePath: String): Boolean = false
 
-    /** 宿主能否对该条目做高效定位读(如 zip 的 STORED 条目可直接切片);默认否。 */
+    /** Whether the host can do efficient random access on this entry (e.g. zip STORED entries can be sliced directly); default no. */
     open fun fastRandom(file: XFile): Boolean = false
 
-    // 按最后一个 "!/" 切分,以支持嵌套归档(outer.zip!/inner.zip!/a.txt)
+    // Split on the last "!/" so nested archives work (outer.zip!/inner.zip!/a.txt)
     protected fun archiveOf(path: String): String = path.substringBeforeLast(SEP)
 
     protected fun innerOf(path: String): String = path.substringAfterLast(SEP, "").trim('/')
 
     companion object {
-        /** 分隔归档路径与包内路径,借鉴 JDK jar URL 语法。 */
+        /** Separator between archive path and inner path, borrowed from the JDK jar URL syntax. */
         const val SEP = "!/"
         const val HOST_SCHEME = "file"
     }

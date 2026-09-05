@@ -9,36 +9,39 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * WinZip AES(zip 的 extra field 0x9901,method 字段填 99)。**读写都在这儿手写**——
- * commons-compress 与 java.util.zip 对加密 zip 一律不支持(连读都不支持),而引入
- * zip4j 是几百 KB 的 APK 增量,与体积优先冲突。
+ * WinZip AES (zip's extra field 0x9901, method field set to 99). **Both read and write are
+ * handwritten here** — commons-compress and java.util.zip do not support encrypted zips at all
+ * (not even reading), and pulling in zip4j would add hundreds of KB to the APK, conflicting with
+ * the size-first rule.
  *
- * 条目数据布局:`salt | pwVerify(2) | AES-CTR 密文 | authCode(10)`
- *  - salt 长度 8/12/16(对应 AES-128/192/256),随条目存在包里;
- *  - 密钥由 `PBKDF2WithHmacSHA1`(1000 轮)一次派生出 `加密密钥 | HMAC 密钥 | 校验值(2)`;
- *  - 密文用 **AES-CTR**,计数器是**小端**且从 1 开始 —— JDK 的 `AES/CTR` 是大端,
- *    直接用会全解成乱码,所以这里用 `AES/ECB` 加密计数块自己异或;
- *  - authCode = `HmacSHA1(HMAC 密钥, 密文)` 的前 10 字节,对**密文**算(不是明文)。
+ * Entry data layout: `salt | pwVerify(2) | AES-CTR ciphertext | authCode(10)`
+ *  - salt length 8/12/16 (for AES-128/192/256), stored per entry;
+ *  - the keys are derived once via `PBKDF2WithHmacSHA1` (1000 iterations) into
+ *    `encryption key | HMAC key | verify value (2)`;
+ *  - the ciphertext uses **AES-CTR**, the counter is **little-endian** and starts at 1 — the
+ *    JDK's `AES/CTR` is big-endian, so using it directly would decrypt to garbage, which is why
+ *    we encrypt counter blocks with `AES/ECB` and XOR them ourselves;
+ *  - authCode = the first 10 bytes of `HmacSHA1(HMAC key, ciphertext)`, computed over the **ciphertext** (not plaintext).
  *
- * 写出一律用 AE-2(version=2):AE-2 的 CRC 字段填 0,不泄露明文校验值。
+ * Writes always use AE-2 (version=2): AE-2 sets the CRC field to 0, so it does not leak a plaintext checksum.
  */
 internal object ZipAes {
 
-    /** extra field 头 ID。 */
+    /** extra field header ID. */
     const val EXTRA_ID = 0x9901
 
-    /** 加密条目在 zip 里登记的压缩方法(真实方法藏在 extra field 里)。 */
+    /** The compression method recorded in zip for an encrypted entry (the real method is hidden in the extra field). */
     const val METHOD = 99
 
     private const val ITERATIONS = 1000
 
-    /** 认证码长度(HmacSHA1 截断到 10 字节,规范如此)。 */
+    /** Auth code length (HmacSHA1 truncated to 10 bytes, as per the spec). */
     const val AUTH_LEN = 10
 
-    /** 密码校验值长度。 */
+    /** Password verify value length. */
     const val VERIFY_LEN = 2
 
-    /** 新建包用 AES-256。 */
+    /** New archives use AES-256. */
     const val STRENGTH_256 = 3
 
     fun saltLength(strength: Int): Int = when (strength) {
@@ -53,7 +56,7 @@ internal object ZipAes {
         else -> 32
     }
 
-    /** 一条目的固定开销(salt + 校验值 + 认证码),算 csize 用。 */
+    /** Fixed overhead per entry (salt + verify value + auth code); used to compute csize. */
     fun overhead(strength: Int): Int = saltLength(strength) + VERIFY_LEN + AUTH_LEN
 
     class Keys(val enc: ByteArray, val mac: ByteArray, val verify: ByteArray)
@@ -74,8 +77,8 @@ internal object ZipAes {
     fun mac(key: ByteArray): Mac = Mac.getInstance("HmacSHA1").apply { init(SecretKeySpec(key, "HmacSHA1")) }
 
     /**
-     * AES-CTR 的密钥流:计数器 16 字节**小端**递增,第一块用 counter=1。
-     * 加解密是同一套异或,所以读写共用。
+     * AES-CTR keystream: the 16-byte counter increments **little-endian**, and the first block uses counter=1.
+     * Encryption and decryption are the same XOR operation, so the read and write paths share it.
      */
     class Ctr(key: ByteArray) {
         private val cipher = Cipher.getInstance("AES/ECB/NoPadding").apply {
@@ -96,7 +99,7 @@ internal object ZipAes {
             pos = 0
         }
 
-        /** 就地异或(加密/解密同一操作)。 */
+        /** In-place XOR (encrypt and decrypt are the same operation). */
         fun process(buf: ByteArray, off: Int, len: Int) {
             var i = off
             val end = off + len
@@ -110,8 +113,9 @@ internal object ZipAes {
     }
 
     /**
-     * 解密流:[src] 已定位到条目数据首字节,[compressed] 是**含头尾开销**的整段长度
-     * (即 zip 里记的压缩大小)。构造时校验密码,不对直接抛 [ArchivePasswordException]。
+     * Decrypt stream: [src] is positioned at the first byte of the entry's data, [compressed] is
+     * the **total length including overhead** (i.e. the compressed size recorded in the zip).
+     * The password is verified in the constructor; wrong password throws [ArchivePasswordException] directly.
      */
     class DecryptStream(
         private val src: InputStream,
@@ -158,15 +162,16 @@ internal object ZipAes {
                 remaining = 0
                 return -1
             }
-            hmac.update(b, off, n) // HMAC 对密文算,必须在解密之前
+            hmac.update(b, off, n) // HMAC is computed over the ciphertext, so it must be done before decryption
             ctr.process(b, off, n)
             remaining -= n
             return n
         }
 
         /**
-         * 读完末尾 10 字节认证码比对。**只在真读到末尾时做**——播放器/缩略图这类只读开头
-         * 就关流的场景不该因为"没读完"报错。
+         * Compare the trailing 10-byte auth code at EOF. **Only runs when EOF is actually reached** —
+         * scenarios like the player or thumbnail that only read the head and then close the stream
+         * must not error out for "did not finish reading".
          */
         private fun checkAuth() {
             if (authChecked) return
@@ -185,8 +190,8 @@ internal object ZipAes {
     }
 
     /**
-     * 加密流:构造即写出 salt + 校验值,[close] 时补认证码。**不关闭下游**——
-     * 下游是整个归档的输出流,还要接着写下一个条目。
+     * Encrypt stream: the constructor writes out salt + verify value, and [close] appends the auth code.
+     * **Does not close downstream** — downstream is the whole archive output, and more entries follow.
      */
     class EncryptStream(out: OutputStream, password: String, private val strength: Int) :
         FilterOutputStream(out) {
@@ -196,7 +201,7 @@ internal object ZipAes {
         private val work = ByteArray(8192)
         private var finished = false
 
-        /** 本条目除密文之外多写的字节数(salt + 校验值 + 认证码)。 */
+        /** Bytes written for this entry beyond the ciphertext (salt + verify value + auth code). */
         val overheadBytes: Int get() = overhead(strength)
 
         init {
@@ -220,13 +225,13 @@ internal object ZipAes {
                 val n = minOf(work.size, len - done)
                 System.arraycopy(b, off + done, work, 0, n)
                 ctr.process(work, 0, n)
-                hmac.update(work, 0, n) // 同样对密文算
+                hmac.update(work, 0, n) // also computed over the ciphertext
                 out.write(work, 0, n)
                 done += n
             }
         }
 
-        /** 写出认证码收尾;不关下游。 */
+        /** Write the auth code to finish; do not close downstream. */
         override fun close() {
             if (finished) return
             finished = true
@@ -235,7 +240,7 @@ internal object ZipAes {
         }
     }
 
-    /** 解析 0x9901 extra field 的原始字节,返回 (强度, 真实压缩方法);格式不对返回 null。 */
+    /** Parse the raw bytes of the 0x9901 extra field, returning (strength, real compression method); null on malformed format. */
     fun parseExtra(data: ByteArray): Pair<Int, Int>? {
         if (data.size < 7) return null
         val strength = data[4].toInt() and 0xff
@@ -243,7 +248,7 @@ internal object ZipAes {
         return strength to method
     }
 
-    /** 组装 0x9901 extra field 的数据部分(不含 4 字节头);AE-2 + 指定强度 + 真实方法。 */
+    /** Assemble the data portion (excluding the 4-byte header) of the 0x9901 extra field: AE-2 + given strength + real method. */
     fun buildExtra(strength: Int, method: Int): ByteArray = byteArrayOf(
         2, 0, // version: AE-2
         'A'.code.toByte(), 'E'.code.toByte(),

@@ -1,67 +1,108 @@
 package com.twig.app
 
 import android.content.Context
+import com.twig.app.secure.Secrets
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** 一条已保存的远程连接(FTP / SMB / SFTP / WebDAV / S3)。 */
+/** A saved remote connection (FTP / SMB / SFTP / WebDAV / S3 / Jellyfin / Emby). */
 data class SavedConnection(
-    val type: String,            // "ftp" | "smb" | "sftp" | "webdav" | "s3"
-    val host: String,            // webdav / s3 时存完整 URL(s3 是 endpoint)
+    val type: String,            // "ftp" | "smb" | "sftp" | "webdav" | "s3" | "jellyfin" | "emby"
+    val host: String,            // full URL for webdav / s3 / jellyfin / emby (s3 is endpoint)
     val port: Int = 21,
-    /** SMB 的共享名;S3 复用它存桶名(留空 = 根目录列出所有桶)。 */
+    /**
+     * **Where a connection is rooted** — one field for every type, because "which share /
+     * bucket" and "which directory inside it" are one question:
+     * - SMB: `Public`, `Public/Photos`, or empty = list every share on the server;
+     * - S3: `bucket`, `bucket/prefix`, or empty = list every bucket;
+     * - FTP / SFTP: a directory (`pub/photos`), empty = the server root;
+     * - WebDAV needs nothing here — its [host] is a full URL, so a path written into
+     *   that URL already roots the connection.
+     *
+     * It is part of [label], so the same server saved at two directories is two
+     * connections (they must not share a scheme, or one would reuse the other's root).
+     * The field keeps the name `share` for the sake of already-stored configs.
+     */
     val share: String = "",
     val user: String = "",
     val password: String = "",
     val domain: String = "WORKGROUP",
-    /** 用户自定义显示名(可空);填写后树上显示它。 */
+    /** User-defined display name (nullable); when set, shown in the tree. */
     val name: String = "",
-    /** SFTP 私钥文件路径(可空);非空时用私钥认证,password 兼作口令。 */
+    /** SFTP private key file path (nullable); non-empty means key auth, password acts as passphrase. */
     val keyPath: String = "",
     /**
-     * SFTP 已记住的主机密钥指纹(TOFU,见 `SftpFileSystem.hostKeyVerifier`)。
-     * 空 = 还没连过;首次连上会自动填,之后变了就拒绝连接。
-     * 用户确认服务器确实换了密钥时,从服务器长按菜单「忘记主机密钥」清空这里。
+     * SFTP remembered host key fingerprint (TOFU, see `SftpFileSystem.hostKeyVerifier`).
+     * Empty = never connected; filled on first successful connect, after which a change is rejected.
+     * When the user confirms the server really did rotate its key, clear this via the server's
+     * long-press menu's "Forget host key".
      */
     val hostKey: String = "",
-    /** S3 的区域;签名要用,填错会被服务端拒(错误信息里会写正确的那个)。 */
+    /** S3 region; needed for signing, a wrong value gets rejected by the server (the error message names the correct one). */
     val region: String = "us-east-1",
     /**
-     * S3 的寻址风格:true = `endpoint/bucket/key`(自建 MinIO 的常态),
-     * false = `bucket.endpoint/key`(AWS 正统写法)。
+     * S3 addressing style: true = `endpoint/bucket/key` (typical for self-hosted MinIO),
+     * false = `bucket.endpoint/key` (AWS canonical).
      */
     val pathStyle: Boolean = true,
+    /**
+     * Jellyfin / Emby API key (the kind generated in the server's admin backend). Non-empty
+     * authenticates with it instead of user/password; in that case [user] is only used to
+     * locate an identity in the server's user list — "Continue watching" and playback
+     * progress are per-user, and the API key itself does not carry one.
+     */
+    val apiKey: String = "",
+    /**
+     * Jellyfin / Emby access token obtained from the last login, to skip logging in again
+     * every connection. When it expires (server restart / session revoke), `JellyfinFileSystem`
+     * automatically re-authenticates on receiving a 401 and writes it back.
+     */
+    val token: String = "",
+    /** Jellyfin / Emby userId resolved on the last login, to skip a `/Users` round-trip. */
+    val userId: String = "",
 ) {
-    /** 唯一标识,用于去重与持久化键;显示用 [displayLabel]。 */
+    /** Whether it is a media server (Jellyfin / Emby): these two types behave identically everywhere, judgement centralised here. */
+    fun isMediaServer(): Boolean = type == "jellyfin" || type == "emby"
+
+    /** Unique identifier for deduplication and persistence keys; for display use [displayLabel]. */
     fun label(): String = when (type) {
         "smb" -> "smb://$host/$share"
-        "sftp" -> "sftp://${user.ifEmpty { "root" }}@$host:$port"
+        "sftp" -> "sftp://${user.ifEmpty { "root" }}@$host:$port" + rootSuffix()
         "webdav" -> host
-        // 同一个 endpoint 上的不同桶是两条独立连接,桶名必须进标识
+        // Different buckets on the same endpoint are independent connections, the bucket name must be in the identifier
         "s3" -> "s3://${host.substringAfter("://").trimEnd('/')}/$share"
-        else -> "ftp://${user.ifEmpty { "anonymous" }}@$host:$port"
+        // Different users on the same server see entirely different "Continue watching", so they are independent connections
+        "jellyfin", "emby" -> "$type://${user.ifEmpty { "-" }}@${host.substringAfter("://").trimEnd('/')}"
+        else -> "ftp://${user.ifEmpty { "anonymous" }}@$host:$port" + rootSuffix()
     }
 
-    /** 树上显示的名称:自定义名优先,否则用 [label]。 */
+    /** `/sub/dir` when the connection is rooted below the top, otherwise nothing. */
+    private fun rootSuffix(): String = if (share.isEmpty()) "" else "/${share.trim('/')}"
+
+    /** Name shown in the tree: custom name preferred, otherwise [label]. */
     fun displayLabel(): String = name.ifEmpty { label() }
 
     /**
-     * 路径栏/最近位置里的服务器短名:自定义名优先,否则只留地址本身——
-     * 这些地方前面已经有类型前缀(`sftp:/…`),再带一遍 [label] 的协议头就重复了。
+     * Short server name used in the path bar / recent locations: custom name preferred,
+     * otherwise only the address itself — these places already have a type prefix in
+     * front (`sftp:/…`), so repeating [label]'s scheme header would be redundant.
      */
     fun shortLabel(): String = name.ifEmpty { rawShortLabel() }
 
     /**
-     * 同 [shortLabel] 但不管有没有自定义别名,永远给真实地址——用在"路径"而非"名称"的
-     * 场合(如收藏行下方的完整路径、对比收藏的"显示两个目录的路径"):路径该是能直接
-     * 定位的原始地址,别名放名称那边就够了,两处混着用会认不出到底是哪台服务器。
+     * Same as [shortLabel] but always returns the real address regardless of custom alias —
+     * used in "path" rather than "name" contexts (e.g. the full path under a favourite row,
+     * "show the two directories' paths" in a saved comparison): a path should be a directly
+     * locatable raw address, and the alias belongs on the name side; mixing the two means
+     * you can't tell which server a given line points at.
      */
     fun rawShortLabel(): String = when (type) {
         "smb" -> if (share.isEmpty()) host else "$host/$share"
         "webdav" -> host.substringAfter("://").trimEnd('/')
         "s3" -> host.substringAfter("://").trimEnd('/') + if (share.isEmpty()) "" else "/$share"
-        "sftp" -> if (port == 22) host else "$host:$port"
-        else -> if (port == 21) host else "$host:$port"
+        "jellyfin", "emby" -> host.substringAfter("://").trimEnd('/')
+        "sftp" -> (if (port == 22) host else "$host:$port") + rootSuffix()
+        else -> (if (port == 21) host else "$host:$port") + rootSuffix()
     }
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -69,6 +110,7 @@ data class SavedConnection(
         put("share", share); put("user", user); put("password", password); put("domain", domain)
         put("name", name); put("keyPath", keyPath); put("hostKey", hostKey)
         put("region", region); put("pathStyle", pathStyle)
+        put("apiKey", apiKey); put("token", token); put("userId", userId)
     }
 
     companion object {
@@ -85,26 +127,54 @@ data class SavedConnection(
             hostKey = o.optString("hostKey", ""),
             region = o.optString("region", "us-east-1"),
             pathStyle = o.optBoolean("pathStyle", true),
+            apiKey = o.optString("apiKey", ""),
+            token = o.optString("token", ""),
+            userId = o.optString("userId", ""),
         )
     }
 }
 
-/** 已保存连接的持久化(SharedPreferences + JSON)。 */
+/**
+ * Persistence for saved connections (SharedPreferences + JSON).
+ *
+ * **Password / apiKey / token are encrypted via [Secrets] before going to disk**;
+ * [SavedConnection] in memory is always plaintext. The encryption hooks sit on the single
+ * [all] / [persist] read-write pair, so callers (the connection dialog, Jellyfin writing
+ * back a token, SFTP remembering a host key) don't change at all.
+ *
+ * [SavedConnection.toJson] deliberately stays plaintext — it is also the serialisation
+ * path for exported backups, and those need plaintext (the local ciphertext was encrypted
+ * with a Keystore key that simply cannot be decrypted on another device).
+ */
 object ConnectionStore {
-    private const val FILE = "twig_connections"
+    const val FILE = "twig_connections"
     private const val KEY = "list"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /** For persisting: replace sensitive fields with ciphertext. */
+    private fun SavedConnection.sealed(ctx: Context) = copy(
+        password = Secrets.enc(ctx, password),
+        apiKey = Secrets.enc(ctx, apiKey),
+        token = Secrets.enc(ctx, token),
+    )
+
+    /** For reading back: restore sensitive fields to plaintext (old plaintext without the `enc1:` prefix passes through unchanged). */
+    private fun SavedConnection.opened(ctx: Context) = copy(
+        password = Secrets.dec(ctx, password),
+        apiKey = Secrets.dec(ctx, apiKey),
+        token = Secrets.dec(ctx, token),
+    )
 
     fun all(ctx: Context): List<SavedConnection> {
         val raw = sp(ctx).getString(KEY, null) ?: return emptyList()
         return runCatching {
             val arr = JSONArray(raw)
-            (0 until arr.length()).map { SavedConnection.fromJson(arr.getJSONObject(it)) }
+            (0 until arr.length()).map { SavedConnection.fromJson(arr.getJSONObject(it)).opened(ctx) }
         }.getOrDefault(emptyList())
     }
 
-    /** 保存(按 label 去重,后者覆盖)。 */
+    /** Save (dedup by label; the latter overwrites). */
     fun save(ctx: Context, conn: SavedConnection) {
         val list = all(ctx).filter { it.label() != conn.label() } + conn
         persist(ctx, list)
@@ -114,9 +184,12 @@ object ConnectionStore {
         persist(ctx, all(ctx).filter { it.label() != conn.label() })
     }
 
+    /** Replace the whole table (used by backup import): the caller passes plaintext, which is uniformly encrypted before persisting. */
+    fun replaceAll(ctx: Context, list: List<SavedConnection>) = persist(ctx, list)
+
     private fun persist(ctx: Context, list: List<SavedConnection>) {
         val arr = JSONArray()
-        list.forEach { arr.put(it.toJson()) }
+        list.forEach { arr.put(it.sealed(ctx).toJson()) }
         sp(ctx).edit().putString(KEY, arr.toString()).apply()
     }
 }

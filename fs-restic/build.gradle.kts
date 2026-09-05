@@ -13,12 +13,12 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 
 dependencies {
     implementation(project(":core-fs"))
-    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1") // scrypt(与 sshj 同源,去重)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1") // scrypt (same source as sshj, deduplicate)
 
-    // org.json:Android 运行期自带;编译与单测各自提供
+    // org.json: Android bundles it at runtime; the compile and unit-test classpaths provide it themselves
     compileOnly("org.json:json:20240303")
     testImplementation(project(":fs-local"))
     testImplementation("org.json:json:20240303")
-    testImplementation("io.airlift:aircompressor:0.25") // 测试用纯 Java zstd(JVM 上可用)
+    testImplementation("io.airlift:aircompressor:0.25") // pure-Java zstd for tests (usable on the JVM)
     testImplementation("junit:junit:4.13.2")
 }

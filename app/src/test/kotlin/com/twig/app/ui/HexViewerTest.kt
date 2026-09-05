@@ -18,77 +18,80 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 十六进制查看器的两块"看不出对错"的逻辑:版式算术([HexLayout])与字节取用/搜索
- * ([HexSource])。前者算错了屏幕上只是"莫名多出横向滚动/右边空一条",后者错了则是
- * 行里显示的字节压根不对——都无从肉眼归因,只能靠断言钉死。
+ * Two pieces of the hex viewer's logic where "right or wrong" cannot be told by eye: the
+ * layout arithmetic ([HexLayout]) and byte fetching/search ([HexSource]). Getting the
+ * former wrong just looks on screen like "an odd extra bit of horizontal scroll / a gap
+ * on the right for no reason"; getting the latter wrong means the bytes shown in a row are
+ * simply incorrect — neither can be attributed by eye, so it has to be pinned down with
+ * assertions.
  */
-@RunWith(RobolectricTestRunner::class) // HexSource 用了 android.util.LruCache
+@RunWith(RobolectricTestRunner::class) // HexSource uses android.util.LruCache
 class HexViewerTest {
 
-    // ---- 版式 ----
+    // ---- layout ----
 
     @Test
-    fun `每行字节数按可用宽度算_并取2的整数倍`() {
+    fun `bytes per row are computed from the available width, rounded to a multiple of 2`() {
         assertEquals(16, HexLayout.bytesPerRow(widthFor(16), charW = 10f, offDigits = 8))
-        // 放得下 19 个就摆 18 个(向下取到 2 的整数倍,不再一路退到 16)
+        // room for 19 fits 18 instead (rounds down to a multiple of 2, without falling all the way back to 16)
         assertEquals(18, HexLayout.bytesPerRow(widthFor(19), charW = 10f, offDigits = 8))
         assertEquals(20, HexLayout.bytesPerRow(widthFor(20), charW = 10f, offDigits = 8))
     }
 
-    /** 单字符 10px、偏移 8 位时,刚好放得下 [n] 个字节的可用宽度(多给 0.2 格富余)。 */
+    /** The available width that exactly fits [n] bytes when each character is 10px wide and the offset is 8 digits (with an extra 0.2-cell margin). */
     private fun widthFor(n: Int): Float {
         val perByte = 2f + 1f + (HexLayout.PAIR_GAP + 1f) / 2f
         return (8 + 1f + n * perByte + 0.2f) * 10f
     }
 
     @Test
-    fun `窄屏也至少给4个字节_不返回0或负数`() {
+    fun `a narrow screen still gets at least 4 bytes, never 0 or negative`() {
         assertEquals(4, HexLayout.bytesPerRow(usablePx = 10f, charW = 10f, offDigits = 8))
         assertEquals(4, HexLayout.bytesPerRow(usablePx = 0f, charW = 10f, offDigits = 8))
-        // 字号大到一个字符比整行还宽也不能崩
+        // even when the font is so large that one character is wider than the whole row, it must not crash
         assertEquals(4, HexLayout.bytesPerRow(usablePx = 100f, charW = 200f, offDigits = 8))
     }
 
     @Test
-    fun `偏移列位数够表示整个文件`() {
+    fun `the offset column has enough digits to represent the whole file`() {
         assertEquals(6, HexLayout.offsetDigits(0))
         assertEquals(6, HexLayout.offsetDigits(0xFFFFFF))
         assertEquals(8, HexLayout.offsetDigits(0x1000000))
         assertEquals(8, HexLayout.offsetDigits(0xFFFFFFFFL))
         assertEquals(10, HexLayout.offsetDigits(0x100000000L))
-        // 64 位不会溢出成负数导致死循环
+        // 64-bit values do not overflow into negative and cause an infinite loop
         assertTrue(HexLayout.offsetDigits(Long.MAX_VALUE) <= 16)
     }
 
     @Test
-    fun `十六进制输入忽略分隔符_奇数位丢掉半个字节`() {
+    fun `hex input ignores separators, an odd digit count drops the trailing half-byte`() {
         assertArrayEquals(byteArrayOf(0x4D, 0x5A), HexLayout.parseHex("4D5A"))
         assertArrayEquals(byteArrayOf(0x4D, 0x5A), HexLayout.parseHex("4d 5a"))
-        assertArrayEquals(byteArrayOf(0x4D, 0x5A), HexLayout.parseHex("0x4D, 0x5A")) // x 不是十六进制位
+        assertArrayEquals(byteArrayOf(0x4D, 0x5A), HexLayout.parseHex("0x4D, 0x5A")) // 'x' is not a hex digit
         assertArrayEquals(byteArrayOf(0x4D), HexLayout.parseHex("4D5"))
         assertArrayEquals(ByteArray(0), HexLayout.parseHex("zz"))
     }
 
-    // ---- 取字节 ----
+    // ---- fetching bytes ----
 
     @Test
-    fun `没读到的块先返回null_读回来才给字节`() {
+    fun `a chunk that has not been read yet returns null first, and only gives bytes once loaded`() {
         val data = ByteArray(HexSource.CHUNK * 2) { (it % 251).toByte() }
         val src = open(data)
         assertEquals(data.size.toLong(), src.size)
-        // 还没 load,peek 必须是 null——绑定时据此铺占位符
+        // before load(), peek must be null -- binding relies on this to lay out placeholders
         assertNull(src.peek(0, 16))
         runBlocking { src.load(0) }
         assertArrayEquals(data.copyOfRange(0, 16), src.peek(0, 16))
-        // 第二块仍未读
+        // the second chunk is still unread
         assertNull(src.peek(HexSource.CHUNK.toLong(), 16))
     }
 
     @Test
-    fun `跨块的一行要两块都在才拼得出来`() {
+    fun `a row spanning two chunks can only be assembled once both chunks are present`() {
         val data = ByteArray(HexSource.CHUNK * 2) { (it % 251).toByte() }
         val src = open(data)
-        val off = HexSource.CHUNK - 8L // 一半在第 0 块,一半在第 1 块
+        val off = HexSource.CHUNK - 8L // half in chunk 0, half in chunk 1
         runBlocking { src.load(0) }
         assertNull(src.peek(off, 16))
         runBlocking { src.load(1) }
@@ -96,7 +99,7 @@ class HexViewerTest {
     }
 
     @Test
-    fun `末行读到文件尾就短一截_不越界`() {
+    fun `the last row is shorter at end of file, and never reads past the end`() {
         val data = ByteArray(HexSource.CHUNK + 5) { it.toByte() }
         val src = open(data)
         runBlocking { src.load(1) }
@@ -106,17 +109,17 @@ class HexViewerTest {
     }
 
     @Test
-    fun `长度未知的来源退回整读_内存里直接可取`() {
+    fun `a source with unknown length falls back to reading it whole, available in memory right away`() {
         val data = ByteArray(1000) { it.toByte() }
         val src = HexSource(ByteFs(data, reportSize = false), FILE).also { it.open(0L) }
         assertEquals(1000L, src.size)
-        assertArrayEquals(data.copyOfRange(0, 16), src.peek(0, 16)) // 无需 load
+        assertArrayEquals(data.copyOfRange(0, 16), src.peek(0, 16)) // no load needed
     }
 
-    // ---- 搜索 ----
+    // ---- search ----
 
     @Test
-    fun `文本搜索大小写不敏感_十六进制搜索按原字节`() {
+    fun `text search is case-insensitive, hex search matches raw bytes`() {
         val data = "Hello WORLD hello".toByteArray()
         val src = open(data)
         assertEquals(listOf(0L, 12L), src.search("hello".toByteArray(), fold = true, limit = 10) { true })
@@ -126,8 +129,8 @@ class HexViewerTest {
     }
 
     @Test
-    fun `跨缓冲区边界的命中不能漏_也不能重`() {
-        // 扫描缓冲是 256KB,把 needle 骑在边界上:前 3 字节在第一轮、后 3 字节在第二轮
+    fun `a hit straddling a buffer boundary must not be missed, nor double-counted`() {
+        // the scan buffer is 256KB; straddle the needle across the boundary: the first 3 bytes in the first round, the last 3 in the second
         val size = 512 * 1024
         val data = ByteArray(size) { 'x'.code.toByte() }
         val needle = "TWIGGY".toByteArray()
@@ -138,7 +141,7 @@ class HexViewerTest {
     }
 
     @Test
-    fun `命中数封顶_取消能中止扫描`() {
+    fun `hit count is capped, and cancelling aborts the scan`() {
         val data = ByteArray(1024) { 'a'.code.toByte() }
         val src = open(data)
         assertEquals(5, src.search("aa".toByteArray(), fold = false, limit = 5) { true }.size)
@@ -148,7 +151,7 @@ class HexViewerTest {
     private fun open(data: ByteArray): HexSource =
         HexSource(ByteFs(data), FILE).also { it.open(data.size.toLong()) }
 
-    /** 只为这组测试准备的字节文件系统:[FakeFileSystem] 存的是 String,喂不了二进制。 */
+    /** A byte-based file system prepared just for this test group: [FakeFileSystem] stores String content, which cannot carry binary data. */
     private class ByteFs(val data: ByteArray, val reportSize: Boolean = true) : FileSystem {
         override val scheme = "bytes"
         override val displayName = "bytes"

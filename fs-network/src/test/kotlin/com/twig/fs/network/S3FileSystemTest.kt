@@ -13,9 +13,10 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * S3 的报文级测试。这类实现的 bug(签名少签一个头、名字编码不一致、分片上传少发
- * 一个请求)在真机上只表现成一句 "HTTP 403" 或"传上去的文件坏了",事后几乎无从
- * 归因,而在这里一发报文就能钉死。
+ * Wire-level tests for S3. This class of implementation bug (signing misses a header,
+ * name encoding is inconsistent, multipart upload skips a request) shows up on a real
+ * device only as "HTTP 403" or "the uploaded file is corrupt", almost impossible to
+ * diagnose after the fact — here a single request/response pair pins it down.
  */
 class S3FileSystemTest {
 
@@ -32,7 +33,7 @@ class S3FileSystemTest {
         server.shutdown()
     }
 
-    /** 默认:锁定单个桶、path-style(自建 MinIO 的常见形态)。 */
+    /** Default: locked to a single bucket, path-style (the common shape for self-hosted MinIO). */
     private fun fs(bucket: String = "buck", pathStyle: Boolean = true) = S3FileSystem(
         S3Config(
             endpoint = server.url("/").toString().trimEnd('/'),
@@ -58,7 +59,7 @@ class S3FileSystemTest {
         append("</ListBucketResult>")
     }
 
-    // ---- 列目录 ----
+    // ---- listing ----
 
     @Test
     fun listFoldsPrefixesIntoDirectories() {
@@ -68,7 +69,7 @@ class S3FileSystemTest {
                     prefixes = listOf("docs/", "img/"),
                     contents = listOf(
                         Triple("a.txt", 12L, "2026-08-16T10:20:30.000Z"),
-                        // 目录占位符:必须被滤掉,不能变成一个 0 字节的怪文件
+                        // Directory placeholder: must be filtered out, must not turn into a weird 0-byte file
                         Triple("docs/", 0L, "2026-08-16T10:20:30.000Z"),
                     ),
                 ),
@@ -94,7 +95,29 @@ class S3FileSystemTest {
         assertEquals("docs/", server.takeRequest().requestUrl!!.queryParameter("prefix"))
     }
 
-    /** 一次列不完时要带着 continuation-token 接着列,而不是只显示第一页。 */
+    /**
+     * `bucket/prefix` roots the connection inside the bucket: the prefix goes out on the
+     * wire, and the paths that come back are relative to it — if it leaked into
+     * [XFile.path], every later request would send `pre/pre/…` and 404.
+     */
+    @Test
+    fun bucketFieldMayCarryAPrefix() {
+        server.enqueue(okXml(listBody(contents = listOf(Triple("pre/a.txt", 4L, "")), prefixes = listOf("pre/deep/"))))
+        val rooted = fs(bucket = "buck/pre")
+        val items = rooted.list(XFile("s3", "/", isDir = true))
+        assertEquals(listOf("/deep", "/a.txt"), items.map { it.path })
+
+        val req = server.takeRequest()
+        assertEquals("pre/", req.requestUrl!!.queryParameter("prefix"))
+        assertTrue(req.path!!.startsWith("/buck?")) // the bucket is only the first segment
+
+        // A read below the root addresses the object by its real key
+        server.enqueue(MockResponse().setBody("x"))
+        rooted.openInput(XFile("s3", "/a.txt", isDir = false)).use { it.readBytes() }
+        assertEquals("/buck/pre/a.txt", server.takeRequest().path)
+    }
+
+    /** When one page isn't enough, keep listing with the continuation-token instead of showing only the first page. */
     @Test
     fun listFollowsPagination() {
         server.enqueue(okXml(listBody(contents = listOf(Triple("a", 1L, "")), truncated = "TOK/EN+1")))
@@ -103,8 +126,8 @@ class S3FileSystemTest {
         assertEquals(listOf("a", "b"), items.map { it.name })
 
         server.takeRequest()
-        // token 不受 encoding-type 影响(是 opaque 的 base64),原样带回去即可:
-        // 拿它当对象名去 form 解码会把里面的 '+' 变成空格,分页当场断掉
+        // The token is unaffected by encoding-type (it's opaque base64) and must be passed back as-is:
+        // form-decoding it as if it were an object name would turn '+' into a space and break pagination outright
         assertEquals("TOK/EN+1", server.takeRequest().requestUrl!!.queryParameter("continuation-token"))
     }
 
@@ -126,7 +149,7 @@ class S3FileSystemTest {
         assertEquals("/", server.takeRequest().requestUrl!!.encodedPath)
     }
 
-    /** 桶留空时,路径首段就是桶名。 */
+    /** When the bucket is left empty, the first path segment is the bucket name. */
     @Test
     fun pathFirstSegmentIsBucketWhenUnscoped() {
         server.enqueue(okXml(listBody(contents = listOf(Triple("x/y.txt", 1L, "")))))
@@ -137,11 +160,12 @@ class S3FileSystemTest {
         assertEquals("x/", req.requestUrl!!.queryParameter("prefix"))
     }
 
-    // ---- 名字编码 ----
+    // ---- name encoding ----
 
     /**
-     * 名字里带中文/空格/加号的对象:请求路径必须按 RFC 3986 编码,
-     * 且**签名算的就是这份编码**(编码不一致 = SignatureDoesNotMatch)。
+     * An object whose name contains Chinese characters / spaces / plus signs: the request path
+     * must be RFC 3986 encoded, and **the signature must be computed over that exact encoding**
+     * (a mismatch means SignatureDoesNotMatch).
      */
     @Test
     fun objectNamesAreRfc3986Encoded() {
@@ -150,13 +174,14 @@ class S3FileSystemTest {
 
         val req = server.takeRequest()
         assertEquals("/buck/%E6%8A%A5%E5%91%8A%20v1%2B2.txt", req.requestUrl!!.encodedPath)
-        // 签名覆盖的路径就是发出去的那一份
+        // The path covered by the signature is exactly the one that was sent
         assertTrue(req.getHeader("Authorization")!!.contains("SignedHeaders=host;x-amz-content-sha256;x-amz-date"))
     }
 
     /**
-     * 服务端回的 key 是 **form 编码**的(★ 拿真 MinIO 打出来的:空格是 `+`、
-     * 字面加号是 `%2B`),解码顺序反了 `a+b.txt` 就会变成 `a b.txt`。
+     * The key the server returns is **form-encoded** (★ captured from a real MinIO: a space
+     * is `+`, a literal plus sign is `%2B`) — decoding in the wrong order turns `a+b.txt`
+     * into `a b.txt`.
      */
     @Test
     fun encodedKeysFromServerAreDecoded() {
@@ -178,7 +203,7 @@ class S3FileSystemTest {
         )
     }
 
-    /** 目录名同样是 form 编码的。 */
+    /** Directory names are form-encoded the same way. */
     @Test
     fun encodedCommonPrefixesAreDecoded() {
         server.enqueue(okXml(listBody(prefixes = listOf("my+docs/", "a%2Bb/"))))
@@ -188,7 +213,7 @@ class S3FileSystemTest {
         )
     }
 
-    // ---- 鉴权 ----
+    // ---- authentication ----
 
     @Test
     fun everyRequestIsSigned() {
@@ -203,7 +228,7 @@ class S3FileSystemTest {
         assertTrue(req.getHeader("x-amz-date")!!.matches(Regex("\\d{8}T\\d{6}Z")))
     }
 
-    /** virtual-host 风格:桶名进主机名,路径里就不该再出现它。 */
+    /** Virtual-host style: the bucket name goes into the host, so it must not appear in the path. */
     @Test
     fun virtualHostStylePutsBucketInHost() {
         server.enqueue(okXml(listBody()))
@@ -213,7 +238,7 @@ class S3FileSystemTest {
         assertTrue(req.getHeader("Host")!!.startsWith("buck."))
     }
 
-    // ---- 读 ----
+    // ---- read ----
 
     @Test
     fun randomAccessUsesRangeRequests() {
@@ -226,9 +251,9 @@ class S3FileSystemTest {
         assertEquals("bytes=5-", server.takeRequest().getHeader("Range"))
     }
 
-    // ---- 写 ----
+    // ---- write ----
 
-    /** 小于一片的对象走单次 PUT,不该多出 initiate/complete 两趟往返。 */
+    /** An object smaller than one part goes through a single PUT — no extra initiate/complete round trips. */
     @Test
     fun smallUploadIsASinglePut() {
         server.enqueue(MockResponse())
@@ -242,8 +267,8 @@ class S3FileSystemTest {
     }
 
     /**
-     * 超过一片就转分片上传:initiate → 每片一个 PUT → complete。
-     * 分片大小是 8 MiB,这里写 9 MiB 触发它。
+     * Beyond one part it switches to multipart upload: initiate → one PUT per part → complete.
+     * The part size is 8 MiB; writing 9 MiB here triggers it.
      */
     @Test
     fun largeUploadSwitchesToMultipart() {
@@ -266,12 +291,12 @@ class S3FileSystemTest {
         assertEquals("1", p1.requestUrl!!.queryParameter("partNumber"))
         assertEquals("UP1", p1.requestUrl!!.queryParameter("uploadId"))
         assertEquals(8L * 1024 * 1024, p1.bodySize)
-        // 分片不为签名再整读一遍算 hash
+        // Parts are not read a second time in full just to compute a hash for signing
         assertEquals(Sigv4.UNSIGNED, p1.getHeader("x-amz-content-sha256"))
 
         val p2 = server.takeRequest()
         assertEquals("2", p2.requestUrl!!.queryParameter("partNumber"))
-        assertEquals(1L * 1024 * 1024, p2.bodySize) // 最后一片可以小于 5 MiB
+        assertEquals(1L * 1024 * 1024, p2.bodySize) // the last part can be smaller than 5 MiB
 
         val done = server.takeRequest()
         assertEquals("POST", done.method)
@@ -281,7 +306,7 @@ class S3FileSystemTest {
         assertTrue(xml.contains("<PartNumber>2</PartNumber><ETag>\"e2\"</ETag>"))
     }
 
-    /** 分片上传中途失败要 abort,否则那些片永远躺在桶里按存储计费。 */
+    /** A multipart upload that fails partway must be aborted, or the uploaded parts sit in the bucket forever, billed as storage. */
     @Test
     fun failedMultipartIsAborted() {
         server.enqueue(okXml("<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>"))
@@ -299,7 +324,7 @@ class S3FileSystemTest {
         assertEquals("UP1", abort.requestUrl!!.queryParameter("uploadId"))
     }
 
-    /** complete 会先回 200 再流式发结果,失败信息藏在响应体里而不是状态码上。 */
+    /** complete replies 200 first and streams the result afterward — a failure is hidden in the body, not the status code. */
     @Test
     fun errorInsideSuccessfulCompleteIsDetected() {
         server.enqueue(okXml("<InitiateMultipartUploadResult><UploadId>UP1</UploadId></InitiateMultipartUploadResult>"))
@@ -316,7 +341,7 @@ class S3FileSystemTest {
         assertTrue(e.message!!.contains("try again"))
     }
 
-    // ---- 目录 ----
+    // ---- directories ----
 
     @Test
     fun mkdirWritesPlaceholderObject() {
@@ -327,7 +352,7 @@ class S3FileSystemTest {
 
         val req = server.takeRequest()
         assertEquals("PUT", req.method)
-        assertEquals("/buck/docs/sub/", req.requestUrl!!.encodedPath) // 尾斜杠是目录的标志
+        assertEquals("/buck/docs/sub/", req.requestUrl!!.encodedPath) // the trailing slash marks it as a directory
         assertEquals(0L, req.bodySize)
     }
 
@@ -342,12 +367,12 @@ class S3FileSystemTest {
 
         val list = server.takeRequest()
         assertEquals("docs/", list.requestUrl!!.queryParameter("prefix"))
-        assertEquals(null, list.requestUrl!!.queryParameter("delimiter")) // 递归:不能带 delimiter
+        assertEquals(null, list.requestUrl!!.queryParameter("delimiter")) // recursive: must not carry a delimiter
         assertEquals("/buck/docs/", server.takeRequest().requestUrl!!.encodedPath)
         assertEquals("/buck/docs/a.txt", server.takeRequest().requestUrl!!.encodedPath)
     }
 
-    /** 锁定单桶时,"根" 就是那个桶,不能被删掉。 */
+    /** When locked to a single bucket, the "root" is that bucket and must not be deletable. */
     @Test
     fun bucketRootCannotBeDeleted() {
         val e = runCatching { fs().delete(XFile("s3", "/", isDir = true)) }.exceptionOrNull()
@@ -355,11 +380,11 @@ class S3FileSystemTest {
         assertEquals(0, server.requestCount)
     }
 
-    // ---- 改名 / 移动 ----
+    // ---- rename / move ----
 
     @Test
     fun renameCopiesServerSideThenDeletes() {
-        server.enqueue(MockResponse().setResponseCode(404)) // exists(target) → 不存在
+        server.enqueue(MockResponse().setResponseCode(404)) // exists(target) → does not exist
         server.enqueue(okXml("<CopyObjectResult><ETag>\"x\"</ETag></CopyObjectResult>"))
         server.enqueue(MockResponse())
 
@@ -371,24 +396,24 @@ class S3FileSystemTest {
         assertEquals("PUT", copy.method)
         assertEquals("/buck/b.txt", copy.requestUrl!!.encodedPath)
         assertEquals("/buck/a.txt", copy.getHeader("x-amz-copy-source"))
-        assertEquals(0L, copy.bodySize) // 服务端搬运:内容不经过手机
+        assertEquals(0L, copy.bodySize) // server-side transfer: the content never passes through the device
 
         val del = server.takeRequest()
         assertEquals("DELETE", del.method)
         assertEquals("/buck/a.txt", del.requestUrl!!.encodedPath)
     }
 
-    /** 接口约定:同名目标已存在时必须抛,不得静默覆盖。 */
+    /** Contract: must throw when a target of the same name already exists, never silently overwrite. */
     @Test
     fun renameOntoExistingTargetFails() {
-        server.enqueue(MockResponse()) // HEAD 目标 → 已存在
+        server.enqueue(MockResponse()) // HEAD target → already exists
         val e = runCatching { fs().rename(XFile("s3", "/a.txt", isDir = false), "b.txt") }.exceptionOrNull()
         assertTrue(e is FsException)
         assertTrue(e!!.message!!.contains("exists"))
         assertEquals(1, server.requestCount)
     }
 
-    /** 同一端点内移动走服务端 copy,不下载再上传。 */
+    /** Moving within the same endpoint goes through a server-side copy, not a download-then-upload. */
     @Test
     fun moveWithinIsServerSide() {
         server.enqueue(okXml("<CopyObjectResult/>"))
@@ -405,8 +430,8 @@ class S3FileSystemTest {
 
     @Test
     fun renameDirectoryMovesEveryObject() {
-        server.enqueue(MockResponse().setResponseCode(404)) // 目标不存在(HEAD 占位符)
-        server.enqueue(okXml(listBody())) // 目标不存在(前缀下无对象)
+        server.enqueue(MockResponse().setResponseCode(404)) // target does not exist (HEAD placeholder)
+        server.enqueue(okXml(listBody())) // target does not exist (no objects under the prefix)
         server.enqueue(okXml(listBody(contents = listOf(Triple("old/a.txt", 1L, "")))))
         server.enqueue(okXml("<CopyObjectResult/>"))
         server.enqueue(MockResponse())
@@ -420,9 +445,9 @@ class S3FileSystemTest {
         assertEquals("DELETE", server.takeRequest().method)
     }
 
-    // ---- 出错 ----
+    // ---- errors ----
 
-    /** 服务端的 Code/Message 是唯一能往下查的线索,不能只丢一句 HTTP 403 给用户。 */
+    /** The server's Code/Message is the only lead worth following up — never surface just "HTTP 403" to the user. */
     @Test
     fun serverErrorSurfacesCodeAndMessage() {
         server.enqueue(

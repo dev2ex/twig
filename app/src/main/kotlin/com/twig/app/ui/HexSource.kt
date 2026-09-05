@@ -9,23 +9,25 @@ import kotlinx.coroutines.sync.withLock
 import java.io.Closeable
 
 /**
- * 十六进制查看器的字节来源:按 [CHUNK] 分块经 [FileSystem.openRandom] 定位读,块进 LRU
- * 缓存。**不整包读进内存**——滚到哪读哪,所以多大的文件都能打开(也就不再有从前那个
- * 64KB 上限)。
+ * Byte source for the hex viewer: reads in [CHUNK]-sized chunks via [FileSystem.openRandom] seeking, with
+ * the chunks held in an LRU cache. **Does not load the whole file into memory** — it reads as you scroll,
+ * so files of any size can be opened (the old 64KB cap is gone).
  *
- * [peek] 只看缓存、绝不阻塞(给主线程的绑定用),缺块时返回 null 由调用方去排一次
- * [load];[load] 是 suspend 且整段串在 [mutex] 里——`RandomSource` 普遍非线程安全
- * (SMB 的 smb2_context 尤其),多行同时缺块时并发进去会踩坏底层状态。
+ * [peek] only consults the cache and never blocks (used by main-thread bindings); when a chunk is missing
+ * it returns null so the caller can schedule a [load]; [load] is suspend and runs entirely under [mutex] —
+ * `RandomSource` is generally not thread-safe (SMB's smb2_context especially), so concurrent calls from
+ * multiple rows missing chunks would corrupt the underlying state.
  *
- * 拿不到文件长度的来源(size<=0 且 resolve 也问不出)退回"整读进内存"兜底,封顶
- * [MAX_MEM],截断时置 [truncated] 让 UI 提示。
+ * Sources whose length can't be obtained (size<=0 and resolve returns nothing either) fall back to a
+ * "read whole file into memory" emergency path, capped at [MAX_MEM]; if truncation occurs, set
+ * [truncated] so the UI can warn.
  */
 class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable {
 
     var size = 0L
         private set
 
-    /** 仅内存兜底模式可能为 true:文件比 [MAX_MEM] 大,只读到了前面一段。 */
+    /** Only true in the in-memory fallback mode: the file is bigger than [MAX_MEM] and only the first portion was read. */
     var truncated = false
         private set
 
@@ -34,10 +36,10 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     private val cache = LruCache<Int, ByteArray>(MAX_CHUNKS)
     private val mutex = Mutex()
 
-    /** 阻塞 IO,放后台调用。[declaredSize] 是调用方已知的长度(<=0 表示不知道)。 */
+    /** Blocking IO; call from a background thread. [declaredSize] is the length known by the caller (<=0 means unknown). */
     fun open(declaredSize: Long) {
         var s = declaredSize
-        // XFile 是从 Intent 里拼出来的,size 常常丢了;能 resolve 就问一次真长度
+        // XFile is assembled from an Intent and often loses size; if resolve works, ask for the real length once
         if (s <= 0) s = runCatching { fs.resolve(file.path).size }.getOrDefault(0L)
         if (s > 0) {
             random = fs.openRandom(file)
@@ -59,8 +61,8 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     }
 
     /**
-     * 从缓存里取 [off] 起的 [len] 字节。返回 null = 还没读到,调用方该去 [load];
-     * 返回的数组可能短于 [len](读到文件尾)。
+     * Pull [len] bytes starting at [off] from the cache. Returning null means not yet read; the caller should
+     * schedule a [load]; the returned array may be shorter than [len] (reached the file end).
      */
     fun peek(off: Long, len: Int): ByteArray? {
         if (len <= 0 || off < 0) return ByteArray(0)
@@ -76,7 +78,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
             val ci = (p / CHUNK).toInt()
             val chunk = cache.get(ci) ?: return null
             val inChunk = (p - ci.toLong() * CHUNK).toInt()
-            if (inChunk >= chunk.size) break // 该块就到这儿(文件尾)
+            if (inChunk >= chunk.size) break // this chunk stops here (file end)
             val n = minOf(len - got, chunk.size - inChunk)
             System.arraycopy(chunk, inChunk, out, got, n)
             got += n
@@ -84,7 +86,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
         return if (got == len) out else out.copyOf(got)
     }
 
-    /** 读入第 [ci] 块;已在缓存里则立刻返回。 */
+    /** Read in chunk [ci]; returns immediately if already cached. */
     suspend fun load(ci: Int) {
         if (mem != null || cache.get(ci) != null) return
         val start = ci.toLong() * CHUNK
@@ -105,15 +107,16 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     }
 
     /**
-     * 顺序扫全文找 [pattern],返回命中处的绝对偏移(最多 [limit] 条)。
+     * Sequentially scan the entire file for [pattern], returning the absolute offsets of the hits (up to [limit]).
      *
-     * 走 [FileSystem.openInput] 顺序读而不是定位读:FTP/SFTP/压缩包这类"定位 = 重开+跳过"
-     * 的来源,顺序读才是唯一划算的扫法。缓冲区之间保留 `pattern.size - 1` 字节的重叠,
-     * 跨块的命中才不会漏;重叠区不会重复命中——上一轮能完整放下的匹配起点最大是
-     * `n - pattern.size`,正好落在保留区之前。
+     * Uses sequential reads via [FileSystem.openInput] rather than seeking: for sources where "seeking = reopen +
+     * skip" (FTP / SFTP / archives), sequential reading is the only affordable way to scan. Keep `pattern.size - 1`
+     * bytes of overlap between buffers so cross-chunk hits don't get missed; the overlap region never produces a
+     * duplicate hit — the latest starting position that could fit fully in the previous round is `n - pattern.size`,
+     * which is just before the overlap region.
      *
-     * [fold] = true 时按 ASCII 大小写不敏感比较(文本搜索用)。[active] 返回 false 即中止,
-     * 用来接住协程取消(大文件一次扫描可能要几秒)。
+     * When [fold] = true, comparisons are ASCII case-insensitive (for text search). When [active] returns false,
+     * the scan stops — used to catch coroutine cancellation (a scan of a large file may take several seconds).
      */
     fun search(pattern: ByteArray, fold: Boolean, limit: Int, active: () -> Boolean): List<Long> {
         val out = ArrayList<Long>()
@@ -148,7 +151,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
                     }
                     i++
                 }
-                if (n < buf.size) break // 读到文件尾了
+                if (n < buf.size) break // reached the end of the file
                 keep = pat.size - 1
                 System.arraycopy(buf, n - keep, buf, 0, keep)
                 base += n - keep
@@ -181,7 +184,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
             return true
         }
 
-        private const val MAX_CHUNKS = 24 // ≈1.5MB 常驻,足够覆盖来回滚动
-        const val MAX_MEM = 8 * 1024 * 1024 // 问不出长度时的整读上限
+        private const val MAX_CHUNKS = 24 // ≈1.5MB resident, enough to cover back-and-forth scrolling
+        const val MAX_MEM = 8 * 1024 * 1024 // upper limit for "read whole file" when length can't be obtained
     }
 }

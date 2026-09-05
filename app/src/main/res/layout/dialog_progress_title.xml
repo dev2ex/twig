@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  传输进度框的自定义标题栏(AlertDialog.setCustomTitle):标题文字 + 右边的「转到后台」。
-  用自定义标题而不是把按钮放进内容区,是因为要的位置就是标题这一行的右端;
-  内边距照抄 AppCompat 默认标题(左右 dialogPreferredPadding),换上去看不出接缝。
+  Custom title bar for the transfer-progress dialog (AlertDialog.setCustomTitle): title text + "Send to background" on the right.
+  A custom title rather than putting the button inside the content area is used because the button belongs at the right end of the title row;
+  padding is copied from the AppCompat default title (left/right dialogPreferredPadding), so swapping it in shows no seam.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -25,7 +25,7 @@
         android:textAppearance="@style/TextAppearance.AppCompat.Title"
         android:textColor="@color/text_primary" />
 
-    <!-- 点了收起进度框,传输交给前台服务接着跑(通知栏那条进度条点回来) -->
+    <!-- Tap to collapse the progress dialog; the transfer keeps running in the foreground service (tap the notification progress bar to bring it back) -->
     <ImageView
         android:id="@+id/btn_background"
         android:layout_width="52dp"

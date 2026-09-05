@@ -11,13 +11,13 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center" />
 
-    <!-- 位图字幕(PGS 等)叠加层,铺满屏幕,内部按视频显示矩形映射坐标 -->
+    <!-- Bitmap subtitle (PGS etc.) overlay, fills the screen, internally maps coordinates against the video display rectangle -->
     <com.twig.app.ui.BitmapCueView
         android:id="@+id/pgs_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 音频模式:图标 + 文件名 -->
+    <!-- Audio mode: icon + filename -->
     <LinearLayout
         android:id="@+id/audio_info"
         android:layout_width="wrap_content"
@@ -43,7 +43,7 @@
             android:textSize="15sp" />
     </LinearLayout>
 
-    <!-- 外挂/内嵌字幕 -->
+    <!-- External / embedded subtitles -->
     <TextView
         android:id="@+id/tv_subtitle"
         android:layout_width="wrap_content"
@@ -61,16 +61,18 @@
         android:textSize="17sp"
         android:visibility="gone" />
 
-    <!-- 长按加速提示:顶部、无背景色,靠文字阴影保证亮画面上也看得清 -->
+    <!-- Long-press speed-up hint: top, no background; text shadow keeps it readable over bright frames.
+         The fast-forward glyph is set programmatically (MediaPlayerActivity.fastForwardIcon) rather
+         than via drawableEnd — a compound drawable never picks up the shadow* attrs below. -->
     <TextView
         android:id="@+id/tv_speed"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:layout_marginTop="28dp"
-        android:drawableEnd="@drawable/ic_fast_forward"
         android:drawablePadding="6dp"
         android:gravity="center_vertical"
+        android:includeFontPadding="false"
         android:shadowColor="#CC000000"
         android:shadowDx="1"
         android:shadowDy="1"
@@ -79,7 +81,7 @@
         android:textSize="16sp"
         android:visibility="gone" />
 
-    <!-- 手势反馈(进度/亮度/音量) -->
+    <!-- Gesture feedback (progress / brightness / volume) -->
     <TextView
         android:id="@+id/tv_gesture"
         android:layout_width="wrap_content"
@@ -121,6 +123,18 @@
         android:paddingStart="8dp"
         android:paddingEnd="8dp">
 
+        <!-- Previous / next episode: only shown when a playlist queue is computed (a single
+             video leaves no slot), see MediaPlayerActivity.syncQueueButtons -->
+        <ImageButton
+            android:id="@+id/btn_prev"
+            android:layout_width="40dp"
+            android:layout_height="48dp"
+            android:visibility="gone"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_skip_prev"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_prev_episode" />
+
         <ImageButton
             android:id="@+id/btn_play"
             android:layout_width="48dp"
@@ -129,6 +143,16 @@
             android:src="@drawable/ic_pause"
             android:tint="@color/white"
             android:contentDescription="@string/slideshow" />
+
+        <ImageButton
+            android:id="@+id/btn_next"
+            android:layout_width="40dp"
+            android:layout_height="48dp"
+            android:visibility="gone"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_skip_next"
+            android:tint="@color/white"
+            android:contentDescription="@string/player_next_episode" />
 
         <TextView
             android:id="@+id/tv_pos"

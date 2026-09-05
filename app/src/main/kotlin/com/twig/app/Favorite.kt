@@ -5,33 +5,47 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 一个收藏(指向某个目录)。为跨会话可恢复,不存动态 scheme,而存"如何到达":
- * - local:  path = 本地绝对路径
- * - conn:   connLabel = 对应 SavedConnection.label(),path = 该连接内路径
- * - restic: repoPath = 仓库目录路径,repoConnLabel = 仓库所在连接(空=本地),
- *           path = /<快照短id>/包内路径
+ * A favourite (pointing at a directory). For cross-session recoverability we don't store
+ * the dynamic scheme, but "how to reach it":
+ * - local:  path = absolute local path
+ * - conn:   connLabel = the corresponding SavedConnection.label(), path = the path within that connection
+ * - restic: repoPath = the repository directory path, repoConnLabel = the connection that
+ *           holds the repository (empty = local), path = /<snapshot short id>/path inside the snapshot
+ * - saf:    path = the entire document URI. The grant was taken via takePersistableUriPermission
+ *           and remains valid across sessions, so this path can be stored (same as the saf
+ *           tracks in "now playing").
  */
 data class Favorite(
     val label: String,
-    val kind: String,           // "local" | "conn" | "restic"
+    val kind: String,           // "local" | "conn" | "restic" | "saf"
     val path: String,
+    /**
+     * Display name of the directory at the time it was favourited. **Only needed when the
+     * last segment of [path] is not the source of the name** — SAF's path is an entire
+     * document URI (every '/' between parent and child is encoded as %2F), and slicing
+     * off the last segment yields a percent-encoded string; that's exactly how
+     * [defaultFavoriteName] derives the name. When empty, fall back to slicing path.
+     */
+    val pathName: String = "",
     val connLabel: String = "",
     val repoPath: String = "",
-    val repoConnLabel: String = "", // restic 仓库所在的网络连接(空=本地)
+    val repoConnLabel: String = "", // network connection that holds the restic repository (empty = local)
     /**
-     * 用户手动重命名后的显示名;空 = 没改过,用 [com.twig.app.defaultFavoriteName] 实时生成
-     * (跟着连接改名走)。一旦重命名就固定下来,不再跟连接改名联动——这正是"重命名"
-     * 的语义:用户接管了这个名字。
+     * Display name after the user manually renamed it; empty = never renamed, fall back
+     * to [com.twig.app.defaultFavoriteName] computed on the fly (follows the connection's
+     * rename). Once renamed, it sticks and no longer tracks the connection — that is the
+     * very meaning of "rename": the user has taken ownership of the name.
      */
     val customLabel: String = "",
 ) {
-    /** 稳定唯一 id。 */
+    /** Stable unique id. */
     val id: String get() = "$kind|$connLabel|$repoConnLabel|$repoPath|$path"
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("label", label); put("kind", kind); put("path", path)
         put("connLabel", connLabel); put("repoPath", repoPath)
         put("repoConnLabel", repoConnLabel); put("customLabel", customLabel)
+        put("pathName", pathName)
     }
 
     companion object {
@@ -43,11 +57,12 @@ data class Favorite(
             repoPath = o.optString("repoPath", ""),
             repoConnLabel = o.optString("repoConnLabel", ""),
             customLabel = o.optString("customLabel", ""),
+            pathName = o.optString("pathName", ""),
         )
     }
 }
 
-/** 收藏的持久化(SharedPreferences + JSON)。 */
+/** Persistence for favourites (SharedPreferences + JSON). */
 object FavoritesStore {
     private const val FILE = "twig_favorites"
     private const val KEY = "list"
@@ -71,7 +86,7 @@ object FavoritesStore {
         persist(ctx, all(ctx).filter { it.id != fav.id })
     }
 
-    /** 重命名(设置/清空自定义显示名;传空串等于恢复自动名)。 */
+    /** Rename (set / clear the custom display name; empty string restores the auto-generated name). */
     fun rename(ctx: Context, fav: Favorite, newLabel: String) {
         persist(ctx, all(ctx).map { if (it.id == fav.id) it.copy(customLabel = newLabel) else it })
     }

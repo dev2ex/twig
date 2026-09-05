@@ -1,19 +1,19 @@
 package com.twig.app.ui
 
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
+import com.twig.app.TextCodec
 
-/** 一条字幕:起止时间(ms)与文本。 */
+/** A single caption: start/end time (ms) and text. */
 data class SubCue(val start: Int, val end: Int, val text: String)
 
 /**
- * 极简字幕解析器:SRT / ASS / SSA。
- * 自己解析(而非交给 MediaPlayer)的好处:任何来源(SMB 等)直接 openInput 读字节即可,
- * 且可处理国内常见的 GBK 编码字幕。
+ * Minimal subtitle parser: SRT / ASS / SSA.
+ * We parse them ourselves (instead of handing them to MediaPlayer) so that any
+ * source (SMB, etc.) just needs an openInput() to read the bytes, and so we can
+ * handle the GBK-encoded subtitle files that are common domestically.
  */
 object SubtitleParser {
 
-    /** 支持的外挂字幕扩展名(小写)。 */
+    /** Supported external subtitle extensions (lowercase). */
     val EXTENSIONS = setOf("srt", "ass", "ssa")
 
     fun parse(bytes: ByteArray): List<SubCue> {
@@ -21,21 +21,8 @@ object SubtitleParser {
         return if (text.contains("Dialogue:")) parseAss(text) else parseSrt(text)
     }
 
-    /** BOM 优先;否则严格试 UTF-8,失败回退 GBK。 */
-    private fun decode(b: ByteArray): String = when {
-        b.size >= 3 && b[0] == 0xEF.toByte() && b[1] == 0xBB.toByte() && b[2] == 0xBF.toByte() ->
-            String(b, 3, b.size - 3, Charsets.UTF_8)
-        b.size >= 2 && b[0] == 0xFF.toByte() && b[1] == 0xFE.toByte() -> String(b, 2, b.size - 2, Charsets.UTF_16LE)
-        b.size >= 2 && b[0] == 0xFE.toByte() && b[1] == 0xFF.toByte() -> String(b, 2, b.size - 2, Charsets.UTF_16BE)
-        else -> try {
-            Charsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(b)).toString()
-        } catch (_: Exception) {
-            String(b, charset("GBK"))
-        }
-    }
+    /** BOM → strict UTF-8 → the user-ordered encodings from settings, see [com.twig.app.TextCodec]. */
+    private fun decode(b: ByteArray): String = TextCodec.decode(b).text
 
     // ---- SRT ----
 
@@ -50,7 +37,7 @@ object SubtitleParser {
             if (ti < 0) continue
             val g = srtTime.find(lines[ti])!!.groupValues
             val text = lines.drop(ti + 1).joinToString("\n")
-                .replace(Regex("<[^>]{1,16}>"), "") // 去 <i>/<b>/<font …> 等标签
+                .replace(Regex("<[^>]{1,16}>"), "") // strip <i>/<b>/<font …> etc. tags
                 .trim()
             if (text.isEmpty()) continue
             cues.add(SubCue(ms(g[1], g[2], g[3], g[4]), ms(g[5], g[6], g[7], g[8]), text))
@@ -62,15 +49,15 @@ object SubtitleParser {
         h.toInt() * 3600_000 + m.toInt() * 60_000 + s.toInt() * 1000 + frac.padEnd(3, '0').toInt()
 
     // ---- ASS / SSA ----
-    // [Events] 里的 Format: 行决定字段顺序(V4+/V4/变体各不同),按它定位 Start/End/Text。
+    // The Format: line inside [Events] decides field order (V4+/V4/variants differ); follow it to find Start/End/Text.
 
     private val assTime = Regex("""(\d+):(\d{1,2}):(\d{1,2})[.,](\d{1,3})""")
-    private val assDrawing = Regex("""\\p[1-9]""") // {\p1} 矢量绘图,不是文字
+    private val assDrawing = Regex("""\\p[1-9]""") // {\p1} vector drawing, not text
     private val assTags = Regex("""\{[^}]*\}""")
 
     private fun parseAss(s: String): List<SubCue> {
         val cues = ArrayList<SubCue>()
-        // 默认 V4+ 布局:Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+        // Default V4+ layout: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         var startIdx = 1
         var endIdx = 2
         var textIdx = 9
@@ -78,7 +65,7 @@ object SubtitleParser {
         for (raw in s.lineSequence()) {
             val line = raw.trim()
             when {
-                // 只认 [Events] 的 Format(含 Start 字段;[V4 Styles] 的 Format 没有)
+                // Only [Events]' Format counts (it has a Start field; [V4 Styles]' Format does not)
                 line.startsWith("Format:", ignoreCase = true) && line.contains("Start", ignoreCase = true) -> {
                     val fields = line.substringAfter(':').split(',').map { it.trim().lowercase() }
                     fieldCount = fields.size
@@ -94,7 +81,7 @@ object SubtitleParser {
                     val rawText = parts[textIdx]
                     if (assDrawing.containsMatchIn(rawText)) continue
                     val text = rawText
-                        .replace(assTags, "") // 去 {\pos…}{\fad…} 等特效标签,只留纯文本
+                        .replace(assTags, "") // strip {\pos…}{\fad…} etc. effect tags, keep plain text only
                         .replace("\\N", "\n").replace("\\n", "\n").replace("\\h", " ")
                         .trim()
                     if (text.isEmpty()) continue

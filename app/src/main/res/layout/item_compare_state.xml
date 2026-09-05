@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 中间状态列的一行:只有一个符号,行高必须与 item_compare_row 一致才对得齐 -->
+<!-- One row of the middle status column: just a symbol; row height must match item_compare_row for alignment -->
 <TextView xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/state"
     android:layout_width="match_parent"

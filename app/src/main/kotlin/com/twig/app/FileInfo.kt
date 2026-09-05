@@ -9,19 +9,22 @@ import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.os.Build
 import com.twig.core.FsRegistry
+import com.twig.core.MediaDetails
+import com.twig.core.MediaInfoSource
+import com.twig.core.MediaStream
 import com.twig.core.XFile
 import java.io.ByteArrayInputStream
 
 /**
- * 属性卡片的数据源:基本信息 + 打开方式(默认应用/可打开应用)+
- * 按类型追加 EXIF(图片)/ 媒体信息(音视频)/ 应用信息(apk)。
- * 全部走系统 API(ExifInterface / MediaMetadataRetriever / PackageManager),零额外依赖;
- * 非本地来源经 openInput 流或 StreamProvider 的 content URI 读取,apk 需物化到缓存。
- * 阻塞 IO,须在工作线程调用。
+ * Data source for the properties card: basic info + open-with (default app / available apps) +
+ * EXIF (images) / media info (audio & video) / app info (apk) appended by type.
+ * All via system APIs (ExifInterface / MediaMetadataRetriever / PackageManager), zero extra
+ * dependencies; non-local sources are read via openInput stream or StreamProvider's content
+ * URI, apk needs to be materialised into cache. Blocking I/O, must be called on a worker thread.
  */
 object FileInfo {
 
-    /** 取字符串资源(随 AppCompatDelegate 当前 locale);这一层的文案全部走资源。 */
+    /** Fetch the string resource (following AppCompatDelegate's current locale); all copy at this layer goes through resources. */
     private fun s(ctx: Context, id: Int, vararg args: Any): String = ctx.getString(id, *args)
 
     data class Section(val title: String, val rows: List<Pair<String, String>>)
@@ -29,16 +32,26 @@ object FileInfo {
 
     fun load(ctx: Context, file: XFile): Details {
         val sections = ArrayList<Section>()
-        sections += basic(ctx, file)
+        // Prefer the source's own media details (Jellyfin/Emby) when available: those data
+        // already come in the listing response, whereas the default path requires
+        // MediaMetadataRetriever to **actually read the file** — on remote sources that takes
+        // seconds to tens of seconds, and the properties card would stay blank and spinning.
+        val remote = if (file.isDir) {
+            null
+        } else {
+            runCatching { (FsRegistry.of(file) as? MediaInfoSource)?.detailsOf(file) }.getOrNull()
+        }
+        sections += basic(ctx, file, remote)
         if (!file.isDir) {
             when {
+                remote != null -> remoteMedia(ctx, remote)?.let { sections += it }
                 OpenFiles.isImage(file) -> exif(ctx, file)?.let { sections += it }
                 OpenFiles.isVideo(file) || OpenFiles.isAudio(file) ->
                     media(ctx, file)?.let { sections += it }
-                // 「应用」树里的条目:直接问 PackageManager,连文件都不用碰
+                // Entries in the "Apps" tree: ask PackageManager directly, no need to touch files
                 file.scheme == AppsFileSystem.SCHEME ->
                     installedApp(ctx, file)?.let { sections += it }
-                // 远程 apk 要整包下载才能解析,不显示(需完整读取的属性一律略过)
+                // Remote apks need to be downloaded entirely to parse, skip (skip any property requiring a full read)
                 OpenFiles.isApk(file) && file.scheme == "file" ->
                     apk(ctx, file)?.let { sections += it }
             }
@@ -46,12 +59,13 @@ object FileInfo {
         return Details(sections)
     }
 
-    // ---- 基本 ----
+    // ---- Basic ----
 
-    private fun basic(ctx: Context, file: XFile): Section {
+    private fun basic(ctx: Context, file: XFile, remote: MediaDetails? = null): Section {
         val rows = ArrayList<Pair<String, String>>()
         rows += s(ctx, R.string.info_name) to file.name
-        rows += s(ctx, R.string.info_path) to file.path
+        // Media server paths are GUIDs, useless to show — when the server has a real path, show that
+        rows += s(ctx, R.string.info_path) to remote?.realPath?.ifEmpty { null }.orEmpty().ifEmpty { file.path }
         if (file.scheme != "file") rows += s(ctx, R.string.info_source) to Format.schemeLabel(file.scheme)
         if (file.isDir) {
             rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_folder)
@@ -62,20 +76,28 @@ object FileInfo {
             }
         } else {
             rows += s(ctx, R.string.info_type) to OpenFiles.mimeOf(file.name)
-            rows += s(ctx, R.string.info_size) to
-                s(ctx, R.string.info_size_value, Format.size(file.size), "%,d".format(file.size))
+            // XFile.size in the listing may be 0 (media servers don't expose photo byte counts),
+            // but the properties card only deals with one entry and the source will fetch it
+            // specifically — use the real value when available
+            val bytes = remote?.size?.takeIf { it > 0 } ?: file.size
+            if (bytes > 0 || Format.sizeOrNull(file) != null) {
+                rows += s(ctx, R.string.info_size) to
+                    s(ctx, R.string.info_size_value, Format.size(bytes), "%,d".format(bytes))
+            }
         }
         if (file.lastModified > 0) rows += s(ctx, R.string.info_modified) to Format.time(file.lastModified)
         rows += s(ctx, R.string.info_writable) to
             s(ctx, if (file.canWrite) R.string.info_yes else R.string.info_no)
-        if (!file.isDir) rows += apps(ctx, file) // 打开方式并入基本信息
+        if (!file.isDir) rows += apps(ctx, file) // open-with merged into basic info
         return Section(s(ctx, R.string.info_section_basic), rows)
     }
 
     /**
-     * 目录的递归统计行(追加在"基本"分组末尾):全部文件/目录数 + 总大小。
-     * 数据由 `PaneViewModel` 的后台扫描边扫边给([com.twig.app.ui.DirStat]),
-     * 所以不在 [load] 里算——那是一次性的,而这两行要随扫描进度实时变。
+     * Recursive stats rows for a directory (appended at the end of the "Basic" section):
+     * total file / directory count + total size.
+     * Data is fed incrementally by `PaneViewModel`'s background scan
+     * ([com.twig.app.ui.DirStat]), so we don't compute it here in [load] — that runs once,
+     * whereas these two rows must update live with scan progress.
      */
     fun dirStatRows(ctx: Context, stat: com.twig.app.ui.DirStat): List<Pair<String, String>> = listOf(
         s(ctx, R.string.info_contains_all) to
@@ -84,7 +106,7 @@ object FileInfo {
             s(ctx, R.string.info_size_value, Format.size(stat.bytes), "%,d".format(stat.bytes)),
     )
 
-    // ---- 打开方式 ----
+    // ---- Open with ----
 
     private fun apps(ctx: Context, file: XFile): List<Pair<String, String>> = runCatching {
         val pm = ctx.packageManager
@@ -94,24 +116,27 @@ object FileInfo {
         }
         val rows = ArrayList<Pair<String, String>>()
         pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo
-            ?.takeIf { it.packageName != "android" } // 无默认时系统返回解析器自身
+            ?.takeIf { it.packageName != "android" } // system returns the resolver itself when there's no default
             ?.let { rows += s(ctx, R.string.info_default_app) to it.loadLabel(pm).toString() }
         rows
     }.getOrDefault(emptyList())
 
-    // ---- 图片 EXIF ----
+    // ---- Image EXIF ----
 
     /**
-     * 读文件头(最多 [IMAGE_HEAD_CAP];文件比它小就是整个文件)。
+     * Read the file head (at most [IMAGE_HEAD_CAP]; for files smaller than that, the whole file).
      *
-     * ★ EXIF **必须**从内存字节解析,不能把网络流直接交给 [ExifInterface]:
-     * 它解 APP1 段时是 `if (in.read(bytes) != length) throw IOException("Invalid exif")`
-     * ——单次 read。而 `BufferedInputStream.read(b,off,len)` 的填充循环遇到
-     * `in.available() <= 0` 就提前返回:本地 `FileInputStream` 一次给得满,
-     * SMB/SFTP/WebDAV 这类 socket 流给的是部分字节 → 长度对不上 → 异常被
-     * `loadAttributes` 内部吞掉 → 属性全空。表现就是"服务器上的图片没有 EXIF"。
-     * `ByteArrayInputStream.available()` 恒等于剩余字节,永远读得满。
-     * 宽高解码顺带复用这段字节:头部就够出 SOF,不必再开一次流。
+     * ★ EXIF **must** be parsed from in-memory bytes; the network stream cannot be passed
+     * straight to [ExifInterface]: when it decodes the APP1 segment, it does
+     * `if (in.read(bytes) != length) throw IOException("Invalid exif")` — a single read.
+     * And `BufferedInputStream.read(b,off,len)`'s fill loop returns early when
+     * `in.available() <= 0`: a local `FileInputStream` fills in one go, but SMB/SFTP/WebDAV
+     * socket streams return a partial read → length mismatches → the exception is swallowed
+     * inside `loadAttributes` → properties are empty. The symptom is "no EXIF on server-side
+     * images". `ByteArrayInputStream.available()` always equals the remaining bytes, so it
+     * always fills.
+     * Width / height decoding reuses those same bytes: the head is enough for the SOF, no
+     * need to open another stream.
      */
     private fun imageHead(file: XFile): ByteArray {
         val cap = if (file.size in 1 until IMAGE_HEAD_CAP.toLong()) file.size.toInt() else IMAGE_HEAD_CAP
@@ -127,7 +152,7 @@ object FileInfo {
         }
     }
 
-    /** EXIF(APP1 单段上限 64KB)+ JPEG SOF 都在这以内;整文件更小时读的就是整个文件。 */
+    /** EXIF (APP1 single-segment limit 64KB) + JPEG SOF all fit within this; for files smaller than the cap, the read returns the whole file. */
     private const val IMAGE_HEAD_CAP = 256 * 1024
 
     private fun exif(ctx: Context, file: XFile): Section? {
@@ -168,12 +193,13 @@ object FileInfo {
         return if (rows.isEmpty()) null else Section(s(ctx, R.string.info_section_image), rows)
     }
 
-    // ---- 音视频 ----
+    // ---- Audio & Video ----
 
     private fun media(ctx: Context, file: XFile): Section? {
         val rows = ArrayList<Pair<String, String>>()
-        // 轨道明细(编码/音轨/字幕)用 app 里已有的 ExoPlayer 解析器枚举,
-        // 比 MediaMetadataRetriever 全得多(MKV 字幕轨、DTS/TrueHD 等系统不认的轨也能列)
+        // Track details (codec / audio track / subtitle) enumerated via the ExoPlayer parser
+        // already in the app — much fuller than MediaMetadataRetriever (MKV subtitle tracks,
+        // DTS/TrueHD and other system-unknown tracks are also listed)
         val tracks = mediaTracks(ctx, file)
         val mmr = MediaMetadataRetriever()
         try {
@@ -187,7 +213,7 @@ object FileInfo {
                 } else "${bps / 1000} kbps"
             }
             k(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)?.let { rows += s(ctx, R.string.info_container) to it }
-            if (tracks.isEmpty()) { // 轨道枚举失败才退回系统摘要字段
+            if (tracks.isEmpty()) { // fall back to system summary fields only when track enumeration fails
                 val w = k(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
                 val h = k(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
                 if (w != null && h != null) rows += s(ctx, R.string.info_resolution) to "$w × $h"
@@ -203,14 +229,58 @@ object FileInfo {
             k(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.let { rows += s(ctx, R.string.info_artist) to it }
             k(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.let { rows += s(ctx, R.string.info_album) to it }
         } catch (e: Exception) {
-            rows += tracks // 系统解析不了的容器(如部分 MKV)仍给轨道信息
+            rows += tracks // containers the system can't parse (e.g. some MKV) still get track info
         } finally {
             runCatching { mmr.release() }
         }
         return if (rows.isEmpty()) null else Section(s(ctx, R.string.info_section_media), rows)
     }
 
-    /** 用 ExoPlayer 的 MetadataRetriever 枚举视频/音频/字幕轨(零新依赖)。 */
+    /**
+     * Media details returned directly by the source ([MediaInfoSource]); the row layout
+     * matches [media] — the user shouldn't be able to infer "this used a different path"
+     * just from the properties card looking different.
+     *
+     * No network request is made (the data is already in the listing response), so the
+     * properties card for remote files opens **instantly**; the `MediaMetadataRetriever`
+     * path actually has to read the file bytes.
+     */
+    private fun remoteMedia(ctx: Context, d: MediaDetails): Section? {
+        val rows = ArrayList<Pair<String, String>>()
+        if (d.durationMs > 0) rows += s(ctx, R.string.info_duration) to duration(d.durationMs)
+        if (d.bitrate > 0) rows += s(ctx, R.string.info_bitrate) to bitrate(d.bitrate)
+        if (d.container.isNotEmpty()) rows += s(ctx, R.string.info_container) to d.container
+        // Photos have no video stream, dimensions are at the top level; MediaDetails provides both uniformly
+        if (d.width > 0 && d.height > 0) {
+            rows += s(ctx, R.string.info_resolution) to "${d.width} × ${d.height}"
+        }
+        fun describe(st: MediaStream): String = buildList {
+            // The server-assembled phrase (e.g. "1080p H264", "English DTS-HD MA 5.1") is most
+            // complete; prefer it
+            st.title.takeIf { it.isNotBlank() }?.let { add(it) }
+                ?: st.codec.takeIf { it.isNotBlank() }?.let { add(it.uppercase()) }
+            st.language.takeIf { it.isNotBlank() && it != "und" && st.title.isBlank() }?.let { add("[$it]") }
+            if (st.kind == MediaStream.Kind.VIDEO && st.frameRate > 0) add("%.3g fps".format(st.frameRate))
+            if (st.kind == MediaStream.Kind.AUDIO && st.channels > 0) add(channels(ctx, st.channels))
+            if (st.bitrate > 0) add(bitrate(st.bitrate))
+        }.joinToString(" ")
+        fun put(nameRes: Int, kind: MediaStream.Kind) {
+            val list = d.streams.filter { it.kind == kind }
+            list.forEachIndexed { i, st ->
+                val name = s(ctx, nameRes).let { if (list.size > 1) "$it ${i + 1}" else it }
+                rows += name to describe(st)
+            }
+        }
+        put(R.string.info_track_video, MediaStream.Kind.VIDEO)
+        put(R.string.info_track_audio, MediaStream.Kind.AUDIO)
+        put(R.string.info_track_subtitle, MediaStream.Kind.SUBTITLE)
+        return if (rows.isEmpty()) null else Section(s(ctx, R.string.info_section_media), rows)
+    }
+
+    private fun bitrate(bps: Long): String =
+        if (bps >= 1_000_000) "%.1f Mbps".format(bps / 1_000_000.0) else "${bps / 1000} kbps"
+
+    /** Enumerate video/audio/subtitle tracks using ExoPlayer's MetadataRetriever (zero new dependencies). */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun mediaTracks(ctx: Context, file: XFile): List<Pair<String, String>> = runCatching {
         val tga = androidx.media3.exoplayer.MetadataRetriever.retrieveMetadata(
@@ -243,7 +313,7 @@ object FileInfo {
                     lang?.let { add(it) }
                     label?.let { add(it) }
                 }.joinToString(" ")
-                // 其余 application/*(id3/emsg 等容器元数据轨)不展示
+                // Other application/* (id3/emsg etc. container metadata tracks) are not displayed
             }
         }
         val rows = ArrayList<Pair<String, String>>()
@@ -299,11 +369,11 @@ object FileInfo {
         "audio/amr-wb" to "AMR-WB",
     )
 
-    /** 编码简称,比如 "audio/vnd.dts" → "DTS"——播放器音轨菜单也用这份映射,保持一致。 */
+    /** Codec short name, e.g. "audio/vnd.dts" → "DTS" — the player's audio track menu uses the same map to stay consistent. */
     fun codecName(mime: String): String =
         CODEC_NAME[mime] ?: SUB_MIME[mime] ?: mime.substringAfter('/').uppercase()
 
-    /** 声道数简称,比如 6 → "5.1"。 */
+    /** Channel count short form, e.g. 6 → "5.1". */
     fun channels(ctx: Context, n: Int): String = when (n) {
         1 -> s(ctx, R.string.info_channel_mono)
         2 -> s(ctx, R.string.info_channel_stereo)
@@ -319,7 +389,7 @@ object FileInfo {
         return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
-    // ---- 哈希(整文件读取,按需计算)----
+    // ---- Hashes (full file read, computed on demand) ----
 
     fun hashes(file: XFile): List<Pair<String, String>> {
         val md5 = java.security.MessageDigest.getInstance("MD5")
@@ -346,7 +416,7 @@ object FileInfo {
         )
     }
 
-    // ---- APK(仅本地:直接读路径,不用整包物化)----
+    // ---- APK (local only: read path directly, no need to materialise the whole archive) ----
 
     private fun apk(ctx: Context, file: XFile): Section? = runCatching {
         val path = file.path
@@ -371,9 +441,10 @@ object FileInfo {
     }.getOrNull()
 
     /**
-     * 已安装应用的信息(「应用」树条目专用)。与 [apk] 不同,这里的应用**已经装在机器上**,
-     * 全部字段都来自 PackageManager 的元数据,不读 apk 一个字节 —— 分包应用也就顺带能显示
-     * split 数量与总占用(它们正是复制出去时打进 XAPK 的那几个文件)。
+     * Info for an installed app (used only by "Apps" tree entries). Unlike [apk], the app here
+     * **is already installed**, so all fields come from PackageManager's metadata without
+     * reading a single byte of the apk — split apps also get the split count and total size
+     * for free (they are exactly the files that get bundled into XAPK when copying out).
      */
     private fun installedApp(ctx: Context, file: XFile): Section? = runCatching {
         val fs = runCatching { FsRegistry.of(file) }.getOrNull() as? AppsFileSystem ?: return null

@@ -35,7 +35,8 @@
             android:layout_height="match_parent" />
     </LinearLayout>
 
-    <!-- 底部确认栏:目标目录已在面板路径栏显示,这里只保留取消/确定 -->
+    <!-- Bottom confirmation bar: the target directory is already shown in the pane's
+             path bar, so only cancel/confirm are kept here. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="56dp"

@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/pdf_backdrop">
+
+    <com.twig.app.ui.PdfStripView
+        android:id="@+id/strip"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <ProgressBar
+        android:id="@+id/loading"
+        style="?android:attr/progressBarStyleSmall"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_gravity="center" />
+
+    <!-- Page counter: bottom-right, out of the way of both the toolbar and the text column.
+         Shown while the viewport is moving and hidden again shortly after it stops. -->
+    <TextView
+        android:id="@+id/page_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginBottom="16dp"
+        android:layout_marginEnd="30dp"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="4dp"
+        android:background="@drawable/bg_overlay"
+        android:textColor="@color/white"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!--
+      Draggable scrollbar, shared with the hex viewer. It shows and hides itself, and only takes
+      over touch when the press lands on the thumb, so this 24dp strip does not eat page
+      scrolling. The top margin keeps it clear of the toolbar, which floats over the same corner.
+    -->
+    <com.twig.app.ui.FastScrollBar
+        android:id="@+id/fastscroll"
+        android:layout_width="24dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:layout_marginTop="?attr/actionBarSize" />
+
+    <!--
+      Chrome floats *over* the strip rather than taking a slot above it. ★ If the search bar
+      pushed the strip down, showing it would resize the view, and PdfStripView reacts to a size
+      change by recomputing its preview scale and dropping every cached page — opening search
+      would blank the document for a moment.
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- Hidden on tap so a page can be read edge to edge -->
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            app:titleTextAppearance="@style/CompactToolbarTitle"
+            android:background="@color/toolbar"
+            app:titleTextColor="@color/white"
+            app:navigationIcon="@drawable/ic_up" />
+
+        <LinearLayout
+            android:id="@+id/search_bar"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@color/bar"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/search_input"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp"
+                android:background="@null"
+                android:hint="@string/viewer_search"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:importantForAutofill="no" />
+
+            <TextView
+                android:id="@+id/search_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="4dp"
+                android:textSize="12sp"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/search_prev"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="▲"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+
+            <TextView
+                android:id="@+id/search_next"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="▼"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+
+            <TextView
+                android:id="@+id/search_close"
+                android:layout_width="40dp"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="✕"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary"
+                android:background="?attr/selectableItemBackgroundBorderless" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

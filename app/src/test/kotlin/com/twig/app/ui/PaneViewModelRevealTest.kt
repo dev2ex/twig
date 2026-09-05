@@ -31,15 +31,18 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /**
- * `PaneViewModel` 的**定位(revealPath)与收藏解析**链路——上一批(恢复/展开)之外
- * 剩下的那两条,C2 方案 b 要动的正是它们。
+ * `PaneViewModel`'s **locate (revealPath) and favorite resolution** path -- the two
+ * remaining ones outside the previous batch (restore/expand), and exactly what plan C2-b
+ * touches.
  *
- * 网络分支靠 [FakeFileSystem] 冒充服务器:提前注册到目标 scheme 上,
- * `Connections.ensure` 的"已注册就复用"就会直接返回,不会去 new 真的 FtpFileSystem,
- * 于是这些用例既不碰网络也跑得飞快。
+ * The network branch fakes a server via [FakeFileSystem]: registering it ahead of time
+ * under the target scheme means `Connections.ensure`'s "reuse if already registered" just
+ * returns it, never `new`-ing a real FtpFileSystem, so these cases touch no network and run
+ * fast.
  *
- * **没有覆盖的**:收藏的 restic 分支。那条要一个真的加密仓库(scrypt 派生 + 解密
- * config)才能走通,成本远高于收益;`ResticRepo` 本身在 :fs-restic 里已有测试。
+ * **Not covered**: the favorite's restic branch. That one needs a real encrypted repository
+ * (scrypt derivation + decrypted config) to exercise, which costs far more than it's worth;
+ * `ResticRepo` itself already has tests in `:fs-restic`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -65,9 +68,10 @@ class PaneViewModelRevealTest {
     private fun rowKeys() = vm.state.value.rows.map { it.key }
 
     /**
-     * 造一台"服务器":存进 ConnectionStore,并把假 fs 注册到它的确定性 scheme 上。
-     * [host] 每个用例给不一样的值—— FsRegistry 是进程级单例,同一个测试类里的用例
-     * 共享它,scheme 撞了会互相干扰。
+     * Builds a "server": saved into ConnectionStore, with the fake fs registered under its
+     * deterministic scheme. Give [host] a different value per test case -- `FsRegistry` is
+     * a process-wide singleton shared by every case in this test class, and colliding
+     * schemes interfere with each other.
      */
     private fun fakeServer(
         host: String,
@@ -81,10 +85,10 @@ class PaneViewModelRevealTest {
         return conn to fs
     }
 
-    // ---- revealPath:本地 ----
+    // ---- revealPath: local ----
 
     @Test
-    fun `定位到深层本地目录会把沿途每一级都展开`() = runTest(dispatcher) {
+    fun `locating a deep local directory expands every level along the way`() = runTest(dispatcher) {
         val deep = File(ext, "a/b/c").apply { mkdirs() }
         File(deep, "target.txt").writeText("x")
 
@@ -93,19 +97,19 @@ class PaneViewModelRevealTest {
 
         val keys = rowKeys()
         for (p in listOf("${ext.path}/a", "${ext.path}/a/b", "${ext.path}/a/b/c")) {
-            assertTrue("$p 该在树上", "f:file:$p" in keys)
+            assertTrue("$p should be in the tree", "f:file:$p" in keys)
         }
         assertEquals("f:file:${deep.path}", vm.state.value.currentKey)
         assertTrue("target.txt" in vm.state.value.rows
             .filterIsInstance<PaneViewModel.FileNode>().map { it.file.name })
     }
 
-    /** 手风琴:定位之后,不在这条链上的其它分支要被折起来。 */
+    /** Accordion: after locating, other branches not on this chain should be collapsed. */
     @Test
-    fun `定位会折叠掉不在链上的其它分支`() = runTest(dispatcher) {
-        val other = File(ext, "旁支").apply { mkdirs() }
+    fun `locating collapses other branches not on the chain`() = runTest(dispatcher) {
+        val other = File(ext, "side-branch").apply { mkdirs() }
         File(other, "o.txt").writeText("o")
-        val target = File(ext, "目标/里层").apply { mkdirs() }
+        val target = File(ext, "target/inner").apply { mkdirs() }
 
         vm.bootstrap(listOf("file\t${ext.path}", "file\t${other.path}"))
         advanceUntilIdle()
@@ -115,14 +119,14 @@ class PaneViewModelRevealTest {
         advanceUntilIdle()
 
         assertTrue("f:file:${target.path}" in rowKeys())
-        assertFalse("旁支的子项不该还摊着", "o.txt" in vm.state.value.rows
+        assertFalse("the side branch's children should no longer be spread out", "o.txt" in vm.state.value.rows
             .filterIsInstance<PaneViewModel.FileNode>().map { it.file.name })
     }
 
-    /** [focus] 给出时,滚动锚点指向那个文件,而高亮框仍框住目录本身。 */
+    /** When [focus] is given, the scroll anchor points at that file while the highlight still frames the directory itself. */
     @Test
-    fun `带 focus 定位时滚动锚点是文件_高亮仍是目录`() = runTest(dispatcher) {
-        val d = File(ext, "带焦点").apply { mkdirs() }
+    fun `locating with focus anchors scroll on the file while the highlight stays on the directory`() = runTest(dispatcher) {
+        val d = File(ext, "with-focus").apply { mkdirs() }
         val f = File(d, "song.mp3").apply { writeText("m") }
 
         vm.revealPath(
@@ -135,14 +139,16 @@ class PaneViewModelRevealTest {
         assertEquals("f:file:${f.path}", vm.state.value.scrollKey)
     }
 
-    // ---- revealPath:网络 ----
+    // ---- revealPath: network ----
 
     /**
-     * 本次会话还没展开过这台服务器时,revealPath 要能**按 scheme 反查已保存连接**、
-     * 当场把它连起来,而不是直接报错。分组行与服务器行都要展开,链上每一级也要。
+     * When this server has not been expanded yet this session, revealPath must be able to
+     * **look up the saved connection by scheme** and connect it on the spot, rather than
+     * simply erroring out. Both the group row and the server row must expand, as must every
+     * level on the chain.
      */
     @Test
-    fun `定位到没连过的服务器目录会自动建连接并逐级展开`() = runTest(dispatcher) {
+    fun `locating a directory on an unconnected server auto-connects and expands level by level`() = runTest(dispatcher) {
         val (conn, fs) = fakeServer(
             "reveal-host",
             dirs = mapOf(
@@ -158,29 +164,29 @@ class PaneViewModelRevealTest {
         advanceUntilIdle()
 
         val keys = rowKeys()
-        assertTrue("FTP 分组要展开", "g:ftp" in keys)
-        assertTrue("服务器行要展开", "s:${conn.label()}" in keys)
+        assertTrue("the FTP group should expand", "g:ftp" in keys)
+        assertTrue("the server row should expand", "s:${conn.label()}" in keys)
         assertTrue("f:$scheme:/pub" in keys)
         assertTrue("f:$scheme:/pub/docs" in keys)
         assertEquals("f:$scheme:/pub/docs", vm.state.value.currentKey)
         assertTrue("readme.txt" in vm.state.value.rows
             .filterIsInstance<PaneViewModel.FileNode>().map { it.file.name })
-        // 确实是逐级列的,不是一步跳过去
+        // really listed level by level, not jumped straight to the target
         assertTrue(fs.listed.containsAll(listOf("/", "/pub", "/pub/docs")))
     }
 
-    /** 连接已被删除时不能崩,也不该留下半截状态。 */
+    /** Must not crash when the connection has been deleted, nor leave half-finished state. */
     @Test
-    fun `定位到已删除连接的目录只报错不崩`() = runTest(dispatcher) {
+    fun `locating a directory on a deleted connection only errors, does not crash`() = runTest(dispatcher) {
         vm.revealPath(XFile("ftpdeadbeef", "/x", isDir = true))
         advanceUntilIdle()
-        assertNotNull("该给出错误提示", vm.state.value.error)
+        assertNotNull("should surface an error", vm.state.value.error)
     }
 
-    // ---- 最近位置 ----
+    // ---- recent locations ----
 
     @Test
-    fun `最近位置能跳回某台服务器上的目录`() = runTest(dispatcher) {
+    fun `a recent location can jump back to a directory on a server`() = runTest(dispatcher) {
         val (conn, _) = fakeServer(
             "history-host",
             dirs = mapOf("/" to listOf("data"), "/data" to listOf()),
@@ -194,20 +200,20 @@ class PaneViewModelRevealTest {
     }
 
     @Test
-    fun `最近位置指向已删除的连接时返回 false`() = runTest(dispatcher) {
+    fun `a recent location pointing at a deleted connection returns false`() = runTest(dispatcher) {
         assertFalse(vm.revealHistory(HistoryEntry("dir", "/x", "ftp://nobody@nowhere:21")))
     }
 
-    // ---- 收藏 ----
+    // ---- favorites ----
 
     @Test
-    fun `展开指向服务器目录的收藏会连上并列出子项`() = runTest(dispatcher) {
+    fun `expanding a favorite that points at a server directory connects and lists its children`() = runTest(dispatcher) {
         val (conn, _) = fakeServer(
             "fav-host",
             dirs = mapOf("/" to listOf("share"), "/share" to listOf("f.txt")),
             files = mapOf("/share/f.txt" to "c"),
         )
-        val fav = Favorite(label = "远端", kind = "conn", path = "/share", connLabel = conn.label())
+        val fav = Favorite(label = "remote", kind = "conn", path = "/share", connLabel = conn.label())
         FavoritesStore.add(app, fav)
 
         vm.bootstrap(listOf("group\tfav"))
@@ -222,13 +228,13 @@ class PaneViewModelRevealTest {
         assertEquals(true, ok)
         assertTrue("f.txt" in vm.state.value.rows
             .filterIsInstance<PaneViewModel.FileNode>().map { it.file.name })
-        // 收藏行本身就是那个目录,当前目标该同步成它
+        // the favorite row itself is that directory, the current target should sync to it
         assertEquals("/share", vm.state.value.currentDir?.path)
     }
 
     @Test
-    fun `收藏指向的连接已删除时报错而不是崩`() = runTest(dispatcher) {
-        val fav = Favorite(label = "孤儿", kind = "conn", path = "/x", connLabel = "ftp://gone@gone:21")
+    fun `errors instead of crashing when the favorite's connection has been deleted`() = runTest(dispatcher) {
+        val fav = Favorite(label = "orphan", kind = "conn", path = "/x", connLabel = "ftp://gone@gone:21")
         FavoritesStore.add(app, fav)
 
         vm.bootstrap(listOf("group\tfav"))
@@ -248,25 +254,28 @@ class PaneViewModelRevealTest {
     // ---- forgetServer ----
 
     /**
-     * ★ 回归(2026-08-03 第三批修的既有 bug):改完服务器配置后必须把 scheme 从
-     * FsRegistry 注销掉。scheme 是按连接标签确定性生成的,只改密码时标签不变、
-     * scheme 也不变,不注销的话 `Connections.ensure` 的"已注册就复用"会一直把
-     * **旧配置建的**实例还回来——改了密码却不生效,直到重启应用。
+     * ★ Regression (an existing bug fixed in the third batch on 2026-08-03): after editing
+     * a server's configuration, its scheme must be unregistered from FsRegistry. The scheme
+     * is generated deterministically from the connection label, so changing only the
+     * password leaves the label -- and thus the scheme -- unchanged; without unregistering,
+     * `Connections.ensure`'s "reuse if already registered" keeps handing back the instance
+     * **built from the old config** -- the password change never takes effect until the app
+     * restarts.
      */
     @Test
-    fun `forgetServer 会把 scheme 从注册表里注销`() = runTest(dispatcher) {
+    fun `forgetServer unregisters the scheme from the registry`() = runTest(dispatcher) {
         val (conn, _) = fakeServer("forget-host", dirs = mapOf("/" to listOf()))
         val scheme = Connections.schemeOf(conn)
 
         vm.revealPath(XFile(scheme, "/", isDir = true))
         advanceUntilIdle()
-        assertTrue("展开后该已注册", FsRegistry.all().any { it.scheme == scheme })
+        assertTrue("should be registered after expanding", FsRegistry.all().any { it.scheme == scheme })
 
         vm.forgetServer(conn.label())
         advanceUntilIdle()
 
         assertFalse(
-            "注销后不能还留在注册表里,否则改了配置也不生效",
+            "must not remain in the registry after unregistering, or the config change never takes effect",
             FsRegistry.all().any { it.scheme == scheme },
         )
     }

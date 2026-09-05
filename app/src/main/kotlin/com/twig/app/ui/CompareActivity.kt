@@ -37,19 +37,24 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
- * 目录对比(Beyond Compare 式):两侧逐行对齐,中间一列状态符号,横屏并排 + 同步滚动,
- * 竖屏一次显示一侧、左右滑动切换(状态列一直在,所以状态永远看得见)。
+ * Directory comparison (Beyond Compare-style): rows aligned line-for-line across the two
+ * sides, a status-symbol column in the middle, side-by-side with synchronized scrolling
+ * in landscape; in portrait, one side at a time, swipe left/right to switch (the status
+ * column is always visible, so the status of every row is always visible).
  *
- * 「活动侧」照搬双面板:路径栏高亮的那侧是**操作的源**,复制/同步都是"活动侧 → 对侧",
- * 删除删的是活动侧。动作都在顶栏菜单与行长按菜单里,不再另占一条操作列。
+ * The "active side" follows the dual-pane convention: the side highlighted in the path
+ * bar is **the source of operations**; copy and sync both go "active side → other side",
+ * and delete deletes from the active side. Actions all live in the top-bar menu and the
+ * row long-press menu — no separate action column.
  *
- * 扫描是全量递归的(见 [scanCompare]),所以停止与排除规则是刚需——网络来源的大树扫起来
- * 是分钟级。结果树在主线程构建:扫描协程只发不可变的增量事件,与 [scanDirStat] 那条
- * "只取数据,落表在收集方做"的规则一致。
+ * Scanning is fully recursive (see [scanCompare]), so stop and exclude rules are must-haves —
+ * scanning a large tree from a network source takes minutes. The result tree is built on
+ * the main thread: the scan coroutine only emits immutable incremental events, matching
+ * the "only gather data, building the table is the collector's job" rule from [scanDirStat].
  */
 class CompareActivity : AppCompatActivity() {
 
-    /** 结果树的一个节点。[key] 是相对两侧根的路径,根为空串。 */
+    /** A node of the result tree. [key] is the path relative to the roots on both sides; the root has the empty string. */
     private class Node(
         val key: String,
         val name: String,
@@ -79,21 +84,22 @@ class CompareActivity : AppCompatActivity() {
     private var scanning = false
     private var diffOnly = false
     private var stats = CompareEvent.Progress(0, 0, "")
-    // 扫描中途排除掉的量。扫描线程仍在按自己的计数往上报,不扣掉的话统计会跳回去
+    // Amount excluded mid-scan. The scan thread keeps reporting by its own counters;
+    // without subtracting these, the stats would jump back.
     private var goneEntriesTotal = 0
     private var goneDiffsTotal = 0
 
-    /** 竖屏当前显示侧;横屏两侧都在,这个值只跟着 [activeSide] 走。 */
+    /** In portrait, the side currently displayed; in landscape both sides are visible and this just follows [activeSide]. */
     private var side = 0
-    /** 活动侧 = 操作的源侧(0=左 1=右),路径栏高亮那一侧。 */
+    /** Active side = the source side for operations (0=left, 1=right), the side highlighted in the path bar. */
     private var activeSide = 0
     private var syncing = false
 
     private var transferBox: TransferBox? = null
-    /** 本次传输涉及的节点,传输结束后只重判这些,不整树重扫。 */
+    /** Nodes touched by the current transfer; when the transfer finishes, only these are revalidated, not the whole tree. */
     private var pendingNodes: List<Node> = emptyList()
 
-    /** 规则 → 被它挡掉的项(所在目录 key, 项名)。删规则时靠它精确恢复,不必整树重扫。 */
+    /** Rule → entries it blocked off (containing directory key, entry name). Used to precisely restore when a rule is deleted, without rescanning the whole tree. */
     private val excludedByRule = HashMap<String, LinkedHashSet<Pair<String, String>>>()
 
     private var itemRefresh: MenuItem? = null
@@ -101,15 +107,15 @@ class CompareActivity : AppCompatActivity() {
     private var itemDiffOnly: MenuItem? = null
     private var itemExpand: MenuItem? = null
     private var itemCopy: MenuItem? = null
-    /** 顶栏上那个复制快捷键,只在有选中时露出来;溢出菜单里那条一直都在。 */
+    /** The copy shortcut on the top bar — only revealed when there is a selection; the one in the overflow menu is always there. */
     private var itemCopyQuick: MenuItem? = null
-    private var itemSync: MenuItem? = null
     private var itemDelete: MenuItem? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         b = ActivityCompareBinding.inflate(layoutInflater)
         setContentView(b.root)
+        NavBarTint.surface(this) // both list sides are filled with surface
 
         b.toolbar.title = getString(R.string.compare_title)
         b.toolbar.setNavigationOnClickListener { finish() }
@@ -125,7 +131,8 @@ class CompareActivity : AppCompatActivity() {
         b.listLeft.itemAnimator = null
         b.listRight.itemAnimator = null
         b.listState.itemAnimator = null
-        // 三列两两联动:谁滚都要带上另外两列,否则状态符号会跟行错开
+        // All three columns are linked: scrolling any one drags the other two with it,
+        // otherwise the status symbols would get misaligned with their rows.
         linkScroll(b.listLeft, b.listRight, b.listState)
         linkScroll(b.listRight, b.listLeft, b.listState)
         linkScroll(b.listState, b.listLeft, b.listRight)
@@ -144,13 +151,9 @@ class CompareActivity : AppCompatActivity() {
             loadSession(session)
             return
         }
-        val ls = intent.getStringExtra(EXTRA_LEFT_SCHEME)
-        val lp = intent.getStringExtra(EXTRA_LEFT_PATH)
-        val rs = intent.getStringExtra(EXTRA_RIGHT_SCHEME)
-        val rp = intent.getStringExtra(EXTRA_RIGHT_PATH)
-        if (ls == null || lp == null || rs == null || rp == null) return finish()
-        leftRoot = XFile(ls, lp, isDir = true)
-        rightRoot = XFile(rs, rp, isDir = true)
+        val (l, r) = sidesFrom(intent) ?: return finish()
+        leftRoot = l
+        rightRoot = r
         options = loadCompareOptions(this)
         refreshPaths()
         startScan()
@@ -158,8 +161,9 @@ class CompareActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        showTransferBox() // 从通知栏点回来时把进度框接上
-        // 从对比页/查看器返回时再校正一次:竖屏下"看的是哪侧"与"活动侧"必须一致
+        showTransferBox() // when returning from the notification, reattach the progress dialog
+        // Realign once when returning from the compare page / viewer: in portrait the
+        // "side currently shown" and the "active side" must be in sync.
         if (!isLandscape && activeSide != side) setActiveSide(side)
     }
 
@@ -174,7 +178,7 @@ class CompareActivity : AppCompatActivity() {
         applyLayoutMode()
     }
 
-    // ---- 扫描 ----
+    // ---- Scan ----
 
     private fun startScan() {
         val l = leftRoot ?: return
@@ -189,12 +193,12 @@ class CompareActivity : AppCompatActivity() {
         goneEntriesTotal = 0
         goneDiffsTotal = 0
         excludedByRule.clear()
-        itemExpand?.setTitle(R.string.compare_expand_all) // 树重建了,两态标题也回到初始
+        itemExpand?.setTitle(R.string.compare_expand_all) // tree was rebuilt; the two-state title returns to its initial value
         notifyBoth()
         scanJob = lifecycleScope.launch { runScan(root) }
     }
 
-    /** 把 [prefix] 这棵子树内部的相对 key 拼成整树里的绝对 key。 */
+    /** Compose the absolute key inside the whole tree from a [prefix] subtree's relative key. */
     private fun fullKey(prefix: String, sub: String) = when {
         prefix.isEmpty() -> sub
         sub.isEmpty() -> prefix
@@ -202,11 +206,14 @@ class CompareActivity : AppCompatActivity() {
     }
 
     /**
-     * 扫描 [node] 这棵子树,结果挂在它下面;[node] 是 [root] 时就是整树。
-     * 抽出来是为了让「复制/删除之后」只重扫真正受影响的那个目录,而不是整棵树重来。
+     * Scan the subtree at [node], attaching results under it; when [node] is [root] the
+     * whole tree is scanned. Extracted so that after copy/delete only the actually affected
+     * directory is rescanned, not the entire tree from scratch.
      */
     private suspend fun runScan(node: Node) {
-        // 允许一侧为空:恢复"只在某一侧"的目录时要靠它,缺的那侧自然全判成"只在另一侧"
+        // Allow one side to be empty: needed when restoring a directory that exists on only
+        // one side; the missing side naturally results in everything being classified as
+        // "only on the other side".
         if (node.left == null && node.right == null) return
         node.children.forEach { dropIndex(it) }
         node.children.clear()
@@ -218,25 +225,29 @@ class CompareActivity : AppCompatActivity() {
                     is CompareEvent.Children -> addChildren(fullKey(node.key, ev.dirKey), ev.rows)
                     is CompareEvent.DirDone -> nodeByKey[fullKey(node.key, ev.dirKey)]?.let { n ->
                         n.state = ev.state
-                        // 有差异的路径自动铺开:用户要的就是这些,不该还得手点一层层展
+                        // Auto-expand paths with differences: those are exactly what the
+                        // user wants to see — no need to manually expand layer by layer.
                         if (ev.state == PairState.DIFF) n.expanded = true
                     }
-                    // 子树重扫时这个计数只覆盖子树,拿它当全局统计会把数字打回去;
-                    // 整树扫描才用它做实时进度,结束时一律以 recountStats 为准
+                    // Subtree rescan: this counter only covers the subtree; using it as a
+                    // global stat would cause numbers to roll back. Only the whole-tree scan
+                    // uses it for live progress; on completion recountStats is always authoritative.
                     is CompareEvent.Progress -> if (node === root) {
                         stats = ev.copy(
                             entries = (ev.entries - goneEntriesTotal).coerceAtLeast(0),
                             diffs = (ev.diffs - goneDiffsTotal).coerceAtLeast(0),
                         )
                     }
-                    // 记下"谁挡掉了什么",删这条规则时才能只把它挡掉的恢复回来
+                    // Record "who blocked what", so that deleting the rule only restores the
+                    // entries it actually blocked.
                     is CompareEvent.Excluded -> excludedByRule
                         .getOrPut(ev.rule) { LinkedHashSet() }
                         .add(fullKey(node.key, ev.dirKey) to ev.name)
                     CompareEvent.Truncated -> toast(getString(R.string.compare_truncated))
                 }
                 val now = System.currentTimeMillis()
-                // 每条事件都 rebuild 会把大树的主线程打满;150ms 一次足够"边扫边看"
+                // Rebuilding on every event would flood the main thread on a large tree;
+                // once every 150 ms is enough to feel like "scanning with live updates".
                 if (now - lastUi > 150L) {
                     lastUi = now
                     rebuild()
@@ -249,12 +260,12 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    /** 按当前树重新点一遍统计,局部重扫/摘除之后拿它校正,免得数字越走越偏。 */
+    /** Recount stats over the current tree, used to correct after partial rescan/detach so the numbers do not drift. */
     private fun recountStats() {
         var e = 0
         var d = 0
         for (n in nodeByKey.values) {
-            if (n.key.isEmpty()) continue // 根不是一个条目
+            if (n.key.isEmpty()) continue // the root is not an entry
             e++
             if (n.state != PairState.SAME) d++
         }
@@ -275,13 +286,14 @@ class CompareActivity : AppCompatActivity() {
     private fun setScanning(on: Boolean) {
         scanning = on
         b.progress.visibility = if (on) View.VISIBLE else View.GONE
-        // ★ 别用 setIcon(资源 id):那会换成未染色的 drawable,图标原色是黑的,
-        // 在绿色 toolbar 上就成了一个黑按钮。要染好色再塞进去。
+        // ★ Do not use setIcon(resource id): that swaps in an untinted drawable whose
+        // native color is black, which becomes a black button on the green toolbar.
+        // Tint first, then assign.
         itemRefresh?.icon = tinted(if (on) R.drawable.ic_stop else R.drawable.ic_refresh, R.color.white)
         itemRefresh?.setTitle(if (on) R.string.compare_stop else R.string.compare_refresh)
     }
 
-    // ---- 结果树 → 可见行 ----
+    // ---- Result tree → visible rows ----
 
     private fun rebuild() {
         val out = ArrayList<Node>()
@@ -295,7 +307,8 @@ class CompareActivity : AppCompatActivity() {
 
     private fun flatten(n: Node, out: MutableList<Node>) {
         for (c in n.children) {
-            // "只看差异"隐藏认定相同的;还没扫完的目录(SCANNING)不能藏,否则看着像漏了
+            // "Diff only" hides rows classified as SAME; directories still scanning
+            // (SCANNING) cannot be hidden, otherwise it looks like they are missing.
             if (diffOnly && c.state == PairState.SAME) continue
             out += c
             if (c.isDir && c.expanded) flatten(c, out)
@@ -316,18 +329,20 @@ class CompareActivity : AppCompatActivity() {
         rebuild()
     }
 
-    // ---- 顶栏菜单 ----
+    // ---- Top-bar menu ----
 
     private fun buildMenu() {
         val m = b.toolbar.menu
         m.showIcons()
-        // ★ Toolbar 的 ALWAYS 图标按 add() 顺序从左到右排——复制要落在刷新左边,
-        // 就必须先加它。放最左是因为它不常驻(没选中时隐藏),露出来时不该把
-        // 刷新/切换这两个常驻按钮的位置往右挤动,视觉上更稳。
+        // ★ Toolbar's ALWAYS icons are laid out left-to-right in add() order — copy must
+        // sit to the left of refresh, so it has to be added first. Placing it leftmost is
+        // because it is not permanent (hidden when nothing is selected), and when it does
+        // appear it should not push the permanent refresh/switch buttons rightward, which
+        // would feel visually unstable.
         itemCopyQuick = m.add("").apply {
             icon = tinted(R.drawable.ic_copy, R.color.white)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            isVisible = false // 有选中才亮出来,见 refreshSubtitle
+            isVisible = false // only lit when something is selected; see refreshSubtitle
             setOnMenuItemClickListener { actionCopy(); true }
         }
         itemRefresh = m.add(getString(R.string.compare_refresh)).apply {
@@ -336,10 +351,10 @@ class CompareActivity : AppCompatActivity() {
             setOnMenuItemClickListener { if (scanning) scanJob?.cancel() else startScan(); true }
         }
         itemSwap = m.add(getString(R.string.compare_switch_side)).apply {
-            icon = tinted(R.drawable.ic_pane_to_right, R.color.white) // 真正的朝向由 setActiveSide 定
+            icon = tinted(R.drawable.ic_pane_to_right, R.color.white) // the actual facing direction is set by setActiveSide
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             setOnMenuItemClickListener {
-                // 竖屏切的是"看哪一侧"(顺带把活动侧带过去);横屏两侧都在,切的是活动侧
+                // In portrait, it switches "which side is being viewed" (and takes the active side with it); in landscape both sides are visible, so it switches the active side.
                 if (isLandscape) setActiveSide(1 - activeSide) else switchSide(1 - side)
                 true
             }
@@ -357,7 +372,8 @@ class CompareActivity : AppCompatActivity() {
         itemExpand = m.add(getString(R.string.compare_expand_all)).apply {
             icon = menuIcon(R.drawable.ic_chevron_down)
             setOnMenuItemClickListener {
-                // 一个菜单项两态:还有折叠的就先全展开,全展开了再点即全折叠
+                // Two-state menu item: if anything is still collapsed, expand all first;
+                // once everything is expanded, the next tap collapses all.
                 val anyCollapsed =
                     nodeByKey.values.any { n -> n.isDir && !n.expanded && n.children.isNotEmpty() }
                 setAllExpanded(anyCollapsed)
@@ -374,9 +390,14 @@ class CompareActivity : AppCompatActivity() {
             icon = menuIcon(R.drawable.ic_copy)
             setOnMenuItemClickListener { actionCopy(); true }
         }
-        itemSync = m.add("").apply {
+        // ★ The directions are hard-coded to "left" and "right", and do not follow the active side: sync is irreversible, "sync to the other side" requires the user to first recognize which side is highlighted to know where to push, and the path bar's highlight in portrait follows the swipe switch.
+        m.add(getString(R.string.compare_sync_to, sideName(0))).apply {
             icon = menuIcon(R.drawable.ic_sync)
-            setOnMenuItemClickListener { actionSync(); true }
+            setOnMenuItemClickListener { actionSync(to = 0); true }
+        }
+        m.add(getString(R.string.compare_sync_to, sideName(1))).apply {
+            icon = menuIcon(R.drawable.ic_sync)
+            setOnMenuItemClickListener { actionSync(to = 1); true }
         }
         itemDelete = m.add("").apply {
             icon = menuIcon(R.drawable.ic_delete)
@@ -406,17 +427,13 @@ class CompareActivity : AppCompatActivity() {
             }
         }
         m.add(getString(R.string.compare_save)).apply {
-            icon = menuIcon(R.drawable.ic_star)
+            icon = menuIcon(R.drawable.ic_save)
             setOnMenuItemClickListener { saveSession(); true }
-        }
-        m.add(getString(R.string.compare_saved)).apply {
-            icon = menuIcon(R.drawable.ic_history)
-            setOnMenuItemClickListener { openSaved(); true }
         }
         refreshDirectionTitles()
     }
 
-    /** 溢出菜单里的图标:菜单背景跟着主题走,所以染成正文色而不是图标自带的黑。 */
+    /** Icons in the overflow menu: the menu background follows the theme, so tint to the body text color rather than the icons' default black. */
     private fun menuIcon(res: Int) = tinted(res, R.color.text_primary)
 
     private fun tinted(res: Int, colorRes: Int) =
@@ -424,24 +441,25 @@ class CompareActivity : AppCompatActivity() {
             setTint(ContextCompat.getColor(this@CompareActivity, colorRes))
         }
 
-    /** 复制/同步/删除三项的标题里写死方向,省得用户点开还要猜是往哪边搬。 */
+    /** The titles for copy / sync / delete have the direction baked in, so the user does not have to guess which way they are moving things when they tap. */
     private fun refreshDirectionTitles() {
         val other = sideName(1 - activeSide)
         itemCopy?.title = getString(R.string.compare_copy_to, other)
         itemCopyQuick?.title = getString(R.string.compare_copy_to, other)
-        itemSync?.title = getString(R.string.compare_sync_to, other)
         itemDelete?.title = getString(R.string.compare_delete_side, sideName(activeSide))
         itemDiffOnly?.isChecked = diffOnly
     }
 
-    // ---- 选择 ----
+    // ---- Selection ----
 
     private fun selectedNodes(): List<Node> = rows.filter { selected.contains(it.key) }
 
     /**
-     * 去掉"祖先也被选中"的项。全选之后父目录和它的子项会同时在选中集里,照单全收的话
-     * 目录会被整个复制一遍、子项再单独复制一遍(删除更糟:父删完了再删子必然报错)。
-     * 目录整体交给 CopyEngine 递归处理就够了。
+     * Remove items whose ancestor is also selected. After "select all", a parent directory
+     * and its children are both in the selection set; treating them all equally would copy
+     * the directory as a whole, then copy each child again (and for delete it is worse —
+     * deleting the parent first, then trying to delete the children, would always error).
+     * Letting CopyEngine recurse on the whole directory is enough.
      */
     private fun prunedSelection(): List<Node> = selectedNodes().filter { n ->
         var p = n.key.substringBeforeLast('/', "")
@@ -458,25 +476,29 @@ class CompareActivity : AppCompatActivity() {
         refreshSubtitle()
     }
 
-    /** 全选/取消全选:按当前可见行(受「只看差异」影响),与文件列表的语义一致。 */
+    /** Select all / clear: scoped to currently visible rows (affected by "diff only"), matching the file list semantics. */
     private fun toggleSelectAll() {
         if (selected.isEmpty()) rows.forEach { selected.add(it.key) } else selected.clear()
         notifyBoth()
         refreshSubtitle()
     }
 
-    // ---- 排除单项 ----
+    // ---- Excluding single items ----
 
     /**
-     * 排除某一项。★ **不重扫**:排除一项不影响其它已经扫出来的结果,而网络大树重扫是
-     * 分钟级的,为少比一项等上几分钟没道理。这里只把这一枝从结果树上摘掉、回溯修正
-     * 祖先的汇总状态与统计数字。
+     * Exclude a single item. ★ **No rescan**: excluding one item does not affect the
+     * other results already scanned, and rescan on a large network tree takes minutes —
+     * waiting several minutes to skip a single item makes no sense. We just detach this
+     * branch from the result tree and walk back up to fix ancestors' aggregate state and
+     * the statistics.
      *
-     * (「排除规则」对话框那边仍然重扫,因为规则可以被**删掉**——之前跳过的东西得重新
-     * 扫出来才知道,那是真的没有别的办法。)
+     * (The "exclude rules" dialog still does rescan, because rules can be **deleted** —
+     * items previously skipped have to be re-scanned to be found again; there really is
+     * no other way.)
      */
     private fun excludeNode(n: Node) {
-        // 根下的项只有名字可用,会连带排除深层同名项;有路径的就锚死这一条
+        // Items under the root only have a name, which incidentally also excludes
+        // same-named items deeper in; with a path available the entry is anchored to itself
         if (n.key !in options.excludes) {
             options = options.copy(excludes = options.excludes + n.key)
             saveCompareOptions(this, options)
@@ -490,7 +512,7 @@ class CompareActivity : AppCompatActivity() {
         rebuild()
     }
 
-    /** 把一枝从结果树上摘掉(含索引与选中集),返回摘掉的 (条目数, 其中有差异的数)。 */
+    /** Detach a branch from the result tree (including index and selection set); returns the detached (entry count, diff count). */
     private fun detachNode(n: Node): Pair<Int, Int> {
         nodeByKey[n.key.substringBeforeLast('/', "")]?.children?.remove(n)
         var entries = 0
@@ -507,19 +529,20 @@ class CompareActivity : AppCompatActivity() {
         return entries to diffs
     }
 
-    /** 只清索引,不动父的 children(重扫子树前用:那棵子树整个要被新结果替换)。 */
+    /** Only clear the index; do not touch the parent's children (used before rescanning a subtree: that whole subtree is about to be replaced by new results). */
     private fun dropIndex(n: Node) {
         nodeByKey.remove(n.key)
         selected.remove(n.key)
         n.children.forEach(::dropIndex)
     }
 
-    /** 摘掉一枝后,祖先可能从"有差异"变成"全同",逐级往上重算。 */
+    /** After detaching a branch, ancestors may go from "has differences" to "all same"; recompute level by level upward. */
     private fun recomputeAncestors(fromKey: String) {
         var k = fromKey
         while (true) {
             val n = nodeByKey[k]
-            // 单侧独有的目录状态由"只在哪侧"决定,与子树内容无关,不能被改写
+            // Single-side-only directories are classified by "which side only", independent
+            // of subtree contents, so they must not be overwritten.
             if (n != null && n.state != PairState.LEFT_ONLY && n.state != PairState.RIGHT_ONLY) {
                 n.state = if (n.children.any { it.state != PairState.SAME }) PairState.DIFF else PairState.SAME
             }
@@ -528,18 +551,17 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 复制 / 同步 / 删除 ----
+    // ---- Copy / sync / delete ----
 
     /**
-     * 选中项在**对侧的对应位置**存在与否,决定它的目标目录:目标始终是"对侧根 + 该项
-     * 在树里的相对父路径"。这样复制一个深层文件也会落到对侧同名子目录里,而不是堆到根上。
+     * Whether the selected item exists at the **corresponding position on the other side**
+     * decides its destination directory: the destination is always "the other side's root
+     * + that item's relative parent path within the tree". This way a deep file lands in
+     * a same-named subdirectory on the other side rather than piling up at the root.
      */
     private fun destDirFor(n: Node, from: Int): XFile? {
         val destRoot = (if (from == 0) rightRoot else leftRoot) ?: return null
-        val relParent = n.key.substringBeforeLast('/', "")
-        val base = destRoot.path.trimEnd('/')
-        val path = if (relParent.isEmpty()) (base.ifEmpty { "/" }) else "$base/$relParent"
-        return XFile(destRoot.scheme, path, isDir = true)
+        return compareDestDir(destRoot, n.key)
     }
 
     private fun actionCopy() {
@@ -551,31 +573,69 @@ class CompareActivity : AppCompatActivity() {
     }
 
     /**
-     * 同步:把活动侧的**所有差异**推到对侧(只在活动侧有的 + 两侧不同的)。
-     * 只在对侧有的不动——那是"对侧多出来的",删不删由用户自己决定(选中后用删除)。
-     * 只在活动侧有的目录整个收走、不下探:CopyEngine 递归复制,逐个子项反而更慢更容易半途而废。
+     * Sync: push every difference from **[to]'s other side** (the source side) to [to] —
+     * source-only items plus items that differ on both sides.
+     * Source-only directories are taken as a whole, not descended: CopyEngine recurses
+     * through the copy, while iterating children individually is slower and more prone to
+     * aborting halfway.
+     *
+     * Items that exist only on the destination side go into [SyncPlan.deletes]; **whether
+     * to actually delete them is decided by the "incremental sync" checkbox on the
+     * confirmation dialog** (default incremental = keep). The classification itself runs
+     * through [syncActionFor], sharing the same logic with the "compare favorites" row.
      */
-    private fun actionSync() {
-        val items = ArrayList<Pair<Node, XFile>>()
-        val onlyThisSide = if (activeSide == 0) PairState.LEFT_ONLY else PairState.RIGHT_ONLY
+    private fun actionSync(to: Int) {
+        // If scanning is still in progress, the tree is half-built, and any computed plan
+        // is guaranteed to miss items — and what it misses is exactly the differences not
+        // yet scanned.
+        if (scanning) return toast(getString(R.string.compare_sync_wait_scan))
+        val from = 1 - to
+        val dstRoot = (if (to == 0) leftRoot else rightRoot) ?: return
+        val copies = ArrayList<SyncItem>()
+        val deletes = ArrayList<SyncItem>()
         fun walk(n: Node) {
             for (c in n.children) {
-                val f = c.sideFile(activeSide)
-                when {
-                    c.state == onlyThisSide && f != null -> items += c to f // 目录整体收走,不下探
-                    c.state == PairState.DIFF && !c.isDir && f != null -> items += c to f
-                    c.isDir -> walk(c)
+                val src = c.sideFile(from)
+                val dst = c.sideFile(to)
+                when (syncActionFor(c.state, c.isDir, from)) {
+                    SyncAct.COPY -> if (src != null) {
+                        copies += SyncItem(c.key, src, dst != null && targetIsNewer(src, dst, options))
+                    }
+                    SyncAct.DELETE -> if (dst != null) deletes += SyncItem(c.key, dst)
+                    SyncAct.DESCEND -> walk(c)
+                    SyncAct.SKIP -> Unit
                 }
             }
         }
         walk(root)
-        if (items.isEmpty()) return toast(getString(R.string.compare_nothing_to_sync))
-        confirmAndTransfer(items, getString(R.string.compare_sync_confirm, items.size, sideName(1 - activeSide)))
+        val plan = SyncPlan(copies, deletes)
+        if (plan.copies.isEmpty() && plan.deletes.isEmpty()) {
+            return toast(getString(R.string.compare_nothing_to_sync))
+        }
+        confirmSync(
+            this, lifecycleScope, dstRoot, to, plan, options,
+            onOptions = { options = it; saveCompareOptions(this, it) },
+            onStarted = { keys ->
+                // Only revalidate the items actually touched this time, do not rescan the
+                // entire tree (same rationale as revalidate). In mirror mode there may be
+                // only deletes with no transfer; in that case there is no transfer session
+                // to wait on, so revalidate directly.
+                val nodes = keys.mapNotNull { nodeByKey[it] }
+                if (Transfers.active != null) {
+                    pendingNodes = nodes
+                    showTransferBox()
+                } else {
+                    revalidate(nodes)
+                }
+            },
+        )
     }
 
     /**
-     * 确认后起传输会话。目标目录可能还不存在(勾了一个只在源侧有的目录里的深层项),
-     * 发起前先逐级建好——[Transfers.Work.Sync] 那边假定目标目录已存在。
+     * After confirmation, start a transfer session. The destination directory may not
+     * exist yet (when checking a deep item inside a directory that only exists on the
+     * source side), so build it level by level before launching — [Transfers.Work.Sync]
+     * assumes the destination directory already exists.
      */
     private fun confirmAndTransfer(items: List<Pair<Node, XFile>>, message: String) {
         AlertDialog.Builder(this)
@@ -612,20 +672,7 @@ class CompareActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 逐级建出目标目录(已存在就直接用);建不出来返回 null。**会连网,要在后台线程调**。 */
-    private fun ensureDir(dir: XFile): XFile? = runCatching {
-        val fs = FsRegistry.of(dir)
-        if (fs.exists(dir)) return@runCatching fs.resolve(dir.path)
-        val parts = dir.path.trim('/').split('/').filter { it.isNotEmpty() }
-        var cur = fs.resolve("/")
-        for (p in parts) {
-            val next = XFile(dir.scheme, "${cur.path.trimEnd('/')}/$p", isDir = true)
-            cur = if (fs.exists(next)) fs.resolve(next.path) else fs.mkdir(cur, p)
-        }
-        cur
-    }.getOrNull()
-
-    /** 删除活动侧的选中项。删哪一侧写在确认框里——这是不可逆操作,不能靠用户猜。 */
+    /** Delete the selected items on the active side. Which side is deleted is shown in the confirmation dialog — this is irreversible, the user cannot be left to guess. */
     private fun actionDelete() {
         val sel = prunedSelection()
         if (sel.isEmpty()) return toast(getString(R.string.msg_no_selection))
@@ -641,7 +688,7 @@ class CompareActivity : AppCompatActivity() {
                         runCatching { files.forEach { FsRegistry.of(it).delete(it) } }.exceptionOrNull()
                     }
                     toast(err?.message ?: getString(R.string.msg_done))
-                    revalidate(sel) // 删掉的那几项就地重判,不整树重扫
+                    revalidate(sel) // revalidate the deleted items in place; do not rescan the whole tree
                 }
             }
             .show()
@@ -657,10 +704,11 @@ class CompareActivity : AppCompatActivity() {
         getString(if (s == 0) R.string.compare_side_left else R.string.compare_side_right)
 
     /**
-     * 规则改了。**不整树重扫**,分两头做增量:
-     * - **新增的规则**:把树上匹配到的项就地摘掉
-     * - **删掉的规则**:只把"当初被这条规则挡掉的项"([excludedByRule] 记着)恢复回来,
-     *   目录还要顺带扫出它的子树——那棵子树当初被剪枝,从没扫过
+     * Rules changed. **No whole-tree rescan**; handle the change incrementally in two directions:
+     * - **Added rules**: detach matching entries from the tree in place
+     * - **Removed rules**: only restore entries that were blocked by those rules
+     *   (tracked in [excludedByRule]); directories additionally need their subtree rescanned
+     *   — that subtree was pruned before and never scanned
      */
     private fun applyExcludeRules(list: List<String>) {
         val before = options.excludes.toSet()
@@ -671,12 +719,15 @@ class CompareActivity : AppCompatActivity() {
         saveCompareOptions(this, options)
         if (added.isEmpty() && removed.isEmpty()) return
 
-        // 新增规则:摘掉现在树上匹配的项(先收集再摘,别边遍历边改)
+        // Added rules: detach currently matching items from the tree (collect first, then
+        // detach — do not mutate while iterating)
         if (added.isNotEmpty()) {
             val hit = nodeByKey.values.filter { n ->
                 n.key.isNotEmpty() && matchesExclude(n.name, n.key, added)
             }
-            // 祖先已被摘掉的后代会跟着走,再摘一次会找不到父,先按层级从浅到深处理
+            // Descendants whose ancestor has already been detached will be removed along
+            // with it; detaching them again would not find a parent. Process in depth order
+            // (shallow first).
             for (n in hit.sortedBy { it.depth }) {
                 if (nodeByKey[n.key] !== n) continue
                 excludeRuleFor(n.name, n.key, added)?.let { rule ->
@@ -695,18 +746,18 @@ class CompareActivity : AppCompatActivity() {
             return
         }
 
-        // 删掉的规则:把它当初挡下的项恢复回来
+        // Removed rules: restore the entries they originally blocked
         val toRestore = removed.flatMap { excludedByRule.remove(it).orEmpty() }
-            // 可能还有别的规则照样挡着它,那就别恢复
+            // If some other rule still blocks it, do not restore
             .filter { (parentKey, name) -> excludeRuleFor(name, fullKey(parentKey, name), list) == null }
         scanJob?.cancel()
         scanJob = lifecycleScope.launch {
             setScanning(true)
             for ((parentKey, name) in toRestore) {
                 val parent = nodeByKey[parentKey] ?: continue
-                if (parent.children.any { it.name == name }) continue // 已经在树上了
+                if (parent.children.any { it.name == name }) continue // already in the tree
                 val key = fullKey(parentKey, name)
-                // 元数据必须来自 list(),理由同 statSides
+                // Metadata must come from list(); rationale is the same as statSides
                 val l = withContext(Dispatchers.IO) { lookupChild(leftRoot, parentKey, name) }
                 val r = withContext(Dispatchers.IO) { lookupChild(rightRoot, parentKey, name) }
                 val rep = l ?: r ?: continue
@@ -721,8 +772,9 @@ class CompareActivity : AppCompatActivity() {
                 )
                 parent.children += node
                 nodeByKey[key] = node
-                // 目录:子树当初被剪枝、从没扫过,现在补扫。单侧独有的也走同一条路
-                // (scanCompare 两侧可空,缺的那侧自然全判成"只在另一侧")
+                // Directory: the subtree was pruned before and never scanned; rescan now.
+                // Single-side-only directories take the same path (scanCompare accepts empty
+                // on either side, naturally classifying everything as "only on the other side").
                 if (node.isDir) runScan(node)
                 recomputeAncestors(parentKey)
             }
@@ -732,7 +784,7 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    /** 在某个目录里按名字找一项,元数据取自 `list()`。**会碰网络,放后台线程调**。 */
+    /** Find an entry by name within a directory, with metadata taken from `list()`. **Hits the network, so call from a background thread**. */
     private fun lookupChild(rootFile: XFile?, parentKey: String, name: String): XFile? {
         val base = rootFile ?: return null
         val dirPath = if (parentKey.isEmpty()) base.path else "${base.path.trimEnd('/')}/$parentKey"
@@ -745,15 +797,16 @@ class CompareActivity : AppCompatActivity() {
         }.getOrNull()
     }
 
-    // ---- 操作之后的局部重判 ----
+    // ---- Partial revalidation after operations ----
 
     /**
-     * 复制/同步/删除之后只重判受影响的那些项。整树重扫在网络上是分钟级的,而一次操作
-     * 改变的只是它碰过的那几项(以及目录的话,那一棵子树)。
+     * Only revalidate the items actually touched by copy/sync/delete. A whole-tree rescan
+     * is on the order of minutes over the network, while a single operation only affects
+     * the few items it touched (or, for directories, that one subtree).
      *
-     * - **文件**:两侧各重新 stat 一次再判一次状态;两边都没了就从树上摘掉
-     * - **目录**:整棵子树重扫一遍——复制一个目录过去,对侧多出来的是一整棵树,
-     *   靠 stat 一项是问不出来的
+     * - **File**: stat each side again and reclassify; if neither side has it, detach it
+     * - **Directory**: rescan the whole subtree — copying a directory across results in
+     *   an entire tree on the other side, which a single stat cannot discover
      */
     private fun revalidate(nodes: List<Node>) {
         val alive = nodes.filter { nodeByKey[it.key] === it }
@@ -762,7 +815,7 @@ class CompareActivity : AppCompatActivity() {
         val dirs = alive.filter { it.isDir }
         scanJob?.cancel()
         scanJob = lifecycleScope.launch {
-            setScanning(true) // 重判也要读盘/走网络,别让界面看着像卡住
+            setScanning(true) // revalidation also reads disk / hits network; don't let the UI look frozen
             if (files.isNotEmpty()) {
                 val updates = withContext(Dispatchers.IO) {
                     val lm = statSides(files, leftRoot)
@@ -773,7 +826,7 @@ class CompareActivity : AppCompatActivity() {
                         Triple(
                             n, l to r,
                             when {
-                                l == null && r == null -> null // 两边都没了
+                                l == null && r == null -> null // both sides are gone
                                 l == null -> PairState.RIGHT_ONLY
                                 r == null -> PairState.LEFT_ONLY
                                 else -> compareFiles(l, r, options)
@@ -796,8 +849,9 @@ class CompareActivity : AppCompatActivity() {
             val dirL = withContext(Dispatchers.IO) { statSides(dirs, leftRoot) }
             val dirR = withContext(Dispatchers.IO) { statSides(dirs, rightRoot) }
             for (d in dirs) {
-                if (nodeByKey[d.key] !== d) continue // 可能已被上面的摘除带走
-                // 目录本身也可能刚被复制出来/删掉,两侧先各自重新定位一次
+                if (nodeByKey[d.key] !== d) continue // may have been removed by the detach above
+                // The directory itself may have just been copied across or deleted; re-locate
+                // it on each side first
                 val l = dirL[d.key]
                 val r = dirR[d.key]
                 d.left = l
@@ -810,7 +864,7 @@ class CompareActivity : AppCompatActivity() {
                 runScan(d)
                 recomputeAncestors(d.key.substringBeforeLast('/', ""))
             }
-            // 与文件面板一样,操作完就把选中清掉
+            // Same as the file pane: clear the selection after operations complete
             selected.clear()
             setScanning(false)
             recountStats()
@@ -819,14 +873,16 @@ class CompareActivity : AppCompatActivity() {
     }
 
     /**
-     * 重新取这批节点在某一侧的最新元数据(不存在的不出现在结果里)。
+     * Refetch the latest metadata of these nodes on one side (entries that no longer exist are not present in the result).
      *
-     * ★ **只能走 `list()`,不能用 `resolve()`**:`resolve` 各实现只保证"能定位",不保证
-     * 回填元数据——`SmbFileSystem.resolve` 就是直接 `XFile(scheme, path, isDir = true)`,
-     * size/mtime 全是 0、isDir 还硬编码成 true。树上的行本来是 `list()` 给的,混用两者
-     * 就会出现"复制完文件显示成 0B"。按父目录分组,一个目录只列一次。
+     * ★ **Must go through `list()`, not `resolve()`**: each `resolve` implementation only
+     * guarantees "can locate", not "fills in metadata" — `SmbFileSystem.resolve` is just
+     * `XFile(scheme, path, isDir = true)`, with size/mtime both 0 and isDir hard-coded to
+     * true. The rows in the tree originally came from `list()`, and mixing the two would
+     * cause "after copying, the file shows as 0 B". Group by parent directory so each
+     * directory is only listed once.
      *
-     * **会碰网络,放后台线程调**。
+     * **Hits the network, so call from a background thread**.
      */
     private fun statSides(nodes: List<Node>, rootFile: XFile?): Map<String, XFile> {
         val base = rootFile ?: return emptyMap()
@@ -844,11 +900,11 @@ class CompareActivity : AppCompatActivity() {
         return out
     }
 
-    /** 与 [pairEntries] 同一套配对键:大小写按选项,目录与文件同名不算一个。 */
+    /** Pairing key shared with [pairEntries]: case per options; a directory and a file with the same name are not the same key. */
     private fun nameKey(name: String, isDir: Boolean) =
         (if (options.ignoreCase) name.lowercase() else name) + (if (isDir) "/" else "")
 
-    // ---- 传输进度 ----
+    // ---- Transfer progress ----
 
     private fun showTransferBox() {
         val session = Transfers.active ?: return
@@ -860,20 +916,22 @@ class CompareActivity : AppCompatActivity() {
             onDetach = { transferBox = null },
             onFinished = {
                 toast(it.finished?.exceptionOrNull()?.message ?: getString(R.string.msg_done))
-                // 只重判这次搬过的那些项,不整树重扫
+                // Only revalidate the items actually moved this time; do not rescan the whole tree
                 revalidate(pendingNodes)
                 pendingNodes = emptyList()
             },
         )
     }
 
-    // ---- 对比收藏 ----
+    // ---- Saved comparisons ----
 
     private fun saveSession() {
         val l = leftRoot?.let(::compareSideOf)
         val r = rightRoot?.let(::compareSideOf)
         if (l == null || r == null) {
-            // restic 快照要仓库密码、zip/SAF 的挂载点是会话内临时的,都还原不回来
+            // restic snapshots require the repository password, and archive mount points
+            // are session-scoped temporaries — neither can be restored later
+            // (SAF can: its grants are persistent, see resolveCompareSide)
             toast(getString(R.string.compare_save_unsupported))
             return
         }
@@ -890,25 +948,6 @@ class CompareActivity : AppCompatActivity() {
                 val name = input.text.toString().ifBlank { "${l.label} ↔ ${r.label}" }
                 CompareStore.add(this, CompareSession(name, l, r, options))
                 toast(getString(R.string.compare_saved_ok))
-            }
-            .show()
-    }
-
-    private fun openSaved() {
-        val list = CompareStore.all(this)
-        if (list.isEmpty()) return toast(getString(R.string.compare_saved_empty))
-        val names = list.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle(R.string.compare_saved)
-            .setItems(names) { _, i -> loadSession(list[i]) }
-            .setNeutralButton(R.string.compare_saved_delete) { _, _ ->
-                AlertDialog.Builder(this)
-                    .setTitle(R.string.compare_saved_delete)
-                    .setItems(names) { _, i ->
-                        CompareStore.remove(this, list[i])
-                        toast(getString(R.string.compare_saved_deleted))
-                    }
-                    .show()
             }
             .show()
     }
@@ -934,7 +973,7 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 行为 ----
+    // ---- Behavior ----
 
     private fun onRowClick(n: Node, clickedSide: Int) {
         setActiveSide(clickedSide)
@@ -949,7 +988,11 @@ class CompareActivity : AppCompatActivity() {
         else (l ?: r)?.let { OpenFiles.openWith(this, it) }
     }
 
-    /** 两侧都有的一对:图片走并排图片对比,其余走双栏文本 diff。 */
+    /**
+     * A pair present on both sides: images go to side-by-side image compare, everything else to the
+     * two-column text diff — which hands binaries and oversized files on to [HexCompareActivity]
+     * itself, since only after reading can it tell text from binary.
+     */
     private fun openPair(n: Node, l: XFile, r: XFile, side: Int = activeSide) {
         if (OpenFiles.isImage(l) && OpenFiles.isImage(r)) {
             ImageCompareActivity.start(this, l, r, n.name)
@@ -959,14 +1002,16 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    /** 上一次打开双栏 diff 的那一项;它在 diff 页里合并并保存了差异就得重判。 */
+    /** The last item for which the two-column diff was opened; if a merge was applied and saved in the diff page, it has to be revalidated. */
     private var diffedKey: String? = null
 
     private val diffLauncher = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
     ) { res ->
-        // RESULT_OK = 在 diff 页里把某段差异合并并存回去了,这一对的状态(多半)变了。
-        // 只重判它一项,不整树重扫——理由同 [revalidate]。
+        // RESULT_OK = a merge was applied and saved in the diff page; the state of this
+        // pair has (probably) changed.
+        // Only revalidate this one item, do not rescan the whole tree — same rationale as
+        // [revalidate].
         if (res.resultCode != RESULT_OK) return@registerForActivityResult
         diffedKey?.let { k -> nodeByKey[k]?.let { revalidate(listOf(it)) } }
     }
@@ -982,6 +1027,14 @@ class CompareActivity : AppCompatActivity() {
                 icon = menuIcon(R.drawable.ic_compare)
             }.setOnMenuItemClickListener {
                 openPair(n, l, r, activeSide); true
+            }
+            // Always offered, whatever the type: the text diff gives up on binaries, and even for a
+            // text pair "which bytes actually differ" is sometimes the question (BOM, line endings,
+            // trailing NULs) — none of which a line diff shows.
+            menu.menu.add(getString(R.string.compare_hex_diff)).apply {
+                icon = menuIcon(R.drawable.ic_file)
+            }.setOnMenuItemClickListener {
+                HexCompareActivity.start(this@CompareActivity, l, r, n.name); true
             }
         }
         menu.menu.add(getString(R.string.compare_copy_to, sideName(1 - activeSide))).apply {
@@ -1011,15 +1064,17 @@ class CompareActivity : AppCompatActivity() {
         menu.show()
     }
 
-    // ---- 布局模式(横屏并排、竖屏滑动切换,与主界面双面板一致) ----
+    // ---- Layout mode (side-by-side in landscape, swipe-switch in portrait; same as the main UI's dual-pane) ----
 
     private val isLandscape: Boolean
         get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     private fun applyLayoutMode() {
-        // ★ 竖屏只看得见一侧,活动侧必须就是那一侧——否则会出现"显示的是左边,
-        // 左边路径栏却是非活动的暗色"(横屏时把活动侧点到右边,再转竖屏就会这样),
-        // 而且操作方向也会跟眼前看到的那一侧对不上
+        // ★ In portrait only one side is visible; the active side must be that one —
+        // otherwise you would get "left is shown, but the left path bar is dimmed as
+        // inactive" (tap the active side to right in landscape, then rotate to portrait,
+        // and this is what happens); operation directions also would not match the side
+        // currently visible.
         if (!isLandscape && side != activeSide) setActiveSide(side)
         if (isLandscape) {
             b.sideLeft.visibility = View.VISIBLE
@@ -1029,20 +1084,24 @@ class CompareActivity : AppCompatActivity() {
         } else {
             b.sideLeft.visibility = if (side == 0) View.VISIBLE else View.GONE
             b.sideRight.visibility = if (side == 1) View.VISIBLE else View.GONE
-            // 只留贴着列表那一侧的分隔线,另一条会孤零零地挂在屏幕边上
+            // Only keep the divider next to the list; the other one would hang at the
+            // edge of the screen all alone.
             b.divider.visibility = if (side == 0) View.VISIBLE else View.GONE
             b.divider2.visibility = if (side == 1) View.VISIBLE else View.GONE
         }
         refreshSubtitle()
     }
 
-    /** 活动侧 = 操作源。竖屏切到哪侧,哪侧就是活动侧(看不见的那侧不该是操作目标)。 */
+    /** Active side = operation source. In portrait, the visible side is always the active one (the invisible side should never be the operation target). */
     private fun setActiveSide(s: Int) {
-        // ★ 竖屏只有一侧看得见,活动侧没有独立存在的余地——外面传什么都以显示侧为准。
-        // 行点击会把点到的那一侧传进来,而横滑刚切走时那正好是**旧的**那一侧
+        // ★ In portrait only one side is visible, so the active side has no independent
+        // existence — whatever is passed in, the displayed side wins.
+        // Row clicks pass the side that was tapped, which on a fresh swipe-switch is
+        // exactly the **old** side.
         activeSide = if (isLandscape) s else side
-        // ★ 浅色主题下 path_bar_active 与 path_bar 是同一个色值,单靠背景根本分不出来
-        // ——主界面 PaneFragment.setActive 也是靠 alpha 拉开的,这里照做
+        // ★ In light themes path_bar_active and path_bar have the same color value, so
+        // background alone cannot distinguish them — the main UI's PaneFragment.setActive
+        // also uses alpha to separate them, and we do the same here.
         b.pathBarLeft.setBackgroundResource(if (s == 0) R.color.path_bar_active else R.color.path_bar)
         b.pathBarRight.setBackgroundResource(if (s == 1) R.color.path_bar_active else R.color.path_bar)
         b.pathBarLeft.alpha = if (s == 0) 1f else 0.5f
@@ -1070,19 +1129,24 @@ class CompareActivity : AppCompatActivity() {
     private fun refreshSubtitle() {
         val base = getString(R.string.compare_stat, stats.entries, stats.diffs)
         val selText = if (selected.isEmpty()) "" else " · ${getString(R.string.compare_selected, selected.size)}"
-        // 没选中时顶栏那个复制按钮点了也只会弹「未选择任何项」,不如不占位置
+        // When nothing is selected, the copy button on the top bar would only pop up
+        // "nothing selected" — better to not occupy the slot
         itemCopyQuick?.isVisible = selected.isNotEmpty()
-        // 不再追加"左/右":竖屏本来就窄,而当前显示哪一侧,路径栏已经在说了
+        // No longer appending "left/right": portrait is already narrow, and the path bar
+        // already shows which side is currently displayed.
         b.toolbar.subtitle = base + selText
     }
 
     /**
-     * 竖屏横滑切换显示侧。
+     * In portrait, horizontal swipe switches the displayed side.
      *
-     * ★ 判定为横滑后必须**拦截**后续事件(`onInterceptTouchEvent` 返回 true),不能只是
-     * 顺手看一眼就放行:放行的话 ACTION_UP 照样传到行上,一次滑动会顺带点开那一行的
-     * 对比;更糟的是行点击里会把活动侧设成**滑走之前**那一侧,于是"显示左边、左边却是
-     * 非活动的暗色"。所以在 MOVE 阶段就按 touchSlop 认定横滑并接管整串事件。
+     * ★ Once recognized as a horizontal swipe, subsequent events must be **intercepted**
+     * (return true from `onInterceptTouchEvent`); you cannot just glance at it and let
+     * it pass. If you let it pass, ACTION_UP is still delivered to the row, so a single
+     // swipe accidentally opens that row's compare; worse, the row click would set the
+     // active side to **the side before the swipe**, resulting in "left is shown, but
+     // left is dimmed as inactive". So the swipe is recognized at MOVE time using
+     // touchSlop, and the entire event sequence is taken over.
      */
     private fun installSwipe(rv: RecyclerView) {
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
@@ -1108,8 +1172,9 @@ class CompareActivity : AppCompatActivity() {
                     MotionEvent.ACTION_MOVE -> if (!swiping && !isLandscape) {
                         val dx = abs(e.x - downX)
                         val dy = abs(e.y - downY)
-                        // 明确是横向意图才接管:横向超过 slop 且比纵向多出一半以上,
-                        // 免得把正常的上下滚动误判成切换
+                        // Only take over when the intent is clearly horizontal: horizontal
+                        // motion exceeds slop and is more than 1.5x the vertical motion,
+                        // otherwise normal vertical scrolling would be misread as a side switch
                         if (dx > slop && dx > dy * 1.5f) swiping = true
                     }
                 }
@@ -1117,7 +1182,7 @@ class CompareActivity : AppCompatActivity() {
             }
 
             override fun onTouchEvent(view: RecyclerView, e: MotionEvent) {
-                gd.onTouchEvent(e) // 接管之后 fling 还得继续喂给它判定
+                gd.onTouchEvent(e) // after taking over, fling still has to be fed to it for detection
                 if (e.actionMasked == MotionEvent.ACTION_UP ||
                     e.actionMasked == MotionEvent.ACTION_CANCEL
                 ) {
@@ -1129,7 +1194,7 @@ class CompareActivity : AppCompatActivity() {
         })
     }
 
-    /** 切换竖屏显示侧,并把滚动位置带过去(两侧逐行对齐,位置直接通用)。 */
+    /** Switch the displayed side in portrait, carrying the scroll position over (rows are aligned across both sides, so the position is directly reusable). */
     private fun switchSide(to: Int) {
         if (side == to) return
         val from = if (side == 0) b.listLeft else b.listRight
@@ -1143,7 +1208,7 @@ class CompareActivity : AppCompatActivity() {
         if (pos >= 0) (dest.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pos, off)
     }
 
-    /** 同步滚动。三列都要跟着动,`syncing` 挡住回声(被带动的那列滚动时不再反向带动别人)。 */
+    /** Synchronized scrolling. All three columns must move together; `syncing` blocks the echo (a column that is being dragged does not in turn drag the others). */
     private fun linkScroll(src: RecyclerView, vararg dsts: RecyclerView) {
         src.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -1158,7 +1223,7 @@ class CompareActivity : AppCompatActivity() {
     private fun toast(msg: String) =
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
 
-    // ---- 列表 ----
+    // ---- List ----
 
     private inner class VH(val b: ItemCompareRowBinding) : RecyclerView.ViewHolder(b.root)
 
@@ -1180,7 +1245,7 @@ class CompareActivity : AppCompatActivity() {
             val isSel = selected.contains(n.key)
             v.root.setBackgroundColor(rowColor(n, f != null, isSel))
             if (f == null) {
-                // 该侧没有这一项:留一行空占位,两栏才对得上
+                // This side does not have this entry: leave an empty placeholder row so the two columns stay aligned
                 v.indicator.visibility = View.INVISIBLE
                 v.icon.visibility = View.INVISIBLE
                 v.name.text = ""
@@ -1211,7 +1276,7 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    /** 中间那一列:一行一个状态符号,颜色与两侧的名字同色。 */
+    /** The middle column: one status symbol per row, with the same color as the names on the sides. */
     private inner class StateVH(val b: ItemCompareStateBinding) : RecyclerView.ViewHolder(b.root)
 
     private inner class StateAdapter : RecyclerView.Adapter<StateVH>() {
@@ -1224,8 +1289,9 @@ class CompareActivity : AppCompatActivity() {
             val n = rows[position]
             holder.b.state.text = stateSymbol(n.state)
             holder.b.state.setTextColor(nameColor(n))
-            // 中间这一列没有自己的配色,整格跟着行走——否则差异行两侧是连着的色带,
-            // 中间却断一截白
+            // The middle column does not have its own color scheme; the whole cell follows
+            // the row — otherwise the two sides of a diff row would be a continuous color band,
+            // with a white gap in the middle.
             holder.b.state.setBackgroundColor(
                 rowColor(n, present = true, selected = selected.contains(n.key)),
             )
@@ -1247,7 +1313,8 @@ class CompareActivity : AppCompatActivity() {
     }
 
     private fun rowColor(n: Node, present: Boolean, selected: Boolean) = when {
-        // 选中态压过状态色:跟文件列表一样,选了什么必须一眼看得出来
+        // Selected state overrides status color: like the file list, what is selected must
+        // be obvious at a glance
         selected -> ContextCompat.getColor(this, R.color.selected)
         !present -> ContextCompat.getColor(this, R.color.cmp_missing_bg)
         n.state == PairState.DIFF -> ContextCompat.getColor(this, R.color.cmp_diff_bg)
@@ -1259,8 +1326,10 @@ class CompareActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_LEFT_SCHEME = "ls"
         private const val EXTRA_LEFT_PATH = "lp"
+        private const val EXTRA_LEFT_NAME = "ln"
         private const val EXTRA_RIGHT_SCHEME = "rs"
         private const val EXTRA_RIGHT_PATH = "rp"
+        private const val EXTRA_RIGHT_NAME = "rn"
         private const val EXTRA_SESSION_ID = "sid"
 
         fun start(ctx: Context, left: XFile, right: XFile) {
@@ -1268,12 +1337,35 @@ class CompareActivity : AppCompatActivity() {
                 Intent(ctx, CompareActivity::class.java)
                     .putExtra(EXTRA_LEFT_SCHEME, left.scheme)
                     .putExtra(EXTRA_LEFT_PATH, left.path)
+                    .putExtra(EXTRA_LEFT_NAME, left.displayName)
                     .putExtra(EXTRA_RIGHT_SCHEME, right.scheme)
-                    .putExtra(EXTRA_RIGHT_PATH, right.path),
+                    .putExtra(EXTRA_RIGHT_PATH, right.path)
+                    .putExtra(EXTRA_RIGHT_NAME, right.displayName),
             )
         }
 
-        /** 树上"对比收藏"根目录点一条:直接开对比页并按 id 还原左右两侧、重新扫描。 */
+        /**
+         * intent → left and right sides; missing any required parameter returns null.
+         *
+         * ★ displayName must be passed along: SAF's path is one full document URI, with no
+         * name inside it — without displayName the path bar shows `primary%3ADCIM%2FPhotos`
+         * (which is exactly what [Format.pathLabel] extracts as `name` for saf), and
+         * "Save this comparison" ([compareSideOf]) would store that encoded string as the name.
+         *
+         * Extracted only for testability: the section in onCreate is wired together with
+         * the scan and is unreachable from unit tests.
+         */
+        internal fun sidesFrom(intent: Intent): Pair<XFile, XFile>? {
+            val ls = intent.getStringExtra(EXTRA_LEFT_SCHEME) ?: return null
+            val lp = intent.getStringExtra(EXTRA_LEFT_PATH) ?: return null
+            val rs = intent.getStringExtra(EXTRA_RIGHT_SCHEME) ?: return null
+            val rp = intent.getStringExtra(EXTRA_RIGHT_PATH) ?: return null
+            fun name(key: String) = intent.getStringExtra(key)?.ifEmpty { null }
+            return XFile(ls, lp, isDir = true, displayName = name(EXTRA_LEFT_NAME)) to
+                XFile(rs, rp, isDir = true, displayName = name(EXTRA_RIGHT_NAME))
+        }
+
+        /** A row tapped from the "compare favorites" root in the tree: open the compare page directly, restore both sides by id, and rescan. */
         fun startSaved(ctx: Context, sessionId: String) {
             ctx.startActivity(
                 Intent(ctx, CompareActivity::class.java).putExtra(EXTRA_SESSION_ID, sessionId),

@@ -26,11 +26,15 @@ import org.robolectric.annotation.Config
 import java.io.File
 
 /**
- * 目录属性卡片的**递归统计**([scanDirStat] + `PaneViewModel` 的 dirScan 生命周期)。
+ * The **recursive stats** for the directory Properties card ([scanDirStat] plus
+ * `PaneViewModel`'s dirScan lifecycle).
  *
- * 两件事必须罩住:数字对(递归到底、目录不计入大小),以及**卡片关掉/所在目录折叠
- * 时扫描真的停**——后者是这个功能的主要风险,大目录树(尤其网络来源)扫起来很贵,
- * 卡片都看不见了还在跑就是白烧流量和电。
+ * Two things must be covered: the numbers are right (recurses all the way down,
+ * directories themselves do not count toward size), and **the scan really stops when the
+ * card is closed / the containing directory is collapsed** — the latter is this feature's
+ * main risk: scanning a large directory tree (especially over a network source) is
+ * expensive, and if it keeps running after the card is no longer even visible, that is
+ * pure wasted traffic and battery.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -55,7 +59,7 @@ class DirScanTest {
 
     private fun local(f: File) = XFile("file", f.path, isDir = f.isDirectory, size = f.length())
 
-    /** 深 3 层:根 2 文件 + 子目录 1 文件 + 孙目录 1 文件,共 4 文件 / 2 目录。 */
+    /** 3 levels deep: 2 files at the root + 1 file in the subdirectory + 1 file in the grandchild directory, 4 files / 2 directories total. */
     private fun tree(name: String): File {
         val root = File(ext, name).apply { mkdirs() }
         File(root, "a.txt").writeText("12345") // 5B
@@ -67,37 +71,37 @@ class DirScanTest {
         return root
     }
 
-    // ---- 扫描本身 ----
+    // ---- the scan itself ----
 
     @Test
-    fun `递归统计到底层-文件数目录数与总字节都对`() = runTest(dispatcher) {
-        val root = tree("统计")
+    fun `recursive stats reach all the way down - file count, dir count and total bytes are all correct`() = runTest(dispatcher) {
+        val root = tree("stats")
 
         val stats = scanDirStat(local(root), dispatcher).toList()
 
         val last = stats.last()
         assertEquals(4, last.files)
         assertEquals(2, last.dirs)
-        // 目录项自身不计入大小,只累加文件字节
+        // a directory entry itself does not count toward size, only file bytes accumulate
         assertEquals(25L, last.bytes)
     }
 
     @Test
-    fun `空目录统计为全零`() = runTest(dispatcher) {
-        val root = File(ext, "空的").apply { mkdirs() }
+    fun `an empty directory's stats are all zero`() = runTest(dispatcher) {
+        val root = File(ext, "empty").apply { mkdirs() }
 
         assertEquals(DirStat(), scanDirStat(local(root), dispatcher).toList().last())
     }
 
-    // ---- 卡片生命周期 ----
+    // ---- card lifecycle ----
 
     private fun infoNode(dir: File) = vm.state.value.rows
         .filterIsInstance<PaneViewModel.InfoNode>()
         .firstOrNull { it.file.path == dir.path }
 
     @Test
-    fun `打开目录属性卡片即出递归统计-扫完不再转圈`() = runTest(dispatcher) {
-        val root = tree("卡片")
+    fun `opening the directory Properties card immediately shows recursive stats - the spinner stops once the scan finishes`() = runTest(dispatcher) {
+        val root = tree("card")
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
 
@@ -105,65 +109,72 @@ class DirScanTest {
         advanceUntilIdle()
 
         val n = infoNode(root)
-        assertNotNull("属性卡片该挂在目录行下方", n)
+        assertNotNull("the Properties card should be attached right below the directory row", n)
         assertEquals(4, n!!.dirStat?.files)
         assertEquals(2, n.dirStat?.dirs)
         assertEquals(25L, n.dirStat?.bytes)
-        assertFalse("扫完了就不该再转圈", n.scanning)
+        assertFalse("once the scan finishes, the spinner should not keep spinning", n.scanning)
     }
 
     /**
-     * ★ 回归:**转圈要真的看得见**。2026-08-04 第一版用户反馈"没看到转圈",两个原因:
-     * 本地小目录几十毫秒扫完(这条由 [DIR_SCAN_MIN_SPIN_MS] 兜底,本用例验的就是它),
-     * 以及转圈曾放在 tab 条那一行被挤出面板右边界(见 `视图上转圈落在卡片可视范围内`)。
+     * Regression: **the spinner must really be visible**. The first version, per user
+     * feedback on 2026-08-04, "never showed a spinner" — for two reasons: a small local
+     * directory scans in tens of milliseconds (this is backstopped by
+     * [DIR_SCAN_MIN_SPIN_MS], which is exactly what this test verifies), and the spinner
+     * used to sit on the tab-bar row and get pushed past the pane's right edge (see
+     * `the on-screen spinner lands within the card's visible area`).
      */
     @Test
-    fun `扫得再快转圈也留够最短时长`() = runTest(dispatcher) {
-        val root = tree("最短时长")
+    fun `even a very fast scan keeps the spinner up for a minimum duration`() = runTest(dispatcher) {
+        val root = tree("min-duration")
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
 
         vm.toggleInfo(local(root))
-        advanceTimeBy(DIR_SCAN_MIN_SPIN_MS / 2) // 树很小,这时早扫完了
+        advanceTimeBy(DIR_SCAN_MIN_SPIN_MS / 2) // the tree is tiny, so it has already finished scanning by now
 
         val mid = infoNode(root)!!
-        assertEquals("数字该已经是最终值", 4, mid.dirStat?.files)
-        assertTrue("扫完了也得再转一会儿,否则用户根本看不见", mid.scanning)
+        assertEquals("the numbers should already be final", 4, mid.dirStat?.files)
+        assertTrue("even after the scan finishes it must keep spinning a little longer, otherwise the user never sees it at all", mid.scanning)
 
         advanceUntilIdle()
-        assertFalse("过了最短时长就停", infoNode(root)!!.scanning)
+        assertFalse("it stops once the minimum duration has passed", infoNode(root)!!.scanning)
     }
 
     /**
-     * ★ 关掉卡片(✕ / 再选一次"属性")扫描立刻停。
+     * Closing the card (X / toggling "Properties" again) stops the scan immediately.
      *
-     * 故意**不** `advanceUntilIdle()` 就关——这样关的时候扫描任务还没跑完(仍 active),
-     * 取消漏了的话 [PaneViewModel.activeDirScans] 就不是 0,断言才有意义。
+     * Deliberately closes it **without** calling `advanceUntilIdle()` first — that way the
+     * scan task is still running (still active) at the moment it is closed, so if the
+     * cancellation is missed, [PaneViewModel.activeDirScans] would not be 0 and the
+     * assertion would actually mean something.
      */
     @Test
-    fun `关闭卡片即取消扫描`() = runTest(dispatcher) {
-        val root = tree("关卡片")
+    fun `closing the card cancels the scan`() = runTest(dispatcher) {
+        val root = tree("close-card")
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
 
-        vm.toggleInfo(local(root)) // rebuild 是同步的,卡片行当场就有
+        vm.toggleInfo(local(root)) // rebuild is synchronous, the card row exists immediately
         assertNotNull(infoNode(root))
         assertEquals(1, vm.activeDirScans())
 
-        vm.toggleInfo(local(root)) // 再点一次 = 关闭
-        assertEquals("卡片关了就不该还有扫描在跑", 0, vm.activeDirScans())
+        vm.toggleInfo(local(root)) // tap again = close
+        assertEquals("once the card is closed there should be no scan still running", 0, vm.activeDirScans())
 
         advanceUntilIdle()
-        assertTrue("卡片行该消失", infoNode(root) == null)
+        assertTrue("the card row should be gone", infoNode(root) == null)
     }
 
     /**
-     * ★ **所在目录折叠后扫描要停**。卡片行不再被建出来(用户也看不见),
-     * 这时还留着任务就是在后台白扫一棵大树——[PaneViewModel.rebuild] 的清理负责取消它。
+     * **Collapsing the containing directory must stop the scan.** The card row is no
+     * longer built (the user cannot see it either), and leaving the task running at that
+     * point is just scanning a large tree for nothing in the background —
+     * [PaneViewModel.rebuild]'s cleanup is responsible for cancelling it.
      */
     @Test
-    fun `所在目录折叠后卡片消失且扫描被取消`() = runTest(dispatcher) {
-        val root = tree("折叠")
+    fun `after the containing directory collapses, the card disappears and the scan is cancelled`() = runTest(dispatcher) {
+        val root = tree("collapse")
         vm.bootstrap(listOf("file\t${ext.path}"))
         advanceUntilIdle()
 
@@ -173,12 +184,12 @@ class DirScanTest {
         assertNotNull(infoNode(root))
         assertEquals(1, vm.activeDirScans())
 
-        vm.toggle(extNode) // 折叠外部存储 → 目录行连同卡片一起从树上消失
-        assertEquals("卡片看不见了就不该还在扫", 0, vm.activeDirScans())
+        vm.toggle(extNode) // collapse the external storage row -> the directory row disappears from the tree along with its card
+        assertEquals("once the card is invisible there should be no scan still running", 0, vm.activeDirScans())
 
         advanceUntilIdle()
-        assertTrue("卡片行该随所在目录折叠而消失", infoNode(root) == null)
-        // 再展开回来也不该"自动续上"——扫描随卡片一起丢弃,要重新打开属性才有
+        assertTrue("the card row should disappear along with its containing directory collapsing", infoNode(root) == null)
+        // expanding it back should not "automatically resume" either -- the scan is discarded together with the card, and reopening Properties is required to get it again
         vm.toggle(extNode.copy(expanded = false))
         advanceUntilIdle()
         assertTrue(infoNode(root) == null)

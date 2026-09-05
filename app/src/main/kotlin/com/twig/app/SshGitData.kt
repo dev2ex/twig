@@ -8,13 +8,21 @@ import com.twig.git.GitData
 import com.twig.git.GitStatus
 
 /**
- * 经 SSH 在服务器上执行 git 命令的 [GitData] 实现:status/log/diff/内容
- * 都在服务端本地算好只回传结果,远程仓库比逐块解析 .git 快一个量级。
- * [exec] 返回 stdout,失败(非零退出/无 git)返回 null。
+ * A [GitData] implementation that runs git commands on the server over SSH:
+ * status/log/diff/content are all computed locally on the server side and only
+ * the results are sent back, which is an order of magnitude faster than parsing
+ * a .git directory block by block over the network.
+ * [exec] returns stdout; on failure (non-zero exit / no git) it returns null.
  */
 class SshGitData(
     private val exec: (String) -> ByteArray?,
     private val repoPath: String,
+    /**
+     * Server path → the path the tree shows, for the paths git *prints* back
+     * ([worktrees]); null when it lies outside the connection root. Identity by default;
+     * a connection rooted at a sub-directory passes `SftpFileSystem::visiblePath`.
+     */
+    private val visible: (String) -> String? = { it },
 ) : GitData {
 
     private val base = "git -C ${sq(repoPath)}"
@@ -42,7 +50,7 @@ class SshGitData(
             val x = e[0]; val y = e[1]
             val path = e.substring(3)
             if (x == '?' && y == '?') { untracked.add(path); continue }
-            if (x == 'R' || x == 'C') { // rename/copy:-z 下旧路径是下一个记录
+            if (x == 'R' || x == 'C') { // rename/copy: with -z, the old path is the next record
                 val old = parts.getOrNull(i); i++
                 staged.add(GitChange(path, ChangeKind.ADDED))
                 if (x == 'R' && old != null) staged.add(GitChange(old, ChangeKind.DELETED))
@@ -68,12 +76,18 @@ class SshGitData(
     }
 
     override fun branches(): List<GitBranch> {
-        // %09(制表符转义)是 log --pretty=format 的语法,for-each-ref --format 不认,
-        // 会被原样当字面量 "%09" 输出——之前一直解析不出制表符,分支列表永远是空的。
-        // 换成 sha(定长 40 hex)+ 空格 + refname 的顺序,不依赖任何转义字符。
-        // ★ --format 的值必须整体加引号:"%(objectname)" 里的括号是 shell 元字符,
-        // 不加引号直接拼进远程命令行,shell 当子命令解析直接语法错误——之前分支列表
-        // 空的真正原因就是这个(exec() 命令都没跑起来,不是格式解析出了空结果)。
+        // %09 (tab escape) is syntax for `log --pretty=format`, but
+        // `for-each-ref --format` does not understand it and outputs it verbatim
+        // as the literal "%09" — previously the tab was never parsed and the
+        // branch list was always empty.
+        // Switched to the order: sha (fixed-length 40 hex) + space + refname,
+        // with no reliance on escape characters at all.
+        // ★ The value of --format must be quoted as a whole: parentheses inside
+        // "%(objectname)" are shell metacharacters. Without quoting, splicing it
+        // straight into the remote command makes the shell parse it as a
+        // subcommand and throw a syntax error — that was the actual reason the
+        // branch list came back empty before (the exec() command never even
+        // ran, not that the format parsed to no results).
         val out = runText("for-each-ref ${sq("--format=%(objectname) %(refname:short)")} refs/heads/")
             ?: return emptyList()
         val cur = branch()
@@ -85,13 +99,21 @@ class SshGitData(
     }
 
     /**
-     * `git worktree list --porcelain` 的记录形如(空行分隔,第一条永远是主工作区):
+     * A `git worktree list --porcelain` record looks like (separated by blank
+     * lines, the first record is always the main worktree):
      * ```
      * worktree /home/u/repo
      * HEAD <sha>
-     * branch refs/heads/main        ← detached 时换成 "detached"
-     * locked <原因?>                ← 没锁就没这行
+     * branch refs/heads/main        ← when detached, this becomes "detached"
+     * locked <reason?>              ← absent when not locked
      * ```
+     *
+     * ★ The printed paths are the **server's**, while [GitWorktree.path] is consumed as a
+     * path in the tree — the two only coincide when the connection is rooted at the
+     * server root, so every path goes through [visible] first (`current`
+     * is still decided on the server path, which is what [repoPath] is). A path outside the
+     * root keeps its server form: it is useless as-is, but the caller's suffix matching can
+     * still find the directory from it.
      */
     override fun worktrees(): List<com.twig.git.GitWorktree> {
         val out = runText("worktree list --porcelain") ?: return emptyList()
@@ -106,7 +128,7 @@ class SshGitData(
             list.add(
                 com.twig.git.GitWorktree(
                     name = p.substringAfterLast('/').ifEmpty { p },
-                    path = p,
+                    path = visible(p) ?: p,
                     branch = branch?.substringAfterLast('/') ?: head.take(7).ifEmpty { "?" },
                     locked = locked,
                     current = p == cur,
@@ -153,7 +175,7 @@ class SshGitData(
         }
 
     override fun diff(sha: String): List<GitChange> {
-        // --no-renames:重命名拆成 A+D,与解析实现口径一致
+        // --no-renames: split renames into A+D so the parsing matches the rest
         val out = runText("show --name-status --format= --no-renames ${sq(sha)}") ?: return emptyList()
         return out.lineSequence().mapNotNull { line ->
             if (line.length < 3 || line[1] != '\t') return@mapNotNull null
@@ -176,10 +198,10 @@ class SshGitData(
     override fun close() = Unit
 
     companion object {
-        /** 字段用 0x01 分隔、记录用 0x02 分隔,消息里不会出现。 */
+        /** Fields separated by 0x01, records by 0x02; neither ever appears in messages. */
         private const val FMT = "%H%x01%P%x01%an%x01%ae%x01%at%x01%B%x02"
 
-        /** POSIX shell 单引号转义。 */
+        /** POSIX shell single-quote escaping. */
         private fun sq(s: String): String = "'" + s.replace("'", "'\\''") + "'"
     }
 }

@@ -20,12 +20,20 @@ import java.net.ServerSocket
 import java.net.Socket
 
 /**
- * 端到端跑一遍真 socket:起 [HttpServer] + [ShareHandler],用普通 TCP 客户端发
- * 真实的 HTTP/WebDAV 报文,断言状态码与正文。
+ * An end-to-end run over a real socket: bring up [HttpServer] + [ShareHandler], send real
+ * HTTP/WebDAV messages with a plain TCP client, and assert on status codes and body.
  *
- * 为什么值得这么测:HTTP 这层的 bug 几乎全在**报文边界**上——Range 少算一个字节、
- * keep-alive 时正文没读干净串到下一个请求、只读模式漏挡某个方法。这些在 UI 上
- * 表现为"下载的文件损坏"或"明明只读却被删了",事后极难归因,而在这里一发报文就能钉死。
+ * Why it is worth testing this way: bugs at the HTTP layer sit almost entirely on
+ * **message boundaries** — a Range miscounted by one byte, a keep-alive body not drained
+ * cleanly and bleeding into the next request, a write method the read-only mode forgot to
+ * block. On the UI these show up as "the downloaded file is corrupt" or "it was deleted
+ * even though it's read-only", extremely hard to root-cause after the fact, while sending
+ * one message here pins it down immediately.
+ *
+ * Note: the literal Chinese strings used as file/directory names below
+ * (`我的 文件+A.txt`, `我的 文件夹`, `子 文件.txt`) are deliberately left
+ * untranslated — they are fixture data verifying that non-ASCII names round-trip
+ * correctly through percent-encoded URLs and hrefs.
  */
 @RunWith(RobolectricTestRunner::class)
 class ShareServerTest {
@@ -52,9 +60,9 @@ class ShareServerTest {
         dir.deleteRecursively()
     }
 
-    /** 起服务;[readOnly] 决定写方法是放行还是 403。 */
+    /** Starts the server; [readOnly] decides whether write methods pass or get 403. */
     private fun start(readOnly: Boolean = true, password: String = "") {
-        port = ServerSocket(0).use { it.localPort } // 借一个空闲端口号
+        port = ServerSocket(0).use { it.localPort } // borrow a free port number
         val cfg = ShareConfig(
             scope = ShareScope.Dir("file", dir.path, "share"),
             readOnly = readOnly,
@@ -70,7 +78,7 @@ class ShareServerTest {
         val text: String get() = String(body, Charsets.UTF_8)
     }
 
-    /** 发一个请求收一个响应(每次新建连接,不测 keep-alive 时最省心)。 */
+    /** Sends one request and receives one response (opens a new connection each time - simplest when not testing keep-alive). */
     private fun request(
         method: String,
         path: String,
@@ -117,20 +125,20 @@ class ShareServerTest {
         }
     }
 
-    // ---- 读 ----
+    // ---- Reads ----
 
     @Test
-    fun `目录列表页可以打开`() {
+    fun `the directory listing page opens`() {
         start()
         val r = request("GET", "/")
         assertEquals(200, r.status)
         assertTrue(r.headers["content-type"]!!.startsWith("text/html"))
-        assertTrue("列表里应有 hello.txt", r.text.contains("hello.txt"))
-        assertTrue("列表里应有子目录", r.text.contains("sub"))
+        assertTrue("hello.txt should be in the listing", r.text.contains("hello.txt"))
+        assertTrue("the subdirectory should be in the listing", r.text.contains("sub"))
     }
 
     @Test
-    fun `下载文件内容与长度都对`() {
+    fun `a downloaded file's content and length are both correct`() {
         start()
         val r = request("GET", "/hello.txt")
         assertEquals(200, r.status)
@@ -139,14 +147,14 @@ class ShareServerTest {
     }
 
     @Test
-    fun `文件名要百分号编码后才能取到`() {
+    fun `a file name must be percent-encoded to be fetched`() {
         File(dir, "我的 文件+A.txt").writeText("cn")
         start()
         assertEquals("cn", request("GET", "/" + HttpServer.encodeSegment("我的 文件+A.txt")).text)
     }
 
     @Test
-    fun `目录缺尾斜杠时重定向`() {
+    fun `a directory missing its trailing slash gets redirected`() {
         start()
         val r = request("GET", "/sub")
         assertEquals(301, r.status)
@@ -154,7 +162,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `路径穿越拿不到共享目录外的东西`() {
+    fun `path traversal cannot reach anything outside the shared directory`() {
         File(dir.parentFile, "outside.txt").writeText("secret")
         start()
         assertEquals(404, request("GET", "/../outside.txt").status)
@@ -162,40 +170,43 @@ class ShareServerTest {
     }
 
     @Test
-    fun `不存在的路径是 404`() {
+    fun `a nonexistent path is 404`() {
         start()
         assertEquals(404, request("GET", "/nope.txt").status)
     }
 
     /**
-     * 中文/空格目录的链接必须能一路点下去。
+     * Links to a directory containing Chinese characters/spaces must be clickable all the
+     * way down.
      *
-     * 这是真机上「内部存储打不开」的根:第一版拿**解码后**的请求路径当前缀、再把子项名字
-     * 编一遍,拼出 `/我的 文件夹/%E5%AD%90.txt` 这种半生不熟的 URL,浏览器一发就 404。
-     * 这里不写死期望的 URL,而是**照着页面里给的 href 去请求**——只要前后缀编码不一致
-     * 就必然对不上。
+     * This is the root cause of "internal storage won't open" on a real device: the first
+     * version took the **decoded** request path as the prefix and re-encoded the child
+     * item's name, producing a half-baked URL like `/我的 文件夹/%E5%AD%90.txt`, which the
+     * browser would 404 on the spot. This test does not hardcode the expected URL; instead
+     * it **requests exactly the href the page provides** — any mismatch between the prefix
+     * and suffix encoding is guaranteed to fail.
      */
     @Test
-    fun `中文目录的链接能一路点进去`() {
+    fun `links for a Chinese-named directory can be clicked all the way through`() {
         File(dir, "我的 文件夹").mkdirs()
         File(dir, "我的 文件夹/子 文件.txt").writeText("nested")
         start()
 
         val home = request("GET", "/")
         val dirHref = hrefOf(home.text, "我的 文件夹")
-        assertNotNull("目录链接应出现在页面里", dirHref)
+        assertNotNull("the directory link should appear on the page", dirHref)
 
         val page = request("GET", dirHref!!)
         assertEquals(200, page.status)
         val fileHref = hrefOf(page.text, "子 文件.txt")
-        assertNotNull("文件链接应出现在页面里", fileHref)
+        assertNotNull("the file link should appear on the page", fileHref)
 
         val r = request("GET", fileHref!!)
         assertEquals(200, r.status)
         assertEquals("nested", r.text)
     }
 
-    /** 从 HTML 里挖出某个显示名对应的 href。 */
+    /** Digs the href for a given display name out of the HTML. */
     private fun hrefOf(html: String, displayName: String): String? {
         val esc = ShareHandler.xml(displayName)
         val i = html.indexOf(">$esc</a>")
@@ -208,7 +219,7 @@ class ShareServerTest {
     // ---- Range ----
 
     @Test
-    fun `Range 取中间一段`() {
+    fun `Range fetches a middle segment`() {
         start()
         val r = request("GET", "/hello.txt", listOf("Range: bytes=6-10"))
         assertEquals(206, r.status)
@@ -217,7 +228,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `Range 开区间取到文件尾`() {
+    fun `an open-ended Range fetches to the end of the file`() {
         start()
         val r = request("GET", "/hello.txt", listOf("Range: bytes=6-"))
         assertEquals(206, r.status)
@@ -225,7 +236,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `Range 取末尾 N 字节`() {
+    fun `Range fetches the last N bytes`() {
         start()
         val r = request("GET", "/hello.txt", listOf("Range: bytes=-5"))
         assertEquals(206, r.status)
@@ -233,13 +244,13 @@ class ShareServerTest {
     }
 
     @Test
-    fun `Range 越界答 416`() {
+    fun `an out-of-range Range answers 416`() {
         start()
         assertEquals(416, request("GET", "/hello.txt", listOf("Range: bytes=999-")).status)
     }
 
     @Test
-    fun `大文件分段拼回来与原文一致`() {
+    fun `a large file reassembled from segments matches the original`() {
         start()
         val whole = ByteArrayOutputStream()
         var pos = 0
@@ -253,19 +264,19 @@ class ShareServerTest {
         assertTrue(whole.toByteArray().contentEquals(File(dir, "sub/nested.bin").readBytes()))
     }
 
-    // ---- 只读 ----
+    // ---- Read-only ----
 
     @Test
-    fun `只读模式挡住所有写方法`() {
+    fun `read-only mode blocks every write method`() {
         start(readOnly = true)
         for (m in listOf("PUT", "DELETE", "MKCOL", "MOVE", "COPY", "POST", "PROPPATCH", "LOCK")) {
-            assertEquals("$m 应被拒绝", 403, request(m, "/hello.txt").status)
+            assertEquals("$m should be rejected", 403, request(m, "/hello.txt").status)
         }
-        assertTrue("只读时文件必须还在", File(dir, "hello.txt").exists())
+        assertTrue("the file must still be there in read-only mode", File(dir, "hello.txt").exists())
     }
 
     @Test
-    fun `只读模式的页面不渲染上传区`() {
+    fun `the read-only page does not render the upload area`() {
         start(readOnly = true)
         val r = request("GET", "/")
         assertFalse(r.text.contains("id=\"drop\""))
@@ -274,35 +285,35 @@ class ShareServerTest {
     // ---- WebDAV ----
 
     @Test
-    fun `OPTIONS 声明 DAV class 2`() {
+    fun `OPTIONS declares DAV class 2`() {
         start()
         val r = request("OPTIONS", "/")
         assertEquals(200, r.status)
-        assertTrue("Finder/资源管理器要看到 class 2 才肯写", r.headers["dav"]!!.contains("2"))
+        assertTrue("Finder/Explorer will only write once they see class 2", r.headers["dav"]!!.contains("2"))
         assertTrue(r.headers["allow"]!!.contains("PROPFIND"))
     }
 
     @Test
-    fun `PROPFIND Depth 1 列出子项`() {
+    fun `PROPFIND with Depth 1 lists the children`() {
         start()
         val r = request("PROPFIND", "/", listOf("Depth: 1"))
         assertEquals(207, r.status)
         assertTrue(r.text.contains("<D:href>/hello.txt</D:href>"))
-        assertTrue("目录 href 必须带尾斜杠", r.text.contains("<D:href>/sub/</D:href>"))
+        assertTrue("a directory href must carry a trailing slash", r.text.contains("<D:href>/sub/</D:href>"))
         assertTrue(r.text.contains("<D:getcontentlength>11</D:getcontentlength>"))
         assertTrue(r.text.contains("<D:collection/>"))
     }
 
     @Test
-    fun `PROPFIND Depth 0 只描述自己`() {
+    fun `PROPFIND with Depth 0 describes only itself`() {
         start()
         val r = request("PROPFIND", "/sub/", listOf("Depth: 0"))
         assertEquals(207, r.status)
-        assertFalse("Depth 0 不该带出子项", r.text.contains("nested.bin"))
+        assertFalse("Depth 0 must not bring in children", r.text.contains("nested.bin"))
     }
 
     @Test
-    fun `PROPFIND 的 XML 里特殊字符被转义`() {
+    fun `special characters are escaped in PROPFIND's XML`() {
         File(dir, "a&b<c>.txt").writeText("x")
         start()
         val r = request("PROPFIND", "/", listOf("Depth: 1"))
@@ -310,7 +321,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `PUT 新建与覆盖分别是 201 和 204`() {
+    fun `PUT for create vs overwrite are 201 and 204 respectively`() {
         start(readOnly = false)
         assertEquals(201, request("PUT", "/new.txt", body = "one".toByteArray()).status)
         assertEquals("one", File(dir, "new.txt").readText())
@@ -319,7 +330,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `MKCOL 建目录 重复建答 405`() {
+    fun `MKCOL creates a directory, creating it again answers 405`() {
         start(readOnly = false)
         assertEquals(201, request("MKCOL", "/fresh/").status)
         assertTrue(File(dir, "fresh").isDirectory)
@@ -327,21 +338,21 @@ class ShareServerTest {
     }
 
     @Test
-    fun `DELETE 删文件`() {
+    fun `DELETE removes a file`() {
         start(readOnly = false)
         assertEquals(204, request("DELETE", "/hello.txt").status)
         assertFalse(File(dir, "hello.txt").exists())
     }
 
     @Test
-    fun `DELETE 删不掉共享根本身`() {
+    fun `DELETE cannot remove the share root itself`() {
         start(readOnly = false)
         assertEquals(403, request("DELETE", "/").status)
         assertTrue(dir.exists())
     }
 
     @Test
-    fun `MOVE 同目录改名`() {
+    fun `MOVE renames within the same directory`() {
         start(readOnly = false)
         val r = request("MOVE", "/hello.txt", listOf("Destination: http://127.0.0.1:$port/renamed.txt"))
         assertTrue(r.status in listOf(201, 204))
@@ -350,7 +361,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `MOVE 跨目录`() {
+    fun `MOVE across directories`() {
         start(readOnly = false)
         val r = request("MOVE", "/hello.txt", listOf("Destination: http://127.0.0.1:$port/sub/moved.txt"))
         assertTrue(r.status in listOf(201, 204))
@@ -358,7 +369,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `MOVE 带 Overwrite F 且目标已存在时答 412`() {
+    fun `MOVE with Overwrite F answers 412 when the target already exists`() {
         File(dir, "taken.txt").writeText("keep me")
         start(readOnly = false)
         val r = request(
@@ -367,11 +378,11 @@ class ShareServerTest {
         )
         assertEquals(412, r.status)
         assertEquals("keep me", File(dir, "taken.txt").readText())
-        assertTrue("被拒的 MOVE 不该动源文件", File(dir, "hello.txt").exists())
+        assertTrue("a rejected MOVE must not touch the source file", File(dir, "hello.txt").exists())
     }
 
     @Test
-    fun `COPY 留下源文件`() {
+    fun `COPY leaves the source file behind`() {
         start(readOnly = false)
         val r = request("COPY", "/hello.txt", listOf("Destination: http://127.0.0.1:$port/copy.txt"))
         assertTrue(r.status in listOf(201, 204))
@@ -379,9 +390,9 @@ class ShareServerTest {
         assertEquals("hello world", File(dir, "copy.txt").readText())
     }
 
-    /** 目录的 COPY 要连内容一起复制,且源目录原样留着。 */
+    /** Copying a directory must copy its contents along with it, and the source directory stays intact. */
     @Test
-    fun `COPY 整个目录`() {
+    fun `COPY an entire directory`() {
         start(readOnly = false)
         val r = request("COPY", "/sub/", listOf("Destination: http://127.0.0.1:$port/sub2/"))
         assertTrue(r.status in listOf(201, 204))
@@ -391,19 +402,19 @@ class ShareServerTest {
         )
     }
 
-    /** 源与目标是同一个路径:不能糊里糊涂地"复制"成把源删掉。 */
+    /** Source and destination are the same path: must not muddle a "copy" into deleting the source. */
     @Test
-    fun `COPY 到自身被拒绝`() {
+    fun `COPY to itself is rejected`() {
         start(readOnly = false)
         val r = request("COPY", "/hello.txt", listOf("Destination: http://127.0.0.1:$port/hello.txt"))
         assertEquals(403, r.status)
         assertEquals("hello world", File(dir, "hello.txt").readText())
     }
 
-    // ---- 浏览器上传 ----
+    // ---- Browser upload ----
 
     @Test
-    fun `multipart 上传落盘`() {
+    fun `a multipart upload lands on disk`() {
         start(readOnly = false)
         val b = "----twigtest"
         val payload = ByteArray(70_000) { (it % 97).toByte() }
@@ -423,7 +434,7 @@ class ShareServerTest {
     }
 
     @Test
-    fun `上传的文件名不能带路径`() {
+    fun `an uploaded file's name cannot carry a path`() {
         start(readOnly = false)
         val b = "----twigtest"
         val body = ByteArrayOutputStream().apply {
@@ -436,14 +447,14 @@ class ShareServerTest {
             write("\r\n--$b--\r\n".toByteArray())
         }.toByteArray()
         request("POST", "/?op=upload", listOf("Content-Type: multipart/form-data; boundary=$b"), body)
-        assertFalse("不能写到共享目录之外", File(dir.parentFile, "escaped.txt").exists())
+        assertFalse("must not be able to write outside the shared directory", File(dir.parentFile, "escaped.txt").exists())
         assertEquals("pwned", File(dir, "escaped.txt").readText())
     }
 
-    // ---- 认证 ----
+    // ---- Authentication ----
 
     @Test
-    fun `设了密码就必须带 Basic 认证`() {
+    fun `once a password is set, Basic auth is required`() {
         start(password = "s3cret")
         val no = request("GET", "/hello.txt")
         assertEquals(401, no.status)
@@ -464,14 +475,16 @@ class ShareServerTest {
         return request("GET", "/hello.txt", listOf("Authorization: Basic $token"))
     }
 
-    // ---- 连接复用 ----
+    // ---- Connection reuse ----
 
     /**
-     * 同一条连接上连发两个请求。这里真正要防的是"上一个响应的正文长度算错"——
-     * 那样第二个响应会从错位的地方开始解析,表现为随机的下载损坏。
+     * Two requests sent back to back on the same connection. What this actually guards
+     * against is "the previous response's body length was computed wrong" — which would
+     * make the second response start parsing from the wrong offset, showing up as random
+     * download corruption.
      */
     @Test
-    fun `keep-alive 连发两个请求都正确`() {
+    fun `two requests sent back to back on keep-alive are both correct`() {
         start()
         Socket("127.0.0.1", port).use { sock ->
             sock.soTimeout = 5000
@@ -485,7 +498,7 @@ class ShareServerTest {
             val input = BufferedInputStream(sock.getInputStream())
             repeat(2) { i ->
                 val status = HttpServer.readLine(input)!!.split(' ')[1].toInt()
-                assertEquals("第 ${i + 1} 个响应", 200, status)
+                assertEquals("response #${i + 1}", 200, status)
                 var len = -1
                 while (true) {
                     val h = HttpServer.readLine(input) ?: break
@@ -507,9 +520,9 @@ class ShareServerTest {
         }
     }
 
-    // ---- 所有来源模式 ----
+    // ---- All-sources mode ----
 
-    /** 起一个「所有来源」的服务(与 [start] 的区别只在 scope)。 */
+    /** Starts an "all sources" server (differs from [start] only in scope). */
     private fun startAll() {
         port = ServerSocket(0).use { it.localPort }
         val cfg = ShareConfig(scope = ShareScope.AllSources, readOnly = true, port = port)
@@ -518,25 +531,26 @@ class ShareServerTest {
     }
 
     @Test
-    fun `所有来源的首页列出各个来源`() {
+    fun `the all-sources home page lists each source`() {
         startAll()
         val r = request("GET", "/")
         assertEquals(200, r.status)
-        assertTrue("应有内部存储", r.text.contains("href=\"/storage/\""))
-        assertTrue("应有根目录", r.text.contains("href=\"/root/\""))
+        assertTrue("internal storage should be present", r.text.contains("href=\"/storage/\""))
+        assertTrue("the root directory should be present", r.text.contains("href=\"/root/\""))
     }
 
     @Test
-    fun `所有来源模式下能进到具体来源里`() {
+    fun `all-sources mode can enter a specific source`() {
         startAll()
         val r = request("GET", "/storage/")
         assertEquals(200, r.status)
-        // 列不动也不该是 500,而是带着原因的页面(真机上"打不开"就毁在看不到原因)
+        // failing to list should not be a 500 either, but a page carrying a reason (on a
+        // real device "won't open" is ruined precisely by giving no reason)
         assertTrue(r.headers["content-type"]!!.startsWith("text/html"))
     }
 
     @Test
-    fun `所有来源的 PROPFIND 列出各来源`() {
+    fun `all-sources PROPFIND lists each source`() {
         startAll()
         val r = request("PROPFIND", "/", listOf("Depth: 1"))
         assertEquals(207, r.status)
@@ -545,13 +559,13 @@ class ShareServerTest {
     }
 
     @Test
-    fun `所有来源模式下未知来源是 404`() {
+    fun `an unknown source in all-sources mode is 404`() {
         startAll()
         assertEquals(404, request("GET", "/nosuchsource/").status)
     }
 
     @Test
-    fun `HEAD 只给头不给正文`() {
+    fun `HEAD returns only headers, no body`() {
         start()
         val r = request("HEAD", "/hello.txt")
         assertEquals(200, r.status)

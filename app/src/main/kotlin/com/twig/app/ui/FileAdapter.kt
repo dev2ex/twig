@@ -14,6 +14,7 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.ImageSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
+import android.content.res.ColorStateList
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -35,14 +36,17 @@ import com.twig.core.FsRegistry
 import com.twig.core.XFile
 
 /**
- * 整棵树的适配器(文件/目录/存储/分组/服务器/动作项),X-plore 式紧凑行 + 右侧灰勾多选。
- * 行高随 [density] 三档变化。当前目录以边框高亮。
+ * The whole tree's adapter (files / directories / storages / groups / servers / action rows),
+ * X-plore-style compact rows + right-side grey checkboxes for multi-select. Row height scales
+ * with the [density] three-level setting; font size scales with [textSize] (the two are
+ * independent). The current directory is highlighted with a border.
  *
- * 网格视图([gridMode],独立于缩略图开关):
- * - 0:树式列表;1/2:符合条件的文件渲染为网格格子(仅媒体 / 全部文件),
- *   目录与可展开项(压缩包)仍占整行,树的展开逻辑不变。
- * 缩略图([thumbs] 开启时):树式行的图标换成更大的缩略图;网格格子回填缩略图,
- * 关闭时格子只显示类型图标。
+ * Grid view ([gridMode], independent of the thumbnails toggle):
+ * - 0: tree-style list; 1/2: eligible files render as grid cells (media-only / all files),
+ *   directories and expandable items (archives) still take a full row, tree expansion logic
+ *   is unchanged.
+ * Thumbnails (when [thumbs] is on): the tree-row icon is replaced with a larger thumbnail;
+ * grid cells are filled with thumbnails; when off, cells show only the type icon.
  */
 class FileAdapter(
     private val density: Int,
@@ -54,22 +58,25 @@ class FileAdapter(
     private val thumbs: Boolean = false,
     private val gridMode: Int = 0,
     private val gridNames: Boolean = true,
+    /** Text size tier (0/1/2), independent of [density]; defaults to follow row height, see `Prefs.textSize`. */
+    private val textSize: Int = density,
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
     private val rowH = intArrayOf(36, 44, 54)[density]
     private val iconDp = rowIconDp(density)
     private val thumbDp = intArrayOf(40, 48, 56)[density]
-    private val nameSp = floatArrayOf(12.5f, 14f, 15.5f)[density]
-    private val metaSp = floatArrayOf(10f, 11f, 12f)[density]
 
-    /** 网格格子的图片边长(px),由 PaneFragment 按面板宽度/列数回填。 */
+    private val nameSp = floatArrayOf(12.5f, 14f, 15.5f)[textSize]
+    private val metaSp = floatArrayOf(10f, 11f, 12f)[textSize]
+
+    /** Image edge length (px) for grid cells, back-filled by PaneFragment based on pane width / column count. */
     var cellPx = 0
 
-    /** 该位置是否渲染为网格格子(GridLayoutManager 的 spanSize 判定)。 */
+    /** Whether this position renders as a grid cell (spanSize check for GridLayoutManager). */
     fun isCellAt(position: Int): Boolean =
         position in currentList.indices && isCell(currentList[position])
 
-    /** 该位置是否是普通整行(既非网格格子、也非属性卡片),供分割线判定。 */
+    /** Whether this position is a plain full row (neither grid cell nor info card); used by divider logic. */
     fun isPlainRowAt(position: Int): Boolean =
         position in currentList.indices &&
             currentList[position] !is PaneViewModel.InfoNode && !isCell(currentList[position])
@@ -80,11 +87,11 @@ class FileAdapter(
             !n.file.scheme.startsWith("git") &&
             (gridMode == 2 || Thumbs.canThumb(n.file))
 
-    /** 最近选中的节点 key(由 PaneFragment 随 State 同步),供高亮框定位。 */
+    /** Key of the most recently selected node (synced from State by PaneFragment); used to position the highlight frame. */
     var currentKey: String? = null
 
     private val selected = HashSet<String>()
-    /** 当前选择所在的目录标识(scheme:parentPath);跨目录选择时清空旧选择。 */
+    /** Identifier of the directory containing the current selection (scheme:parentPath); cleared when selecting across directories. */
     private var selectParent: String? = null
 
     fun selectedItems(): List<XFile> =
@@ -103,9 +110,10 @@ class FileAdapter(
     }
 
     /**
-     * 勾选按钮的三态循环(仅对"已展开的目录"):
-     * ① 选中父目录本身 → ② 改选展开的直接子项(不含父) → ③ 清空所有选择。
-     * 未展开目录/文件保持普通勾选切换。
+     * Three-state cycle for the check button (only for "expanded directories"):
+     * ① select the parent directory itself → ② switch to selecting the expanded direct children
+     * (excluding the parent) → ③ clear all selections.
+     * Unexpanded directories / files keep the normal toggle behaviour.
      */
     fun cycleSelection(node: PaneViewModel.FileNode) {
         if (!(node.file.isDir && node.expanded)) return toggleSelection(node)
@@ -114,16 +122,16 @@ class FileAdapter(
         val parentSelected = selected.contains(node.key)
         val kidsAllSelected = kids.all { selected.contains(it.key) }
         when {
-            parentSelected -> { // ② 父 → 子项
+            parentSelected -> { // ② parent → children
                 selected.clear()
                 selectParent = "${kids[0].file.scheme}:${kids[0].file.parentPath}"
                 kids.forEach { selected.add(it.key) }
             }
-            kidsAllSelected -> { // ③ 子项 → 清空
+            kidsAllSelected -> { // ③ children → clear
                 selected.clear()
                 selectParent = null
             }
-            else -> { // ① 无 → 父目录
+            else -> { // ① none → parent directory
                 selected.clear()
                 selectParent = "${node.file.scheme}:${node.file.parentPath}"
                 selected.add(node.key)
@@ -133,8 +141,9 @@ class FileAdapter(
         onSelectionChanged()
     }
 
-    /** 该节点下方的直接子级(depth+1)文件节点——不限于 [PaneViewModel.FileNode] 自身,
-     *  也用来取搜索虚拟目录下方的结果列表([PaneViewModel.SearchNode] 同样按 key/depth 定位)。 */
+    /** Direct children (depth+1) file nodes below this node — not limited to [PaneViewModel.FileNode] itself;
+     *  also used to fetch the result list below a search virtual directory ([PaneViewModel.SearchNode] uses the
+     *  same key/depth positioning). */
     private fun directChildren(node: PaneViewModel.Node): List<PaneViewModel.FileNode> {
         val list = currentList
         val i = list.indexOfFirst { it.key == node.key }
@@ -149,13 +158,14 @@ class FileAdapter(
         return res
     }
 
-    /** 该节点下方是否有可勾选的直接子项(搜索结果/收藏的"全选"入口用它决定要不要给)。 */
+    /** Whether this node has selectable direct children (the "Select all" entry under search results / favorites uses this to decide whether to show). */
     fun hasChildren(node: PaneViewModel.Node): Boolean = directChildren(node).isNotEmpty()
 
-    /** 虚拟目录(搜索结果 / 收藏)的勾选:全选/取消全选它下方的直接子项——两态,
-     *  没有"选中父目录本身"这一态(虚拟行本身不是可复制/删除的对象)。结果可能跨多个
-     *  真实目录,不套用"同目录多选"限制——复制/删除等操作本就按任意 XFile 列表处理,
-     *  树上/占用图多选早已允许跨目录,见 [PaneFragment] 的 mapSelected。 */
+    /** Selection for virtual directories (search results / favorites): select/deselect all direct children below —
+     *  two states only, no "select the parent itself" state (the virtual row itself is not an object that can be
+     *  copied or deleted). Results may span multiple real directories, so the "same-directory multi-select" limit
+     *  is not applied — copy / delete operations already work on arbitrary XFile lists, and tree / space-map
+     *  multi-select has long allowed cross-directory selection; see mapSelected in [PaneFragment]. */
     fun toggleChildrenSelection(node: PaneViewModel.Node) {
         val kids = directChildren(node)
         if (kids.isEmpty()) return
@@ -167,8 +177,9 @@ class FileAdapter(
         onSelectionChanged()
     }
 
-    /** 用一批文件整体替换当前勾选(图片查看器里勾的图回到树上同步高亮)。后续在树上继续
-     *  勾选按第一张所在目录算"同目录",跨目录时照旧先清空。 */
+    /** Replace the current selection wholesale with a batch of files (selected images in the image viewer come
+     *  back to the tree and highlight in sync). Subsequent on-tree selection treats the directory of the first
+     *  file as the "same directory" — cross-directory selections still clear first as usual. */
     fun setSelection(files: List<XFile>) {
         selected.clear()
         files.forEach { selected.add(PaneViewModel.fileKey(it)) }
@@ -178,11 +189,11 @@ class FileAdapter(
         onSelectionChanged()
     }
 
-    /** 切换选中;只允许同目录多选,换目录则先清空旧选择。 */
+    /** Toggle selection; only same-directory multi-select allowed, switching directories clears the old selection first. */
     fun toggleSelection(node: PaneViewModel.FileNode) {
         val parent = "${node.file.scheme}:${node.file.parentPath}"
         if (selected.isNotEmpty() && parent != selectParent) {
-            selected.clear() // 不同目录 → 取消之前的选择
+            selected.clear() // different directory → cancel previous selection
         }
         selectParent = parent
         if (!selected.add(node.key)) selected.remove(node.key)
@@ -218,9 +229,10 @@ class FileAdapter(
     }
 
     /**
-     * 勾选态变化只走局部刷新([PAYLOAD_SELECTION]),不整行重绑 —— 树式缩略图行重绑会先
-     * 把图标框复位成方形、图片退回类型图标,再等下一帧([Thumbs.fillAspect] 的 post)按
-     * 原图比例把高度撑回来,肉眼就是勾一下整列表闪一下。
+     * Selection-state changes only use partial refresh ([PAYLOAD_SELECTION]), not a full row rebind —
+     * rebinding a tree-style thumbnail row first resets the icon frame to square and the image back
+     * to the type icon, then on the next frame ([Thumbs.fillAspect]'s post) stretches the height
+     * back to the original aspect ratio; to the eye it looks like the entire list flickers with each tick.
      */
     override fun onBindViewHolder(
         holder: RecyclerView.ViewHolder,
@@ -232,7 +244,7 @@ class FileAdapter(
             when (holder) {
                 is VH -> holder.bindSelection(node)
                 is CellVH -> (node as? PaneViewModel.FileNode)?.let { holder.bindSelection(it) }
-                else -> Unit // 属性卡片没有勾选态
+                else -> Unit // info cards have no selection state
             }
             return
         }
@@ -243,7 +255,8 @@ class FileAdapter(
         if (itemCount > 0) notifyItemRangeChanged(0, itemCount, PAYLOAD_SELECTION)
     }
 
-    /** 勾的选中态配色:选中用品牌色实心,未选中灰且半透明(格子里的勾底色更深,单独给 alpha)。 */
+    /** Checkbox selected-state colours: solid brand colour when selected, grey and translucent when not
+     * (the checkbox in cells has a darker background, give alpha separately). */
     private fun tintCheck(v: ImageView, on: Boolean, offAlpha: Float = 0.45f) {
         v.setColorFilter(
             ContextCompat.getColor(v.context, if (on) R.color.accent else R.color.text_secondary),
@@ -251,7 +264,7 @@ class FileAdapter(
         v.alpha = if (on) 1f else offAlpha
     }
 
-    /** 网格格子:方形缩略图 + 角落灰勾,文件名可关。缩进省略,归属看上方的目录行。 */
+    /** Grid cell: square thumbnail + corner grey checkbox, file name is toggleable. Indentation is omitted; the parent is the directory row above. */
     inner class CellVH(private val b: ItemThumbCellBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(node: PaneViewModel.FileNode) {
             val ctx = b.root.context
@@ -265,7 +278,7 @@ class FileAdapter(
             } else {
                 b.cellName.visibility = View.GONE
             }
-            // 占位:普通类型图标居中内缩;缩略图回填后自动切满格 centerCrop
+            // Placeholder: ordinary type icon centred with inset; once the thumbnail is filled in, it automatically switches to full-cell centerCrop
             b.thumb.tag = null
             b.thumb.scaleType = ImageView.ScaleType.FIT_CENTER
             val pad = edge / 5
@@ -287,15 +300,16 @@ class FileAdapter(
     }
 
     /**
-     * 属性卡片:每个信息分组一个 tab + 文件末尾的"哈希"tab,✕ 关闭。
-     * tab 标题栏是随树缩进的小条,左缘与所属文件行的图标对齐(行首缩进 2+depth*14 +
-     * 箭头 16 + 图标 margin 2,扣除卡片外边距 4),看起来像树上的一个节点;
-     * 内容盒不缩进、左右填满。
+     * Info card: one tab per information section + a "hash" tab at the file's tail, ✕ to close.
+     * The tab title bar is a thin strip that indents along with the tree, with its left edge aligned to
+     * the file row's icon (row-start indent 2+depth*14 + chevron 16 + icon margin 2, minus the card's
+     * outer margin 4), so it looks like a node in the tree; the content box does not indent and fills
+     * left and right.
      */
     inner class InfoVH(private val b: ItemInfoCardBinding) : RecyclerView.ViewHolder(b.root) {
 
         init {
-            // 名称/路径行末尾的复制图标是 ClickableSpan,要靠它派发点击
+            // The copy icon at the end of the name / path rows is a ClickableSpan; rely on it to dispatch clicks
             b.infoBody.movementMethod = LinkMovementMethod.getInstance()
         }
 
@@ -307,8 +321,8 @@ class FileAdapter(
             b.infoBody.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp + 1.5f)
             b.infoBody.visibility = View.VISIBLE
             b.btnHash.visibility = View.GONE
-            // 目录递归统计还在跑:转圈(常驻 View,刷新时只改可见性,动画不断)。
-            // 它叠在内容盒右下角,转的时候给文字让出一点右边距,免得压住最后一行的值
+            // Directory recursive stats still running: spinner (a persistent View; we only change visibility on refresh, animation continues).
+            // It overlays the bottom-right of the content box; when spinning, give the text a bit of right padding so it doesn't cover the value on the last line
             b.scanSpin.visibility = if (node.scanning) View.VISIBLE else View.GONE
             b.infoBody.setPaddingRelative(
                 b.infoBody.paddingStart, b.infoBody.paddingTop,
@@ -335,14 +349,14 @@ class FileAdapter(
                 when {
                     node.hashing -> b.infoBody.text = ctx.getString(R.string.info_hash_computing)
                     node.hashRows != null -> b.infoBody.text = renderRows(node.hashRows)
-                    else -> { // 未计算(网络文件/尚未触发):手动点按钮
+                    else -> { // not yet computed (network file / not triggered yet): require a manual button tap
                         b.infoBody.visibility = View.GONE
                         b.btnHash.visibility = View.VISIBLE
                         b.btnHash.setOnClickListener { onInfoHash(node) }
                     }
                 }
             } else {
-                // 目录的递归统计追加在"基本"分组末尾,随扫描进度实时变
+                // Directory's recursive stats are appended at the end of the "basic" section, updating in real time as scanning progresses
                 val stat = node.dirStat
                 val rows = if (cur == 0 && stat != null) {
                     d.sections[0].rows + FileInfo.dirStatRows(ctx, stat)
@@ -387,7 +401,7 @@ class FileAdapter(
             )
         }
 
-        /** 标签灰、值正常,一行一条;名称/路径行末尾挂一个复制图标。 */
+        /** Labels grey, values normal, one per line; a copy icon hangs at the end of name / path rows. */
         private fun renderRows(rows: List<Pair<String, String>>): CharSequence {
             val ctx = b.root.context
             val label = ContextCompat.getColor(ctx, R.color.text_secondary)
@@ -405,8 +419,8 @@ class FileAdapter(
         }
 
         /**
-         * 值后面追加「复制」图标:`ImageSpan` 画图标 + `ClickableSpan` 收点击。
-         * 图标本身才十几个 dp,点击区间连前面那个空格一起算进去,好点一些。
+         * Append a "copy" icon after the value: `ImageSpan` draws the icon + `ClickableSpan` catches clicks.
+         * The icon itself is only a dozen dp, so include the preceding space in the click range to make it easier to hit.
          */
         private fun appendCopyIcon(sb: SpannableStringBuilder, value: String) {
             val ctx = b.root.context
@@ -415,7 +429,7 @@ class FileAdapter(
             icon.setBounds(0, 0, size, size)
             icon.setTint(ContextCompat.getColor(ctx, R.color.primary))
             val start = sb.length
-            sb.append("  \u200B") // 末位占位字符被 ImageSpan 整个替换成图标
+            sb.append("  \u200B") // the trailing placeholder character is wholly replaced by the ImageSpan with the icon
             sb.setSpan(
                 ImageSpan(icon, ImageSpan.ALIGN_BOTTOM),
                 sb.length - 1, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -423,7 +437,7 @@ class FileAdapter(
             sb.setSpan(
                 object : ClickableSpan() {
                     override fun onClick(widget: View) = copyValue(value)
-                    // 图标底下不要链接下划线,颜色也已由 setTint 定死
+                    // No link underline under the icon; the colour is already pinned by setTint
                     override fun updateDrawState(ds: TextPaint) {
                         ds.isUnderlineText = false
                     }
@@ -436,7 +450,7 @@ class FileAdapter(
             val ctx = b.root.context
             val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("twig", value))
-            // Android 13 起系统自己弹复制确认条,再 toast 就重了
+            // From Android 13 onward the system itself shows a copy-confirmation toast; showing one too would be redundant
             if (Build.VERSION.SDK_INT < 33) {
                 Toast.makeText(ctx, R.string.info_copied, Toast.LENGTH_SHORT).show()
             }
@@ -456,15 +470,15 @@ class FileAdapter(
             b.root.setPaddingRelative(
                 ((2 + node.depth * 14) * dpi).toInt(), 0, 0, 0,
             )
-            // 复位可复用状态
-            b.icon.tag = null // 取消未回填的异步图标
-            b.icon.scaleType = ImageView.ScaleType.FIT_CENTER // 缩略图行回填时改 centerCrop
+            // Reset reusable state
+            b.icon.tag = null // cancel any async icon that hasn't filled in yet
+            b.icon.scaleType = ImageView.ScaleType.FIT_CENTER // thumbnail rows switch to centerCrop when filled in
             b.icon.setPadding(0, 0, 0, 0)
-            b.icon.clearColorFilter() // 对比收藏项行会临时染色,复用前先清掉不然串到别的行
+            b.icon.clearColorFilter() // compare-favorite rows are tinted temporarily; clear before reuse or it leaks to other rows
             iconVMargin(b.icon, 0)
             b.name.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
             b.name.alpha = 1f
-            b.appVersion.visibility = View.GONE // 只有应用条目会打开(见 bindApp)
+            b.appVersion.visibility = View.GONE // only app entries open it (see bindApp)
             b.sub.visibility = View.GONE
             b.appVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
@@ -480,18 +494,20 @@ class FileAdapter(
                 is PaneViewModel.FavoriteNode -> bindFavorite(node)
                 is PaneViewModel.CompareNode -> bindCompareFavorite(node)
                 is PaneViewModel.SearchNode -> bindSearch(node)
-                is PaneViewModel.InfoNode -> Unit // 走 InfoVH,不会到这里
+                is PaneViewModel.InfoNode -> Unit // routes to InfoVH, never reaches here
             }
         }
 
         /**
-         * 只刷勾选态,不碰图标/文字/监听器。整行选中底色([View.isActivated])只有真正
-         * 可选的文件行有;收藏/搜索这类虚拟行的勾表示"下方子项是否全选",行本身不高亮。
+         * Only refresh selection state, leave icon / text / listeners alone. The row's selected background
+         * ([View.isActivated]) is only present on genuinely selectable file rows; for virtual rows like
+         * favorites / search the checkbox indicates "all children below are selected", the row itself is
+         * not highlighted.
          */
         fun bindSelection(node: PaneViewModel.Node) {
             when (node) {
                 is PaneViewModel.FileNode -> {
-                    if (node.label != null) return // 顶级存储节点不参与多选
+                    if (node.label != null) return // top-level storage nodes don't take part in multi-select
                     val isSel = selected.contains(node.key)
                     b.root.isActivated = isSel
                     tintCheck(b.check, isSel)
@@ -500,7 +516,7 @@ class FileAdapter(
                     val kids = directChildren(node)
                     tintCheck(b.check, kids.isNotEmpty() && kids.all { selected.contains(it.key) })
                 }
-                else -> Unit // 分组/服务器/restic/操作行没有勾
+                else -> Unit // groups / servers / restic / action rows have no checkbox
             }
         }
 
@@ -512,19 +528,16 @@ class FileAdapter(
             b.icon.setImageResource(
                 when (fav.kind) {
                     "restic" -> R.drawable.ic_restic
-                    "conn" -> when (node.conn?.type) {
-                        "smb" -> R.drawable.ic_lan
-                        "sftp" -> R.drawable.ic_server
-                        "ftp", "webdav", "s3" -> R.drawable.ic_cloud
-                        else -> R.drawable.ic_star // 连接已删除,类型未知
-                    }
+                    // The type table lives only in FileIcons (the path bar, recents, and copy-target rows all use this same set)
+                    "conn" -> node.conn?.type?.let { FileIcons.sourceIconOfType(it) }
+                        ?: R.drawable.ic_star // connection was deleted, type unknown
                     else -> R.drawable.ic_folder // local
                 },
             )
             setIndicator(node.expanded)
             if (node.connecting) { b.progress.visibility = View.VISIBLE; setIndicator(null) }
-            // 勾选:全选/取消全选下方子项两态,与搜索结果行一致(收藏行本身不是可操作对象);
-            // 没展开出子项时没什么可选,不显示这个勾
+            // Selection: select / deselect all children below (two states), same as search-result rows (the favorite row itself is not an actionable object);
+            // when no children are expanded there's nothing to select, hide this checkbox
             val kids = directChildren(node)
             if (kids.isEmpty()) {
                 b.check.visibility = View.GONE
@@ -537,10 +550,10 @@ class FileAdapter(
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
-        /** 对比收藏行:不可展开,点了直接跳对比页;没有勾选态(不是可复制/删除的对象)。
-         *  专属图标留给上面的"对比收藏"根分组([bindGroup]),这里的行图标沿用操作条同款
-         *  黑色 [R.drawable.ic_compare],但按行标题同一个 [R.color.text_primary] 着色——
-         *  深浅色主题都跟着字色走,不会再固定死黑色在深色主题里糊成一片。 */
+        /** Compare-favorite row: not expandable, click jumps straight to the compare page; no selection state (not an object that can be copied or deleted).
+         *  The dedicated icon is reserved for the "compare favorites" root group above ([bindGroup]); this row's icon reuses the same black [R.drawable.ic_compare] as the action bar,
+         *  but is tinted with the row title's [R.color.text_primary] —
+         *  both light and dark themes follow the text colour, no longer fixed black that turns into a smear in the dark theme. */
         private fun bindCompareFavorite(node: PaneViewModel.CompareNode) {
             val ctx = b.root.context
             b.name.text = node.session.label
@@ -565,7 +578,7 @@ class FileAdapter(
             )
             b.icon.setImageResource(R.drawable.ic_restic)
             setIndicator(if (node.unlocked) node.expanded else null)
-            // 解锁要 scrypt + 读快照列表,网络仓库可能几十秒;同服务器/收藏行,转圈顶掉箭头
+            // Unlocking requires scrypt + reading the snapshot list; network repos can take tens of seconds; same as server / favorite rows, the spinner replaces the chevron
             if (node.connecting) { b.progress.visibility = View.VISIBLE; setIndicator(null) }
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
@@ -573,10 +586,12 @@ class FileAdapter(
         }
 
         /**
-         * 搜索结果虚拟目录:名称带实时匹配数,扫描中显示转圈。视觉上与普通目录一致——箭头
-         * 常显"已展开"(▼,结果行始终跟着渲染,不像普通目录有独立折叠态);但点击这一行的
-         * 语义不是常规折叠,而是连同结果一起从树上移出(见 [PaneViewModel.toggle]),
-         * 折叠/展开语义由 [onClick] 落到 ViewModel 侧处理,这里只负责渲染。
+         * Search-results virtual directory: the name shows the live match count, with a spinner while scanning.
+         * Visually identical to a normal directory — the chevron always shows "expanded" (▼, the result rows
+         * always render with it, unlike normal directories which have an independent collapse state); but
+         * clicking this row is not a normal collapse — it removes both the row and its results from the
+         * tree (see [PaneViewModel.toggle]); the collapse / expand semantics are handled by [onClick] on
+         * the ViewModel side; here we only render.
          */
         private fun bindSearch(node: PaneViewModel.SearchNode) {
             val ctx = b.root.context
@@ -586,7 +601,7 @@ class FileAdapter(
             setIndicator(true)
             if (node.scanning) b.progress.visibility = View.VISIBLE
 
-            // 勾选:全选/取消全选下方结果(不是普通行的三态循环,搜索结果没有"父目录本身"可选)
+            // Selection: select / deselect all results below (not the three-state cycle of normal rows, search results have no "parent directory itself" to pick)
             b.check.visibility = View.VISIBLE
             bindSelection(node)
             b.check.setOnClickListener { toggleChildrenSelection(node) }
@@ -605,28 +620,68 @@ class FileAdapter(
                 node.capacity ?: when {
                     file.isDir -> Format.time(file.lastModified).takeIf { file.lastModified > 0 }
                     else -> listOfNotNull(
-                        Format.size(file.size).takeIf { file.size > 0 || file.lastModified > 0 },
+                        // When size is unknown (media servers don't give byte counts for photos) don't show the whole segment, don't write "0 B"
+                        Format.sizeOrNull(file)?.takeIf { file.size > 0 || file.lastModified > 0 },
                         Format.time(file.lastModified).takeIf { file.lastModified > 0 },
-                    ).joinToString("  ").ifEmpty { null } // 虚拟条目(git 等)无大小/时间则不显示
+                    ).joinToString("  ").ifEmpty { null } // virtual entries (git etc.) with no size / time are hidden
                 },
             )
+            // ★★ Do **not touch `imageTintList` here** (bitten on 2026-08-19):
+            // `ImageView.setImageTintList(null)` does not mean "no tint" — it actively applies
+            // null as a tint to the drawable, setting `mHasDrawableTint = true`, so
+            // `mDrawable.mutate().setTintList(null)` erases the `android:tint` from the drawable XML.
+            // The `fillColor` of `ic_folder` / `ic_file_*` is all `@android:color/white`, and the colour
+            // comes **solely** from that tint — erase it and the whole screen's icons turn white.
+            // For any icon that needs a colour, make your own drawable with `android:tint` baked in
+            // (see `ic_md_*`).
+            // The size / margin reset for reuse is done in the whole block at the top of [VH.bind]
+            // (the thumbnail route stretches the icon cell to thumbDp and even taller for posters);
+            // here we only handle what this row itself should look like.
+            val dpi = ctx.resources.displayMetrics.density
             when {
-                // 带标签的根行:内部存储那种是 ic_storage,但选择器锁定到某台服务器时
-                // 这一行代表的就是那台服务器,该用它的来源类型图标(与路径栏/最近位置/
-                // 复制目标行同一套,见 FileIcons.sourceIconRes)
+                // Root row with a label: an internal storage one is ic_storage, but when the chooser is locked to a particular server
+                // this row represents that server and should use its source-type icon (same set as the path bar / recents /
+                // copy-target rows, see FileIcons.sourceIconRes)
                 node.label != null -> b.icon.setImageResource(FileIcons.sourceIconRes(file.scheme))
                 file.scheme.startsWith("git") && file.path == "/" ->
                     b.icon.setImageResource(R.drawable.ic_git)
-                file.isDir -> b.icon.setImageResource(R.drawable.ic_folder)
+                file.isDir -> {
+                    // Directories on media servers are all virtual (albums / artists / libraries…), give them a distinguishable icon
+                    val mediaIcon = FileIcons.mediaDirIcon(file)
+                    b.icon.setImageResource(mediaIcon ?: R.drawable.ic_folder)
+                    // Third-party app-authorised document tree roots: the whole tree is that app's data; use its icon
+                    // (the row name is also swapped for the app name, see PaneViewModel.safRoots). The icon is filled in
+                    // asynchronously; the folder-icon assignment above is its placeholder.
+                    if (com.twig.app.SafFileSystem.isTreeRoot(file)) {
+                        com.twig.app.SafFileSystem.providerApp(ctx, file)?.let {
+                            FileIcons.bindApp(b.icon, it.pkg)
+                        }
+                    }
+                    // If there's a cover, swap to it — **but only stretch to thumbnail size once the image arrives** (growPx):
+                    // most directories don't have covers, and stretching to thumbnail size at bind time would make every
+                    // folder icon on screen look huge ("they look big" was reported before).
+                    // Movie / series posters are 2:3 portraits, so once stretched the row also grows accordingly.
+                    if (thumbs && Thumbs.canThumb(file)) {
+                        // ★ Vertical margins must match the file branch: skip them and adjacent covers touch directly.
+                        // Series / collections / playlists / media libraries **are all directories** going through this
+                        // branch — movies are files, taking the branch below, hence the symptom "only the movie library has spacing".
+                        iconVMargin(b.icon, dpi.toInt())
+                        Thumbs.bind(b.icon, file, (thumbDp * dpi).toInt())
+                    }
+                }
                 else -> {
                     FileIcons.bind(b.icon, file)
-                    // 树式缩略图(网格未接管的行):图标位换成更大的缩略图;
-                    // 加上下最小间距,免得单行文件名时相邻缩略图贴在一起
+                    // Tree-style thumbnail (rows not handled by grid): the icon slot becomes a larger thumbnail;
+                    // add minimum top/bottom margin so that thumbnails on adjacent rows don't touch when filenames are short
                     if (thumbs && Thumbs.canThumb(file)) {
-                        val dpi2 = ctx.resources.displayMetrics.density
-                        size(b.icon, thumbDp, dpi2)
-                        iconVMargin(b.icon, dpi2.toInt())
-                        Thumbs.bind(b.icon, file)
+                        size(b.icon, thumbDp, dpi)
+                        iconVMargin(b.icon, dpi.toInt())
+                        // ★ Movies are **files** (Jellyfin's Movie entries have IsFolder=false), and their posters
+                        // go through this branch instead of the directory branch above — without giving growPx,
+                        // `maxH = maxOf(box.height, w)` crops 2:3 posters back to squares.
+                        // Video / image thumbnails don't get this; the existing "crop if too tall" behaviour stands.
+                        val poster = if (Thumbs.hasCover(file)) (thumbDp * dpi).toInt() else 0
+                        Thumbs.bind(b.icon, file, poster)
                     }
                 }
             }
@@ -636,7 +691,7 @@ class FileAdapter(
                 setIndicator(null)
             }
 
-            // 顶级存储节点不参与多选;普通条目显示灰勾
+            // Top-level storage nodes don't take part in multi-select; ordinary entries show a grey checkbox
             if (node.label == null) {
                 b.check.visibility = View.VISIBLE
                 bindSelection(node)
@@ -657,8 +712,13 @@ class FileAdapter(
                     "fav" -> R.drawable.ic_star
                     "cmp" -> R.drawable.ic_compare_fav
                     "lan" -> R.drawable.ic_lan
-                    "ftp", "dav", "s3" -> R.drawable.ic_cloud
-                    "sftp" -> R.drawable.ic_server
+                    "ftp" -> R.drawable.ic_ftp
+                    "dav", "s3" -> R.drawable.ic_cloud
+                    // The group id "media" is shared by Jellyfin / Emby (the other two names exist only as defensive aliases), so
+                    // here we use the neutral monitor icon — the play button with the official colours is on each
+                    // server's own row below; the shapes differ so they won't be confused with Emby's green triangle
+                    "media", "jellyfin", "emby" -> R.drawable.ic_media_server
+                    "sftp" -> R.drawable.ic_sftp
                     else -> R.drawable.ic_storage
                 },
             )
@@ -675,12 +735,17 @@ class FileAdapter(
                 if (node.connecting) {
                     ctx.getString(R.string.ftp_connecting)
                 } else {
-                    // 设了自定义名时副标题给完整地址;再附上连接信息(如 SMB 版本)
+                    // When a custom name is set, the subtitle gives the full address; then append connection info (e.g. SMB version)
                     val addr = if (node.conn.name.isNotEmpty()) node.conn.label() else node.conn.host
                     listOfNotNull(addr, node.info).joinToString("  ")
                 },
             )
-            b.icon.setImageResource(R.drawable.ic_server)
+            // Media servers get a dedicated icon: easy to spot among a row of green server icons, and to tell which one it is.
+            // Other types keep the generic server icon — this column's semantics are just "a server".
+            b.icon.setImageResource(
+                if (node.conn.isMediaServer()) FileIcons.sourceIconOfType(node.conn.type)
+                else R.drawable.ic_server,
+            )
             setIndicator(node.expanded)
             if (node.connecting) { b.progress.visibility = View.VISIBLE; setIndicator(null) }
             b.check.visibility = View.GONE
@@ -700,9 +765,11 @@ class FileAdapter(
         }
 
         /**
-         * 应用条目的三段式行:主标题只留应用名(文件名里的版本号与 .apk/.xapk 后缀是
-         * 复制出去时用的,列表里挤在名字后面反而难读),版本号挪到主标题最右端,
-         * 包名作副标题排在下面一行。分类目录("已安装"/"系统")没有包名,不受影响。
+         * Three-segment row for app entries: the main title keeps only the app name (the version number and
+         * .apk/.xapk suffix in the file name are for when you copy it out; squeezing them after the name in the
+         * list is harder to read); the version number is moved to the right end of the main title, and the package
+         * name goes to the subtitle on the next line. Category directories ("installed" / "system") have no package
+         * name, so they are unaffected.
          */
         private fun bindApp(file: XFile) {
             val fs = runCatching { FsRegistry.of(file) }.getOrNull()
@@ -726,7 +793,7 @@ class FileAdapter(
             }
         }
 
-        /** expanded=null 隐藏箭头(不可展开),否则显示 ▶/▼。 */
+        /** expanded=null hides the chevron (not expandable), otherwise shows ▶/▼. */
         private fun setIndicator(expanded: Boolean?) {
             if (expanded == null) {
                 b.indicator.visibility = View.INVISIBLE
@@ -756,14 +823,14 @@ class FileAdapter(
     }
 
     companion object {
-        /** 行图标边长(dp),随行高档位;操作列图标也取它,两边尺寸保持一致。 */
+        /** Row icon edge length (dp), scales with the row-height tier; the action-column icons also use this so both sides match. */
         fun rowIconDp(density: Int): Int = intArrayOf(22, 26, 30)[density]
 
         private const val TYPE_ROW = 0
         private const val TYPE_INFO = 1
         private const val TYPE_CELL = 2
 
-        /** 局部刷新标记:只有勾选态变了,行的其它部分(尤其图标/缩略图)不必重绑。 */
+        /** Partial-refresh marker: only the selection state has changed, the rest of the row (especially icon / thumbnail) doesn't need rebinding. */
         private val PAYLOAD_SELECTION = Any()
 
         private val DIFF = object : DiffUtil.ItemCallback<PaneViewModel.Node>() {

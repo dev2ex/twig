@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A multi-apk bundle: base.apk + split apks in one zip (.xapk / .apks / .apkm;
+  see XapkPack / ApkBundleInstall).
+
+  Same robot as ic_file_apk so the two read as one family, shrunk and set on a stack of
+  two plates — the whole point of these formats is "more than one apk in there". These icons
+  are flat silhouettes (white fill + android:tint), so layered shapes would merge into a
+  blob: every part is kept separate by a gap instead of overlapping. The green is one
+  step deeper than the apk icon's, enough to tell them apart in a list at a glance.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#689F38">
+
+    <group
+        android:scaleX="0.62"
+        android:scaleY="0.62"
+        android:translateX="4.56"
+        android:translateY="0.3">
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M6,18c0,0.55 0.45,1 1,1h1v3.5c0,0.83 0.67,1.5 1.5,1.5s1.5,-0.67 1.5,-1.5L11,19h2v3.5c0,0.83 0.67,1.5 1.5,1.5s1.5,-0.67 1.5,-1.5L16,19h1c0.55,0 1,-0.45 1,-1L18,8L6,8v10zM3.5,8C2.67,8 2,8.67 2,9.5v7c0,0.83 0.67,1.5 1.5,1.5S5,17.33 5,16.5v-7C5,8.67 4.33,8 3.5,8zM20.5,8c-0.83,0 -1.5,0.67 -1.5,1.5v7c0,0.83 0.67,1.5 1.5,1.5s1.5,-0.67 1.5,-1.5v-7c0,-0.83 -0.67,-1.5 -1.5,-1.5zM15.53,2.16l1.3,-1.3c0.2,-0.2 0.2,-0.51 0,-0.71 -0.2,-0.2 -0.51,-0.2 -0.71,0l-1.48,1.48C13.85,1.23 12.95,1 12,1c-0.96,0 -1.86,0.23 -2.66,0.63L7.85,0.15c-0.2,-0.2 -0.51,-0.2 -0.71,0 -0.2,0.2 -0.2,0.51 0,0.71l1.31,1.31C6.97,3.26 6,5.01 6,7h12c0,-1.99 -0.97,-3.75 -2.47,-4.84zM10,5L9,5L9,4h1v1zM15,5h-1L14,4h1v1z" />
+    </group>
+
+    <!-- The stack: the wider plate first, the narrower one below it, so it reads as depth.
+         Kept thick on purpose — thinner and at 24dp the two read as two text lines. -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,17.6H20A1.3,1.3 0 0 1 20,20.2H4A1.3,1.3 0 0 1 4,17.6Z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M6,21H18A1.3,1.3 0 0 1 18,23.6H6A1.3,1.3 0 0 1 6,21Z" />
+</vector>

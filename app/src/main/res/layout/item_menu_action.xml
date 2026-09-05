@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  长按菜单的一行:图标 + 文案。左内边距与系统 AlertDialog 列表项对齐(?attr/dialogPreferredPadding),
-  换了对话框主题也不会跟标题错位。
+  One row of the long-press menu: icon + label. Left padding aligned with the system AlertDialog list items (?attr/dialogPreferredPadding),
+  so it stays aligned with the title even when the dialog theme is changed.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"

@@ -7,7 +7,7 @@
     android:paddingEnd="20dp"
     android:paddingTop="12dp">
 
-    <!-- 归档文件名(含扩展名;切换格式时跟着换) -->
+    <!-- Archive file name (with extension; changes when the format is switched) -->
     <EditText
         android:id="@+id/et_name"
         android:layout_width="match_parent"
@@ -42,7 +42,7 @@
             android:textSize="14sp" />
     </RadioGroup>
 
-    <!-- 密码:留空 = 不加密(见 ArchiveWriter) -->
+    <!-- Password: leave empty = no encryption (see ArchiveWriter) -->
     <EditText
         android:id="@+id/et_password"
         android:layout_width="match_parent"
@@ -54,7 +54,7 @@
         android:singleLine="true"
         android:textSize="16sp" />
 
-    <!-- 填了密码才露出来的说明(加密包只读这一条得先说清楚) -->
+    <!-- Note shown only after a password is entered (encrypted archives are read-only — say so up front) -->
     <TextView
         android:id="@+id/tv_encrypt_note"
         android:layout_width="match_parent"
@@ -65,7 +65,7 @@
         android:textSize="12sp"
         android:visibility="gone" />
 
-    <!-- 源:名称(单项)或"N 项" + 总大小 -->
+    <!-- Source: name (single) or "N items" + total size -->
     <TextView
         android:id="@+id/tv_src"
         android:layout_width="match_parent"
@@ -91,7 +91,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- 图标按目标来源类型设置(FileIcons.sourceIconRes),这里只是占位 -->
+        <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
         <ImageView
             android:id="@+id/iv_dest"
             android:layout_width="22dp"

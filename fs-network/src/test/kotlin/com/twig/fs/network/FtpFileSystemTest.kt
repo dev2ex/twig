@@ -23,14 +23,19 @@ class FtpFileSystemTest {
     private lateinit var server: FtpServer
     private lateinit var home: File
     private lateinit var fs: FtpFileSystem
+    private var port = 0
 
     @Before
     fun setup() {
         home = File.createTempFile("ftphome", "").let { it.delete(); it.mkdirs(); it }
-        val port = ServerSocket(0).use { it.localPort }
+        // ★ Keep this in a local: inside `ListenerFactory().apply { }` a bare `port`
+        // resolves to the factory's own property, not this field, and the listener would
+        // silently stay on 21 (same shape as the `run` trap in CLAUDE.md).
+        val freePort = ServerSocket(0).use { it.localPort }
+        port = freePort
 
         val sf = FtpServerFactory()
-        val lf = ListenerFactory().apply { this.port = port }
+        val lf = ListenerFactory().apply { this.port = freePort }
         sf.addListener("default", lf.createListener())
         val user = BaseUser().apply {
             name = "u"; password = "p"
@@ -75,14 +80,14 @@ class FtpFileSystemTest {
             fs.list(XFile("ftp", "/a", true)).map { it.path to it.isDir },
         )
         assertEquals(listOf("/a/b/deep.txt"), fs.list(XFile("ftp", "/a/b", true)).map { it.path })
-        assertTrue(fs.list(XFile("ftp", "/a/empty", true)).isEmpty()) // 空目录是空,不是报错
+        assertTrue(fs.list(XFile("ftp", "/a/empty", true)).isEmpty()) // an empty directory is empty, not an error
     }
 
     @Test
     fun listMissingDirFails() {
-        // 静默返回空目录会让 UI 表现成"展开是空的",必须抛错
+        // silently returning an empty directory would make the UI look like "expanding shows nothing" — this must throw
         runCatching { fs.list(XFile("ftp", "/nope", true)) }
-            .onSuccess { error("列不存在的目录应该失败,却返回了 $it") }
+            .onSuccess { error("Listing a nonexistent directory should fail, but returned $it") }
     }
 
     @Test
@@ -106,6 +111,46 @@ class FtpFileSystemTest {
 
         fs.delete(renamed)
         assertFalse(File(home, "sub2").exists())
+    }
+
+    /**
+     * A connection rooted at a sub-directory: the whole point is that **every** command
+     * argument gets translated, so this walks list / write / read / mkdir / rename /
+     * delete / exists rather than just listing — a single missed call site would write
+     * to, or delete, the wrong directory, and listing alone would never show it.
+     */
+    @Test
+    fun rootedAtSubdirectory() {
+        File(home, "pub/inner").mkdirs()
+        File(home, "pub/inner/deep.txt").writeText("deep")
+        File(home, "outside.txt").writeText("must stay invisible")
+
+        val sub = FtpFileSystem(FtpConfig("localhost", port, "u", "p", path = "pub"))
+
+        // The root is "pub", and what sits above it is not reachable through it
+        assertEquals(listOf("/inner"), sub.list(sub.root()).map { it.path })
+        assertEquals(listOf("/inner/deep.txt"), sub.list(XFile("ftp", "/inner", true)).map { it.path })
+        assertTrue(sub.exists(XFile("ftp", "/inner/deep.txt", false)))
+        assertFalse(sub.exists(XFile("ftp", "/outside.txt", false)))
+
+        assertEquals(
+            "deep",
+            sub.openInput(XFile("ftp", "/inner/deep.txt", false)).bufferedReader().use { it.readText() },
+        )
+
+        sub.openOutput(XFile("ftp", "/written.txt", false)).use { it.write("w".toByteArray()) }
+        assertEquals("w", File(home, "pub/written.txt").readText())
+        assertFalse(File(home, "written.txt").exists()) // not at the server root
+
+        sub.mkdir(sub.root(), "made")
+        assertTrue(File(home, "pub/made").isDirectory)
+
+        sub.rename(XFile("ftp", "/written.txt", false), "moved.txt")
+        assertTrue(File(home, "pub/moved.txt").isFile)
+
+        sub.delete(XFile("ftp", "/moved.txt", false))
+        assertFalse(File(home, "pub/moved.txt").exists())
+        assertTrue(File(home, "outside.txt").isFile) // nothing above the root was touched
     }
 
     @Test

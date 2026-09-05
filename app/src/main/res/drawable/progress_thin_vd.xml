@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  细线进度条的图形:整条 viewport 宽的一段,靠 group 的 scaleX 决定它多长、
-  translateX 决定它跑到哪儿。**只有这一段,没有 track**——系统那套 indeterminate
-  横条自带一层 30% 的轨道,压在同色标题栏底边上就是一条淡带,而它没法单独隐藏。
+  Thin progress bar graphic: a single segment spanning the viewport width; the group's
+  scaleX decides how long it is and translateX decides where it is. **Just this segment,
+  no track** — the system's indeterminate bar comes with a built-in 30% track that, when
+  pressed against the same-colored title bar bottom, shows as a faint band that cannot be
+  hidden on its own.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="360dp"

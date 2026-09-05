@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Hex viewer row padding. ★ These exist as resources because **two** places need the same
+      number: item_hex_row.xml pads the row with them, and HexViewerActivity subtracts them from
+      the width before working out how many bytes fit in a row. They used to be a dimension in
+      the layout and a `ROW_PADDING_DP` constant in Kotlin, which silently drifted apart —
+      widening the layout's padding then had no effect at all, because the byte-count budget was
+      still reserving the old amount.
+
+      The end padding is what keeps text clear of the fast scrollbar's thumb (which reaches 15dp
+      in from the edge). It is deliberately smaller than that: the bar only appears for a second
+      while scrolling, and bytes per row is floored to a whole 2-byte group, so a few dp here
+      decides whether a row shows one more group or leaves most of a group's width empty.
+    -->
+    <dimen name="hex_row_pad_start">8dp</dimen>
+    <dimen name="hex_row_pad_end">0dp</dimen>
+</resources>

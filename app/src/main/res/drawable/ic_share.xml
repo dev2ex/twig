@@ -1,4 +1,4 @@
-<!-- 系统分享(三点相连);WiFi 共享是另一个 ic_share_wifi,别混用 -->
+<!-- System share (three connected dots); WiFi sharing is a separate ic_share_wifi — do not mix them up -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

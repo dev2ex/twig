@@ -5,7 +5,7 @@ import java.util.Date
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-/** 轻量格式化工具,避免引入额外库。 */
+/** Lightweight formatting utilities, avoiding extra dependencies. */
 object Format {
     private val dateFmt = SimpleDateFormat("yy-MM-dd HH:mm", Locale.getDefault())
     private val sizeFmt = DecimalFormat("#.#")
@@ -22,28 +22,61 @@ object Format {
         return "${sizeFmt.format(v)} ${units[i]}"
     }
 
+    /**
+     * Display text for size; returns null when **unknown**, callers use that to hide the
+     * whole field.
+     *
+     * Media servers (Jellyfin/Emby) simply don't expose byte counts for entries like
+     * photos — `Photo` has no `MediaSources`, and `Size` isn't in `ItemFields`, so we
+     * can only probe via `Range` (see `JellyfinFileSystem.withSizes`; that step has
+     * count and time gates, and stays at 0 once exceeded). Showing 0 as "0 B" is **wrong**:
+     * it's not an empty file, just one we didn't ask about.
+     *
+     * The single entry inside single-file compression ([com.twig.fs.archive.SingleFileSystem])
+     * is the second case: bz2 has no "original size" field at all, zst has one but it lives in
+     * the **frame header**, so `tar --zstd -cf` (the common way to make .tar.zst) leaves it
+     * empty via piped compression — at header-write time the size is still unknown. gz/xz
+     * are not in this category: their length is written at the **end** of the stream and
+     * back-filled after compression, so the pipe case still has it.
+     *
+     * ★ Criterion accepts only these two cases plus size == 0: zero-byte files really
+     * exist on local / SMB, hiding those would be the other kind of wrong — at which
+     * point "0 B" is exactly what should be shown.
+     */
+    fun sizeOrNull(file: com.twig.core.XFile): String? {
+        if (file.size > 0) return size(file.size)
+        if (com.twig.fs.archive.SingleFileSystem.sizeMayBeUnknown(file.scheme)) return null
+        val fromMediaServer = runCatching {
+            Connections.ofScheme(file.scheme)?.isMediaServer() == true
+        }.getOrDefault(false)
+        return if (fromMediaServer) null else size(file.size)
+    }
+
     fun time(millis: Long): String =
         if (millis <= 0) "" else dateFmt.format(Date(millis))
 
-    /** 每台服务器/每个仓库一个唯一 scheme = 类型 + hash(见 PaneViewModel.schemeForConn) */
+    /** Each server / repository has a unique scheme = type + hash (see PaneViewModel.schemeForConn) */
     private val SCHEME_TYPES =
-        listOf("webdav", "restic", "git", "sftp", "smb", "ftp", "dav", "s3")
+        listOf("webdav", "restic", "git", "sftp", "smb", "ftp", "dav", "s3", "jellyfin", "emby")
 
     /**
-     * scheme 的展示名:剥掉「类型 + hash」里的 hash 部分。
-     * 不能按"取到第一个非字母为止"切——hash 是十六进制,以 a-f 开头时会被当成类型的一部分
-     * (`sftp` + `a3f2…` 显示成 `sftpa`)。类型不在表里的(file/zip/7z/apps…)本来就没有
-     * hash 后缀,原样返回。
+     * Display name for a scheme: strip the hash part of "type + hash".
+     * Can't simply "take until the first non-letter" — hashes are hex and when starting
+     * with a-f they'd be treated as part of the type (`sftp` + `a3f2…` would show as
+     * `sftpa`). Types not in the table (file / zip / 7z / apps…) never had the hash
+     * suffix to begin with, return as-is.
      */
     fun schemeLabel(scheme: String): String =
         SCHEME_TYPES.firstOrNull { scheme.startsWith(it) } ?: scheme
 
     /**
-     * `类型:/服务器/路径`——与面板路径栏同一写法。服务器名取用户起的标签,
-     * 非服务器来源(zip/git/restic…)没有服务器名,别多插一道斜杠。
+     * `type:/server/path` — same format as the pane's path bar. The server name uses
+     * the user's label; non-server sources (zip / git / restic…) have no server name,
+     * don't insert an extra slash.
      *
-     * `PaneFragment` 另有一份:那边会优先查本面板 VM 的反查表,能认出对侧面板还没
-     * 展开过的服务器。不需要那一层的调用方(对比页、文本对比页)用这个就够了。
+     * `PaneFragment` has another copy: that one prefers the local pane VM's reverse
+     * lookup, so it can recognise a server the other pane hasn't expanded yet. Callers
+     * that don't need that layer (the comparison page, text compare) can use this one.
      */
     fun pathLabel(f: com.twig.core.XFile): String = when {
         f.scheme == "file" -> f.path

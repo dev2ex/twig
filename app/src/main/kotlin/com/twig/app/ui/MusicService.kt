@@ -22,9 +22,11 @@ import com.twig.app.R
 import java.util.concurrent.Executors
 
 /**
- * 前台音乐服务:framework [MediaSession] + [Notification.MediaStyle] 通知(锁屏/耳机/媒体键)。
- * 不引 media3-session。实际播放器在 [MusicEngine];本服务只做通知与系统媒体会话映射。
- * 通知按钮经自身 service intent 触发;硬件/蓝牙媒体键由激活的 MediaSession 自动路由到回调。
+ * Foreground music service: framework [MediaSession] + [Notification.MediaStyle] notification
+ * (lock screen / headphone / media keys). Does not pull in media3-session. The actual player
+ * lives in [MusicEngine]; this service only handles notifications and maps the system media
+ * session. Notification buttons are triggered via the service's own intent; hardware/Bluetooth
+ * media keys are routed automatically by the active MediaSession to the callback.
  */
 @UnstableApi
 class MusicService : Service() {
@@ -39,9 +41,9 @@ class MusicService : Service() {
         override fun onTrackChanged(index: Int, track: PlaylistTrack?) { updateCoverThenNotify() }
         override fun onPlayStateChanged(playing: Boolean) { pushNotification() }
         override fun onModeChanged() { pushNotification() }
-        override fun onFavChanged() { pushNotification() } // 播放页/列表页改了最爱,心形跟着换实心
+        override fun onFavChanged() { pushNotification() } // player page / list page changed favorite, the heart switches to filled too
         override fun onEnded() {
-            // 非循环播完:退出前台(通知转可清除),停止服务
+            // Played to the end without repeat: exit foreground (notification becomes clearable), stop the service
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -83,7 +85,7 @@ class MusicService : Service() {
             ACTION_FAV -> toggleFav()
             ACTION_STOP -> { MusicEngine.stopPlayback(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY }
         }
-        // 必须在 5s 内 startForeground
+        // must startForeground within 5s
         startForeground(NOTIF_ID, buildNotification())
         updateCoverThenNotify()
         return START_STICKY
@@ -99,14 +101,14 @@ class MusicService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    // ---- 通知 / 会话 ----
+    // ---- Notification / session ----
 
     private fun updateCoverThenNotify() {
         val track = MusicEngine.currentTrack()
         val file = MusicEngine.currentFile()
         if (track == null || file == null) { pushNotification(); return }
         if (coverForId == track.id) { pushNotification(); return }
-        pushNotification() // 先无封面刷一版
+        pushNotification() // push a cover-less version first
         io.execute {
             val bmp = runCatching { Thumbs.audioCover(file, 512) }.getOrNull()
             cover = bmp
@@ -120,7 +122,8 @@ class MusicService : Service() {
         runCatching { nm.notify(NOTIF_ID, buildNotification()) }
     }
 
-    /** 通知栏心形:当前曲加入/移出「我的最爱」,并广播出去让播放页的心形同步。 */
+    /** Notification heart: add/remove the current track from "favorites" and broadcast so the
+     *  player page's heart stays in sync. */
     private fun toggleFav() {
         val track = MusicEngine.currentTrack() ?: return
         PlaylistStore.toggleFav(this, track)
@@ -147,8 +150,9 @@ class MusicService : Service() {
         val fav = isFav()
         session.setPlaybackState(
             PlaybackState.Builder()
-                // ★ Android 13 起,通知里的媒体控件按钮是系统从 PlaybackState 的标准动作 +
-                // 自定义动作里取的,Notification.Action 只对更老的系统有效——心形两边都要给。
+                // ★ From Android 13, the media control buttons in the notification are taken by
+                // the system from the standard actions + custom actions of PlaybackState;
+                // Notification.Action only works on older systems — the heart needs to be on both sides.
                 .addCustomAction(
                     PlaybackState.CustomAction.Builder(
                         ACTION_FAV,
@@ -179,7 +183,7 @@ class MusicService : Service() {
         } else {
             @Suppress("DEPRECATION") Notification.Builder(this)
         }
-        builder.setSmallIcon(R.drawable.ic_music_note)
+        builder.setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(track?.title?.ifEmpty { null } ?: track?.name ?: getString(R.string.music_title))
             .setContentText(track?.artist ?: "")
             .setContentIntent(contentIntent)
@@ -204,7 +208,7 @@ class MusicService : Service() {
         )
         builder.style = Notification.MediaStyle()
             .setMediaSession(session.sessionToken)
-            .setShowActionsInCompactView(0, 1, 2) // 收起时只留 上一首/播放/下一首,心形在展开态
+            .setShowActionsInCompactView(0, 1, 2) // when collapsed only keep prev/play/next; the heart is in the expanded state
         return builder.build()
     }
 

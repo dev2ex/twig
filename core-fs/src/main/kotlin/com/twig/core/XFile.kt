@@ -1,32 +1,37 @@
 package com.twig.core
 
 /**
- * 一个统一的"条目"——可能是本地文件、压缩包内的项、FTP 上的文件,或某个云盘对象。
+ * A unified "entry" — could be a local file, an item inside an archive, a file on
+ * FTP, or an object on some cloud drive.
  *
- * 对 UI 来说,所有来源都是 [XFile];具体由哪个 [FileSystem] 解释由 [scheme] 决定。
- * 设计目标:轻量、不可变、不持有 IO 资源(真正读写时再向 [FileSystem] 申请流)。
+ * For the UI, every source is an [XFile]; which [FileSystem] interprets it is
+ * decided by [scheme]. Design goals: lightweight, immutable, holds no IO resources
+ * (request streams from [FileSystem] only when actually reading or writing).
  */
 data class XFile(
-    /** 所属文件系统的 scheme,如 "file" / "zip" / "ftp"。 */
+    /** The scheme of the owning file system, e.g. "file" / "zip" / "ftp". */
     val scheme: String,
     /**
-     * 在该文件系统内的绝对路径。约定以 '/' 为分隔符,根为 "/"。
-     * 注意:这里的 path 不含 scheme 前缀,scheme 单独存放,便于各 FileSystem 自己解释。
+     * Absolute path within that file system. Convention: '/' is the separator, '/' is
+     * the root. Note: this `path` does not include the scheme prefix; the scheme is
+     * stored separately so each FileSystem can interpret it in its own way.
      */
     val path: String,
     val isDir: Boolean,
     val size: Long = 0L,
     val lastModified: Long = 0L,
-    /** 是否可读/可写,UI 可据此置灰操作;未知时给 true。 */
+    /** Whether it can be read / written; the UI can grey out operations accordingly. true when unknown. */
     val canRead: Boolean = true,
     val canWrite: Boolean = true,
     /**
-     * 显示名。当 [path] 是不透明标识(如 SAF 的 document URI、云盘的对象 id)、
-     * 无法从中切出可读名称时,由 FileSystem 从元数据填入;为 null 时回退到 path 末段。
+     * Display name. When [path] is an opaque identifier (e.g. a SAF document URI or
+     * a cloud drive object id) from which no human-readable name can be sliced, the
+     * FileSystem fills this in from metadata; when null, fall back to the last
+     * segment of `path`.
      */
     val displayName: String? = null,
 ) {
-    /** 文件名;优先用 [displayName],否则取 path 末段;根目录返回 "/"。 */
+    /** File name; prefer [displayName], otherwise the last segment of `path`; returns "/" for the root. */
     val name: String
         get() {
             displayName?.let { return it }
@@ -36,7 +41,7 @@ data class XFile(
             return if (idx < 0) trimmed else trimmed.substring(idx + 1)
         }
 
-    /** 父目录路径;根的父仍是根。 */
+    /** Parent directory path; the parent of root is still root. */
     val parentPath: String
         get() {
             if (path == "/" || path.isEmpty()) return "/"
@@ -45,7 +50,7 @@ data class XFile(
             return if (idx <= 0) "/" else trimmed.substring(0, idx)
         }
 
-    /** 扩展名(小写,不含点);无扩展名返回空串。 */
+    /** Extension (lowercase, without the dot); empty string if no extension. */
     val extension: String
         get() {
             val n = name
@@ -53,15 +58,33 @@ data class XFile(
             return if (dot <= 0) "" else n.substring(dot + 1).lowercase()
         }
 
-    /** 完整 URI 形式,如 "file:///sdcard/a.txt",用于日志/导航历史。 */
+    /** Full URI form, e.g. "file:///sdcard/a.txt"; used for logs and navigation history. */
     fun toUri(): String = "$scheme://$path"
 }
 
 /**
- * 是否是一个能被复制/移动/分享收件当作目标的"真实可写目录":自身 [XFile.canWrite]
- * (resolve()/list() 现算,收藏夹等绕过它直接拼 XFile 的场景不可信)+ 所属
- * [FileSystem.writable]("这整个来源是否支持写"的兜底,restic/7z/RAR/git 视图等
- * 全程只读的来源靠它拦住)。
+ * Whether this is a "real writable directory" that can be used as the destination of
+ * copy / move / share: the entry's own [XFile.canWrite] (computed by resolve()/list(),
+ * unreliable in scenarios like favorites that bypass them and assemble XFile
+ * directly) + the owning [FileSystem.writable] (the fallback for "does this whole
+ * source support writing", which is what keeps sources that are read-only end-to-end
+ * such as restic / 7z / RAR / git view out).
  */
 fun XFile.isWritableDir(): Boolean =
     isDir && canWrite && runCatching { FsRegistry.of(this).writable() }.getOrDefault(false)
+
+/**
+ * Whether this entry **itself** can be modified — renamed, deleted, and the
+ * "delete source" step of a move.
+ *
+ * This is a different question from [isWritableDir]: that one asks "can I write
+ * into it" (the destination of paste / new file); this one asks "can it itself
+ * be changed" (the source of an operation). **Read-only sources may still be
+ * copied, compressed, and shared — that limitation does not apply to them.**
+ *
+ * Sources like media servers, restic, 7z/RAR, the git view, and "Apps" report
+ * `writable() == false`; these entry points should not be offered in the UI —
+ * offering them just lets the user tap something that fails with an error.
+ */
+fun XFile.isMutable(): Boolean =
+    canWrite && runCatching { FsRegistry.of(this).writable() }.getOrDefault(false)

@@ -31,6 +31,14 @@
         android:importantForAutofill="no" />
 
     <EditText
+        android:id="@+id/et_path"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/conn_path"
+        android:inputType="text"
+        android:importantForAutofill="no" />
+
+    <EditText
         android:id="@+id/et_user"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

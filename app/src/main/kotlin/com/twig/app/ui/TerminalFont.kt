@@ -8,22 +8,28 @@ import com.twig.app.Prefs
 import java.io.File
 
 /**
- * 终端自定义字体:用户导入的 ttf/otf 存进应用私有目录(SAF 的 content:// 权限
- * 跨进程/重启后不可靠,和 SFTP 私钥导入同一套路——拷进来自己管)。
+ * User-supplied font for the terminal: an imported ttf/otf is stored in the
+ * app-private directory (SAF's content:// permissions are not reliable across
+ * process boundaries / restarts — same pattern as SFTP private key import: copy it
+ * in and manage it ourselves).
  *
- * 为什么要给终端换字体:termux 的 `TerminalRenderer` 把列宽定为 `measureText("X")`,
- * 画每段文本时若实测宽度对不上「列数 × 列宽」,就 `canvas.scale(比例, 1f)` **只横向**
- * 压拉塞进网格。系统 MONOSPACE 里没有汉字,回落到 Noto Sans CJK(汉字 1.0em)而
- * 拉丁 X 只有 ≈0.6em,2 列目标 1.2em > 实测 1.0em → 中文被横向拉宽 20%;● (U+25CF)
- * 是 East Asian Ambiguous,wcwidth 算 1 列却是全角字形 → 被压到六成宽、高度不变,
- * 看着又细又高。换成 CJK 等宽字体(拉丁 0.5em / 汉字 1.0em,如更纱黑体 Sarasa Mono)
- * 两个比例都变成 1.0,变形自然消失。字体不打进包,零 APK 体积代价。
+ * Why a custom terminal font at all: termux's `TerminalRenderer` sizes each column by
+ * `measureText("X")`, and when the measured width doesn't match `column_count *
+ * column_width` while drawing, it `canvas.scale(ratio, 1f)` **only horizontally** to
+ * squeeze text into the grid. The system MONOSPACE has no CJK, so it falls back to
+ * Noto Sans CJK (CJK at 1.0em) while a Latin "X" is only ~0.6em; the 2-column target
+ * 1.2em exceeds the measured 1.0em, so CJK ends up stretched 20% horizontally. ● (U+25CF)
+ * is East Asian Ambiguous — wcwidth counts 1 column, but the glyph is fullwidth, so
+ * it gets squeezed to 60% width with height untouched, looking thin and tall. Switching
+ * to a CJK monospace font (Latin 0.5em / CJK 1.0em, e.g. Sarasa Mono) makes both
+ * ratios 1.0 and the distortion vanishes. The font isn't bundled, so the APK stays
+ * exactly the same size.
  */
 object TerminalFont {
 
     private const val DIR = "fonts"
 
-    /** 已导入字体的文件名;null = 用系统等宽。 */
+    /** File name of the imported font; null = use system monospace. */
     fun currentName(ctx: Context): String? {
         val p = Prefs.terminalFont(ctx)
         if (p.isEmpty()) return null
@@ -31,22 +37,23 @@ object TerminalFont {
         return if (f.isFile) f.name else null
     }
 
-    /** 当前该用的字体;导入的文件丢失或加载失败一律回落系统等宽。 */
+    /** The typeface to use right now; falls back to system monospace if the imported file is missing or fails to load. */
     fun typeface(ctx: Context): Typeface {
         val p = Prefs.terminalFont(ctx)
         if (p.isEmpty()) return Typeface.MONOSPACE
         return runCatching { Typeface.createFromFile(p) }.getOrNull() ?: Typeface.MONOSPACE
     }
 
-    /** 清除自定义字体,回到系统等宽。 */
+    /** Clear the custom font, returning to system monospace. */
     fun clear(ctx: Context) {
         Prefs.setTerminalFont(ctx, "")
         runCatching { File(ctx.filesDir, DIR).deleteRecursively() }
     }
 
     /**
-     * 导入 SAF 选中的字体文件:校验 sfnt 头 + 试加载,通过才落地并记住路径。
-     * 只保留一份(先清空目录),返回文件名;失败返回 null。
+     * Import the font file chosen from SAF: verify the sfnt header and try to load it
+     * before persisting and remembering the path. Only one copy is kept (the directory
+     * is cleared first); returns the file name on success, null on failure.
      */
     fun import(ctx: Context, uri: Uri): String? {
         val name = displayName(ctx, uri)
@@ -58,8 +65,9 @@ object TerminalFont {
             ctx.contentResolver.openInputStream(uri)!!.use { input ->
                 out.outputStream().use { input.copyTo(it) }
             }
-            // 无效文件 createFromFile 在部分版本上不抛异常而是静默返回默认字体,
-            // 所以先自己认 sfnt 魔数,再让系统试着加载一次
+            // createFromFile does not throw on invalid input on some versions and instead
+            // silently returns the default font, so check the sfnt magic ourselves first,
+            // then let the system have a go at loading.
             isFont(out) && runCatching { Typeface.createFromFile(out) }.isSuccess
         }.getOrDefault(false)
         if (!ok) {
@@ -70,7 +78,7 @@ object TerminalFont {
         return out.name
     }
 
-    /** sfnt 魔数:TrueType(0x00010000 / "true")、OpenType-CFF("OTTO")、集合("ttcf")。 */
+    /** sfnt magic numbers: TrueType (0x00010000 / "true"), OpenType-CFF ("OTTO"), collections ("ttcf"). */
     private fun isFont(f: File): Boolean = runCatching {
         val head = ByteArray(4)
         f.inputStream().use { if (it.read(head) != 4) return false }

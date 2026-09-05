@@ -7,8 +7,15 @@ import java.io.FilterInputStream
 import java.io.InputStream
 
 /**
- * RAR 文件系统(只读,仅 RAR4;RAR5 junrar 不支持,会抛错)。
- * 加密包交给 junrar 的密码构造器;头加密(连文件名都加密)的包同样要先有密码才列得出清单。
+ * RAR filesystem (read-only, RAR4 + RAR5).
+ * Encrypted archives are handed to junrar's password constructor; header-encrypted archives
+ * (where even the file names are encrypted) likewise need the password before the listing can
+ * be produced.
+ *
+ * ★ RAR5 is only in junrar **8.0.0+** (7.5.5 throws `UnsupportedRarV5Exception` even from the
+ * [Archive] constructor). Downgrading to 7.x would not surface "unsupported" — it would
+ * **pop up the password dialog**: that exception would be swallowed by [needsPassword]'s
+ * `getOrElse { true }` below into "this is a header-encrypted archive". See `RarFileSystemTest`.
  */
 class RarFileSystem : ArchiveFileSystem() {
 
@@ -37,7 +44,7 @@ class RarFileSystem : ArchiveFileSystem() {
             if (needsPassword(archivePath) && !hasPassword(archivePath)) {
                 throw ArchivePasswordException(archivePath)
             }
-            throw FsException("Cannot read RAR (RAR5 is not supported): ${e.message}", e)
+            throw FsException("Cannot read RAR: ${e.message ?: e.javaClass.simpleName}", e)
         }
     }
 
@@ -61,14 +68,14 @@ class RarFileSystem : ArchiveFileSystem() {
         }
     }
 
-    // ---- 密码 ----
+    // ---- password ----
 
     private val encCache = HashMap<String, Boolean>()
 
     override fun needsPassword(archivePath: String): Boolean {
-        val key = stampOf(archivePath) // 同名文件被换掉时自动失效
+        val key = stampOf(archivePath) // automatically invalidated when a same-named file is swapped out
         synchronized(encCache) { encCache[key]?.let { return it } }
-        // 头加密的包无密码连构造都会失败;头没加密时看条目自己的加密位
+        // A header-encrypted archive fails to even construct without a password; otherwise check each entry's own encrypted flag
         val enc = runCatching {
             Archive(File(archivePath)).use { a -> a.isEncrypted || a.fileHeaders.any { it.isEncrypted } }
         }.getOrElse { true }
@@ -76,31 +83,38 @@ class RarFileSystem : ArchiveFileSystem() {
         return enc
     }
 
-    /** 校验密码:解出第一个非空条目的开头一段(密码错时 junrar 会在解码时抛错)。 */
+    /**
+     * Verify the password: decrypt the first non-empty entry's head, **and confirm that many
+     * bytes really came out**.
+     *
+     * ★ The criterion cannot be just "no exception was thrown". With a wrong password junrar
+     * mostly **silently returns 0 bytes** — both RAR4 and content-encrypted RAR5 behave this
+     * way (7.5.5 and 8.1.0 agree); only header-encrypted archives throw `WrongPasswordException`.
+     * If we only look at the exception, the user enters the wrong password and is told "password
+     * correct", and then the opened file is empty. See `RarFileSystemTest`.
+     */
     override fun checkPassword(archivePath: String, password: String): Boolean = try {
         open(archivePath, password).use { archive ->
             val h = archive.fileHeaders.firstOrNull { !it.isDirectory && it.fullUnpackSize > 0 }
-            if (h != null) {
-                archive.getInputStream(h).use { input ->
-                    val buf = ByteArray(64 * 1024)
-                    var total = 0L
-                    while (total < VERIFY_LIMIT) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        total += n
-                    }
+            if (h == null) true else archive.getInputStream(h).use { input ->
+                val buf = ByteArray(64 * 1024)
+                var total = 0L
+                while (total < VERIFY_LIMIT) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    total += n
                 }
+                total >= minOf(h.fullUnpackSize, VERIFY_LIMIT)
             }
         }
-        true
     } catch (t: Throwable) {
-        false // junrar 密码错的报法五花八门(CRC/解码/EOF),一律当密码不对
+        false // junrar's wrong-password reporting is all over the place (CRC / decode / EOF) — treat all as wrong password
     }
 
     companion object {
-        const val SCHEME = "rar"
+        const val SCHEME = Archives.RAR_SCHEME
 
-        /** 校验密码时最多解这么多。 */
+        /** Maximum bytes to decrypt when verifying the password. */
         private const val VERIFY_LIMIT = 4L * 1024 * 1024
     }
 }

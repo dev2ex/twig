@@ -13,13 +13,17 @@ import androidx.core.content.ContextCompat
 import com.twig.app.R
 
 /**
- * 带图标的长按菜单(文件/目录/服务器/收藏那几套共用)。
+ * The long-press menu with icons (shared by the file / directory / server /
+ * favourites sets).
  *
- * `AlertDialog.setItems` 只吃字符串数组,给不了图标——换成 `setAdapter` 铺
- * [R.layout.item_menu_action]。图标一律**代码染色**:项目里的矢量图自带
- * `android:tint="@color/white"`(为工具栏准备的),放进对话框会白到看不见;
- * 默认染成 [R.color.menu_icon](跟着深浅色主题走),删除/卸载这类不可逆动作
- * 用 [DANGER] 单独染红——菜单里最该一眼认出来的就是这几项。
+ * `AlertDialog.setItems` only takes a String array — no room for icons —
+ * so we switch to `setAdapter` backed by [R.layout.item_menu_action].
+ * Icons are **tinted in code**: the project's vector drawables come with
+ * `android:tint="@color/white"` (set up for the toolbar), so when dropped
+ * into a dialog they end up pure white and invisible; the default tint is
+ * [R.color.menu_icon] (which follows the light/dark theme), and irreversible
+ * actions like delete / uninstall are tinted with [DANGER] — those are the
+ * entries the menu user should recognise at a glance.
  */
 class MenuAct(
     val label: String,
@@ -27,15 +31,15 @@ class MenuAct(
     @ColorRes val tint: Int = R.color.menu_icon,
     val run: () -> Unit,
 ) {
-    /** ArrayAdapter 靠 toString() 填文案。 */
+    /** ArrayAdapter fills the label via toString(). */
     override fun toString(): String = label
 }
 
-/** 危险动作的图标色(删除、卸载、移出服务器…)。 */
+/** Icon colour for dangerous actions (delete, uninstall, remove from server, ...). */
 @ColorRes
 val DANGER: Int = R.color.menu_icon_danger
 
-/** 往菜单里加一项;写法比 `add(MenuAct(...))` 贴近原来的 `actions += 文案 to {}`。 */
+/** Add one item to the menu; the syntax stays close to the old `actions += "label" to {}`. */
 fun MutableList<MenuAct>.item(
     label: String,
     @DrawableRes icon: Int,
@@ -45,7 +49,7 @@ fun MutableList<MenuAct>.item(
     add(MenuAct(label, icon, tint, run))
 }
 
-/** 弹出菜单;选中即执行对应动作。 */
+/** Pop up the menu; selecting an item runs its action immediately. */
 fun showActionMenu(ctx: Context, title: CharSequence, actions: List<MenuAct>) {
     AlertDialog.Builder(ctx)
         .setTitle(title)
@@ -53,8 +57,7 @@ fun showActionMenu(ctx: Context, title: CharSequence, actions: List<MenuAct>) {
         .show()
 }
 
-/** 单独一层是为了能在单测里直接拿视图来看(布局用了 `?attr/dialogPreferredPadding`,
- *  主题里少了这个属性就是 inflate 当场崩,而那时菜单已经在用户手上了)。 */
+/** A dedicated layer so unit tests can grab the view directly (the layout uses `?attr/dialogPreferredPadding`, and missing that attribute makes inflate crash on the spot — by which time the menu is already in the user's hand). */
 internal fun menuAdapter(ctx: Context, actions: List<MenuAct>): ArrayAdapter<MenuAct> =
     object : ArrayAdapter<MenuAct>(ctx, R.layout.item_menu_action, R.id.label, actions) {
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {

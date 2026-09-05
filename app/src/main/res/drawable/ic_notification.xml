@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Status-bar icon: the launcher's twig, as a pure alpha silhouette (the system
+         tints it, so only the shape matters). Unlike the adaptive icon there is no safe
+         zone here, so the branch is scaled to fill the canvas — at 24dp the launcher's
+         0.73 scale would leave it a barely visible speck.
+         ★ Changing the geometry in ic_launcher_foreground means changing this too. -->
+    <group
+        android:pivotX="53"
+        android:pivotY="58.5"
+        android:scaleX="1.55"
+        android:scaleY="1.55"
+        android:translateX="1"
+        android:translateY="-4.5">
+        <path
+            android:strokeColor="#000000"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:pathData="M54,90 C50,74 50,58 56,32" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M52,68 C40,68 27,59 23,42 C40,40 50,53 52,68 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M53,55 C66,53 79,44 83,27 C66,26 55,39 53,55 Z" />
+    </group>
+</vector>

@@ -7,10 +7,11 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 把一个已解锁的 restic 仓库当作只读文件系统。
- * 路径:`/` = 快照列表;`/<shortId>` = 某快照根;`/<shortId>/a/b` = 快照内目录/文件。
- * 快照以"时间虚拟目录"呈现(displayName = 时间 + 主机)。`/latest` 是恒指向最新快照的
- * 虚拟别名(见 [ResticRepo.snapshotByShort]),收藏它就能收藏"永远最新的备份"。
+ * Expose an unlocked restic repository as a read-only filesystem.
+ * Paths: `/` = snapshot list; `/<shortId>` = one snapshot root; `/<shortId>/a/b` = file/dir inside a snapshot.
+ * Snapshots are shown as "time virtual directories" (displayName = time + host).
+ * `/latest` is a permanent virtual alias pointing to the newest snapshot
+ * (see [ResticRepo.snapshotByShort]); bookmarking it bookmarks "always the latest backup".
  */
 class ResticFileSystem(
     private val repo: ResticRepo,
@@ -40,11 +41,15 @@ class ResticFileSystem(
                     },
                 )
             }
-            // "最新"虚拟目录,恒指向 repo.snapshots 首项(见 snapshotByShort);收藏它即收藏
-            // "永远最新的备份",不会像收藏某个具体快照那样在新备份产生后就过时。
-            // 这个模块是纯 JVM/Kotlin,没有 Android Context/字符串资源可用,不在这里挂多语言
-            // 文案——displayName 留空回退到 path 末段 "latest"(语言无关的稳定标识);
-            // 真正展示给用户的本地化文案由 :app 的 PaneViewModel.addRestic() 按此路径识别后接管。
+            // "latest" virtual directory, permanently points at the first entry of
+            // repo.snapshots (see snapshotByShort); bookmarking it means bookmarking
+            // "always the latest backup", which does not go stale the way bookmarking
+            // a specific snapshot does once a new backup appears.
+            // This module is pure JVM/Kotlin with no Android Context/string resources;
+            // localized copy does not belong here — displayName stays empty so it falls
+            // back to the path's last segment "latest" (a language-independent stable id);
+            // the localized text shown to users is handled by :app's PaneViewModel.addRestic()
+            // when it recognizes this path.
             val latest = repo.snapshots.firstOrNull()?.let { s ->
                 XFile(scheme = scheme, path = "/latest", isDir = true, lastModified = s.timeMillis, canWrite = false)
             }
@@ -76,7 +81,7 @@ class ResticFileSystem(
 
     override fun exists(file: XFile): Boolean = true
 
-    // ---- 只读 ----
+    // ---- read-only ----
     override fun openOutput(file: XFile, append: Boolean): OutputStream =
         throw FsException("restic backup is read-only")
     override fun mkdir(parent: XFile, name: String): XFile = throw FsException("restic backup is read-only")

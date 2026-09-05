@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 属性卡片:tab 标题栏是随树缩进的小条(与文件行图标对齐,像树节点),内容盒左右填满 -->
+<!-- Property card: the tab title bar is a small strip indented with the tree (aligned with the file row icon, like a tree node), and the content box fills left and right -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -24,12 +24,12 @@
         android:orientation="vertical"
         android:background="@drawable/info_card_bg">
 
-        <!-- 目录递归统计的转圈叠在内容盒右下角(就在它描述的那两行数字旁边)。
-             ★ 不能放进 tab 条那一行:tab 条是 wrap_content + 随树深度增长的 marginStart,
-             双面板下半屏宽的面板里层级一深就把整行吃满,固定宽的转圈被排到右边界外裁掉,
-             肉眼看就是"没有转圈"。叠在内容盒里挤不出去。
-             ★ 也不能在绑定时动态 addView:tab 条每次绑定都 removeAllViews,
-             转圈会随扫描进度的每次刷新被重建、动画一直从头开始。 -->
+        <!-- The directory recursive stats spinner sits in the bottom-right corner of the content box (right next to the two lines of numbers it describes).
+             ★ It cannot go in the tab strip row: the tab strip is wrap_content with a marginStart that grows with tree depth,
+             and in the narrower bottom pane of the two-pane layout, a deep hierarchy eats the whole row, so the fixed-width spinner is pushed past the right edge and clipped —
+             visually it just looks like "no spinner". Stacking it inside the content box can't squeeze it out.
+             ★ It also cannot be dynamically addView'd at bind time: the tab strip removeAllViews on every bind,
+             so the spinner would be recreated on every scan-progress refresh, restarting its animation from scratch. -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content">

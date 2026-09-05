@@ -5,8 +5,8 @@
     android:orientation="vertical"
     android:background="@color/surface">
 
-    <!-- 当前目录路径栏:来源类型图标 + 路径(网络来源带服务器名);
-         活动面板高亮,非活动变暗,背景色由 PaneFragment.setActive 切换 -->
+    <!-- Current directory path bar: source-type icon + path (network sources include the server name);
+         the active pane is highlighted, the inactive one is dimmed; background colors are switched by PaneFragment.setActive -->
     <LinearLayout
         android:id="@+id/path_bar"
         android:layout_width="match_parent"
@@ -56,7 +56,7 @@
             android:textColor="@color/text_secondary"
             android:visibility="gone" />
 
-        <!-- 空间占用矩形树图(替换树就地显示,操作栏「占用」开关) -->
+        <!-- Space-usage rectangular treemap (replaces the tree in place; toggled by the "Usage" switch in the action bar) -->
         <com.twig.app.ui.TreemapView
             android:id="@+id/map"
             android:layout_width="match_parent"

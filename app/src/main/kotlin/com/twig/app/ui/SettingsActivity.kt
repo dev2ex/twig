@@ -1,6 +1,11 @@
 package com.twig.app.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -16,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
+import androidx.core.content.pm.PackageInfoCompat
 import com.twig.app.Format
 import com.twig.app.PlaybackStore
 import com.twig.app.Prefs
@@ -24,26 +30,37 @@ import com.twig.app.R
 import rikka.shizuku.Shizuku
 
 /**
- * 独立设置页(手写布局,不引 preference 库):显示(行高)+ 缩略图。
- * 改动写入 Prefs 即生效;MainActivity 回前台按 [Prefs.uiSignature] 变化自动重建。
+ * Standalone settings page (hand-written layout, no preference library): display
+ * (language / row height / text size) + thumbnails. Changes written to Prefs take
+ * effect immediately; MainActivity auto-recreates when it returns to the foreground
+ * if [Prefs.uiSignature] changes.
  */
 class SettingsActivity : AppCompatActivity() {
 
     private lateinit var list: LinearLayout
     private val dp get() = resources.displayMetrics.density
 
-    /** 缩略图子项行(总开关关闭时整组置灰禁用)。 */
+    /** Thumbnail sub-item rows (greyed out and disabled when the master switch is off). */
     private val thumbRows = ArrayList<View>()
 
-    private companion object {
-        /** Shizuku 授权请求码;本页只有这一处请求,取值任意。 */
-        const val SHIZUKU_REQ = 4001
+    // The whole companion is no longer private: PROJECT_URL must be readable by tests (the other two stay private).
+    internal companion object {
+        /** Shizuku authorisation request code; this page only requests once, any value works. */
+        private const val SHIZUKU_REQ = 4001
 
-        /** 与 Privileged 用同一个 tag,`adb logcat -s twig-priv` 一次看全整条链路。 */
-        const val PRIV_TAG = "twig-priv"
+        /** Same tag as Privileged, `adb logcat -s twig-priv` shows the entire chain at once. */
+        private const val PRIV_TAG = "twig-priv"
+
+        /**
+         * Project homepage. As a constant rather than a string resource: the URL is
+         * identical in both languages, putting it in strings.xml would only add a
+         * "needs translation but cannot be translated" entry (and updating the value
+         * requires editing two copies).
+         */
+        const val PROJECT_URL = "https://github.com/dev2ex/twig"
     }
 
-    /** 终端字体导入:拷进应用私有目录后整页重建,副标题跟着换。 */
+    /** Terminal font import: after copying into the app's private directory, the entire page rebuilds and the subtitle updates. */
     private val fontPicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
             val uri = r.data?.data ?: return@registerForActivityResult
@@ -59,7 +76,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun fontSubtitle(): String =
         TerminalFont.currentName(this) ?: getString(R.string.settings_term_font_default)
 
-    /** 终端配色导入:termux 的 colors.properties 格式,base16 现成方案可直接用。 */
+    /** Terminal colour scheme import: termux's colors.properties format, base16 off-the-shelf schemes work directly. */
     private val colorsPicker =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
             val uri = r.data?.data ?: return@registerForActivityResult
@@ -75,6 +92,38 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun colorsSubtitle(): String =
         TermColors.currentName(this) ?: getString(R.string.settings_term_colors_default)
+
+    /**
+     * Backup export: the password is asked for **before** the file is picked (asking
+     * afterwards would leave a 0-byte .twigbak if the user cancels midway, since
+     * they've already created an empty file by then). Stash it here until we
+     * actually write.
+     */
+    private var exportPassword: CharArray? = null
+
+    /**
+     * The destination goes through **Twig's own directory picker**, not SAF — so
+     * backups land directly on SMB/WebDAV/S3, exactly matching where the tree can go.
+     */
+    private val backupExport =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            val pw = exportPassword
+            exportPassword = null
+            pickedFile(r)?.let { SecurityUi.runExport(this, it, pw) }
+        }
+
+    private val backupImport =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            pickedFile(r)?.let { SecurityUi.runImport(this, it) { build() } }
+        }
+
+    /** PickerActivity's "return path" mode sends back scheme + path, reassembled into an XFile. */
+    private fun pickedFile(r: androidx.activity.result.ActivityResult): com.twig.core.XFile? {
+        val d = r.data ?: return null
+        val scheme = d.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME) ?: return null
+        val path = d.getStringExtra(PickerActivity.EXTRA_PICKED_PATH) ?: return null
+        return com.twig.core.XFile(scheme, path, isDir = false)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,11 +168,30 @@ class SettingsActivity : AppCompatActivity() {
         thumbRows.clear()
 
         section(getString(R.string.settings_section_display))
+        // After picking a language AppCompatDelegate recreates all Activities (including
+        // this page) in the new language, so the entire page's text refreshes — no need
+        // to build() ourselves.
+        choiceRow(
+            getString(R.string.action_language),
+            LanguagePref.labels(this),
+            get = { LanguagePref.current() },
+            set = { LanguagePref.apply(it) },
+        )
         choiceRow(
             getString(R.string.action_density),
             arrayOf(getString(R.string.density_compact), getString(R.string.density_normal), getString(R.string.density_large)),
             get = { Prefs.density(this) },
             set = { Prefs.setDensity(this, it) },
+        )
+        // Row height and text size are two independent preferences: row height only
+        // controls row height and icon size, text size only controls the font.
+        // Previously they were a single setting (making rows bigger also made the text
+        // bigger), so "shorter rows but readable text" wasn't possible.
+        choiceRow(
+            getString(R.string.action_text_size),
+            arrayOf(getString(R.string.text_size_small), getString(R.string.text_size_normal), getString(R.string.text_size_large)),
+            get = { Prefs.textSize(this) },
+            set = { Prefs.setTextSize(this, it) },
         )
         switchRow(
             getString(R.string.settings_show_hidden), getString(R.string.settings_show_hidden_desc),
@@ -207,6 +275,24 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.msg_cache_cleared, Toast.LENGTH_SHORT).show()
         }
 
+        section(getString(R.string.settings_section_security))
+        actionRow(getString(R.string.settings_master_pw), SecurityUi.masterSubtitle(this)) { sub ->
+            SecurityUi.showMaster(this) { sub.text = SecurityUi.masterSubtitle(this) }
+        }
+        actionRow(getString(R.string.settings_backup_export), getString(R.string.settings_backup_export_desc)) { _ ->
+            SecurityUi.askExportPassword(this) { pw ->
+                exportPassword = pw
+                backupExport.launch(
+                    PickerActivity.dirIntent(this, getString(R.string.backup_pick_dir)),
+                )
+            }
+        }
+        actionRow(getString(R.string.settings_backup_import), getString(R.string.settings_backup_import_desc)) { _ ->
+            backupImport.launch(
+                PickerActivity.pathIntentAny(this, getString(R.string.backup_pick_file)),
+            )
+        }
+
         section(getString(R.string.settings_section_privileged))
         actionRow(getString(R.string.settings_privileged), privilegedSubtitle()) { sub ->
             val options = arrayOf(
@@ -215,10 +301,12 @@ class SettingsActivity : AppCompatActivity() {
                 getString(R.string.priv_mode_shizuku),
             )
             AlertDialog.Builder(this)
-                // ★ 说明文字必须走 setCustomTitle,不能用 setMessage —— AlertDialog 的
-                // 内容面板只放得下一样东西,同时设了 message 和选项列表时 message 赢,
-                // **列表整个不渲染**。表现是对话框里只有一段说明和「取消」,一个选项都点不到,
-                // 而代码看着完全正常(0.x 上线时就是这样,谁都选不了)。
+                // ★ The description must go via setCustomTitle, not setMessage — AlertDialog's
+                // content panel only fits one thing; when both message and the choice list
+                // are set, the message wins and **the list is not rendered at all**.
+                // The result: the dialog only shows the description and "Cancel", with no
+                // selectable option, while the code looks perfectly fine (this is how it
+                // shipped at 0.x — nobody could select anything).
                 .setCustomTitle(dialogHeader(getString(R.string.settings_privileged), getString(R.string.priv_note_shizuku)))
                 .setSingleChoiceItems(options, Privileged.active) { dlg, w ->
                     dlg.dismiss()
@@ -243,7 +331,8 @@ class SettingsActivity : AppCompatActivity() {
                 .setTitle(R.string.settings_term_font)
                 .setItems(items) { _, w ->
                     if (w == 0) {
-                        // MIME 用 */*:不少文件应用不给 ttf 正确的 MIME,限死会选不到
+                        // MIME uses */*: many file apps don't give ttf the correct MIME, pinning it would
+                        // prevent selection
                         fontPicker.launch(PickerActivity.intent(this, getString(R.string.settings_term_font)))
                     } else {
                         TerminalFont.clear(this)
@@ -262,6 +351,13 @@ class SettingsActivity : AppCompatActivity() {
             )
         }
 
+        section(getString(R.string.settings_section_text))
+        // The subtitle shows "the current order" rather than a feature description:
+        // the description is in the dialog, while the order is the only state for this item.
+        actionRow(getString(R.string.settings_text_charsets), TextCharsetPicker.subtitle(this)) { sub ->
+            TextCharsetPicker.show(this) { sub.text = TextCharsetPicker.subtitle(this) }
+        }
+
         section(getString(R.string.settings_section_player))
         val speeds = intArrayOf(150, 200, 300)
         choiceRow(
@@ -269,6 +365,11 @@ class SettingsActivity : AppCompatActivity() {
             speeds.map { getString(R.string.settings_speed_n, it / 100f) }.toTypedArray(),
             get = { speeds.indexOf((Prefs.longPressSpeed(this) * 100).toInt()).coerceAtLeast(0) },
             set = { Prefs.setLongPressSpeed(this, speeds[it]) },
+        )
+        switchRow(
+            getString(R.string.settings_auto_next), getString(R.string.settings_auto_next_sum),
+            get = { Prefs.autoNextEpisode(this) },
+            set = { Prefs.setAutoNextEpisode(this, it) },
         )
         switchRow(
             getString(R.string.settings_resume_playback),
@@ -299,6 +400,11 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.msg_cache_cleared, Toast.LENGTH_SHORT).show()
         }
 
+        section(getString(R.string.settings_section_about))
+        // The subtitle shows the version directly: this item is probably tapped mostly to
+        // see "which version am I on", so it's best visible without tapping.
+        actionRow(getString(R.string.settings_about), versionLine()) { _ -> showAbout() }
+
         applyEnabled()
     }
 
@@ -315,7 +421,7 @@ class SettingsActivity : AppCompatActivity() {
         if (v is ViewGroup) for (i in 0 until v.childCount) setEnabledDeep(v.getChildAt(i), on)
     }
 
-    // ---- 行构建 ----
+    // ---- Row construction ----
 
     private fun section(title: String) {
         list.addView(
@@ -406,11 +512,12 @@ class SettingsActivity : AppCompatActivity() {
         return row
     }
 
-    // ---- 特权访问(root / Shizuku) ----
+    // ---- Privileged access (root / Shizuku) ----
 
     /**
-     * 标题 + 一段说明,给「既要说明又要给选项」的对话框当自定义标题用。
-     * 手写布局,与本页其余部分一致(不引 preference / 不加 XML)。
+     * Title + a description, used as the custom title for dialogs that need both a
+     * description and a choice list. Hand-written layout, consistent with the rest
+     * of this page (no preference library, no XML).
      */
     private fun dialogHeader(title: String, note: String): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -433,9 +540,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * 状态按**实际拿到的 uid** 说,不按用户选的模式说 —— Shizuku 服务本身既可以由
-     * adb 起(shell,uid 2000)也可以由 root 起(uid 0),同一个「Shizuku」选项在两台
-     * 设备上能力完全不同,写死"以 shell 运行"会骗人。
+     * The status is reported by the **actual uid obtained**, not by the mode the user
+     * picked — the Shizuku service itself can be started by adb (shell, uid 2000)
+     * or by root (uid 0), so the same "Shizuku" option has completely different
+     * capabilities on different devices; hard-coding "runs as shell" would lie.
      */
     private fun privilegedSubtitle(): String = when {
         Privileged.active == Privileged.ROOT -> getString(R.string.priv_state_root)
@@ -447,12 +555,15 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     /**
-     * ★ 授权必须在这里、由用户这一次点击驱动:Android 10+ 挡掉后台启动 Activity,
-     * Magisk 的授权框从后台弹不出来,只会退化成一条通知 —— 表现为"点了没反应"。
+     * ★ Authorisation must happen here, driven by this user action: Android 10+
+     * blocks starting Activities from the background, so Magisk's authorisation
+     * dialog cannot pop up from the background and degrades to a notification —
+     * appearing as "tapped and nothing happened".
      */
     private fun choosePrivileged(mode: Int, sub: TextView) {
-        // 每个分支都留痕:前置检查里退出去的那几条原来只弹个 toast,查问题时
-        // logcat 上一片空白,分不清"用户没点"和"点了但在第一道检查就被挡回来"。
+        // Each branch leaves a trace: the cases that exit in the pre-checks used to only
+        // show a toast, leaving logcat blank when investigating, so we couldn't tell
+        // "user didn't tap" from "tapped but blocked at the first check".
         Log.i(PRIV_TAG, "choose(mode=$mode) ${Privileged.diagnostics(this)}")
         if (mode == Privileged.OFF) {
             Privileged.disable(this)
@@ -479,7 +590,7 @@ class SettingsActivity : AppCompatActivity() {
         connectPrivileged(mode, sub)
     }
 
-    /** Shizuku 的授权结果是异步回来的;监听器用完即摘,免得设置页反复进出叠一堆。 */
+    /** Shizuku's authorisation result comes back asynchronously; remove the listener once used to avoid stacking them across settings page visits. */
     private fun requestShizuku(sub: TextView) {
         val listener = object : Shizuku.OnRequestPermissionResultListener {
             override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
@@ -501,7 +612,7 @@ class SettingsActivity : AppCompatActivity() {
             }
     }
 
-    /** [Privileged.enable] 会一直阻塞到用户在授权框上点完,只能在后台线程跑。 */
+    /** [Privileged.enable] blocks until the user finishes the authorisation dialog, so it must run on a background thread. */
     private fun connectPrivileged(mode: Int, sub: TextView) {
         Toast.makeText(this, R.string.priv_connecting, Toast.LENGTH_SHORT).show()
         Thread {
@@ -514,8 +625,9 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(this, R.string.priv_granted, Toast.LENGTH_SHORT).show()
                     return@runOnUiThread
                 }
-                // 失败走对话框而不是 toast:原因可能有好几行,而这正是用户唯一
-                // 能拿去查/告诉我的线索,一闪而过等于没有。
+                // On failure use a dialog instead of a toast: the cause may span several lines,
+                // and this is the user's only clue to investigate / report to me; a flash
+                // that disappears is no clue at all.
                 AlertDialog.Builder(this)
                     .setTitle(R.string.settings_privileged)
                     .setMessage("$err\n\n$diag")
@@ -523,6 +635,51 @@ class SettingsActivity : AppCompatActivity() {
                     .show()
             }
         }.apply { isDaemon = true }.start()
+    }
+
+    // ---- About ----
+
+    /**
+     * The version comes from PackageManager rather than `BuildConfig` — the latter
+     * requires explicitly enabling `buildFeatures.buildConfig` to generate an entire
+     * class, not worth it for two fields (Connections is the same story).
+     * `versionName` is nullable in the framework signature; when missing, only
+     * versionCode is shown.
+     */
+    private fun versionLine(): String = runCatching {
+        val pi = packageManager.getPackageInfo(packageName, 0)
+        getString(R.string.about_version, pi.versionName ?: "", PackageInfoCompat.getLongVersionCode(pi))
+    }.getOrDefault("")
+
+    /**
+     * About: version + licence + project URL. The URL can be **both opened and copied**
+     * — not every device has a browser installed (the combination of a pure file
+     * manager + TV box is not uncommon), so only offering "open" is a dead end.
+     */
+    private fun showAbout() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_about)
+            .setMessage(getString(R.string.about_body, versionLine(), PROJECT_URL))
+            .setPositiveButton(R.string.about_open) { _, _ -> openProject() }
+            .setNeutralButton(R.string.about_copy) { _, _ -> copyProjectUrl() }
+            .setNegativeButton(R.string.dialog_close, null)
+            .show()
+    }
+
+    private fun openProject() {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_URL))) }
+            .onFailure {
+                // When no app can open the link, don't just say "can't open": first put
+                // the URL into the clipboard so the user still has a next step
+                copyProjectUrl()
+                Toast.makeText(this, R.string.about_no_browser, Toast.LENGTH_LONG).show()
+            }
+    }
+
+    private fun copyProjectUrl() {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("twig", PROJECT_URL))
+        Toast.makeText(this, R.string.info_copied, Toast.LENGTH_SHORT).show()
     }
 
     private fun actionRow(title: String, subtitle: String, onClick: (TextView) -> Unit): View {

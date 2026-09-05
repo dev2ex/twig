@@ -1,28 +1,31 @@
 package com.twig.git
 
 /**
- * .gitignore 匹配(常用子集):`#` 注释、`!` 取反、尾部 `/` 仅目录、
- * 含 `/` 锚定到所在目录、`*`(不跨 `/`)、`**`(跨目录)、`?`、`[...]` 原样透传。
- * 规则链 = 祖先目录的 .gitignore 依次叠加 + .git/info/exclude;后加载的优先(last-match-wins)。
+ * .gitignore matching (a useful subset): `#` comments, `!` negation, trailing `/` for
+ * directory-only, containing `/` anchors to the current directory, `*` (doesn't cross `/`),
+ * `**` (crosses directories), `?`, `[...]` passed through verbatim.
+ * The rule chain = ancestor directories' .gitignore stacked + .git/info/exclude; later
+ * ones win (last-match-wins).
  *
- * 每个 [Ignore] 绑定一个目录:规则里的路径都相对该目录;子目录通过 [forDir] 叠加。
+ * Each [Ignore] is bound to one directory: paths in rules are relative to that
+ * directory; subdirectories stack via [forDir].
  */
 class Ignore private constructor(
     private val parent: Ignore?,
-    /** 该层规则所在目录相对仓库根的前缀(""、"sub/"…)。 */
+    /** Prefix of this layer's directory relative to repo root ("" or "sub/" etc.). */
     private val prefix: String,
     private val rules: List<Rule>,
 ) {
 
     private class Rule(val regex: Regex, val negate: Boolean, val dirOnly: Boolean)
 
-    /** [rel] 为相对仓库根的路径(不带尾 '/')。 */
+    /** [rel] is the path relative to the repo root (no trailing '/'). */
     fun matches(rel: String, isDir: Boolean): Boolean {
         var decided: Boolean? = null
-        // 自身这层规则:相对本层目录
+        // this layer's rules: relative to this layer's directory
         if (rel.startsWith(prefix)) {
             val local = rel.substring(prefix.length)
-            for (r in rules) { // last-match-wins:顺序扫,后者覆盖
+            for (r in rules) { // last-match-wins: scan in order, latter ones override
                 if (r.dirOnly && !isDir) continue
                 if (r.regex.matches(local)) decided = !r.negate
             }
@@ -33,8 +36,10 @@ class Ignore private constructor(
 
     companion object {
         /**
-         * 为仓库内目录 [relDir](相对工作区根,"" 为根)构造匹配链:
-         * 父链 [parent] + 该目录的 .gitignore;根层(parent=null)额外加载 .git/info/exclude。
+         * Builds a matching chain for the repo-internal directory [relDir] (relative to
+         * the worktree root, "" for the root): the parent chain [parent] + that
+         * directory's .gitignore; the root layer (parent=null) additionally loads
+         * .git/info/exclude.
          */
         fun forDir(metaFs: GitFs, workFs: GitFs, relDir: String, parent: Ignore?): Ignore {
             val rules = ArrayList<Rule>()
@@ -63,7 +68,7 @@ class Ignore private constructor(
             }
         }
 
-        /** gitignore glob → 正则;非锚定模式可匹配任意层级下的名字。 */
+        /** gitignore glob → regex; non-anchored patterns can match a name at any depth. */
         private fun toRegex(pat: String, anchored: Boolean): Regex? = runCatching {
             val sb = StringBuilder()
             if (!anchored) sb.append("(?:.*/)?")
@@ -72,14 +77,14 @@ class Ignore private constructor(
                 when (val c = pat[i]) {
                     '*' -> {
                         if (i + 1 < pat.length && pat[i + 1] == '*') {
-                            // "**" 跨目录;"**/" 或 "/**" 的斜杠一并吸收
+                            // "**" crosses directories; absorb the slash for "**/" or "/**"
                             sb.append(".*")
                             i++
                             if (i + 1 < pat.length && pat[i + 1] == '/') i++
                         } else sb.append("[^/]*")
                     }
                     '?' -> sb.append("[^/]")
-                    '[' -> { // 字符组原样透传到 ]
+                    '[' -> { // character class passed through verbatim until ]
                         val end = pat.indexOf(']', i + 1)
                         if (end < 0) { sb.append("\\["); } else {
                             sb.append(pat, i, end + 1); i = end
@@ -90,7 +95,7 @@ class Ignore private constructor(
                 }
                 i++
             }
-            // 目录匹配后其内部全部命中(gitignore 语义:忽略目录即忽略整棵)
+            // matching a directory means everything inside also matches (gitignore semantics: ignore a directory = ignore its whole tree)
             sb.append("(?:/.*)?")
             Regex(sb.toString())
         }.getOrNull()

@@ -30,7 +30,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Git 仓库查看:更改(staged/unstaged/untracked)与提交历史,只读。 */
+/** Git repository viewer: changes (staged / unstaged / untracked) and commit history, read-only. */
 class GitActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityGitBinding
@@ -39,7 +39,7 @@ class GitActivity : AppCompatActivity() {
     private val commits = ArrayList<GitCommit>()
     private var historyEnd = false
     private var loadingMore = false
-    private var tab = 0 // 0=更改 1=历史
+    private var tab = 0 // 0=changes 1=history
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +56,7 @@ class GitActivity : AppCompatActivity() {
         b.list.adapter = adapter
         b.tabChanges.setOnClickListener { switchTab(0) }
         b.tabHistory.setOnClickListener { switchTab(1) }
-        // 历史滚到底自动加载下一页
+        // Auto-load the next page when the history scrolls to the bottom
         b.list.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
                 if (tab != 1 || dy <= 0 || historyEnd || loadingMore) return
@@ -166,11 +166,11 @@ class GitActivity : AppCompatActivity() {
         if (r != null) Thread { runCatching { r.close() } }.start()
     }
 
-    // ---- 列表 ----
+    // ---- list ----
 
     private sealed interface Row {
         class Header(val text: String) : Row
-        class Change(val path: String, val kind: ChangeKind?) : Row // kind=null → 未跟踪
+        class Change(val path: String, val kind: ChangeKind?) : Row // kind=null → untracked
         class Commit(val c: GitCommit) : Row
     }
 

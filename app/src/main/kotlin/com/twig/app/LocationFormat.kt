@@ -1,10 +1,12 @@
 package com.twig.app
 
 /**
- * 网络位置的显示格式:`类型:/服务器/路径`(如 `smb:/pi/docs/photos`),与路径栏/最近位置
- * ([com.twig.app.ui.PaneFragment] 的 `historyLabel`)同一写法,服务器部分用别名([SavedConnection.shortLabel]
- * 优先自定义名)。[connLabel] 为空(本地)时直接是绝对路径。[conn] 为 null 表示对应连接
- * 已被删除,退回冻结的 connLabel 头部,至少还认得出来。
+ * Display format for a network location: `type:/server/path` (e.g. `smb:/pi/docs/photos`),
+ * same as the path bar / recent locations ([com.twig.app.ui.PaneFragment]'s `historyLabel`).
+ * The server portion uses the alias ([SavedConnection.shortLabel], custom name preferred).
+ * When [connLabel] is empty (local), returns the absolute path directly. When [conn] is null
+ * the corresponding connection has been deleted — fall back to the frozen connLabel prefix,
+ * at least it's still recognisable.
  */
 fun formatLocationPath(connLabel: String, path: String, conn: SavedConnection?): String {
     if (connLabel.isEmpty()) return path
@@ -14,9 +16,10 @@ fun formatLocationPath(connLabel: String, path: String, conn: SavedConnection?):
 }
 
 /**
- * 同 [formatLocationPath],但服务器部分不认自定义别名,永远给真实地址
- * ([SavedConnection.rawShortLabel])——收藏行下方的"路径"与对比收藏的"显示两个目录的
- * 路径"用它:路径要能直接定位,别名放名称那边就够了。
+ * Same as [formatLocationPath], but the server portion never honours custom aliases and
+ * always gives the real address ([SavedConnection.rawShortLabel]) — used for the "path"
+ * beneath a favourite row and for "show the two directories' paths" in saved comparisons:
+ * a path needs to be directly locatable, and the alias belongs on the name side.
  */
 fun formatRawLocationPath(connLabel: String, path: String, conn: SavedConnection?): String {
     if (connLabel.isEmpty()) return path
@@ -26,11 +29,17 @@ fun formatRawLocationPath(connLabel: String, path: String, conn: SavedConnection
 }
 
 /**
- * 收藏行的"名称"——与重命名功能加入前完全一致的老格式(连接别名:条目名)。
- * [conn] 是收藏所在连接当前的已保存配置,取实时别名而不是收藏创建时冻结的旧名。
+ * Favourite row's "name" — the same old format as before the rename feature existed
+ * (connection alias:entry name). [conn] is the favourite's connection's current saved
+ * config, so we use the live alias rather than the name frozen at creation time.
  */
 fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?): String {
-    val itemName = fav.path.trimEnd('/').substringAfterLast('/').ifEmpty { fav.path }
+    // ★ Slicing the last segment of path only works for sources whose path is "just a path";
+    // SAF's path is an entire document URI, so slicing yields something like
+    // `primary%3ADCIM%2FPhotos`, which is why the name is stored alongside when favouriting.
+    val itemName = fav.pathName.ifEmpty {
+        fav.path.trimEnd('/').substringAfterLast('/').ifEmpty { fav.path }
+    }
     return when (fav.kind) {
         "conn" -> "${conn?.displayLabel() ?: fav.connLabel}:$itemName"
         "restic" -> if (fav.repoConnLabel.isEmpty()) {
@@ -42,12 +51,43 @@ fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?): String {
     }
 }
 
-/** 收藏行实际展示的名称:重命名过就用自定义名,否则用 [defaultFavoriteName]。 */
+/** The name actually shown on a favourite row: the custom name if any, otherwise [defaultFavoriteName]. */
 fun favoriteDisplayName(fav: Favorite, conn: SavedConnection?): String =
     fav.customLabel.ifEmpty { defaultFavoriteName(fav, conn) }
 
-/** 收藏行下方的完整路径(不用别名,本地/网络都给能直接定位的完整地址)。 */
+/** Full path shown under a favourite row (no alias; local / network both give the directly locatable full address). */
 fun favoriteFullPath(fav: Favorite, conn: SavedConnection?): String = when (fav.kind) {
     "restic" -> "restic:" + formatRawLocationPath(fav.repoConnLabel, fav.path, conn)
+    "saf" -> "saf:" + safReadablePath(fav.path)
     else -> formatRawLocationPath(fav.connLabel, fav.path, conn)
+}
+
+/**
+ * The human-readable half of a document URI: the document id after `/document/`, decoded
+ * to something like `primary:DCIM/Photos`. Laying out the entire URI under a favourite
+ * row is long and information-free, while the document id precisely names "which card,
+ * which directory". Falls back to the URI as-is when the shape isn't recognised
+ * (third-party providers' custom ids).
+ *
+ * ★ Don't use `URLDecoder`: it decodes `+` to space (that's form encoding's rule, see
+ * the S3 lesson), but in document ids `+` is a literal plus sign, so directories whose
+ * name contains '+' would get corrupted.
+ */
+internal fun safReadablePath(uri: String): String =
+    percentDecode(uri.substringAfterLast("/document/", "").ifEmpty { uri })
+
+/** Decode only `%XX` (UTF-8 byte grouping), leave `+` alone. */
+private fun percentDecode(s: String): String {
+    if ('%' !in s) return s
+    val out = java.io.ByteArrayOutputStream(s.length)
+    var i = 0
+    while (i < s.length) {
+        val hex = if (s[i] == '%' && i + 3 <= s.length) s.substring(i + 1, i + 3).toIntOrNull(16) else null
+        if (hex != null) {
+            out.write(hex); i += 3
+        } else {
+            out.write(s[i].toString().toByteArray(Charsets.UTF_8)); i++
+        }
+    }
+    return out.toString(Charsets.UTF_8.name())
 }

@@ -21,15 +21,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 图片左右对比:两张图并排,缩放/平移联动。
+ * Side-by-side image comparison: two images placed side by side, with linked zoom / pan.
  *
- * 解码走 [decodeImage] + [decodeRegion](与图片查看器同一套),所以放大后照样按区域重解
- * 高清块——"放大比细节"正是这个页面的主要用途,糊着就没意义了。
+ * Decoding goes through [decodeImage] + [decodeRegion] (the same set as the image viewer), so zooming in
+ * still re-decodes a hi-res region — "zoom in to compare details" is the primary use of this page; being
+ * blurry defeats the purpose.
  *
- * 同步用的是**归一化图片坐标**([ZoomableImageView.viewport]):两张尺寸不同的图
- * (同一张照片改过分辨率是最常见的情形)也要能对齐同一块内容,按视图像素位移同步会立刻错位。
+ * Synchronisation uses **normalised image coordinates** ([ZoomableImageView.viewport]): even images of different
+ * sizes (the most common case being the same photo re-saved at a different resolution) have to align the same
+ * region of content; syncing by viewport pixel offsets would immediately skew.
  *
- * 竖屏上下并排而不是左右:横向手势整条留给图片平移,不与"切换侧"抢;半屏宽的照片也根本看不清。
+ * In portrait we stack top and bottom rather than side by side: the horizontal gesture stays free for image
+ * panning, without competing with "switch sides"; half-screen-wide photos would also be unreadable.
  */
 class ImageCompareActivity : AppCompatActivity() {
 
@@ -40,7 +43,7 @@ class ImageCompareActivity : AppCompatActivity() {
     private var decB: Decoded? = null
     private var sync = true
     private var itemSync: MenuItem? = null
-    // ★ 两侧各一个 token:共用一个的话,B 发起高清块请求会把 A 刚要回填的那块判成过期
+    // ★ One token per side: with a shared one, a hi-res chunk request from B would mark the chunk A is about to fill in as stale
     private var tokenA = 0
     private var tokenB = 0
 
@@ -48,6 +51,7 @@ class ImageCompareActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         b = ActivityImageCompareBinding.inflate(layoutInflater)
         setContentView(b.root)
+        NavBarTint.apply(this, android.graphics.Color.BLACK) // both sides of this page are pure-black image-viewing areas
 
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         b.toolbar.title = title
@@ -63,8 +67,8 @@ class ImageCompareActivity : AppCompatActivity() {
         fileA = a
         fileB = c
 
-        // 默认按原图真实像素显示,超过容器才缩到放得下——对比时最想看的是"这一张
-        // 本身多大/多清楚",FIT 会把小图拉大、看着跟大图一样清楚,反而误导
+        // Default to displaying at the original image's true pixels, only shrinking once it overflows the container — when comparing,
+// what you most want to see is "how big / how sharp this one really is"; FIT would upscale small images so they look just as clear as large ones, which is misleading
         b.imageA.initialMode = ZoomableImageView.MODE_FIT_ACTUAL
         b.imageB.initialMode = ZoomableImageView.MODE_FIT_ACTUAL
         wireView(b.imageA, b.imageB) { decA }
@@ -82,7 +86,7 @@ class ImageCompareActivity : AppCompatActivity() {
         )
     }
 
-    /** 两侧共用的接线:视口变化推给对侧,放大时按区域重解高清块。 */
+    /** Shared wiring for both sides: viewport changes push to the other side; on zoom in, re-decode a hi-res region. */
     private fun wireView(self: ZoomableImageView, other: ZoomableImageView, dec: () -> Decoded?) {
         self.onViewport = {
             if (sync) self.viewport()?.let { other.applyViewport(it) }
@@ -108,14 +112,14 @@ class ImageCompareActivity : AppCompatActivity() {
         }
     }
 
-    /** 一侧的信息条:`左 · 1920×1080 · 2.3 MB · 时间`;解不出来就直说,别留一片黑让人猜。 */
+    /** One side's info bar: `left · 1920×1080 · 2.3 MB · time`; if it can't be decoded, say so — don't leave a black square for the user to guess. */
     private fun sideInfo(side: String, f: XFile, d: Decoded?): String {
         val dim = if (d == null) getString(R.string.img_cmp_undecodable)
         else "${(d.bmp.width * d.actual).toInt()}×${(d.bmp.height * d.actual).toInt()}"
         return "$side · $dim · ${Format.size(f.size)} · ${Format.time(f.lastModified)}"
     }
 
-    /** 副标题只说结论:尺寸一不一样、哪边像素多——并排看时最先想知道的就是这个。 */
+    /** The subtitle states only the conclusion: whether the sizes match, which side has more pixels — that's the first thing you want to know when looking at them side by side. */
     private fun summary(da: Decoded?, db: Decoded?): String {
         if (da == null || db == null) return ""
         val pa = (da.bmp.width * da.actual).toLong() * (da.bmp.height * da.actual).toLong()
@@ -128,13 +132,13 @@ class ImageCompareActivity : AppCompatActivity() {
     }
 
     private fun loadHiRes(view: ZoomableImageView, d: Decoded?, rect: RectF, scale: Float, isA: Boolean) {
-        if (d == null || d.actual <= 1f) return // 原图就没有更多像素可挖
+        if (d == null || d.actual <= 1f) return // original has no more pixels to dig out
         val vw = view.width.coerceAtLeast(1)
         val vh = view.height.coerceAtLeast(1)
         val token = if (isA) ++tokenA else ++tokenB
         lifecycleScope.launch {
             val bmp = runCatching {
-                // 显示位图已经烧进了 EXIF 旋转,这里不再做 autoFit,总旋转就是 exifRot
+                // The display bitmap already has EXIF rotation baked in; we don't apply autoFit here, total rotation is exifRot
                 withContext(Dispatchers.IO) { decodeRegion(d, d.exifRot, rect, scale, vw, vh) }
             }.getOrNull()
             if (token != (if (isA) tokenA else tokenB) || bmp == null) return@launch
@@ -154,7 +158,7 @@ class ImageCompareActivity : AppCompatActivity() {
             setOnMenuItemClickListener {
                 sync = !sync
                 it.isChecked = sync
-                // 重新对上:关掉再打开时,两侧应当立刻回到同一视口
+                // Re-align: when toggled off and on, both sides should immediately return to the same viewport
                 if (sync) b.imageA.viewport()?.let { v -> b.imageB.applyViewport(v) }
                 true
             }
@@ -169,7 +173,7 @@ class ImageCompareActivity : AppCompatActivity() {
     private fun applyOrientation() {
         val land = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         b.panes.orientation = if (land) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-        // 两侧在主轴上各占一半:横屏是宽,竖屏是高
+        // Both sides each take half of the main axis: width in landscape, height in portrait
         for (side in listOf(b.sideA, b.sideB)) {
             side.layoutParams = LinearLayout.LayoutParams(
                 if (land) 0 else LinearLayout.LayoutParams.MATCH_PARENT,

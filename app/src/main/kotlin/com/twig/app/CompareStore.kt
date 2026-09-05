@@ -8,13 +8,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 一条保存下来的对比(左右两侧 + 判定选项 + 排除规则)。
+ * A saved comparison (left/right sides + judgement options + exclusion rules).
  *
- * 两侧沿用 [Favorite] 那套"存如何到达、不存动态 scheme"的编码——同一个道理:
- * 网络来源的 scheme 是每次会话现分配的,跨启动直接存 scheme 必然对不上。
+ * Both sides reuse the [Favorite] scheme of "store how to reach it, not the dynamic
+ * scheme" — same reasoning: network sources get their scheme assigned per session, so
+ * storing the scheme directly across launches would never match.
  *
- * **不与 [FavoritesStore] 合流**:普通收藏是单个目录、在树上还有个「收藏」顶级节点,
- * 对比是二元组且只在对比页里有意义,混进去只会污染那棵树。
+ * **Not merged with [FavoritesStore]**: regular favorites are single directories with
+ * a "Favorites" top-level node in the tree, whereas a comparison is a pair and only
+ * makes sense inside the comparison page; merging them would only pollute that tree.
  */
 data class CompareSession(
     val label: String,
@@ -46,6 +48,7 @@ data class CompareSession(
             put("cLocal", o.contentLimitLocal)
             put("cNet", o.contentLimitNetwork)
             put("cTime", o.contentOnlyIfTimeDiffers)
+            put("inc", o.incrementalSync)
             put("ex", JSONArray().apply { o.excludes.forEach { put(it) } })
         }
 
@@ -60,13 +63,14 @@ data class CompareSession(
                 contentLimitLocal = o.optLong("cLocal", d.contentLimitLocal),
                 contentLimitNetwork = o.optLong("cNet", d.contentLimitNetwork),
                 contentOnlyIfTimeDiffers = o.optBoolean("cTime", d.contentOnlyIfTimeDiffers),
+                incrementalSync = o.optBoolean("inc", d.incrementalSync),
                 excludes = if (ex == null) emptyList() else (0 until ex.length()).map { ex.getString(it) },
             )
         }
     }
 }
 
-/** 对比收藏的持久化(SharedPreferences + JSON),与 [FavoritesStore] 同一套路。 */
+/** Persistence for saved comparisons (SharedPreferences + JSON), same pattern as [FavoritesStore]. */
 object CompareStore {
     private const val FILE = "twig_compares"
     private const val KEY = "list"
@@ -85,9 +89,13 @@ object CompareStore {
 
     fun remove(ctx: Context, s: CompareSession) = persist(ctx, all(ctx).filter { it.id != s.id })
 
-    /** 重命名(对比收藏的 label 本身就是用户看到的显示名,直接覆盖)。 */
+    /** Rename (the saved comparison's label is itself the user-visible display name, so just overwrite). */
     fun rename(ctx: Context, s: CompareSession, newLabel: String) =
         persist(ctx, all(ctx).map { if (it.id == s.id) it.copy(label = newLabel) else it })
+
+    /** Only change judgement / sync options (used when toggling the incremental switch in the sync confirmation dialog); leave label and side positions alone. */
+    fun updateOptions(ctx: Context, s: CompareSession, o: CompareOptions) =
+        persist(ctx, all(ctx).map { if (it.id == s.id) it.copy(options = o) else it })
 
     private fun persist(ctx: Context, list: List<CompareSession>) {
         val arr = JSONArray()
@@ -97,14 +105,25 @@ object CompareStore {
 }
 
 /**
- * 把一侧的"如何到达"还原成真实 [XFile]:本地直接拼,网络来源先 [Connections.ensure]
- * 建连(密码等都在 [ConnectionStore] 里,不用再问用户)。
+ * Restore one side's "how to reach it" into a real [XFile]: local paths are assembled
+ * directly, network sources go through [Connections.ensure] first to establish the
+ * connection (passwords are all in [ConnectionStore], no prompt needed).
  *
- * restic 不支持——它还要仓库密码,而密码不落盘,保存会话时就已经挡在外面了。
- * **会连网**,调用方必须放后台线程。
+ * restic is not supported — it also needs a repository password, which is not stored,
+ * so saving the session already blocks that path. Same for archives (mount points are
+ * session-temporary).
+ * **Makes network calls**, the caller must run it on a background thread.
  */
 fun resolveCompareSide(ctx: Context, fav: Favorite): XFile? = when (fav.kind) {
     "local" -> XFile("file", fav.path, isDir = true)
+    // SAF: the grant is persistent and the document URI is valid across launches
+    // (same as the saf branch for regular favorites). ★ Must bring back the name —
+    // it's not in path — the path bar (Format.pathLabel) shows saf entries' name.
+    // Don't go through FsRegistry.of().resolve(): SafFileSystem's implementation drops displayName.
+    "saf" -> XFile(
+        SafFileSystem.SCHEME, fav.path, isDir = true,
+        displayName = fav.pathName.ifEmpty { null },
+    )
     "conn" -> {
         val conn = Connections.find(ctx, fav.connLabel)
         if (conn == null) null else runCatching {
@@ -116,11 +135,15 @@ fun resolveCompareSide(ctx: Context, fav: Favorite): XFile? = when (fav.kind) {
 }
 
 /**
- * 由当前 [XFile] 反推"如何到达"。与 `PaneViewModel.favoriteFrom` 同一意图,但这里不依赖
- * VM 的会话内映射表,靠 [Connections.ofScheme] 反查——对比页是独立 Activity,拿不到那张表。
+ * Reverse-derive "how to reach it" from the current [XFile]. Same intent as
+ * `PaneViewModel.favoriteFrom`, but here we don't depend on the VM's in-session map;
+ * we look up via [Connections.ofScheme] — the comparison page is a separate Activity
+ * and cannot access that map.
  */
 fun compareSideOf(file: XFile): Favorite? = when {
     file.scheme == "file" -> Favorite(label = file.name, kind = "local", path = file.path)
+    file.scheme == SafFileSystem.SCHEME ->
+        Favorite(label = file.name, kind = "saf", path = file.path, pathName = file.name)
     else -> Connections.ofScheme(file.scheme)?.let {
         Favorite(label = "${it.displayLabel()}:${file.name}", kind = "conn", path = file.path, connLabel = it.label())
     }

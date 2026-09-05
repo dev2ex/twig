@@ -13,7 +13,7 @@ android {
         minSdk = 24
 
         ndk {
-            // 体积优先:仅打 64 位主流 ABI;需更广覆盖再加 armeabi-v7a/x86
+            // Size-first: only 64-bit mainstream ABIs; add armeabi-v7a/x86 if broader coverage is needed
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
         externalNativeBuild {

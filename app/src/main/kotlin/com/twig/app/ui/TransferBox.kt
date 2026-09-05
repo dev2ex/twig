@@ -12,18 +12,24 @@ import com.twig.core.CopyEngine
 import com.twig.core.XFile
 
 /**
- * 复制/移动/压缩共用的进度框:当前文件 + 两条进度条 + 剩余目录/文件数 + 速度/ETA。
+ * Progress dialog shared by copy/move/compress: current file + two progress bars +
+ * remaining directories/files count + speed/ETA.
  *
- * **只是 [Transfers] 会话的观察者**,不持有任务本身:关掉(「转到后台」/ 界面销毁)只是
- * 摘掉观察,搬运由前台服务接着跑;点通知栏回来再挂上,照会话里的快照一次性填满,
- * 不必等下一次回调。
+ * **Just an observer of a [Transfers] session**, not the owner of the job: closing it
+ * ("Run in background" / the screen is destroyed) only removes the observer, the
+ * transport continues via the foreground service; tapping the notification brings
+ * it back and reattaches, refilling from the session snapshot in one go, no need to
+ * wait for the next callback.
  *
- * 从 `PaneFragment` 里提出来是因为目录对比页也要复制/同步——同一个会话机制、同一套
- * 进度与冲突交互,没有理由写第二份。宿主差异都收在这几个回调里:
- * @param alive 宿主界面还在不在(Fragment 的 view 可能先于会话销毁)
- * @param onBackground 「转到后台」按下,宿主去要通知权限并提示
- * @param onDetach 框摘掉了,宿主清掉自己那份引用
- * @param onFinished 传输结束(宿主刷新列表、提示结果)
+ * Pulled out of `PaneFragment` because the directory-compare page also needs to
+ * copy/sync — same session mechanism, same progress/conflict interactions, no
+ * reason to write a second one. Host differences are funnelled through these callbacks:
+ * @param alive whether the host UI is still alive (a Fragment's view can be destroyed
+ *   before its session)
+ * @param onBackground "Run in background" pressed; the host asks for notification
+ *   permission and shows the persistent notification
+ * @param onDetach dialog got unhooked; the host clears its own reference
+ * @param onFinished transfer is done (host refreshes the list, surfaces the result)
  */
 class TransferBox(
     private val ctx: Context,
@@ -36,7 +42,7 @@ class TransferBox(
 ) : Transfers.Ui {
 
     private val pb = DialogCopyProgressBinding.inflate(inflater)
-    // 自定义标题:「转到后台」要的位置就是标题这一行的右端
+    // Custom title: "Run in background" needs to sit at the right end of this title row.
     private val tb = DialogProgressTitleBinding.inflate(inflater)
     private val dialog = AlertDialog.Builder(ctx)
         .setCustomTitle(tb.root)
@@ -54,10 +60,10 @@ class TransferBox(
             onBackground()
         }
         dialog.show()
-        Transfers.attach(this) // 挂上即回灌一次进度(含等待中的冲突框)
+        Transfers.attach(this) // On attach, re-fill progress once (including any conflict dialog already waiting).
     }
 
-    /** 摘掉观察并关框(任务不受影响)。 */
+    /** Detach the observer and dismiss the dialog (the task itself is unaffected). */
     fun detach() {
         if (Transfers.ui === this) Transfers.attach(null)
         onDetach()
@@ -96,7 +102,7 @@ class TransferBox(
     }
 }
 
-/** 同名冲突弹框:覆盖/跳过/重命名 + 全部同样处理;取消则中止任务。 */
+/** Same-name conflict dialog: overwrite / skip / rename + apply to all; cancel aborts the transfer. */
 fun showConflictDialog(
     ctx: Context,
     inflater: LayoutInflater,
@@ -125,7 +131,7 @@ fun showConflictDialog(
         .show()
 }
 
-/** 剩余时间:-mm:ss / -h:mm:ss。 */
+/** Remaining time: -mm:ss / -h:mm:ss. */
 private fun formatEta(seconds: Double): String {
     val t = seconds.toLong().coerceAtLeast(0)
     val h = t / 3600

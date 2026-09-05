@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  一行 = 偏移 + hex + 分割线 + 字符。三列都是等宽字体,且每行字节数固定(由 Activity
-  按面板宽度算好),所以各列宽度自然对齐,不需要横向滚动。hex 列 weight=1 把富余空间
-  吃掉,于是**字符这一列整体被顶到行末**(右对齐);列内的字符本身仍是 gravity=start
-  左对齐——末行字节不满时,字符要跟上一行对得上,不能靠右挤。
+  One row = offset + hex + divider + chars. All three columns use a monospace font, and the byte count per row is fixed (computed by the Activity
+  from the pane width), so the columns line up naturally with no horizontal scrolling. The hex column has weight=1 to absorb the slack,
+  so **the chars column as a whole is pushed to the end of the row** (right-aligned); within the column the chars themselves are still gravity=start
+  left-aligned — on the last row when bytes don't fill the line, the chars must line up with the previous row and cannot be squeezed right.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
-    android:paddingStart="8dp"
-    android:paddingEnd="30dp">
+    android:paddingStart="@dimen/hex_row_pad_start"
+    android:paddingEnd="@dimen/hex_row_pad_end">
 
     <TextView
         android:id="@+id/off"
@@ -30,7 +30,7 @@
         android:includeFontPadding="false"
         android:maxLines="1" />
 
-    <!-- hex 与字符两列之间的分割线;颜色跟主题走,在 bindRow 里上 -->
+    <!-- Divider between the hex and chars columns; color follows the theme, applied in bindRow -->
     <View
         android:id="@+id/divider"
         android:layout_width="1dp"

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 一段细条从左掠到右,途中先抻长再收窄:和系统 indeterminate 一个观感,不是"填满进度" -->
+<!-- A thin bar sweeps from left to right, stretching out then narrowing along the way — same feel as the system indeterminate progress, not a "filling" bar -->
 <set xmlns:android="http://schemas.android.com/apk/res/android">
     <objectAnimator
         android:propertyName="translateX"

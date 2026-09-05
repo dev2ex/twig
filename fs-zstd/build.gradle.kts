@@ -33,5 +33,5 @@ android {
 }
 
 dependencies {
-    implementation(project(":fs-restic")) // 实现其 Zstd 接口
+    implementation(project(":fs-restic")) // implements its Zstd interface
 }

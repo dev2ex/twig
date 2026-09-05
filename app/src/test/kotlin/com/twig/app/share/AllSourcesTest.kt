@@ -23,11 +23,18 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 「所有来源」模式。
+ * The "all sources" mode.
  *
- * 第一版这个模式**一条测试都没有**(全部用例都跑在「指定目录」上),于是三个错误假设
- * 一路带到了真机:`root()` 会抛的来源被当成可浏览的根、路径不透明的来源按"父路径 + 名字"
- * 寻址、href 用解码后的路径拼编码后的名字。这里就是补上那一课。
+ * The first version of this mode had **not a single test** (every case ran against a
+ * "specified directory"), so three wrong assumptions rode all the way to a real device:
+ * a source whose `root()` throws was treated as a browsable root, a source with opaque
+ * paths was addressed by "parent path + name", and an href concatenated a decoded path
+ * with an encoded name. This file makes up for that lesson.
+ *
+ * Note: the literal Chinese strings below (`用户`, `微信 8.0.1.apk`) are deliberately
+ * left untranslated — they are fixture data for the "opaque path, non-ASCII display
+ * name" tests, which specifically verify that a non-ASCII display name resolves and
+ * round-trips correctly through the URL path.
  */
 @RunWith(RobolectricTestRunner::class)
 class AllSourcesTest {
@@ -58,57 +65,59 @@ class AllSourcesTest {
 
     private fun root() = ShareRoot(app, ShareScope.AllSources)
 
-    // ---- 来源过滤 ----
+    // ---- Source filtering ----
 
     /**
-     * `root()` 抛异常的来源不该出现在列表里。真机上就是那四个点进去必然报错的条目:
-     * Archive / 7z archive / RAR archive / Share。
+     * A source whose `root()` throws must not show up in the listing. On a real device
+     * these were exactly the four entries that always error out on tap: Archive / 7z
+     * archive / RAR archive / Share.
      */
     @Test
-    fun `没有可浏览根的来源不列出来`() {
+    fun `a source with no browsable root is not listed`() {
         register(NoRootFs("zipish", "Archive"))
         register(NoRootFs("shareish", "Share"))
         val segs = root().sources().map { it.segment }
-        assertFalse("Archive 不该出现", segs.contains("zipish"))
-        assertFalse("Share 不该出现", segs.contains("shareish"))
+        assertFalse("Archive must not appear", segs.contains("zipish"))
+        assertFalse("Share must not appear", segs.contains("shareish"))
     }
 
     @Test
-    fun `本地存储拆成内部存储与根目录两项`() {
+    fun `local storage splits into internal storage and root directory entries`() {
         val segs = root().sources().map { it.segment }
         assertTrue(segs.contains("storage"))
         assertTrue(segs.contains("root"))
-        // 不该再有一个裸的 file 来源(那个根是 "/",用户看到的全是系统目录)
+        // there should not also be a bare "file" source (its root is "/", which shows the user nothing but system directories)
         assertFalse(segs.contains("file"))
     }
 
     @Test
-    fun `有根的来源照常列出`() {
+    fun `a source that has a root is listed as usual`() {
         register(FakeTreeFs())
         val s = root().sources().firstOrNull { it.segment == FakeTreeFs.SCHEME }
         assertNotNull(s)
         assertEquals("Fake", s!!.label)
     }
 
-    // ---- 不透明路径 ----
+    // ---- Opaque paths ----
 
     /**
-     * 「应用」那种 path 是包名、name 是 `微信 8.0.x.apk` 的来源:URL 里只可能出现
-     * 显示名,按"父路径 + 名字"拼回去 resolve 必然失败,只有逐级按名字找才能拿到
-     * 真正的 XFile(path 仍是包名)。
+     * A source like "Apps" whose path is a package name and whose name is
+     * `WeChat 8.0.x.apk`: only the display name can ever appear in a URL, so resolving by
+     * gluing "parent path + name" back together must fail — only walking level by level
+     * by name can retrieve the real XFile (whose path remains the package name).
      */
     @Test
-    fun `路径不透明的来源能按显示名定位`() {
+    fun `a source with an opaque path can be located by display name`() {
         register(FakeTreeFs())
         val f = root().resolve("/${FakeTreeFs.SCHEME}/用户/微信 8.0.1.apk")
-        assertNotNull("按显示名应能找到", f)
-        assertEquals("拿到的必须是真实的不透明 path", "/user/com.tencent.mm", f!!.path)
+        assertNotNull("it should be findable by display name", f)
+        assertEquals("what comes back must be the real opaque path", "/user/com.tencent.mm", f!!.path)
         assertFalse(f.isDir)
         assertEquals(1234L, f.size)
     }
 
     @Test
-    fun `不透明来源的目录也能进`() {
+    fun `a directory of an opaque source can be entered too`() {
         register(FakeTreeFs())
         val d = root().resolve("/${FakeTreeFs.SCHEME}/用户")
         assertNotNull(d)
@@ -117,16 +126,16 @@ class AllSourcesTest {
     }
 
     @Test
-    fun `名字对不上时返回 null 而不是造一个假条目`() {
+    fun `a mismatched name returns null instead of fabricating a fake entry`() {
         register(FakeTreeFs())
         assertNull(root().resolve("/${FakeTreeFs.SCHEME}/用户/com.tencent.mm"))
         assertNull(root().resolve("/${FakeTreeFs.SCHEME}/不存在"))
     }
 
-    // ---- 本地来源 ----
+    // ---- Local sources ----
 
     @Test
-    fun `内部存储来源解析到外部存储目录`() {
+    fun `the internal storage source resolves to the external storage directory`() {
         val src = root().sources().first { it.segment == "storage" }
         val f = root().resolve("/storage")
         assertNotNull(f)
@@ -135,33 +144,33 @@ class AllSourcesTest {
     }
 
     @Test
-    fun `根目录来源能往下走`() {
+    fun `the root directory source can walk further down`() {
         val tmp = File(System.getProperty("java.io.tmpdir")).absolutePath
         val segs = tmp.trim('/').split('/')
         val f = root().resolve("/root/" + segs.joinToString("/"))
-        assertNotNull("应能沿真实目录一路走下去", f)
+        assertNotNull("it should be able to walk all the way down the real directory", f)
         assertTrue(f!!.isDir)
     }
 
     @Test
-    fun `未知来源段返回 null`() {
+    fun `an unknown source segment returns null`() {
         assertNull(root().resolve("/nope/whatever"))
     }
 
     @Test
-    fun `路径穿越在所有来源模式下同样被拒`() {
+    fun `path traversal is rejected the same way under all-sources mode`() {
         assertNull(root().resolve("/storage/../../etc/passwd"))
     }
 
     @Test
-    fun `虚拟根没有 XFile`() {
+    fun `the virtual root has no XFile`() {
         assertTrue(root().isVirtualRoot("/"))
         assertNull(root().resolve("/"))
     }
 
-    // ---- 桩 ----
+    // ---- Stubs ----
 
-    /** `root()` 抛异常:压缩包/SAF/share 那一类"必须先挂载"的来源。 */
+    /** `root()` throws: the class of sources that "must be mounted first", like archives/SAF/share. */
     private class NoRootFs(override val scheme: String, override val displayName: String) : FileSystem {
         override fun root(): XFile = throw FsException("must be mounted first")
         override fun resolve(path: String): XFile = throw FsException("no")
@@ -175,8 +184,9 @@ class AllSourcesTest {
     }
 
     /**
-     * path 与显示名彻底脱钩的只读来源,照着 `AppsFileSystem` 的形状造:
-     * `/user` 目录里放一个 path 为包名、name 为 `微信 8.0.1.apk` 的条目。
+     * A read-only source whose path is completely decoupled from its display name, built
+     * in the shape of `AppsFileSystem`: the `/user` directory holds one entry whose path
+     * is a package name and whose name is `微信 8.0.1.apk` ("WeChat 8.0.1.apk").
      */
     private class FakeTreeFs : FileSystem {
         override val scheme: String = SCHEME
@@ -187,7 +197,7 @@ class AllSourcesTest {
         override fun resolve(path: String): XFile = when (path.trim('/')) {
             "" -> root()
             "user" -> XFile(SCHEME, "/user", isDir = true, displayName = "用户")
-            else -> throw FsException("no such path: $path") // ★ 拼路径这条道走不通
+            else -> throw FsException("no such path: $path") // ★ gluing the path back together does not work here
         }
 
         override fun list(dir: XFile): List<XFile> = when (dir.path.trim('/')) {

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android 12+ 的备份/迁移规则(android:dataExtractionRules)。
-  两条通道都要各写一遍:cloud-backup(云备份)与 device-transfer(换机直传)。
-  排除项与 backup_rules.xml 保持一致,改一处记得改另一处。
+  Backup / migration rules for Android 12+ (android:dataExtractionRules).
+  Both channels must be listed separately: cloud-backup and device-transfer.
+  Exclusions must stay in sync with backup_rules.xml — when you change one,
+  change the other too.
 -->
 <data-extraction-rules>
     <cloud-backup>

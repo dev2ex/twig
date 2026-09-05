@@ -14,12 +14,13 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 验证 restic 读取器与底层 scheme 无关:把 fixture 注册到一个非 "file" 的
- * "remote" scheme(模拟仓库在 SMB/SFTP 上),仍应能打开并读文件。
+ * Verifies the restic reader is agnostic to the underlying scheme: register the fixture
+ * under a non-"file" "remote" scheme (simulating a repository over SMB/SFTP) and it should
+ * still open and read files correctly.
  */
 class ResticRemoteSchemeTest {
 
-    /** 用另一个 scheme 包装本地文件系统(路径直通)。 */
+    /** Wraps the local filesystem under a different scheme (paths pass through unchanged). */
     private class RemoteFs(private val local: LocalFileSystem) : FileSystem by local {
         override val scheme = "remote"
         override fun root() = XFile("remote", "/", true)

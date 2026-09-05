@@ -7,6 +7,11 @@ under section 7 of the GPL, and the third-party notices that must accompany the
 program. The complete dependency inventory lives in
 [THIRD_PARTY.md](THIRD_PARTY.md).
 
+> **Build variants.** Twig builds in two flavors. The **`libre`** flavor — the one
+> published on F-Droid — contains no UnRAR-licensed code, and **sections 1 and 2
+> below do not apply to it**. The **`full`** flavor adds read-only RAR support via
+> `junrar` and is the only one those sections concern.
+
 ---
 
 ## 1. Additional permission for linking with UnRAR-licensed code (GPL §7)
@@ -31,10 +36,25 @@ program. The complete dependency inventory lives in
 may not be used to re-create the RAR compression algorithm. Restrictions of that
 kind are exactly what GPL section 7 forbids adding to a GPL work, so distributing
 "Twig + junrar" as a combined work is, strictly read, in conflict. As the sole
-copyright holder of Twig's own code, the author grants the exception above so
-that the combined work can be distributed lawfully.
+copyright holder of Twig's own code, the author grants the exception above so far
+as that code is concerned.
 
-If you fork Twig and remove RAR support, you can drop this section along with it.
+**Scope and its limits — read this before relying on the exception.** A section 7
+additional permission can only be granted by a copyright holder, for their own
+code. The `full` flavor also links GPL-3.0 code the author does **not** own —
+Termux's `terminal-emulator` / `terminal-view` and Jellyfin's
+`media3-ffmpeg-decoder` (see [THIRD_PARTY.md](THIRD_PARTY.md) §2.1). Those
+copyright holders have granted no such exception, so on the mainstream reading of
+GPL sections 7 and 10 the exception above does **not** by itself make the `full`
+flavor's combination unimpeachable. It is stated here for transparency rather
+than as a claim that the question is settled.
+
+**The `libre` flavor has none of this problem** — it contains no UnRAR-licensed
+code at all, and is plain GPL-3.0 with no additional terms. That is the variant
+distributed through F-Droid, and the recommended one to fork from.
+
+If you fork Twig and remove RAR support (or build only `libre`), drop sections 1
+and 2 along with it.
 
 ---
 
@@ -47,6 +67,9 @@ As required by clause 2 of the UnRAR license:
 
 Twig provides read-only RAR extraction. It does not implement, and does not
 attempt to implement, RAR compression.
+
+This notice concerns the `full` flavor only; the `libre` flavor ships no
+RAR-handling code.
 
 ---
 

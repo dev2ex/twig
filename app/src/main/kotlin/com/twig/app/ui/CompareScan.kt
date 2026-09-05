@@ -14,112 +14,131 @@ import java.io.InputStream
 import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 
-/** 一对条目的比对结论。 */
+/** Comparison verdict for a pair of entries. */
 enum class PairState {
-    /** 两侧都有且认定相同。 */
+    /** Present on both sides and considered equal. */
     SAME,
 
-    /** 两侧都有但不同(大小/时间/内容)。 */
+    /** Present on both sides but different (size / time / content). */
     DIFF,
 
-    /** 只在左侧存在。 */
+    /** Exists only on the left side. */
     LEFT_ONLY,
 
-    /** 只在右侧存在。 */
+    /** Exists only on the right side. */
     RIGHT_ONLY,
 
-    /** 目录:子树还没扫完,汇总状态未知。 */
+    /** Directory: subtree not yet scanned, aggregate state unknown. */
     SCANNING,
 }
 
 /**
- * 判定选项。默认值是"跨来源也不误报"的一套,理由见各字段——
- * 直接 `lastModified ==` 比较会让本地↔FTP / 本地↔zip 几乎全红。
+ * Classification options. The defaults are a set that "does not misreport across sources";
+ * see each field for the rationale — a bare `lastModified ==` comparison would light up
+ * nearly everything in local↔FTP / local↔zip comparisons.
  */
 data class CompareOptions(
     /**
-     * 时间容差。各来源的 mtime 精度差得很远:本地 ms、SMB 100ns、WebDAV 的
-     * Last-Modified 秒级、FTP 常只到秒甚至分钟,**zip 条目是 DOS 时间(2 秒粒度)**,
-     * exFAT/FAT32 同样 2 秒。默认 2s 正好盖住最粗的那档。
+     * Time tolerance. mtime precision varies wildly across sources: local ms, SMB 100 ns,
+     * WebDAV's Last-Modified seconds, FTP often seconds or minutes, **zip entries are
+     * DOS time (2-second granularity)**, and exFAT/FAT32 the same 2 seconds. The default
+     * of 2 s just covers the coarsest of those.
      */
     val timeToleranceMs: Long = 2_000L,
     /**
-     * 允许整小时偏移。FTP 的 MDTM/LIST 经常分不清 GMT 还是服务器本地时,
-     * 整个目录会齐刷刷差若干小时——那不是内容变了,是时区错配。
+     * Allow whole-hour offsets. FTP's MDTM/LIST often cannot tell GMT from the server's
+     * local time, so an entire directory can be off by several hours — that is not a
+     * content change, it is a timezone mismatch.
      */
     val allowHourShift: Boolean = true,
-    /** 配对时忽略大小写:ext4 敏感而 SMB/exFAT 不敏感,否则 README.md/Readme.md 会各成孤儿。 */
+    /** Ignore case when pairing: ext4 is case-sensitive, SMB/exFAT are not, otherwise README.md and Readme.md would each be left as orphans. */
     val ignoreCase: Boolean = true,
     /**
-     * 内容比对的大小上限,**分本地与网络两档**:本地读几乎无代价,网络要两边整份下载,
-     * 与"免整读原则"冲突,所以默认关(0)。一对文件里只要有一侧超过它那档的上限,
-     * 这一对就不比内容、退回按时间判。
+     * Size cap for content comparison, **split into local and network tiers**: reading
+     * locally costs almost nothing, while the network has to download both sides in full,
+     * which conflicts with the "avoid full reads" principle, so it is off by default (0).
+     * If either side of a pair exceeds its tier's cap, that pair is not compared by
+     * content and falls back to time-based classification.
      */
     val contentLimitLocal: Long = 1L shl 20,
     val contentLimitNetwork: Long = 0L,
     /**
-     * 只在**时间不同**时才读内容:大小与时间都一致的直接判定相同,不读。
-     * 绝大多数文件属于这一类,省掉的读取量很可观;关掉则只要大小相同就读,
-     * 能抓到"时间戳被保留、内容被改过"的情况(代价是每一对都要整读)。
+     * Read content only when **the time differs**: if size and time both match, classify
+     * directly as same without reading. The vast majority of files fall into this bucket,
+     * so the savings are substantial; turning it off means reading every pair whenever
+     * sizes match, catching "timestamp preserved but content changed" (at the cost of a
+     * full read per pair).
      */
     val contentOnlyIfTimeDiffers: Boolean = true,
-    /** 排除规则,见 [matchesExclude];扫描时就剪枝,不是扫完再过滤。 */
+    /** Exclude rules; see [matchesExclude]; pruned during the scan, not filtered after. */
     val excludes: List<String> = emptyList(),
+    /**
+     * Incremental sync: only push source-only and differing-on-both items; **target-side
+     * extras are kept**. Turning it off switches to mirror sync — target-side-only
+     * files/directories are also deleted, leaving both sides identical at the end. Default
+     * is incremental: deletion is irreversible, and "the other side still has other stuff"
+     * is extremely common in two-way-used directories.
+     */
+    val incrementalSync: Boolean = true,
 ) {
-    /** 任一侧开了内容比对。 */
+    /** Whether content comparison is enabled on either side. */
     val contentEnabled: Boolean get() = contentLimitLocal > 0 || contentLimitNetwork > 0
 }
 
-/** 扫描出的一个条目:两侧至少有一个非空。 */
+/** One entry from the scan: at least one side is non-null. */
 data class CompareEntry(
-    /** 用于配对与显示的名字(取存在的那一侧)。 */
+    /** Name used for pairing and display (taken from whichever side has it). */
     val name: String,
     val left: XFile?,
     val right: XFile?,
     val isDir: Boolean,
     val state: PairState,
 ) {
-    /** 任一侧的代表条目,取图标/扩展名等用。 */
+    /** Representative entry on either side; used for icon, extension, etc. */
     val any: XFile get() = left ?: right!!
 }
 
-/** 扫描过程中的增量事件;父目录的 [Children] 一定先于其子目录的事件到达。 */
+/** Incremental events during a scan; a parent directory's [Children] always arrives before its descendants' events. */
 sealed interface CompareEvent {
-    /** 某个目录的子项列出来了(先序,立即可见)。[dirKey] 为相对根的路径,根是空串。 */
+    /** A directory's children have been listed (preorder, visible immediately). [dirKey] is the path relative to the root; the root is the empty string. */
     data class Children(val dirKey: String, val rows: List<CompareEntry>) : CompareEvent
 
-    /** 某个目录的整棵子树扫完了,回填汇总状态(有任一子孙非 SAME 即 DIFF)。 */
+    /** A directory's whole subtree has been scanned; report the aggregate state (DIFF if any descendant is not SAME). */
     data class DirDone(val dirKey: String, val state: PairState) : CompareEvent
 
-    /** 进度:已比对条目数、其中有差异的、当前正在扫的相对路径。 */
+    /** Progress: compared entry count, diff count among them, and the relative path currently being scanned. */
     data class Progress(val entries: Int, val diffs: Int, val path: String) : CompareEvent
 
     /**
-     * 某一项被排除规则挡下了。记着它是为了"删掉这条规则时能只恢复它挡掉的那些",
-     * 不必整树重扫。[dirKey] 是所在目录,[name] 是项名。
+     * An entry was blocked by an exclude rule. Recorded so that "delete this rule and
+     * only restore the entries it actually blocked" works without a full-tree rescan.
+     * [dirKey] is the containing directory, [name] is the entry name.
      */
     data class Excluded(val dirKey: String, val name: String, val rule: String) : CompareEvent
 
-    /** 条目数触顶,结果不完整。 */
+    /** The entry cap was hit; the result is incomplete. */
     data object Truncated : CompareEvent
 }
 
-/** 防环/防爆:与 [scanSearch]、[scanDirStat] 取同一量级的护栏。 */
+/** Cycle / blow-up guard: same magnitude of guardrails as [scanSearch] and [scanDirStat]. */
 private const val COMPARE_MAX_DEPTH = 64
 private const val COMPARE_MAX_ENTRIES = 100_000
 private const val COMPARE_CONTENT_BUF = 64 * 1024
 
 /**
- * 排除规则匹配。含 `/` 的规则按**相对路径**整体匹配(如 "build" 加斜杠加 "*.o"),否则按**文件名**
- * 匹配(`*.tmp`)。两种都是全名通配符语义——不像 [matchesSearchPattern] 那样无通配符时
- * 退化成子串匹配:排除规则里写 `build` 若按子串匹配会连 `rebuild.log` 一起误伤。
+ * Exclude-rule matching. Rules containing `/` match against the **relative path** as a whole
+ * (e.g. "build" + slash + "*.o"); otherwise they match against the **file name** (`*.tmp`).
+ * Both use full-name glob semantics — unlike [matchesSearchPattern], which falls back to
+ * substring matching when no wildcard is present: a substring match for `build` would
+ * wrongly catch `rebuild.log` too.
  */
 fun matchesExclude(name: String, relPath: String, patterns: List<String>): Boolean =
     excludeRuleFor(name, relPath, patterns) != null
 
 /**
- * 同 [matchesExclude],但返回**是哪条规则**挡下的。删掉某条规则时要靠它精确定位
- * "当初被这条规则挡掉的项",只恢复那些,而不是整树重扫。
+ * Like [matchesExclude], but returns **which rule** blocked it. When a rule is deleted,
+ * this precisely locates "the entries that rule originally blocked" so only those are
+ * restored, instead of rescanning the whole tree.
  */
 fun excludeRuleFor(name: String, relPath: String, patterns: List<String>): String? =
     patterns.firstOrNull { p ->
@@ -128,7 +147,7 @@ fun excludeRuleFor(name: String, relPath: String, patterns: List<String>): Strin
         else if (pat.contains('/')) globMatches(relPath, pat) else globMatches(name, pat)
     }
 
-/** `*` / `?` 通配符的全名匹配(忽略大小写);无通配符时要求全等。 */
+/** `*` / `?` full-name glob match (case-insensitive); without wildcards, exact equality is required. */
 internal fun globMatches(text: String, pattern: String): Boolean {
     val regex = buildString {
         append("(?i)")
@@ -142,8 +161,10 @@ internal fun globMatches(text: String, pattern: String): Boolean {
 }
 
 /**
- * 两个时间戳是否算"同一时刻":先看容差,再看是否只差整数个小时(时区错配)。
- * 半小时时区(印度 +5:30 等)不在这条规则里——那种情况请把容差调大或关掉时间判定。
+ * Whether two timestamps count as "the same moment": first check the tolerance, then check
+ * whether they differ by only an integer number of hours (timezone mismatch).
+ * Half-hour timezones (India +5:30 etc.) are not covered by this rule — in that case
+ * raise the tolerance or turn off time-based classification.
  */
 internal fun sameTime(a: Long, b: Long, o: CompareOptions): Boolean {
     val d = abs(a - b)
@@ -154,10 +175,19 @@ internal fun sameTime(a: Long, b: Long, o: CompareOptions): Boolean {
     return k > 0 && abs(d - k * hour) <= o.timeToleranceMs
 }
 
-/** 该来源是否算"本地"。压缩包内的项按网络对待——外层可能挂在 SMB 上(与缩略图同一约定)。 */
-internal fun isLocalSide(f: XFile): Boolean = f.scheme == "file"
+/**
+ * Whether the source counts as "local" (decides which content-compare cap applies).
+ * Items inside archives are treated as network — the outer archive may live on SMB (same
+ * convention as thumbnails).
+ *
+ * ★ SAF counts as local: the document URI points to a file on this device, and reads go
+ * `openFileDescriptor` → fd → pread ([SafFileSystem.randomAccessEfficient] is true), with
+ * no IPC round-trip per read — entirely unlike "the outer file may be remote" archives.
+ */
+internal fun isLocalSide(f: XFile): Boolean =
+    f.scheme == "file" || f.scheme == com.twig.app.SafFileSystem.SCHEME
 
-/** 这一对是否够小、可以比内容;两侧各按自己那档上限,任一侧超了就不比。 */
+/** Whether this pair is small enough to compare by content; each side applies its own cap; if either side exceeds, do not compare content. */
 internal fun contentComparable(l: XFile, r: XFile, o: CompareOptions): Boolean {
     fun limit(f: XFile) = if (isLocalSide(f)) o.contentLimitLocal else o.contentLimitNetwork
     val lim = minOf(limit(l), limit(r))
@@ -165,9 +195,11 @@ internal fun contentComparable(l: XFile, r: XFile, o: CompareOptions): Boolean {
 }
 
 /**
- * 逐块流式比对两个文件,**遇到第一处不同立刻返回**。比"两边各算一遍哈希"省一半以上——
- * 不同的文件通常在很靠前的地方就分叉,而哈希必须把两边都读完。
- * 读失败(权限/断线)当作"不同",宁可让用户看见一条差异去查,也不要谎报相同。
+ * Block-by-block streaming comparison of two files, **returning on the first difference**.
+ * Saves more than half versus "hash both sides" — different files usually diverge early,
+ * while hashing requires reading both sides fully.
+ * A read failure (permission / connection lost) is treated as "different" — better to let
+ * the user see a difference and investigate than to falsely report "same".
  */
 internal suspend fun contentEquals(l: XFile, r: XFile): Boolean {
     if (l.size != r.size) return false
@@ -191,7 +223,7 @@ private suspend fun streamsEqual(a: InputStream, b: InputStream): Boolean {
     }
 }
 
-/** 尽量填满 buf(流可能短读),返回实际读到的字节数,0 = 到末尾。 */
+/** Fill buf as much as possible (streams may short-read); returns the number of bytes actually read, 0 = EOF. */
 private fun InputStream.readFully(buf: ByteArray): Int {
     var n = 0
     while (n < buf.size) {
@@ -203,15 +235,18 @@ private fun InputStream.readFully(buf: ByteArray): Int {
 }
 
 /**
- * 判定两个**文件**(非目录)的状态。开了内容比对且这一对够小、又没被
- * [CompareOptions.contentOnlyIfTimeDiffers] 放过的话以内容为准,否则按大小 + 时间。
- * 大小不同必然不同,这时连时间都不用看、更不用读内容。
+ * Classify two **files** (not directories). If content comparison is enabled and the pair
+ * is small enough — and not skipped by [CompareOptions.contentOnlyIfTimeDiffers] — then
+ * content is decisive; otherwise size + time.
+ * Different sizes means different; in that case time does not need to be checked, nor
+ * content read.
  */
 internal suspend fun compareFiles(l: XFile, r: XFile, o: CompareOptions): PairState {
     if (l.size != r.size) return PairState.DIFF
     val timeSame = sameTime(l.lastModified, r.lastModified, o)
-    // 大小时间都一样的那批占绝大多数,[CompareOptions.contentOnlyIfTimeDiffers] 开着时
-    // 直接放过,省下的正是最大头的那部分读取
+    // The vast majority of pairs have matching size and time; with
+    // [CompareOptions.contentOnlyIfTimeDiffers] on, those are skipped directly, which is
+    // where the biggest chunk of reads would have come from.
     val skipByTime = o.contentOnlyIfTimeDiffers && timeSame
     if (!skipByTime && contentComparable(l, r, o)) {
         return if (contentEquals(l, r)) PairState.SAME else PairState.DIFF
@@ -220,9 +255,11 @@ internal suspend fun compareFiles(l: XFile, r: XFile, o: CompareOptions): PairSt
 }
 
 /**
- * 把两侧的子项按名字配对。同名多项(ext4 上 `A.txt` 与 `a.txt` 可以并存而忽略大小写
- * 配对时会撞在一起)按出现顺序依次配,配不上的各自成孤儿——**一个都不能丢**。
- * 目录与文件同名视为两种键,不会互相配对。
+ * Pair the two sides' children by name. Multiple same-name entries (ext4's `A.txt` and
+ * `a.txt` can coexist and would collide under case-insensitive pairing) are paired in
+ * order of appearance; unmatched ones become orphans on their respective sides — **none
+ * may be dropped**. A directory and a file with the same name count as different keys
+ * and will not pair with each other.
  */
 internal fun pairEntries(
     left: List<XFile>,
@@ -239,19 +276,25 @@ internal fun pairEntries(
 }
 
 /**
- * 递归对比 [leftRoot] 与 [rightRoot],边扫边发事件。
+ * Recursively compares [leftRoot] with [rightRoot], emitting events as it scans.
  *
- * **先序 emit 子项、后序回填目录状态**:顶层目录一列完用户就能看见内容(顶层第一个
- * 目录很大时不至于长时间空屏),该目录的汇总状态等它整棵子树扫完再更新。
+ * **Preorder emit children, postorder fill in directory state**: as soon as the top
+ * directory is listed the user sees content (so the first top-level directory being
+ * large does not leave a blank screen for a long time); the aggregate state of that
+ * directory is updated once its entire subtree has been scanned.
  *
- * 并发只做"左右两侧的 list 并行",**不并行扫多个目录**:`smb2_context` 靠一把可重入锁
- * 串行化、FTP 只有一条控制连接,多目录齐发不会更快,只会把锁堵死或打爆连接。
+ * Concurrency is only "both sides' list calls in parallel", **never multiple directories
+ * in parallel**: `smb2_context` is serialized via a reentrant lock, FTP has only one
+ * control connection, so firing multiple directories at once does not go faster — it
+ * just stalls the lock or blows out the connection.
  *
- * 单侧独有的目录仍然递归列举——用户要看得到里面有什么、也要能整个复制过去,
- * 而且不列的话进度里的条目数会失真。
+ * Single-side-only directories are still recursively listed — the user needs to see
+ * what is inside and to be able to copy the whole thing across, and skipping them
+ * would skew the entry count shown in progress.
  *
- * 取消由调用方 cancel 协程完成;阻塞在 `list()`/`openInput()` 里的那一次网络往返
- * 不会被打断,会在返回后的检查点退出(与 [scanDirStat] 同一约定)。
+ * Cancellation is done by the caller cancelling the coroutine; the one network
+ * round-trip blocked in `list()` / `openInput()` is not interrupted and exits at the
+ * checkpoint after it returns (same convention as [scanDirStat]).
  */
 fun scanCompare(
     leftRoot: XFile?,
@@ -267,7 +310,7 @@ fun scanCompare(
         if (f == null) emptyList()
         else runCatching { FsRegistry.of(f).list(f) }.getOrDefault(emptyList())
 
-    /** 返回该目录子树的汇总状态。 */
+    /** Returns the aggregate state of this directory's subtree. */
     suspend fun walk(
         left: XFile?,
         right: XFile?,
@@ -279,7 +322,8 @@ fun scanCompare(
         if (truncated) return forced ?: PairState.SCANNING
         emit(CompareEvent.Progress(entries, diffs, dirKey))
 
-        // 两侧 list 并行:不同来源时是真并行,同来源时底层自己会串行化,无害。
+        // Both sides' list calls run in parallel: with different backends it is real
+        // parallelism; with the same backend the layer below serializes itself — harmless.
         val (ls, rs) = coroutineScope {
             val a = async { list(left) }
             val b = async { list(right) }
@@ -300,15 +344,18 @@ fun scanCompare(
             if (entries >= COMPARE_MAX_ENTRIES) { truncated = true; break }
             entries++
 
-            // 单侧独有,以及"一边是目录另一边是文件"这种配不上的,都按孤儿处理。
+            // Single-side-only entries, and "one side is a directory, the other is a file" pairs
+            // that cannot be matched, are both treated as orphans.
             val side = forced ?: when {
                 l == null -> PairState.RIGHT_ONLY
                 r == null -> PairState.LEFT_ONLY
                 else -> null
             }
             if (rep.isDir) {
-                // 单侧独有(或父级已经定死)的目录,这一刻状态就已经确定,不必先报 SCANNING
-                // 再等子树扫完改口——UI 上那是先闪一个"…"再变成"◀"
+                // A directory that is single-side-only (or already locked in by its parent) has a
+                // state determined at this very moment — no need to first report SCANNING
+                // and then change it after the subtree finishes; in the UI that would just
+                // flash "…" before turning into "◀".
                 val e = CompareEntry(rep.name, l, r, isDir = true, state = side ?: PairState.SCANNING)
                 rows += e
                 if (depth < COMPARE_MAX_DEPTH) subDirs += Triple(e, rel, side)
@@ -327,7 +374,8 @@ fun scanCompare(
             val sub = walk(e.left, e.right, rel, depth + 1, side)
             if (sub != PairState.SAME) worst = PairState.DIFF
         }
-        // 单侧独有的目录:自身状态是"只在某侧",不因为子树内容而改写。
+        // A single-side-only directory: its own state is "only on one side", and is not
+        // overwritten by what its subtree contains.
         val self = forced ?: when {
             left == null -> PairState.RIGHT_ONLY
             right == null -> PairState.LEFT_ONLY

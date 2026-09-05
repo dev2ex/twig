@@ -13,14 +13,17 @@ import com.twig.fs.local.priv.SuLauncher
 import rikka.shizuku.Shizuku
 
 /**
- * 特权访问的开关与生命周期。
+ * Switch and lifecycle for privileged access.
  *
- * 两种来源(root 的 `su`、Shizuku 的 shell)在这一层就合流了 —— 往下都只是一个
- * [PrivilegedShell],再往下 [LocalFileSystem.elevation] 只知道"普通 API 失败时
- * 有个东西可以再试一次"。所以整个 UI、`CopyEngine`、缩略图、搜索一行都不用改。
+ * The two sources (root's `su`, Shizuku's shell) merge at this layer — underneath
+ * both are just a [PrivilegedShell], and [LocalFileSystem.elevation] only knows
+ * "when the normal API fails, here's something to retry". So the whole UI,
+ * CopyEngine, thumbnails, search need no changes.
  *
- * ★ 授权只能在前台、由用户点出来:Android 10+ 禁止后台启动 Activity,
- * Magisk 的授权框弹不出来只会退化成一条通知,用户多半看不到,表现就是"卡住不动"。
+ * ★ Authorization can only happen in the foreground, triggered by the user:
+ * Android 10+ forbids starting Activities from the background; Magisk's grant
+ * dialog can only degrade to a notification, which most users won't see — symptom
+ * is just "stuck, nothing happens".
  */
 object Privileged {
 
@@ -28,31 +31,33 @@ object Privileged {
     const val ROOT = 1
     const val SHIZUKU = 2
 
-    /** Shizuku 管理器的包名;`<queries>` 里也声明了同一个。 */
+    /** Shizuku manager's package name; `<queries>` declares the same one. */
     const val SHIZUKU_PKG = "moe.shizuku.privileged.api"
 
     private const val TAG = "twig-priv"
 
     init {
-        // 纯 JVM 模块的诊断出口接到 logcat 上;`adb logcat -s twig-priv` 一条命令看全。
+        // Pure-JVM module's diagnostic output is wired to logcat; one
+        // `adb logcat -s twig-priv` command shows everything.
         PrivilegedShell.log = { Log.w(TAG, it) }
     }
 
     @Volatile
     private var shell: PrivilegedShell? = null
 
-    /** 当前生效的模式;失败或未开启为 [OFF]。 */
+    /** Currently effective mode; [OFF] if disabled or failed. */
     @Volatile
     var active: Int = OFF
         private set
 
-    /** 特权 shell 实际跑在哪个 uid 上:0 = root,2000 = shell(Shizuku)。 */
+    /** Uid the privileged shell actually runs under: 0 = root, 2000 = shell (Shizuku). */
     val uid: Int get() = shell?.uid ?: -1
 
     /**
-     * 开启特权访问。**阻塞,必须在后台线程调用**(root 那条会一直等到用户在
-     * 授权框上点完)。返回 null 表示成功,否则是可直接展示给用户的失败原因
-     * (本地化的一句话 + 底层的真实异常)。
+     * Enables privileged access. **Blocking; must be called from a background thread**
+     * (the root path waits until the user finishes the grant dialog). Returns null on
+     * success, otherwise a user-facing failure reason (one localized sentence + the
+     * underlying real exception).
      */
     fun enable(ctx: Context, mode: Int): String? {
         disable()
@@ -73,9 +78,11 @@ object Privileged {
         if (!ok) {
             val detail = s.lastError
             s.close()
-            // ★ 一定要把真原因带出来。"起不了特权进程"这句话对用户毫无用处:没 root、
-            // 授权被拒、Shizuku 服务停了、反射的私有方法解析不到——四种情况长得一模一样,
-            // 而只有一种是用户自己能处理的。诊断信息同时进 logcat 和提示框。
+            // ★ Must surface the real reason. "Couldn't start the privileged process"
+            // is useless to the user: no root / grant denied / Shizuku service
+            // stopped / private method not resolvable via reflection — all four look
+            // identical, and only one is something the user can fix. Diagnostics go
+            // to both logcat and the dialog.
             Log.w(TAG, "enable(mode=$mode) failed: $detail | ${diagnostics(ctx)}")
             val base = ctx.getString(
                 if (mode == ROOT) R.string.priv_err_no_root else R.string.priv_err_shizuku_failed,
@@ -90,7 +97,7 @@ object Privileged {
         return null
     }
 
-    /** 一行行摆出来的状态,失败时连同原因写进 logcat / 给用户看。 */
+    /** Status, line by line; on failure the cause goes to both logcat and the dialog. */
     fun diagnostics(ctx: Context): String {
         fun q(body: () -> Any?): String = runCatching { body()?.toString() ?: "null" }
             .getOrElse { "!" + (it.javaClass.simpleName) }
@@ -100,8 +107,9 @@ object Privileged {
             "version=" + q { Shizuku.getVersion() },
             "serverUid=" + q { Shizuku.getUid() },
             "preV11=" + q { Shizuku.isPreV11() },
-            // ★ 别直接印数值:PERMISSION_GRANTED 恰好是 **0**,"granted=0" 读起来
-            // 像"没授权",而它的意思正相反。诊断串是给人在着急的时候看的。
+            // ★ Don't print the numeric value: PERMISSION_GRANTED is exactly **0**,
+            // so "granted=0" reads like "not granted" when it means the opposite.
+            // The diagnostic string is read by a person in a hurry.
             "granted=" + q {
                 when (Shizuku.checkSelfPermission()) {
                     PackageManager.PERMISSION_GRANTED -> "yes"
@@ -113,7 +121,8 @@ object Privileged {
         ).joinToString(" ")
     }
 
-    /** 关闭并卸掉回落钩子;本地文件系统立刻恢复成"只用得到自己那份权限"。 */
+    /** Closes and removes the fallback hook; the local file system immediately reverts
+     * to "only what its own permissions allow". */
     fun disable() {
         LocalFileSystem.elevation = null
         active = OFF
@@ -127,11 +136,12 @@ object Privileged {
     }
 
     /**
-     * 进程启动时按用户上次的选择恢复。
+     * Restores the user's last choice at process startup.
      *
-     * Shizuku 的 binder **不是同步就位的**(要等它的 provider 把 binder 递过来),
-     * 所以不能在这里直接问"通不通",得挂 sticky 监听 —— 已经到了的话会立刻回调,
-     * 没到就等它到。root 那条没有这个问题,直接后台连。
+     * Shizuku's binder is **not in place synchronously** (it has to wait for the
+     * provider to deliver it), so we can't just probe "is it alive?" here — we have
+     * to attach a sticky listener, which fires immediately if it's already there or
+     * waits for it to arrive. Root has no such issue; just connect in the background.
      */
     fun restore(ctx: Context) {
         val mode = Prefs.privilegedMode(ctx)
@@ -140,10 +150,13 @@ object Privileged {
         if (mode == SHIZUKU) {
             Shizuku.addBinderReceivedListenerSticky {
                 background {
-                    // ★ 每次回调都重新读一遍偏好。这个监听器是**进程级、注册后一直在**的,
-                    // 而 binder 不止到达一次 —— Shizuku 服务/管理器重启都会重发。
-                    // 写死 SHIZUKU 的话,用户后来在设置里关掉或改成 Root,下一次重发就会
-                    // 把模式硬掰回 Shizuku 并写回 Prefs,选择被静默推翻。
+                    // ★ Re-read the preference on every callback. This listener is **process-wide
+                    // and stays alive after registration**, and the binder arrives
+                    // more than once — Shizuku service/manager restarts both re-fire
+                    // it. Hardcoding SHIZUKU here would mean: if the user later
+                    // turned it off in settings or switched to Root, the next re-fire
+                    // would force the mode back to Shizuku and rewrite Prefs —
+                    // silently overturning their choice.
                     if (Prefs.privilegedMode(app) == SHIZUKU) enable(app, SHIZUKU)
                 }
             }
@@ -152,16 +165,17 @@ object Privileged {
         }
     }
 
-    // ---- Shizuku 状态查询(全部包 runCatching:没装 Shizuku 时这些类会抛) ----
+    // ---- Shizuku state queries (all wrapped in runCatching: these classes throw when
+//      Shizuku isn't installed) ----
 
-    /** Shizuku 服务在跑(binder 已就位)。 */
+    /** Shizuku service is running (binder in place). */
     fun shizukuRunning(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
 
     fun shizukuGranted(): Boolean = runCatching {
         !Shizuku.isPreV11() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
     }.getOrDefault(false)
 
-    /** Shizuku 管理器装没装(与"跑没跑"是两回事,提示文案要分开)。 */
+    /** Whether the Shizuku manager is installed (different from "running"; messages need to be distinct). */
     fun shizukuInstalled(ctx: Context): Boolean = runCatching {
         ctx.packageManager.getPackageInfo(SHIZUKU_PKG, 0) != null
     }.getOrDefault(false)
@@ -171,18 +185,22 @@ object Privileged {
     }
 
     /**
-     * Shizuku 起进程。和 [SuLauncher] 唯一的区别就是这一行 —— 拿到的同样是一个
-     * 带 stdin/stdout/stderr 的进程,只不过跑在 shell(uid 2000)身上而不是 root。
-     * `ShizukuRemoteProcess` 本身就是 `java.lang.Process` 的子类,所以直接套用同一个包装。
+     * Shizuku-side process launcher. The only difference from [SuLauncher] is this
+     * one line — what you get is still a process with stdin/stdout/stderr, just
+     * running as shell (uid 2000) instead of root. `ShizukuRemoteProcess` itself
+     * is a `java.lang.Process` subclass, so the same wrapper applies.
      *
-     * ★ `Shizuku.newProcess` 在 13.x 里被改成了 **private**(上游想把大家往
-     * `bindUserService` 那条路上赶),只能反射调。代价是 R8 必须 keep 住
-     * `rikka.shizuku.**` 的方法名(已在 proguard-rules.pro 里),否则这里 100% NoSuchMethod。
+     * ★ `Shizuku.newProcess` was made **private** in 13.x (the upstream wants to
+     * push everyone onto `bindUserService`), so this is reflective. The price is
+     * R8 must keep `rikka.shizuku.**` method names (already in proguard-rules.pro);
+     * otherwise this is a guaranteed NoSuchMethod.
      *
-     * 想换成官方路线的话,那是**另一套东西**:`bindUserService` 把我们自己的代码跑在
-     * shell 进程里,能直接用 java.io、还能把 ParcelFileDescriptor 传回来做真随机读,
-     * 但要写 AIDL + Service + 绑定生命周期,而且**对 root 完全不适用** —— 那时就得
-     * 维护两套毫不相干的后端,现在这一层"都是个特权进程"的抽象也就没了。
+     * Switching to the official path is a **different design**: `bindUserService`
+     * runs our own code inside the shell process, where we get direct java.io and
+     * can hand back a ParcelFileDescriptor for true random access — but it needs
+     * AIDL + Service + binding lifecycle, and **doesn't apply to root at all**,
+     * so we'd have to maintain two unrelated backends and lose the abstraction
+     * "all of these are just a privileged process" that this layer currently relies on.
      */
     private class ShizukuLauncher : PrivilegedLauncher {
         override fun start(cmd: String?): PrivilegedProcess {

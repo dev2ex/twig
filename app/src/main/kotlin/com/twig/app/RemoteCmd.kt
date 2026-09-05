@@ -4,41 +4,46 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
-import androidx.core.graphics.drawable.IconCompat
 import com.twig.app.ui.RunCommandActivity
+import com.twig.app.ui.ShortcutIcons
 import org.json.JSONObject
 
 /**
- * 一条「在某台服务器上跑的命令」。桌面快捷方式点一下就执行它:可以进终端里跑
- * (看得到输出、能交互),也可以静默跑完只报结果。
+ * A "run this command on a server" entry. A desktop shortcut tap runs it: either
+ * inside a terminal (visible output, interactive) or silently, with only the result.
  *
- * ★ 存的是 [connLabel](`SavedConnection.label()`)而不是 scheme —— scheme 是
- * 会话内动态注册的,快捷方式要跨启动可用,必须像收藏/最近位置那样存「怎么到达」。
- * 执行时经 [Connections.find] + [Connections.ensure] 现连现取 scheme。
+ * ★ What we store is [connLabel] (`SavedConnection.label()`), not the scheme — the
+ * scheme is registered dynamically per session, and a shortcut has to work across
+ * launches, so like favorites and recent locations we store "how to reach it". At
+ * execution time we resolve the scheme via [Connections.find] + [Connections.ensure].
  */
 data class RemoteCmd(
     val connLabel: String,
-    /** 远端工作目录;空 = 用登录默认目录。 */
+    /** Remote working directory; empty = use the login default. */
     val workdir: String,
     val command: String,
-    /** true = 开一条终端会话跑(可交互);false = 后台静默跑,只报结果。 */
+    /** true = open a terminal session to run it (interactive); false = run silently in the background, report result only. */
     val inTerminal: Boolean,
     /**
-     * 静默执行时是否套一层**登录 shell**。默认不套:sshd 执行 `cmd` 用的是该用户
-     * 登录 shell 的 `-c`(zsh 用户就是 zsh),但那是**非交互非登录**,不读
-     * `.zshrc`/`.zprofile`/`.profile`,PATH 往往比终端里窄。套上以后走
-     * `$SHELL -lc`——`$SHELL` 由 sshd 按 passwd 里的 shell 设置,所以**默认 shell
-     * 是 zsh 就是 zsh 在跑**,不会被写死成 bash。终端模式用不到这个:那本来
-     * 就是交互式登录 shell。
+     * Whether to wrap silent execution in a **login shell**. Default off: sshd
+     * running `cmd` uses the user's login shell's `-c` (zsh user gets zsh), but
+     * that is **non-interactive, non-login**, so it doesn't read `.zshrc` /
+     * `.zprofile` / `.profile`, and PATH tends to be narrower than in a terminal.
+     * With the wrap, we go via `$SHELL -lc` — `$SHELL` is set by sshd from
+     * passwd, so **if the user's default shell is zsh, zsh is what runs**,
+     * never hard-coded to bash. Terminal mode doesn't need this: that is
+     * already an interactive login shell.
      */
     val loginShell: Boolean = false,
-    /** 快捷方式/通知上显示的名字。 */
+    /** Name shown on the shortcut / notification. */
     val label: String,
 ) {
     /**
-     * 把命令本体塞进意图。**只能用于应用内部、目标组件未导出的场景**
-     * (现在只有 [ui.CmdService],它是 `exported="false"`,外部应用 start 不了)。
-     * 跨进程边界的快捷方式走 [launchIntent] —— 那里只传 id,原因见 [RemoteCmdStore]。
+     * Puts the full command body into an Intent. **Only for in-app use, with the
+     * target component un-exported** (currently just [ui.CmdService], which is
+     * `exported="false"`, so other apps can't start it). Shortcuts across the
+     * process boundary go via [launchIntent] — which only passes the id; see
+     * [RemoteCmdStore] for why.
      */
     fun putInto(intent: Intent): Intent = intent.apply {
         putExtra(EXTRA_CONN, connLabel)
@@ -55,10 +60,13 @@ data class RemoteCmd(
     }
 
     /**
-     * 点击后进 [RunCommandActivity](无界面中转,判断走终端还是后台服务)。
+     * Goes into [RunCommandActivity] on tap (a no-UI relay that decides terminal
+     * or background service).
      *
-     * ★ 意图里**只带 id,不带命令文本**:这个 Activity 必须导出(见 [RemoteCmdStore]
-     * 的说明),带文本就等于把"用用户凭据执行任意远程命令"的能力开放给了设备上所有应用。
+     * ★ Intent carries **only the id, not the command text**: this Activity has
+     * to be exported (see [RemoteCmdStore] for why), and carrying the text would
+     * mean opening up "execute arbitrary remote commands with the user's
+     * credentials" to every app on the device.
      */
     fun launchIntent(ctx: Context): Intent =
         Intent(ctx, RunCommandActivity::class.java).apply {
@@ -76,7 +84,7 @@ data class RemoteCmd(
         private const val EXTRA_LABEL = "cmd_label"
         private const val EXTRA_ID = "cmd_id"
 
-        /** 从内部意图取出命令本体(仅限未导出的组件,见 [putInto])。 */
+        /** Pulls the command body back out of an internal Intent (only for un-exported components, see [putInto]). */
         fun from(intent: Intent): RemoteCmd? {
             val conn = intent.getStringExtra(EXTRA_CONN) ?: return null
             val command = intent.getStringExtra(EXTRA_CMD) ?: return null
@@ -91,10 +99,11 @@ data class RemoteCmd(
         }
 
         /**
-         * 从**桌面快捷方式**的意图还原命令:只认 id,查不到就返回 null。
-         * 这里绝不能回退去读 [EXTRA_CMD] —— 那等于把刚堵上的口子重新打开。
-         * 老版本(0.79.1 及之前)固定的快捷方式带的是命令文本、没有 id,会走到 null,
-         * 由调用方提示用户重新创建一次。
+         * Restores the command from a **desktop shortcut** Intent: only the id is
+         * recognized; null if not found. We must NOT fall back to reading [EXTRA_CMD]
+         * here — that would reopen the hole we just closed. Old (≤ 0.79.1) pinned
+         * shortcuts carry the command text and no id, so they fall through to null
+         * and the caller tells the user to re-create them.
          */
         fun fromShortcut(ctx: Context, intent: Intent): RemoteCmd? =
             intent.getStringExtra(EXTRA_ID)?.let { RemoteCmdStore.get(ctx, it) }
@@ -109,9 +118,11 @@ data class RemoteCmd(
         )
 
         /**
-         * 拼成实际下发的命令行:有工作目录就先 cd 过去(cd 失败即中止,不在错的
-         * 地方跑);[RemoteCmd.loginShell] 时整体再套一层 `$SHELL -lc`,`$SHELL`
-         * 由远端 sshd 按用户 passwd 设置,zsh 用户跑的就是 zsh。
+         * Builds the actual command line to send: if there's a workdir, cd there
+         * first (abort on cd failure — never run in the wrong place); when
+         * [RemoteCmd.loginShell] is set, wrap the whole thing in `$SHELL -lc`,
+         * with `$SHELL` set remotely by sshd from the user's passwd entry, so a
+         * zsh user's command runs in zsh.
          */
         fun shellLine(cmd: RemoteCmd): String {
             val inner =
@@ -122,14 +133,15 @@ data class RemoteCmd(
 
         fun sq(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
-        /** 请求把这条命令固定到桌面。 */
+        /** Requests pinning this command to the home screen. */
         fun pin(ctx: Context, cmd: RemoteCmd): Boolean {
             if (!ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) return false
             val id = "cmd_" + (cmd.connLabel + "|" + cmd.workdir + "|" + cmd.command).hashCode()
             val shortcut = ShortcutInfoCompat.Builder(ctx, id)
                 .setShortLabel(cmd.label.ifEmpty { cmd.command.take(24) })
-                // 用 SFTP 类型图标(树上服务器行、路径栏同一个),一眼看出是哪台机器上的活
-                .setIcon(IconCompat.createWithResource(ctx, R.drawable.ic_server))
+                // Use the terminal icon: on the home screen this immediately reads as "run a
+                // command", not "a server".
+                .setIcon(ShortcutIcons.of(ctx, R.drawable.ic_shortcut_terminal))
                 .setIntent(cmd.launchIntent(ctx))
                 .build()
             ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null)

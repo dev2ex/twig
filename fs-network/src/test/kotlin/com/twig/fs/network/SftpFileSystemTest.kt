@@ -12,6 +12,7 @@ import org.apache.sshd.sftp.server.SftpSubsystemFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -73,6 +74,58 @@ class SftpFileSystemTest {
 
         fs.delete(renamed)
         assertFalse(File(home, "sub2").exists())
+    }
+
+    /**
+     * Same as the FTP case: a connection rooted at a sub-directory has to translate every
+     * request argument, and [SftpFileSystem.serverPath] is also what the git viewer, the
+     * terminal and remote commands call to get back to a real path.
+     */
+    @Test
+    fun rootedAtSubdirectory() {
+        File(home, "srv/inner").mkdirs()
+        File(home, "srv/inner/deep.txt").writeText("deep")
+        File(home, "outside.txt").writeText("must stay invisible")
+
+        val sub = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "srv"))
+        try {
+            assertEquals(listOf("/inner"), sub.list(sub.root()).map { it.path })
+            assertEquals(listOf("/inner/deep.txt"), sub.list(XFile("sftp", "/inner", true)).map { it.path })
+            assertTrue(sub.exists(XFile("sftp", "/inner/deep.txt", false)))
+            assertFalse(sub.exists(XFile("sftp", "/outside.txt", false)))
+
+            assertEquals(
+                "deep",
+                sub.openInput(XFile("sftp", "/inner/deep.txt", false)).bufferedReader().use { it.readText() },
+            )
+
+            sub.openOutput(XFile("sftp", "/written.txt", false)).use { it.write("w".toByteArray()) }
+            assertEquals("w", File(home, "srv/written.txt").readText())
+            assertFalse(File(home, "written.txt").exists())
+
+            sub.mkdir(sub.root(), "made")
+            assertTrue(File(home, "srv/made").isDirectory)
+
+            sub.rename(XFile("sftp", "/written.txt", false), "moved.txt")
+            assertTrue(File(home, "srv/moved.txt").isFile)
+
+            sub.delete(XFile("sftp", "/moved.txt", false))
+            assertFalse(File(home, "srv/moved.txt").exists())
+            assertTrue(File(home, "outside.txt").isFile)
+
+            // What a shell command would be handed, as opposed to what the tree shows
+            assertEquals("/srv/inner", sub.serverPath("/inner"))
+            assertEquals("/srv", sub.serverPath("/"))
+
+            // …and back: a command's output names server paths (git worktree list), which
+            // have to return to tree paths; outside the root there is nothing to show
+            assertEquals("/inner", sub.visiblePath("/srv/inner"))
+            assertEquals("/", sub.visiblePath("/srv"))
+            assertNull(sub.visiblePath("/outside.txt"))
+            assertNull(sub.visiblePath("/srvother/x"))
+        } finally {
+            sub.disconnect()
+        }
     }
 
     @Test

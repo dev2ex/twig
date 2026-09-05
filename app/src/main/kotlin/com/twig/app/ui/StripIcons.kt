@@ -8,12 +8,13 @@ import com.twig.app.Prefs
 import com.twig.app.databinding.ActionStripBinding
 
 /**
- * 把侧边操作列的图标撑成和文件列表行图标([FileAdapter.rowIconDp])一样大——
- * 布局里 `StripIcon` 的 20dp 只是默认值,实际尺寸随行高档位走。
+ * Make the side strip's icons the same size as the file list row icons ([FileAdapter.rowIconDp]) —
+ * the 20dp in the layout's `StripIcon` is just the default; the actual size scales with the row
+ * density level.
  */
 fun ActionStripBinding.sizeIconsLikeRows(ctx: Context) = sizeStripIcons(root, ctx)
 
-/** 同上,给不是 `ActionStripBinding` 的操作列用(对比页有自己那份布局)。 */
+/** Same as above, for action strips that don't use `ActionStripBinding` (the compare page has its own layout). */
 fun sizeStripIcons(root: View, ctx: Context) {
     val px = (FileAdapter.rowIconDp(Prefs.density(ctx)) * ctx.resources.displayMetrics.density).toInt()
     resizeIcons(root, px)

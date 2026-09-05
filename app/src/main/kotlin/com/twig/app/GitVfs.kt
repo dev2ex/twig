@@ -18,11 +18,11 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 把 core-fs 的任意来源(SMB/WebDAV/本地…)适配成 git-lite 的 [GitFs];[base] 为根目录。 */
+/** Adapt any core-fs source (SMB/WebDAV/local…) as git-lite's [GitFs]; [base] is the root. */
 class XFileGitFs(private val base: XFile) : GitFs {
 
     private val fs = FsRegistry.of(base)
-    private val listCache = HashMap<String, List<XFile>>() // 目录清单缓存(一次解析会话内复用)
+    private val listCache = HashMap<String, List<XFile>>() // directory listing cache (reused within one resolve session)
 
     private fun join(p: String): String {
         if (p.isEmpty()) return base.path
@@ -69,19 +69,22 @@ class XFileGitFs(private val base: XFile) : GitFs {
 }
 
 /**
- * 打开远程(SMB/WebDAV/无 git 命令的 SFTP)目录里的 git 仓库;不是仓库返回 null。
+ * Open a git repository inside a remote (SMB/WebDAV/SFTP without git) directory; returns
+ * null when it isn't a repository.
  *
- * `.git` 既可能是目录,也可能是 worktree/子模块那种 `gitdir: <路径>` 文件——后者
- * 元数据要拆成 gitdir(HEAD/index)+ commondir(objects/refs)两段,见
- * [com.twig.git.GitLayout] 与 [com.twig.git.WorktreeGitFs]。
+ * `.git` can be either a directory or a worktree/submodule `gitdir: <path>` file — for
+ * the latter the metadata splits into gitdir (HEAD/index) + commondir (objects/refs);
+ * see [com.twig.git.GitLayout] and [com.twig.git.WorktreeGitFs].
  */
 /**
- * 取 [path] 的条目:**列父目录按名字找**,不用 `resolve()`;不存在返回 null。
+ * Fetch the entry at [path]: **list the parent directory and find by name**, don't use
+ * `resolve()`; returns null when not present.
  *
- * ★ 这里不能图省事用 [FileSystem.resolve]:`SftpFileSystem` 的实现是
- * `XFile(scheme, path, isDir = true)` —— 既不 stat 也不报错,照单全收还一律说是目录。
- * 拿它判存在/类型,worktree 那个 `.git` **文件**会被当成目录,内容一个字节都读不出来
- * (表现正是「工作区」有个数、展开却一条都没有)。
+ * ★ Don't take the shortcut here and use [FileSystem.resolve]: `SftpFileSystem`'s
+ * implementation is `XFile(scheme, path, isDir = true)` — it doesn't stat, doesn't error,
+ * accepts everything and labels it a directory. Using it to test existence / type treats
+ * a worktree's `.git` **file** as a directory and not a single byte can be read (the
+ * symptom is exactly "Worktree (N)" expands into nothing).
  */
 private fun statEntry(fs: FileSystem, path: String): XFile? {
     val p = path.trimEnd('/').ifEmpty { "/" }
@@ -92,7 +95,7 @@ private fun statEntry(fs: FileSystem, path: String): XFile? {
         ?.firstOrNull { it.name == name }
 }
 
-/** 读一个小文本文件(`.git`、`commondir`,都只有一行);读不到返回 null。 */
+/** Read a small text file (`.git`, `commondir` — all single-line); returns null when unreadable. */
 private fun readSmallText(fs: FileSystem, path: String): String? {
     val x = statEntry(fs, path)?.takeIf { !it.isDir } ?: return null
     return runCatching { fs.openInput(x).use { OpenFiles.readAllBytes(it, 4096) }.decodeToString() }.getOrNull()
@@ -113,74 +116,86 @@ fun openRemoteRepo(dir: XFile): com.twig.git.GitRepo? {
 }
 
 /**
- * 为一个仓库目录建 [GitData];不是仓库返回 null。第二值:该数据源是否"廉价"
- * (本地 / SSH 远程执行,见 `PaneViewModel.cheapGitSchemes`)。
+ * Build a [GitData] for a repository directory; returns null when it isn't a repository.
+ * Second value: whether the data source is "cheap" (local / SSH-remote-exec, see
+ * `PaneViewModel.cheapGitSchemes`).
  *
- * 放在这里而不是 `PaneViewModel` 里,是因为 [GitFileSystem] 列「工作区」时也要用
- * 同一套判定为**另一条 worktree** 建数据源。
+ * Kept here rather than in `PaneViewModel` because [GitFileSystem] needs the same
+ * judgement when listing "worktrees" to build a data source for **another** worktree.
  */
 fun gitDataFor(dir: XFile): Pair<GitData, Boolean>? {
     if (dir.scheme == "file") {
         return com.twig.git.GitRepo.open(java.io.File(dir.path))?.let { com.twig.git.RepoGitData(it) to true }
     }
     val hostFs = FsRegistry.of(dir)
-    // SFTP:服务器上有 git 命令就远程执行(服务端本地算,快一个量级)
+    // SFTP: when the server has a git binary, run it remotely (compute on the server, an order of magnitude faster)
     if (hostFs is com.twig.fs.network.SftpFileSystem) {
-        val q = "'" + dir.path.replace("'", "'\\''") + "'"
+        // ★ The repository has to be addressed by its **path on the server**: an SFTP
+        // connection may be rooted at a sub-directory, in which case the path on screen
+        // is not the one `git -C` needs, and the check below would simply never match.
+        val real = hostFs.serverPath(dir.path)
+        val q = "'" + real.replace("'", "'\\''") + "'"
         if (hostFs.exec("git -C $q rev-parse --is-inside-work-tree") != null) {
-            return SshGitData({ cmd -> hostFs.exec(cmd) }, dir.path) to true
+            // …and the paths git prints back have to make the same trip in reverse,
+            // or "Worktrees (n)" expands into nothing (see SshGitData.worktrees).
+            return SshGitData({ cmd -> hostFs.exec(cmd) }, real, { p -> hostFs.visiblePath(p) }) to true
         }
     }
-    // 其余远程(SMB/WebDAV/无 git 的 SFTP):自己解析 .git
+    // Other remote sources (SMB/WebDAV/SFTP without git): parse .git ourselves
     return openRemoteRepo(dir)?.let { com.twig.git.RepoGitData(it) to false }
 }
 
 /**
- * 把一个 git 仓库暴露为只读虚拟文件系统,直接挂进目录树:
+ * Expose a git repository as a read-only virtual filesystem, mounted directly into the tree:
  * ```
- * /                    更改 (N) | 其他分支 | 工作区 (n) | 历史
- * /changes             已暂存 (n) | 未暂存 (n) | 未跟踪 (n)
- * /changes/<组>        变更文件(A/M/D 标记,点击看内容)
- * /worktrees           **其他**工作区(git worktree);每条是另一套 GitFileSystem 的根
- * /history             最近 200 条提交
- * /history/<sha>       · 提交信息 + 该提交的变更文件
+ * /                    Changes (N) | Other branches | Worktrees (n) | History
+ * /changes             Staged (n) | Unstaged (n) | Untracked (n)
+ * /changes/<group>     Changed file (A/M/D marker; click to see content)
+ * /worktrees           **Other** worktrees (git worktree); each is the root of another GitFileSystem
+ * /history             Last 200 commits
+ * /history/<sha>       · commit info + files changed in that commit
  * ```
  */
 class GitFileSystem(
     private val ctx: android.content.Context,
     private val data: GitData,
     override val scheme: String,
-    private val initialLabel: String, // 注册时的树根显示名,如 "Git (main)";切分支后见下
+    private val initialLabel: String, // tree-root display name at registration, e.g. "Git (main)"; see below after switching branches
     /**
-     * 该仓库的工作目录(本地 file:// 或某台服务器上的路径)。用来把仓库里记的绝对路径
-     * (另一台机器的)映射回这边可达的路径。**为 null 就不列「工作区」**——从某条
-     * worktree 点进另一条时建的就是 null 的实例,否则 A→B→A 无限套娃。
+     * The working directory of this repository (a local file:// path or a path on some
+     * server). Used to map absolute paths recorded by the repository (on another
+     * machine) back to a path reachable here. **When null, "Worktrees" is not listed** —
+     * when entering another worktree we construct an instance with null, otherwise A→B→A
+     * would recurse forever.
      */
     private val host: XFile? = null,
 ) : FileSystem {
 
-    /** 树节点名/错误文案全部走字符串资源(这一层在 :app 里,拿得到 Context)。 */
+    /** Tree node names and error copy all go through string resources (this layer lives in :app and has a Context). */
     private fun s(id: Int, vararg args: Any): String = ctx.getString(id, *args)
 
     /**
-     * 树根显示名跟着当前分支走,读 [branchCache](只读内存,UI 线程 rebuild() 时调用
-     * 安全,不触发 IO);缓存还没填过时退回注册时的初始值。
-     * ★ 不能借用 statusCache 里的分支名——那个只有 list("/") / list("/changes*")
-     * 才会填,单独点开"历史""其他分支"只会 invalidate() 清缓存、不会重新填 status,
-     * 标题就会退回冻结的 initialLabel(表现为"点历史/分支,标题变回旧分支名")。
-     * branchCache 由 [invalidate] 统一刷新,不管这次 fresh 是为了 status/log/branches
-     * 里的哪一种,标题都跟着更新。
+     * The tree root's display name follows the current branch; reads [branchCache] (memory
+     * only, safe to call from UI thread's rebuild() without triggering I/O); falls back to
+     * the initial value when the cache hasn't been populated yet.
+     * ★ Don't borrow the branch name from statusCache — that only gets filled by
+     * list("/") / list("/changes*"); opening "History" or "Other branches" alone just
+     * invalidate()s the cache and doesn't re-fill status, so the title would fall back to
+     * the frozen initialLabel (symptom: "tap History / branches and the title reverts to
+     * the old branch name").
+     * branchCache is refreshed uniformly by [invalidate], regardless of whether this
+     * fresh is for status / log / branches, the title always tracks the latest.
      */
     override val displayName: String get() = branchCache?.let { "Git ($it)" } ?: initialLabel
     override fun writable(): Boolean = false
 
-    // IO 线程在 invalidate() 里写、主线程 rebuild() 经 displayName 不加锁裸读,须 volatile 保证可见
+    // IO thread writes in invalidate(), main thread's displayName reads without sync — must be volatile for visibility
     @Volatile private var branchCache: String? = null
     private var statusCache: Pair<Long, GitStatus>? = null
     private var logCache: List<GitCommit>? = null
     private var branchesCache: List<GitBranch>? = null
     private var worktreesCache: List<GitWorktree>? = null
-    private val branchLogCache = HashMap<String, List<GitCommit>>() // 分支 tip sha -> 该分支的历史
+    private val branchLogCache = HashMap<String, List<GitCommit>>() // branch tip sha -> history of that branch
     private val diffCache = HashMap<String, List<GitChange>>()
 
     @Synchronized
@@ -211,14 +226,16 @@ class GitFileSystem(
         list.also { worktreesCache = it }
     }
 
-    /** 除当前这条以外的工作区——自己那条就是眼前这个视图,列出来只是重复一遍。 */
+    /** Worktrees other than this one — ours is the view in front of us, listing it would just be a duplicate. */
     private fun otherWorktrees(): List<GitWorktree> = worktreesNow().filter { !it.current }
 
     /**
-     * 一条工作区在树里的入口:它自己**又是一整套 git 视图**,所以按需建一个
-     * [GitFileSystem] 注册成独立 scheme,返回它的根。这样更改/历史/diff 那套逻辑
-     * 原样复用,一行不用改(压缩包挂载也是这个套路:子项属于另一个 FileSystem)。
-     * 目录在这边不可达(已删除、或没挂载到)时返回 null —— 列一条点不开的更糟。
+     * A worktree's entry in the tree: it is itself **a whole other git view**, so we build
+     * a [GitFileSystem] on demand, register it as its own scheme, and return its root.
+     * That way the changes / history / diff logic is reused as-is without a single change
+     * (archive mounts use the same trick: children belong to a different FileSystem).
+     * Returns null when the directory is unreachable from this side (deleted or not
+     * mounted) — listing an entry that can't be opened is worse.
      */
     private fun worktreeChild(w: GitWorktree): XFile? {
         val dir = worktreeDir(w) ?: return null
@@ -230,30 +247,33 @@ class GitFileSystem(
         }
         if (runCatching { FsRegistry.of(sub) }.isFailure) {
             val d = runCatching { gitDataFor(dir) }.getOrNull()?.first ?: return null
-            // host 传 null:那条视图里不再列工作区,否则 A→B→A 无限套下去
+            // pass host = null: that view won't list worktrees itself, otherwise A→B→A recurses forever
             FsRegistry.register(GitFileSystem(ctx, d, sub, label))
         }
         return XFile(sub, "/", isDir = true, displayName = label, canWrite = false)
     }
 
     /**
-     * 把仓库里记的工作区路径映射成这边可达的 [XFile];映射不出来(目录已删、或不在
-     * 挂载范围内)返回 null。
+     * Map the worktree path recorded inside the repository into an [XFile] reachable
+     * from this side; returns null when mapping fails (directory deleted or out of mount
+     * range).
      *
-     * 本地与 SSH 记的就是真路径,直接用。SMB/WebDAV 就不行了:那是**建 worktree 那台
-     * 机器**上的绝对路径,这边看到的只是它的某棵子树。这时拿主工作区在这边的路径当锚,
-     * 从**最短的尾巴**开始逐段往回试(`…/repo/nested/wt` → `wt`、`nested/wt`、…),
-     * 并用那个目录的 `.git` 是否确实指向 `worktrees/<名>` 来确认没认错人 —— 只看
-     * "目录存在"会把同名的无关目录当成它。
+     * Local and SSH record the real path and use it directly. SMB/WebDAV don't work that
+     * way: those are absolute paths on the **machine where the worktree was created**,
+     * and all we see here is one of its subtrees. In that case we anchor on the main
+     * worktree's path here and try progressively longer suffixes from the **shortest tail**
+     * upward (`…/repo/nested/wt` → `wt`, `nested/wt`, …), and verify each candidate's
+     * `.git` actually points to `worktrees/<name>` to avoid mistaking a same-named
+     * unrelated directory — checking "directory exists" alone would accept those.
      */
     private fun worktreeDir(w: GitWorktree): XFile? {
         val h = host ?: return null
         val fs = runCatching { FsRegistry.of(h) }.getOrNull() ?: return null
         fun dirAt(path: String): XFile? = statEntry(fs, path)
             ?.takeIf { it.isDir }?.let { XFile(h.scheme, path, isDir = true) }
-        // 主工作区那条的路径本来就是这边算出来的(公共 .git 的父目录),不用映射
+        // The main worktree's path is itself derived here (parent of the shared .git), no mapping needed
         if (w.main) return dirAt(w.path)
-        // 记录的路径能直接落地(本地/SSH:那本来就是真路径)就用它,不必再验
+        // If the recorded path lands directly (local/SSH: it's the real path), use it without further checks
         dirAt(w.path)?.let { return it }
         val mainRoot = worktreesNow().firstOrNull { it.main }?.path ?: return null
         val segs = w.path.split('/').filter { it.isNotEmpty() }
@@ -265,7 +285,7 @@ class GitFileSystem(
         return null
     }
 
-    /** [dir] 的 `.git` 是否正是 `worktrees/<[name]>` 那条工作区。 */
+    /** Whether [dir]'s `.git` is exactly the `worktrees/<[name]>` entry. */
     private fun isWorktreeOf(fs: FileSystem, dir: XFile, name: String): Boolean {
         val sep = if (dir.path.endsWith("/")) "" else "/"
         val text = readSmallText(fs, "${dir.path}$sep.git")?.trim() ?: return false
@@ -290,7 +310,8 @@ class GitFileSystem(
             buildList {
                 add(dirX("/changes", s(R.string.git_changes_n, n)))
                 add(dirX("/branches", s(R.string.git_other_branches)))
-                // 和「其他分支」一个道理:自己这条已经就在眼前,只在有别的工作区时才列
+                // Same reasoning as "other branches": this one is already in front of you, only list
+// it when there are other worktrees.
                 val wt = otherWorktrees()
                 if (wt.isNotEmpty()) add(dirX("/worktrees", s(R.string.git_worktrees_n, wt.size)))
                 add(dirX("/history", s(R.string.git_history)))
@@ -310,14 +331,14 @@ class GitFileSystem(
         dir.path == "/changes/untracked" -> statusNow().untracked.map {
             XFile(scheme, "/changes/untracked/$it", isDir = false, displayName = "? $it", canWrite = false)
         }
-        // 当前分支的提交已经在"历史"里看得到,这里只列其他分支,不重复自己
+        // The current branch's commits are already visible under "History"; this only lists other branches, not itself
         dir.path == "/branches" -> branchesNow().filter { !it.current }.map { b ->
             dirX("/branches/${encodeBranch(b.name)}", b.name)
         }
         dir.path.startsWith("/branches/") -> {
             val name = decodeBranch(dir.path.removePrefix("/branches/"))
             val sha = branchesNow().firstOrNull { it.name == name }?.sha
-            // 分支下的提交复用 /history/<sha> 这套虚拟路径(内容/diff 逻辑零改动共享)
+            // Commits under a branch reuse the /history/<sha> virtual path (content / diff logic shared with zero changes)
             if (sha == null) emptyList() else branchLogNow(sha).map { historyEntry(it) }
         }
         dir.path == "/history" -> logNow().map { historyEntry(it) }
@@ -366,7 +387,7 @@ class GitFileSystem(
                 if (rel == INFO || rel.isEmpty()) {
                     commitInfo(c).toByteArray(Charsets.UTF_8)
                 } else {
-                    // 该提交里的版本;删除的文件给父提交里的版本
+                    // The version in that commit; for deleted files, give the version in the parent commit
                     data.content(sha, rel) ?: data.content("$sha^", rel) ?: deletedNote()
                 }
             }
@@ -376,8 +397,9 @@ class GitFileSystem(
     }
 
     /**
-     * 该虚拟路径对应的 diff 两侧内容(旧, 新);null 侧表示该侧不存在
-     * (新增/删除)。不可 diff 的路径(#info、目录等)返回 null。
+     * Diff side content (old, new) for the given virtual path; null side means that side
+     * doesn't exist (additions / deletions). Returns null for paths that can't be diffed
+     * (#info, directories, etc.).
      */
     fun diffSides(path: String): Pair<ByteArray?, ByteArray?>? = when {
         path.startsWith("/changes/") -> {
@@ -416,7 +438,7 @@ class GitFileSystem(
         append('\n').append(c.message).append('\n')
     }
 
-    /** 文件在该版本里已被删除时的占位内容(随 locale)。 */
+    /** Placeholder content when the file has been deleted in this revision (locale-aware). */
     private fun deletedNote(): ByteArray = s(R.string.git_file_deleted).toByteArray(Charsets.UTF_8)
 
     private fun dirX(path: String, name: String) =
@@ -428,7 +450,7 @@ class GitFileSystem(
         displayName = c.title.ifEmpty { c.shortSha }, canWrite = false,
     )
 
-    // 分支名可能含 '/'(如 feature/foo),路径段里转义掉,避免和目录层级混淆
+    // Branch names can contain '/' (e.g. feature/foo); escape it in path segments to avoid colliding with directory hierarchy
     private fun encodeBranch(name: String) = name.replace("/", "%2F")
     private fun decodeBranch(seg: String) = seg.replace("%2F", "/")
 
@@ -446,7 +468,7 @@ class GitFileSystem(
     private fun isCommitDir(p: String) =
         p.startsWith("/history/") && !p.removePrefix("/history/").contains('/')
 
-    // ---- 只读 ----
+    // ---- Read-only ----
 
     override fun openOutput(file: XFile, append: Boolean) = throw FsException(s(R.string.git_read_only))
     override fun mkdir(parent: XFile, name: String) = throw FsException(s(R.string.git_read_only))
@@ -459,9 +481,11 @@ class GitFileSystem(
     }
 
     /**
-     * 丢弃 status/log/branches/diff 缓存,下次 list() 重新读仓库当前状态;
-     * 顺带刷新 [branchCache](树根标题),不管这次是为了刷新哪一块内容,标题都跟着更新。
-     * 只能在后台线程调用(内部会跑一次 data.branch(),SSH 侧是一次远程 exec)。
+     * Discard the status/log/branches/diff cache; the next list() will re-read the repo's
+     * current state; also refreshes [branchCache] (the tree root's title), regardless of
+     * which block triggered this fresh, the title always tracks the latest.
+     * Must be called on a background thread (internally runs data.branch(), which on SSH
+     * is one remote exec).
      */
     @Synchronized
     fun invalidate() {
@@ -480,9 +504,10 @@ class GitFileSystem(
         private const val INFO = "#info"
 
         /**
-         * 提交时间的格式化器。**每次现建,不共享实例**——[SimpleDateFormat] 不是线程
-         * 安全的,而 commitInfo() 是在 IO 线程上被并发调用的(两个面板各自展开 git 视图)。
-         * 每次 new 的开销可以忽略,共享出来的错乱结果排查起来可不便宜。
+         * Formatter for commit timestamps. **Created on each call, no shared instance** —
+         * [SimpleDateFormat] is not thread-safe, and commitInfo() is called concurrently
+         * from IO threads (each pane opens its own git view). The cost of a fresh `new` is
+         * negligible; the corrupted output from sharing one is not cheap to debug.
          */
         private fun dateFmt() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     }

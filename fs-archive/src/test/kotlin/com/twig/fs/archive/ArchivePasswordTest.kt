@@ -12,12 +12,14 @@ import java.io.File
 import java.util.Base64
 
 /**
- * 加密归档的读取。**样本包是 `7z` / `zip` 命令行工具真造出来的**(内容见下面的 base64),
- * 不是本项目自己写出来再自己读回去——加密 zip 的读路径整个是手写的,只做往返测试
- * 恰恰测不到「别家工具写的包能不能读」这个唯一重要的问题。
+ * Reading encrypted archives. **The sample packages were really produced by the `7z` /
+ * `zip` CLI tools** (contents are the base64 below), not written by this project and
+ * read back by itself — the read path for encrypted zip is entirely hand-written, and a
+ * round-trip-only test would miss the one thing that actually matters: "can a package
+ * written by another tool be read".
  *
- * 样本内容统一是:`hello.txt` = "hello encrypted world\n",`dir/b.txt` = "nested content here\n",
- * 密码 `secret`。
+ * The sample content is uniformly: `hello.txt` = "hello encrypted world\n",
+ * `dir/b.txt` = "nested content here\n", password `secret`.
  */
 class ArchivePasswordTest {
 
@@ -44,13 +46,13 @@ class ArchivePasswordTest {
         return openInput(f).use { it.readBytes().toString(Charsets.UTF_8) }
     }
 
-    // ---- zip:WinZip AES-256(7z a -tzip -mem=AES256) ----
+    // ---- zip: WinZip AES-256 (7z a -tzip -mem=AES256) ----
 
     @Test
-    fun `AES zip 要密码才读得了内容,清单不用`() {
+    fun aesZipNeedsPasswordForContentButNotForListing() {
         val x = sample("aes.zip", AES_ZIP)
         assertTrue(zfs.needsPassword(x.path))
-        // 文件名没加密,不给密码也列得出来
+        // File names are not encrypted, so listing works without a password
         val root = zfs.rootOf(x)
         assertEquals(listOf("dir", "hello.txt"), zfs.list(root).map { it.name })
 
@@ -64,7 +66,7 @@ class ArchivePasswordTest {
     }
 
     @Test
-    fun `AES zip 没给密码时抛出可识别的异常`() {
+    fun aesZipThrowsRecognizableExceptionWithoutPassword() {
         val x = sample("aes.zip", AES_ZIP)
         val root = zfs.rootOf(x)
         val f = zfs.list(root).first { it.name == "hello.txt" }
@@ -73,7 +75,7 @@ class ArchivePasswordTest {
     }
 
     @Test
-    fun `AES zip 密码错时抛的是「密码错」而不是解压失败`() {
+    fun aesZipWithWrongPasswordThrowsWrongPasswordNotExtractionFailure() {
         val x = sample("aes.zip", AES_ZIP)
         zfs.setPassword(x.path, "nope")
         val root = zfs.rootOf(x)
@@ -83,17 +85,17 @@ class ArchivePasswordTest {
     }
 
     @Test
-    fun `加密 zip 一律只读`() {
+    fun encryptedZipIsAlwaysReadOnly() {
         val x = sample("aes.zip", AES_ZIP)
         val root = zfs.rootOf(x)
         assertFalse(root.canWrite)
         assertFalse(zfs.list(root).first { it.name == "hello.txt" }.canWrite)
     }
 
-    // ---- zip:传统 ZipCrypto(zip -e) ----
+    // ---- zip: legacy ZipCrypto (zip -e) ----
 
     @Test
-    fun `老式 ZipCrypto 包也能解`() {
+    fun legacyZipCryptoPackageCanAlsoBeDecrypted() {
         val x = sample("legacy.zip", LEGACY_ZIP)
         assertTrue(zfs.needsPassword(x.path))
         assertFalse(zfs.checkPassword(x.path, "wrong"))
@@ -107,7 +109,7 @@ class ArchivePasswordTest {
     // ---- 7z ----
 
     @Test
-    fun `7z 内容加密——清单免密码,内容要密码`() {
+    fun sevenZContentEncryptedListingFreeContentNeedsPassword() {
         val x = sample("enc.7z", ENC_7Z)
         assertTrue(szfs.needsPassword(x.path))
         val root = szfs.rootOf(x)
@@ -121,7 +123,7 @@ class ArchivePasswordTest {
     }
 
     @Test
-    fun `7z 头加密——没密码连清单都列不出来,给了就能列能读`() {
+    fun sevenZHeaderEncryptedCannotListWithoutPasswordButCanListAndReadWithIt() {
         val x = sample("hdr.7z", HDR_7Z)
         assertTrue(szfs.needsPassword(x.path))
         val t = runCatching { szfs.list(szfs.rootOf(x)) }.exceptionOrNull()
@@ -133,10 +135,10 @@ class ArchivePasswordTest {
         assertEquals("hello encrypted world\n", szfs.readText(root, "hello.txt"))
     }
 
-    // ---- 不加密的包不受影响 ----
+    // ---- Unencrypted packages are unaffected ----
 
     @Test
-    fun `普通包不问密码`() {
+    fun ordinaryPackageDoesNotAskForAPassword() {
         val f = File(tmp, "plain.zip")
         java.util.zip.ZipOutputStream(f.outputStream()).use { z ->
             z.putNextEntry(java.util.zip.ZipEntry("a.txt"))

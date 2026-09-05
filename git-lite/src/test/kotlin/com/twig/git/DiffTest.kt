@@ -13,23 +13,23 @@ class DiffTest {
     }
 
     @Test
-    fun `修改与新增删除对齐`() {
+    fun `modification aligns with insertions and deletions`() {
         val old = listOf("a", "b", "c", "d")
         val new = listOf("a", "B", "d", "e")
         val rows = Diff.rows(old, new)
-        // a 上下文;b/c → B 配对+占位;d 上下文;e 新增
+        // a is context; b/c pair with B plus a placeholder; d is context; e is an insertion
         assertEquals("=a", render(rows)[0])
         assertTrue(render(rows).contains("[b|B]"))
         assertTrue(render(rows).contains("[c|·]"))
         assertEquals("=d", render(rows)[3])
         assertEquals("[·|e]", render(rows)[4])
-        // 行号对齐
+        // line numbers line up
         assertEquals(4, rows[3].leftNo)
         assertEquals(3, rows[3].rightNo)
     }
 
     @Test
-    fun `完全相同与完全不同`() {
+    fun `fully identical and fully different`() {
         assertTrue(Diff.rows(listOf("x"), listOf("x")).single().let { !it.changed })
         val rows = Diff.rows(listOf("1", "2"), listOf("3"))
         assertTrue(rows.all { it.changed })
@@ -37,13 +37,13 @@ class DiffTest {
     }
 
     @Test
-    fun `空文件`() {
+    fun `empty file`() {
         assertEquals(2, Diff.rows(emptyList(), listOf("a", "b")).size)
         assertEquals(0, Diff.rows(emptyList(), emptyList()).size)
     }
 
     @Test
-    fun `重复行靠锚点定位`() {
+    fun `duplicate lines are located via anchors`() {
         val old = listOf("{", "x", "}", "{", "y", "}")
         val new = listOf("{", "x", "}", "{", "z", "}")
         val rows = Diff.rows(old, new)

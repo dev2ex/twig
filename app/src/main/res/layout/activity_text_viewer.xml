@@ -78,9 +78,10 @@
     </LinearLayout>
 
     <!--
-      正文区。★ 转圈的那个框浮在这一层里(FrameLayout),不再作为 LinearLayout 的一个
-      兄弟节点占位置——保存时它一出现就把整篇正文往下顶一截、存完又弹回来,眼睛看到的
-      是"存一次跳两下"。
+      Body area. ★ The loading spinner floats on this layer (FrameLayout) and is no
+      longer a sibling of the LinearLayout taking a slot — when saving it appears and
+      pushes the whole body down a bit, then pops back up, so to the eye the page
+      "jumps twice per save".
     -->
     <FrameLayout
         android:layout_width="match_parent"
@@ -92,34 +93,59 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-            <HorizontalScrollView
-                android:id="@+id/hscroll"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:scrollbars="none">
+                android:orientation="horizontal">
 
                 <!--
-                  查看器用 EditText 而不是 TextView:只读态靠代码里 keyListener=null 实现
-                  (仍可选中/复制,但不弹键盘、不显光标),编辑态把 keyListener 还回去即可,
-                  免去两套视图与文本二次搬运。文本始终以 EDITABLE 持有——见 Activity 里
-                  applyTheme() 的注释(先建 Spannable 再 setText 会触发万级 span 拷贝)。
-                  背景置空,外观与原来的 TextView 一致。
-                  CodeEditText 只做一件事:wrap_content 的宽度上多留一个光标位,免得行尾
-                  光标被框架夹到最后一个字上(见该类注释)。
+                  Line-number gutter: layout_height="match_parent" stretches it to the
+                  content column's height — a horizontal LinearLayout's *cross* axis
+                  (height) is not subject to the "match_parent child of a wrap_content
+                  parent" clamp, only its main axis (width) is, so this is a normal,
+                  well-supported case. Sharing this LinearLayout with the content column
+                  means both scroll together as one unit inside the outer ScrollView —
+                  no separate scroll sync is needed. See LineNumberGutter's kdoc.
                 -->
-                <com.twig.app.ui.CodeEditText
-                    android:id="@+id/content"
+                <com.twig.app.ui.LineNumberGutter
+                    android:id="@+id/line_numbers"
                     android:layout_width="wrap_content"
+                    android:layout_height="match_parent" />
+
+                <HorizontalScrollView
+                    android:id="@+id/hscroll"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:padding="12dp"
-                    android:background="@null"
-                    android:fontFamily="monospace"
-                    android:gravity="top|start"
-                    android:inputType="textMultiLine|textNoSuggestions"
-                    android:importantForAutofill="no"
-                    android:textColor="@color/text_primary"
-                    android:textSize="13sp" />
-            </HorizontalScrollView>
+                    android:layout_weight="1"
+                    android:scrollbars="none">
+
+                    <!--
+                      The viewer uses EditText, not TextView: read-only mode is implemented by
+                      setting keyListener=null in code (selection / copy still work, but no
+                      soft keyboard and no caret), and edit mode simply restores the
+                      keyListener — avoiding two separate views and a second copy of the text.
+                      The text is always held as EDITABLE — see the applyTheme() comment in
+                      the Activity (building a Spannable first then setText would trigger
+                      thousands of span copies). The background is null, so the appearance
+                      matches the original TextView.
+                      CodeEditText does only one thing: on a wrap_content width, leave room
+                      for one extra cursor position so the line-end caret is not clamped to
+                      the last character by the framework (see that class's comment).
+                    -->
+                    <com.twig.app.ui.CodeEditText
+                        android:id="@+id/content"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:padding="12dp"
+                        android:background="@null"
+                        android:fontFamily="monospace"
+                        android:gravity="top|start"
+                        android:inputType="textMultiLine|textNoSuggestions"
+                        android:importantForAutofill="no"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp" />
+                </HorizontalScrollView>
+            </LinearLayout>
         </com.twig.app.ui.CodeScrollView>
 
         <WebView
@@ -128,7 +154,7 @@
             android:layout_height="match_parent"
             android:visibility="gone" />
 
-        <!-- 载入/保存的转圈:居中浮在正文之上,不参与上面那条竖直排布 -->
+        <!-- Load / save spinner: floats centered above the body, not part of the vertical stack above -->
         <FrameLayout
             android:id="@+id/loading_box"
             android:layout_width="wrap_content"

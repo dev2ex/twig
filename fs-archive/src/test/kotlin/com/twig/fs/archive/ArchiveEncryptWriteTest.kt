@@ -12,9 +12,11 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 带密码打包。zip 那条是**自己手写的写出器**([ZipWriter]),所以除了往返,还要盯住
- * 「别家工具认不认」——把 `TWIG_DUMP_DIR` 指到一个目录跑这个类,会把包吐出来,
- * 再用 `7z t -psecret xxx.zip` / `unzip -P secret -t xxx.zip` 验一遍。
+ * Password-protected packing. The zip path is a **hand-written writer** ([ZipWriter]),
+ * so besides round-tripping we also have to keep an eye on "will other tools accept it" —
+ * pointing `TWIG_DUMP_DIR` at a directory while running this class dumps the packages
+ * out, which can then be verified with `7z t -psecret xxx.zip` / `unzip -P secret -t
+ * xxx.zip`.
  */
 class ArchiveEncryptWriteTest {
 
@@ -24,7 +26,7 @@ class ArchiveEncryptWriteTest {
     private val zipFs = ZipFileSystem()
     private val sevenZFs = SevenZFileSystem()
 
-    /** 跨 deflate 缓冲与 AES 计数块的大文件,单块数据测不到计数器递增。 */
+    /** A file large enough to cross deflate buffer and AES counter-block boundaries; single-block data would not exercise counter increments. */
     private val big = ByteArray(3 * 1024 * 1024) { ((it * 31) xor (it shr 7)).toByte() }
 
     @Before
@@ -60,7 +62,7 @@ class ArchiveEncryptWriteTest {
     }
 
     @Test
-    fun `加密 zip 能被自己读回,内容一字节不差`() {
+    fun encryptedZipCanBeReadBackByItselfByteForByte() {
         val archive = File(out, "enc.zip")
         ArchiveWriter.compress(
             listOf(local(src)), local(out), local(archive),
@@ -82,7 +84,7 @@ class ArchiveEncryptWriteTest {
     }
 
     @Test
-    fun `加密 zip 用错密码读不出来,报的是密码错`() {
+    fun encryptedZipWithWrongPasswordReportsWrongPasswordNotFailure() {
         val archive = File(out, "enc2.zip")
         ArchiveWriter.compress(
             listOf(local(src)), local(out), local(archive),
@@ -97,14 +99,14 @@ class ArchiveEncryptWriteTest {
     }
 
     @Test
-    fun `不给密码打出来的还是普通 zip`() {
+    fun packingWithoutAPasswordProducesAnOrdinaryZip() {
         val archive = File(out, "plain.zip")
         ArchiveWriter.compress(
             listOf(local(src)), local(out), local(archive),
             ArchiveWriter.Format.ZIP, password = null,
         )
         assertFalse(zipFs.needsPassword(archive.path))
-        // 空密码等同不加密(对话框里没填就是这种)
+        // An empty password is equivalent to no encryption (this is what an empty dialog field gives)
         val archive2 = File(out, "plain2.zip")
         ArchiveWriter.compress(
             listOf(local(src)), local(out), local(archive2),
@@ -114,11 +116,12 @@ class ArchiveEncryptWriteTest {
     }
 
     /**
-     * zip64 分支:本地头里要不要给 64 位大小留位置,是**写之前**按 sizeHint 定的
-     * (见 [ZipWriter]),所以拿假的大 hint 就能测到那条路径,不必真造 4GB 文件。
+     * The zip64 branch: whether the local header reserves room for a 64-bit size is
+     * decided **before writing**, from sizeHint (see [ZipWriter]), so a fake large hint
+     * exercises that path without actually creating a 4GB file.
      */
     @Test
-    fun `sizeHint 超过 4GB 时走 zip64,包仍然合法`() {
+    fun sizeHintOver4GbTakesTheZip64PathAndTheArchiveStaysValid() {
         val archive = File(out, "zip64.zip")
         archive.outputStream().use { os ->
             ZipWriter(os, "secret").use { zw ->
@@ -134,7 +137,7 @@ class ArchiveEncryptWriteTest {
     }
 
     @Test
-    fun `不带密码的 ZipWriter 写出的是能通读的普通 zip`() {
+    fun zipWriterWithoutAPasswordProducesAFullyReadableOrdinaryZip() {
         val archive = File(out, "writer-plain.zip")
         archive.outputStream().use { os ->
             ZipWriter(os).use { zw ->
@@ -149,7 +152,7 @@ class ArchiveEncryptWriteTest {
     }
 
     @Test
-    fun `加密 7z 能被自己读回`() {
+    fun encryptedSevenZCanBeReadBackByItself() {
         val archive = File(out, "enc.7z")
         ArchiveWriter.compress(
             listOf(local(src)), local(out), local(archive),

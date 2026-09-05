@@ -14,23 +14,29 @@ import java.net.ServerSocket
 import java.net.Socket
 
 /**
- * 把共享页渲染成 HTML 文件,供人工/无头浏览器查看。**不设 `TWIG_DUMP_DIR` 时直接跳过**,
- * 所以平时跑测试它什么都不做。
+ * Renders the share page into an HTML file for manual/headless-browser inspection.
+ * **Skipped entirely when `TWIG_DUMP_DIR` is unset**, so it does nothing during a normal
+ * test run.
  *
- * 为什么留着:页面是视觉产物,断言测不出"图标没渲染出来""按钮被内边距挤成 1px"这类问题
- * (2026-08-10 两个都真的发生了)。改样式时这么走一遍:
+ * Why it is kept: the page is a visual artifact, and assertions cannot catch things like
+ * "the icon did not render" or "the button got squeezed to 1px by padding" (both actually
+ * happened on 2026-08-10). Run this when changing styles:
  *
  * ```
  * TWIG_DUMP_DIR=/tmp/page ./gradlew :app:testReleaseUnitTest --tests "*DumpPageTest"
- * # 然后用 Playwright 开 file:///tmp/page/writable.html 截图 / 查计算样式
+ * # then open file:///tmp/page/writable.html with Playwright to screenshot / inspect computed styles
  * ```
+ *
+ * Note: the Chinese file/directory names used below (假期照片, 项目备份, 海边日落.jpg,
+ * etc.) are deliberate fixture data — the whole point of this dump is to visually confirm
+ * that real-world CJK file names render correctly on the page, so they are left as is.
  */
 @RunWith(RobolectricTestRunner::class)
 class DumpPageTest {
 
     private val app: Application get() = ApplicationProvider.getApplicationContext()
 
-    /** 稀疏文件:只设长度不真写内容,不然 700MB 的假视频会把测试 JVM 撑爆。 */
+    /** A sparse file: only sets the length without actually writing content, otherwise a fake 700MB video would blow up the test JVM. */
     private fun sized(dir: File, name: String, len: Long) {
         java.io.RandomAccessFile(File(dir, name), "rw").use { it.setLength(len) }
     }

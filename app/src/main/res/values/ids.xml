@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Extra tag on the ImageView: how wide this cell allows the thumbnail to grow (px, 0 = no growth).
+         The default tag is already used by Thumbs for async backfill staleness checks, so a separate id is needed. -->
+    <item name="thumb_grow" type="id" />
+</resources>

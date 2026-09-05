@@ -16,36 +16,49 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.Inflater
 
 /**
- * 自己实现的 PGS(蓝光图形位图字幕)解析器,替换 media3 官方
- * `androidx.media3.extractor.text.pgs.PgsParser`——**官方那个一个 Display Set 只出得来
- * 一个 Cue**,一屏同时有多块字幕(说话人字幕 + 画面注释、上下两块、左右分栏)时只显示其中一块。
+ * Our own PGS (Blu-ray graphical bitmap subtitle) parser, replacing media3's official
+ * `androidx.media3.extractor.text.pgs.PgsParser` — **the official one emits only one
+ * Cue per Display Set**, so when a frame carries multiple subtitle blocks
+ * (speaker caption + on-screen note, top + bottom, left + right columns) only one
+ * of them shows.
  *
- * 官方实现的具体缺口(1.9.0 反编译核对过):
- * - `CueBuilder` 只有一组 `bitmapX/bitmapY/bitmapWidth/bitmapHeight` + 一块 `bitmapData`;
- *   PCS(Presentation Composition Segment)里 `number_of_composition_objects` 之后**只读第一个
- *   composition object 的坐标**(源码是 `skipBytes(11)` 硬跳过 object_id/window_id/cropped_flag),
- *   后面的对象连位置都不解析。
- * - 多个 ODS(Object Definition Segment)会互相覆盖:第二个 ODS 一来就把 `bitmapData` reset 掉、
- *   宽高改写,于是**最后一个对象的位图**配上**第一个对象的坐标**画出来,只剩一块。
- * - 每次 `parse()` 开头 `cueBuilder.reset()`,不保留 epoch 状态,所以"复用上一组对象、只更新调色板"
- *   的 Display Set(淡入淡出常用)会解出空,字幕直接闪没。
+ * Concrete gaps in the official implementation (verified against the 1.9.0
+ * decompilation):
+ * - `CueBuilder` only has a single set of `bitmapX/bitmapY/bitmapWidth/bitmapHeight`
+ *   plus one `bitmapData`; after PCS's `number_of_composition_objects`, **only the
+ *   first composition object's coordinates are read** (the source has a hard
+ *   `skipBytes(11)` that jumps past object_id/window_id/cropped_flag), so the rest
+ *   of the objects don't even have their position parsed.
+ * - Multiple ODSs (Object Definition Segment) overwrite each other: the second ODS
+ *   arriving resets `bitmapData`, sets a new width/height, so we end up drawing
+ *   **the last object's bitmap** with **the first object's coordinates**, leaving only
+ *   one block.
+ * - Every `parse()` call starts with `cueBuilder.reset()` and keeps no epoch state,
+ *   so a Display Set that "reuses the previous objects, only updates the palette"
+ *   (the common fade pattern) decodes to empty and the subtitle just blinks out.
  *
- * 这里按 BD-ROM PG 规范完整实现:一个 Display Set → **每个 composition object 一个 Cue**;
- * 对象(ODS)与调色板(PDS)按 epoch 缓存,Epoch Start 才清空,因此纯调色板更新的 Display Set
- * 也能正常出图。坐标/尺寸语义与官方一致(相对 plane 的比例 + 左上角锚点),
- * [BitmapCueView] 那边不用改渲染语义。
+ * Here we implement the BD-ROM PG spec in full: one Display Set → **one Cue per
+ * composition object**; objects (ODS) and palettes (PDS) are cached by epoch and
+ * only cleared on Epoch Start, so a pure palette-update Display Set still produces
+ * images. Coordinate/size semantics match the official (plane-relative fraction +
+ * top-left anchor), so [BitmapCueView] doesn't need any rendering-side changes.
  *
- * 输入是一整个 Display Set(PCS→WDS→PDS*→ODS*→END,挨个 `[type][len][payload]` 拼接),
- * 由 [PgsTsReader](M2TS)或 MatroskaExtractor(MKV)按容器切好后喂进来。
+ * The input is a whole Display Set (PCS→WDS→PDS*→ODS*→END, segments back to back as
+ * `[type][len][payload]`), sliced by the container and fed in here by
+ * [PgsTsReader] (M2TS) or MatroskaExtractor (MKV).
  */
 @UnstableApi
 class PgsSubtitleParser : SubtitleParser {
 
     /**
-     * ODS 累积中的对象:RLE 原始字节(可能跨多个 ODS 分片),解码延后到出 Cue 时按当前调色板做。
-     * 解出来的位图连同"用的哪版调色板"一起留着:移动字幕是**同一个对象换坐标**连发几十上百组
-     * Display Set,每组重解一次几十万像素的 RLE 纯属白烧 CPU,还让 [BitmapCueView] 的降采样
-     * 缓存(按位图对象身份存)次次落空 → 掉帧、看着就是"闪"。
+     * ODS-in-progress object: the raw RLE bytes (may span multiple ODS fragments),
+     * with decoding deferred until Cue time so it can use the current palette.
+     * The decoded bitmap is kept together with "which palette version we used":
+     * moving subtitles are the **same object at different coordinates** fired off
+     * dozens or hundreds of times, and re-decoding hundreds of thousands of pixels
+     * of RLE per group is pure CPU burn, plus it makes [BitmapCueView]'s
+     * downsample cache (keyed by bitmap object identity) miss every time → dropped
+     * frames, looking like flicker.
      */
     private class PgsObject(val width: Int, val height: Int) {
         val rle = ByteArrayOutputStream()
@@ -53,31 +66,32 @@ class PgsSubtitleParser : SubtitleParser {
         var bitmap: Bitmap? = null
         var bitmapPaletteId = -1
         var bitmapPaletteRev = -1
-        // 裁切窗结果也留一份:滚动/移动字幕的另一种做法就是对象不动、只挪裁切窗
+        // Crop result is also cached: the other way to do a scrolling/moving
+        // subtitle is to leave the object still and just move the crop window.
         var cropSrc: Bitmap? = null
         var cropX = -1
         var cropY = -1
         var cropBitmap: Bitmap? = null
     }
 
-    /** PCS 里的一个 composition object:引用某个 ODS,给出它在画面上的落点(可带裁切窗)。 */
+    /** One composition object inside a PCS: references some ODS and gives its landing point on the frame (optionally with a crop window). */
     private class Composition(val objectId: Int, val x: Int, val y: Int, val crop: IntArray?)
 
     private val buffer = ParsableByteArray()
     private val inflatedBuffer = ParsableByteArray()
     private var inflater: Inflater? = null
 
-    // ---- epoch 状态(跨 Display Set 保留,Epoch Start / seek 时清空)----
+    // ---- Epoch state (survives across Display Sets; cleared on Epoch Start / seek) ----
     private val objects = HashMap<Int, PgsObject>()
     private val palettes = HashMap<Int, IntArray>()
-    /** 调色板内容改一次 +1,用来判断对象缓存的位图还能不能接着用(淡入淡出会连改) */
+    /** Palette contents change → +1, used to decide whether a cached object bitmap is still valid (fades keep mutating it). */
     private val paletteRevs = HashMap<Int, Int>()
     private var planeWidth = 0
     private var planeHeight = 0
     private var pendingObjectId = -1
     private var pendingObject: PgsObject? = null
 
-    // ---- 当前 Display Set 状态 ----
+    // ---- Current Display Set state ----
     private val compositions = ArrayList<Composition>()
     private var activePaletteId = 0
     private var sawPresentation = false
@@ -104,7 +118,8 @@ class PgsSubtitleParser : SubtitleParser {
     ) {
         buffer.reset(data, offset + length)
         buffer.setPosition(offset)
-        // MKV 里的 PGS 轨可能整体 zlib 压缩(官方 PgsParser 也做这一步,保持行为一致)
+        // The PGS track inside MKV may be entirely zlib-compressed (the official PgsParser
+// also does this step — keep behavior identical).
         val inf = inflater ?: Inflater().also { inflater = it }
         if (Util.maybeInflate(buffer, inflatedBuffer, inf)) {
             buffer.reset(inflatedBuffer.data, inflatedBuffer.limit())
@@ -123,18 +138,21 @@ class PgsSubtitleParser : SubtitleParser {
             }
             buffer.setPosition(end)
         }
-        // 一个样本正好一个 Display Set:解完整体吐一次。compositions 为空(PCS 里
-        // number_of_composition_objects == 0)就是"清屏"指令,吐空列表把字幕擦掉。
+        // One sample is exactly one Display Set: emit once after the whole set is decoded.
+        // Empty compositions (PCS's number_of_composition_objects == 0) is a "clear screen" command —
+        // emit an empty list to wipe the subtitle.
         val cues = buildCues()
-        // ★ 只有**读到了 PCS 的完整一组**才吐。截断/半截的样本(流损坏、seek 落在中间、
-        //   容器切样切歪)解不出东西,这时候吐空列表等于把整屏字幕擦掉一瞬 —— 一块出问题
-        //   全屏跟着闪。不吐 = 这个样本丢掉,屏幕保持上一组,肉眼无感。
+        // ★ Only emit after we've read a full PCS group. Truncated/half samples (damaged
+        //   stream, seek landing in the middle, container's sample slicing off) decode to
+        //   nothing, and emitting an empty list there means wiping the whole subtitle for
+        //   one frame — one bad block makes the whole screen flicker. Not emitting means
+        //   dropping this sample, the screen keeps the previous group, no visible glitch.
         if (sawPresentation && (compositions.isEmpty() || cues.isNotEmpty())) {
             output.accept(CuesWithTiming(cues, C.TIME_UNSET, C.TIME_UNSET))
         }
     }
 
-    /** PCS:画面尺寸 + epoch 控制 + 本组要显示哪些对象、各自落在哪。 */
+    /** PCS: plane size + epoch control + which objects this group shows and where each lands. */
     private fun parsePresentation(end: Int) {
         if (end - buffer.position < 11) return
         sawPresentation = true
@@ -143,7 +161,7 @@ class PgsSubtitleParser : SubtitleParser {
         buffer.skipBytes(3) // frame_rate(1) + composition_number(2)
         val state = buffer.readUnsignedByte()
         if (state and COMPOSITION_STATE_EPOCH_START != 0) {
-            // 新 epoch:之前缓存的对象/调色板全部作废
+            // New epoch: every cached object/palette from before is invalidated.
             objects.clear()
             palettes.clear()
             pendingObject = null
@@ -171,7 +189,7 @@ class PgsSubtitleParser : SubtitleParser {
         }
     }
 
-    /** PDS:调色板按 id 累积更新(没列出的条目沿用旧值,规范如此,淡入淡出靠这个)。 */
+    /** PDS: palettes accumulate per id (entries not listed keep their previous values, per spec — fades rely on this). */
     private fun parsePalette(end: Int) {
         if (end - buffer.position < 2) return
         val id = buffer.readUnsignedByte()
@@ -194,7 +212,7 @@ class PgsSubtitleParser : SubtitleParser {
         }
     }
 
-    /** ODS:位图对象定义,大对象会拆成多个 ODS 分片(首片带尺寸,末片带 last 标志)。 */
+    /** ODS: bitmap object definition; large objects are split across multiple ODS fragments (the first carries the size, the last carries the last flag). */
     private fun parseObject(end: Int) {
         if (end - buffer.position < 4) return
         val id = buffer.readUnsignedShort()
@@ -202,14 +220,15 @@ class PgsSubtitleParser : SubtitleParser {
         val sequence = buffer.readUnsignedByte()
         if (sequence and SEQUENCE_FIRST != 0) {
             if (end - buffer.position < 7) return
-            buffer.skipBytes(3) // object_data_length(含下面 4 字节宽高,用不上)
+            buffer.skipBytes(3) // object_data_length (includes the 4 size bytes below, we don't need it)
             val w = buffer.readUnsignedShort()
             val h = buffer.readUnsignedShort()
             if (w <= 0 || h <= 0 || w > MAX_DIMEN || h > MAX_DIMEN) { pendingObject = null; return }
             pendingObjectId = id
             pendingObject = PgsObject(w, h)
         } else if (pendingObjectId != id) {
-            // 中途 seek 进来、首片没拿到——这个对象整条丢掉,别把碎片当完整位图
+            // Seeked in mid-stream and missed the first fragment — drop this object entirely,
+            // don't treat the fragments as a complete bitmap.
             return
         }
         val obj = pendingObject ?: return
@@ -220,7 +239,8 @@ class PgsSubtitleParser : SubtitleParser {
         }
         if (sequence and SEQUENCE_LAST != 0) {
             obj.complete = true
-            // 正常一个 epoch 里就一两个对象;真遇到长 epoch 不停定义新对象的流,别让缓存无限涨
+            // An epoch normally holds one or two objects; if we hit a stream that keeps
+            // defining new objects in a long epoch, cap the cache so it can't grow without bound.
             if (objects.size >= MAX_CACHED_OBJECTS && !objects.containsKey(id)) objects.clear()
             objects[id] = obj
             pendingObject = null
@@ -228,7 +248,7 @@ class PgsSubtitleParser : SubtitleParser {
         }
     }
 
-    /** 本组每个 composition object 出一个 Cue(官方实现只出得来一个,就差在这)。 */
+    /** Emit one Cue per composition object in this group (the official implementation only emits one — that is the gap). */
     private fun buildCues(): List<Cue> {
         if (planeWidth <= 0 || planeHeight <= 0 || compositions.isEmpty()) return emptyList()
         val colors = palettes[activePaletteId] ?: return emptyList()
@@ -240,7 +260,9 @@ class PgsSubtitleParser : SubtitleParser {
             var bitmap = decoded(obj, colors, rev) ?: continue
             val crop = c.crop
             if (crop != null) {
-                // 裁切窗只挑对象里的一块出来;落点仍是 composition 给的 x/y(规范:说的就是裁切后那块的位置)
+                // The crop window picks a sub-region out of the object; the landing point is
+                // still the x/y the composition provides (per spec: that is the position of
+                // the cropped piece).
                 val cx = crop[0].coerceIn(0, bitmap.width - 1)
                 val cy = crop[1].coerceIn(0, bitmap.height - 1)
                 val cw = crop[2].coerceIn(1, bitmap.width - cx)
@@ -263,11 +285,12 @@ class PgsSubtitleParser : SubtitleParser {
     }
 
     /**
-     * PGS 的行程编码(RLE)解码,规范里的五种码字:
-     * `C`(非 0)= 1 个 C 色像素;`00 00` = 换行;`00 0L`= L 个透明;`00 4L LL` = LL 个透明;
-     * `00 8L C` = L 个 C 色;`00 CL LL C` = LL 个 C 色。行内不足宽度的部分补透明。
+     * PGS run-length encoding (RLE) decoding. The five code words in the spec:
+     * `C` (non-zero) = 1 C-colored pixel; `00 00` = newline; `00 0L` = L transparent pixels;
+     * `00 4L LL` = LL transparent pixels; `00 8L C` = L C-colored pixels; `00 CL LL C` = LL C-colored pixels.
+     * Any under-width portion of a row is padded with transparent.
      */
-    /** 裁切结果按"源位图 + 裁切原点"复用,裁切窗没动就返回同一个位图对象(缓存才命中得上)。 */
+    /** Reuse crop results by "source bitmap + crop origin"; if the crop window hasn't moved, return the same bitmap (so the cache hits). */
     private fun cropped(obj: PgsObject, src: Bitmap, x: Int, y: Int, w: Int, h: Int): Bitmap {
         val prev = obj.cropBitmap
         if (prev != null && obj.cropSrc === src && obj.cropX == x && obj.cropY == y &&
@@ -313,11 +336,14 @@ class PgsSubtitleParser : SubtitleParser {
                 if (pos >= data.size) break
                 val second = data[pos++].toInt() and 0xFF
                 if (second == 0) {
-                    // 换行标记:规范要求每行都编满 w 个像素,所以这里**什么都不做**、像素序
-                    // 继续线性往下走(ffmpeg pgssub 与 media3 都是这个行为)。别顺手写成
-                    // "跳到下一行行首":编满的行会因此白白空掉一整行,整幅图隔行错位;而
-                    // "只在没编满时补齐"也不行——只编了 `00 00` 的空行同样处在行首,两种情况
-                    // 在这个位置根本区分不了。
+                    // Newline marker: the spec requires every row to be encoded to w pixels,
+                    // so here we do **nothing** and let the pixel index keep walking linearly
+                    // (ffmpeg pgssub and media3 both behave this way). Don't casually write
+                    // "jump to the start of the next row": a fully-encoded row would then leave
+                    // an entire blank row, making the image shift every other row; and
+                    // "only top up rows that aren't full" doesn't work either — a row that
+                    // only encoded `00 00` is also at row start, and the two cases are
+                    // indistinguishable at this position.
                     continue
                 }
                 val longRun = second and 0x40 != 0
@@ -328,13 +354,14 @@ class PgsSubtitleParser : SubtitleParser {
                     second and 0x3F
                 }
                 color = if (second and 0x80 == 0) {
-                    0 // 透明
+                    0 // transparent
                 } else {
                     if (pos >= data.size) break
                     colors[data[pos++].toInt() and 0xFF]
                 }
             }
-            // 按线性像素序填(与 ffmpeg/media3 一致:码字不跨行是编码器的事,这里不猜、不重排)
+            // Fill in linear pixel order (matches ffmpeg/media3: code words not crossing
+            // row boundaries is the encoder's job — don't guess, don't reorder here).
             val to = minOf(index + run, argb.size)
             java.util.Arrays.fill(argb, index, to, color)
             index = to
@@ -355,10 +382,12 @@ class PgsSubtitleParser : SubtitleParser {
 }
 
 /**
- * 把 PGS 交给 [PgsSubtitleParser],其余格式(SRT/ASS/DVB/CEA…)照旧走
- * [DefaultSubtitleParserFactory]。抽取阶段就要用它把样本转成 `application/x-media3-cues`
- * (新版 TextRenderer 不再支持 legacy 解码路径),所以每条构建 MediaSource 的路径
- * ——[MediaSources]、[newM2tsExtractorsFactory]、播放器默认 MediaSource 工厂——都要挂上。
+ * Routes PGS to [PgsSubtitleParser], while letting other formats (SRT/ASS/DVB/CEA…)
+ * continue to go through [DefaultSubtitleParserFactory]. The extraction stage needs
+ * this in order to convert samples to `application/x-media3-cues` (the new TextRenderer
+ * no longer supports the legacy decode path), so every path that builds a MediaSource —
+ * [MediaSources], [newM2tsExtractorsFactory], the player's default MediaSource factory —
+ * has to install this.
  */
 @UnstableApi
 class TwigSubtitleParserFactory : SubtitleParser.Factory {

@@ -22,22 +22,29 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * 后台传输(复制/移动/压缩)的会话状态,进程内单例。
+ * Session state for background transfers (copy/move/compress), in-process singleton.
  *
- * 为什么要有这一层:进度框原来自己持有整个任务——引擎回调直接写它的 View,任务
- * 生命周期挂在 `viewLifecycleOwner.lifecycleScope` 上。于是进度框一关任务就没了着落,
- * 而且没有前台通知,复制期间切走应用随时可能被系统回收(大文件传网络盘尤其久)。
+ * Why this layer exists: the progress dialog used to own the whole job itself — engine
+ * callbacks wrote straight to its View, and the job's lifecycle was tied to
+ * `viewLifecycleOwner.lifecycleScope`. So closing the dialog meant the job lost its
+ * footing, and with no foreground notification the process could be reclaimed by the
+ * system at any moment while the user had switched away (copying large files to a
+ * network drive takes a particularly long time).
  *
- * 现在:**任务归会话,进度框只是它的一个观察者**。会话由 [TransferService] 这个前台
- * 服务跑着(通知栏有进度条,进程不会被回收),界面可以随时挂上来([ui])或摘掉
- * (「转到后台」按钮 / 界面销毁),摘掉时任务照跑不误。
+ * Now: **the job belongs to the session, the progress dialog is just one of its
+ * observers**. The session is run by the [TransferService] foreground service (the
+ * notification has a progress bar, so the process won't be killed), and the UI can
+ * attach ([ui]) or detach at any time (the "run in background" button / UI destroyed);
+ * detached, the job keeps running regardless.
  *
- * 同时只跑一个会话:进度框原来是 `setCancelable(false)` 的模态框,本来就不可能并发
- * 发起第二个;能转后台之后才有这种可能,这里明确挡掉(见 [start] 返回值)。
+ * Only one session runs at a time: the progress dialog was originally a `setCancelable(false)`
+ * modal, so launching a second one concurrently was never possible; being able to send
+ * the first one to the background creates that possibility for the first time, and we
+ * block it here explicitly (see the return value of [start]).
  */
 object Transfers {
 
-    /** 一次传输要干的活儿。**纯数据**——会话会比发起它的界面活得久,不能捕获 Fragment。 */
+    /** What one transfer has to do. **Pure data** — the session outlives the screen that started it, so it can't capture a Fragment. */
     sealed class Work {
         abstract val items: List<XFile>
 
@@ -49,9 +56,11 @@ object Transfers {
         ) : Work()
 
         /**
-         * 目录对比页的复制/同步:**每一项有自己的目标目录**(源在树里的位置决定它该落到
-         * 对侧的哪个子目录),而不是 [Copy] 那样一批共用一个 dest。目标目录由发起方
-         * 保证已存在(对比页在构造 pairs 时逐级建好,建不出来就不会走到这里)。
+         * Copy/sync from the directory-compare screen: **each item has its own destination**
+         * (the source's position in the tree decides which subdirectory on the other side
+         * it should land in), not a single shared `dest` like [Copy]. The caller guarantees
+         * the destination directory exists (the compare screen builds them level by level
+         * when constructing pairs; if it can't, we never get here).
          */
         class Sync(
             val pairs: List<Pair<XFile, XFile>>,
@@ -66,14 +75,16 @@ object Transfers {
             val target: XFile,
             val format: ArchiveWriter.Format,
             val move: Boolean,
-            /** 非空则加密(AES-256);对话框里没填就是 null。 */
+            /** Non-null means encrypted (AES-256); null means the dialog was left blank. */
             val password: String? = null,
         ) : Work()
     }
 
     /**
-     * 一次同名冲突的问答:传输线程 [await] 阻塞等着,界面那边 [answer] 放行。
-     * 界面没挂着的时候就一直等——通知会改成「等待确认…」,点回来即弹框。
+     * A single name-collision Q&A: the transfer thread blocks on [await], the UI side
+     * releases it with [answer]. If the UI isn't attached, we just keep waiting — the
+     * notification switches to "waiting for confirmation…", and tapping it brings the
+     * dialog back up.
      */
     class Conflict(val src: XFile, val existing: XFile) {
         private val slot = ArrayBlockingQueue<Array<CopyEngine.Decision?>>(1)
@@ -81,7 +92,7 @@ object Transfers {
         fun answer(d: CopyEngine.Decision?) { slot.offer(arrayOf(d)) }
     }
 
-    /** 界面观察者;全部在主线程回调。 */
+    /** UI observer; all callbacks on the main thread. */
     interface Ui {
         fun onProgress(s: Session)
         fun onConflict(s: Session, c: Conflict)
@@ -89,8 +100,10 @@ object Transfers {
     }
 
     /**
-     * 一次传输的全部状态。进度字段由传输线程写、主线程读(@Volatile 够用:每个字段
-     * 独立、读到稍旧的值只是少刷一帧),界面挂上来时照着快照渲染即可,不必等下一次回调。
+     * Full state of one transfer. The progress fields are written by the transfer thread
+     * and read by the main thread (@Volatile is enough: each field is independent, reading
+     * a slightly stale value just means one fewer frame redraw). When the UI attaches,
+     * it just renders the snapshot — no need to wait for the next callback.
      */
     class Session(
         val work: Work,
@@ -105,22 +118,22 @@ object Transfers {
         @Volatile var totalProgress = 0 // 0..1000
         @Volatile var dirsLeft = 0
         @Volatile var filesLeft = 0
-        @Volatile var speed = 0.0 // B/s,指数滑动平均
-        @Volatile var etaSeconds = -1.0 // <0 = 还算不出来
+        @Volatile var speed = 0.0 // B/s, exponential moving average
+        @Volatile var etaSeconds = -1.0 // <0 = not yet computable
         @Volatile var pendingConflict: Conflict? = null
         @Volatile var finished: Result<Unit>? = null
 
-        /** 通知栏刷新钩子(由 [TransferService] 装上),等冲突这种"没有进度事件"的时刻也要能刷。 */
+        /** Notification-bar refresh hook (installed by [TransferService]); even moments without a progress event (e.g. waiting on a conflict) need to refresh. */
         @Volatile internal var tick: (() -> Unit)? = null
 
         val cancelled = AtomicBoolean(false)
 
-        /** "全部同样处理"记住的选择(冲突框勾了才有)。 */
+        /** "Apply to all" remembered choice (only when the conflict dialog's checkbox is ticked). */
         @Volatile var applyAll: CopyEngine.Decision? = null
 
         fun cancel() {
             cancelled.set(true)
-            pendingConflict?.answer(null) // 正卡在冲突框上:放行,让传输线程看到取消标志
+            pendingConflict?.answer(null) // If we're stuck on the conflict dialog, release it so the transfer thread sees the cancel flag
         }
 
         val isCompress: Boolean get() = work is Work.Compress
@@ -129,7 +142,7 @@ object Transfers {
     @Volatile var active: Session? = null
         private set
 
-    /** 跑完但还没被界面消费掉的会话(切后台时完成的);见 [consumeFinished]。 */
+    /** A session that's finished but hasn't been consumed by the UI yet (it finished while we were in the background); see [consumeFinished]. */
     @Volatile private var pendingResult: Session? = null
 
     @Volatile var ui: Ui? = null
@@ -138,7 +151,8 @@ object Transfers {
     private val main = Handler(Looper.getMainLooper())
 
     /**
-     * 起一个会话并拉起前台服务。已有会话在跑时返回 false(调用方 toast 提示)。
+     * Start a session and bring up the foreground service. Returns false if a session is
+     * already running (caller shows a toast).
      */
     @Synchronized
     fun start(ctx: Context, session: Session): Boolean {
@@ -147,15 +161,16 @@ object Transfers {
         try {
             TransferService.start(ctx)
         } catch (e: Exception) {
-            active = null // 服务起不来就回滚,否则 active 卡住、以后再也开不了传输
+            active = null // Roll back if the service can't come up; otherwise `active` sticks and nothing can ever be transferred again
             throw e
         }
         return true
     }
 
     /**
-     * 界面挂上来/摘掉。挂上来时若有等待中的冲突立刻补一次回调——否则任务会一直
-     * 卡在那儿,而用户刚点通知回来看到的是一个不动的进度条。
+     * UI attaches/detaches. On attach, if there's a pending conflict, fire one callback
+     * immediately — otherwise the job stays stuck and the user, just tapping back from
+     * the notification, sees a frozen progress bar.
      */
     fun attach(u: Ui?) {
         ui = u
@@ -165,14 +180,15 @@ object Transfers {
         s.pendingConflict?.let { u.onConflict(s, it) }
     }
 
-    /** 取走"已完成但界面没在场"的会话,由 [MainActivity] 回到前台时收尾(刷新面板 + 提示)。 */
+    /** Take the "finished but UI not on stage" session; [MainActivity] wraps this up (refresh pane + toast) when it returns to the foreground. */
     @Synchronized
     fun consumeFinished(): Session? = pendingResult.also { pendingResult = null }
 
-    // ---- 以下由 TransferService 的传输线程调用 ----
+    // ---- The transfer thread in TransferService calls the following ----
 
-    // ★ 别把这个方法叫 run:匿名内部类里 `run { }` 会解析成标准库的作用域函数,
-    // 悄悄绕过这里(与 NativeSmbClient.exec 改名同一个坑,见 CLAUDE.md)
+    // ★ Don't name this method `run`: in an anonymous inner class, `run { }` resolves to
+    // the stdlib scope function and silently bypasses this one (same trap as renaming
+    // NativeSmbClient.exec, see CLAUDE.md)
     internal fun execute(ctx: Context, s: Session, onTick: () -> Unit) {
         s.tick = onTick
         val listener = object : CopyEngine.ProgressListener {
@@ -192,7 +208,7 @@ object Transfers {
 
             override fun onBytes(copiedTotal: Long, totalBytes: Long) {
                 val now = android.os.SystemClock.elapsedRealtime()
-                if (now - lastUi < 200) return // 节流 ~5Hz:速度平均与界面刷新都够用了
+                if (now - lastUi < 200) return // Throttle to ~5 Hz: enough for speed averaging and UI refresh
                 val dt = (now - lastT) / 1000.0
                 if (dt > 0) {
                     val inst = (copiedTotal - lastBytes) / dt
@@ -225,8 +241,10 @@ object Transfers {
                     { s.cancelled.get() }, resolverFor(s), plan.bytes,
                 )
                 is Work.Sync -> {
-                    // 按目标目录分组,逐组搬。总进度会被每组从 0 重新报一次,靠 base
-                    // 偏移把它接成一条连续的线——否则进度条每换一个目录就往回跳。
+                    // Group by destination and move one group at a time. Each group reports
+                    // its progress starting from 0; the `base` offset stitches them into a
+                    // continuous line — otherwise the bar jumps back every time we switch
+                    // directories.
                     var base = 0L
                     var lastCopied = 0L
                     val offset = object : CopyEngine.ProgressListener by listener {
@@ -250,7 +268,8 @@ object Transfers {
                         w.items, w.destDir, w.target, w.format, listener,
                         { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password,
                     )
-                    // 打包成功才动源文件;取消/失败时半成品已被删掉,源当然要留着
+                    // Only touch the source files on a successful pack; on cancel/failure
+                    // the partial output is already gone, so the sources must stay.
                     if (w.move) w.items.forEach { FsRegistry.of(it).delete(it) }
                 }
             }
@@ -260,12 +279,12 @@ object Transfers {
         finish(s)
     }
 
-    /** 冲突决策:传输线程阻塞等,界面(在场的话)弹框回答。 */
+    /** Conflict decision: transfer thread blocks; the UI (if attached) answers via dialog. */
     private fun resolverFor(s: Session) = CopyEngine.ConflictResolver { src, existing ->
         s.applyAll ?: run {
             val c = Conflict(src, existing)
             s.pendingConflict = c
-            post(s) // 通知栏改显示「等待确认…」——卡在这儿时没有别的进度事件会来
+            post(s) // Notification switches to "waiting for confirmation…" — nothing else comes in to trigger a refresh
             main.post { ui?.onConflict(s, c) }
             val d = c.await()
             s.pendingConflict = null
@@ -275,7 +294,7 @@ object Transfers {
     }
 
     private fun post(s: Session) {
-        s.tick?.invoke() // 通知栏(服务自己节流)
+        s.tick?.invoke() // Notification bar (the service throttles this itself)
         main.post { if (active === s) ui?.onProgress(s) }
     }
 
@@ -284,10 +303,10 @@ object Transfers {
         main.post {
             val u = ui
             if (u != null) {
-                if (active == null) ui = null // 已经有下一个会话挂上来了就别摘人家的
+                if (active == null) ui = null // A new session has already attached; don't steal its observer
                 u.onFinished(s)
             } else {
-                // 界面不在场:留着结果,等 MainActivity 回到前台再刷新面板并提示
+                // UI not on stage: keep the result, let MainActivity refresh the pane and toast when it returns to the foreground
                 pendingResult = s
             }
         }
@@ -295,12 +314,14 @@ object Transfers {
 }
 
 /**
- * 跑传输会话的前台服务。
+ * Foreground service that runs the transfer session.
  *
- * 单纯起个线程是不够的:复制大目录(尤其到 SMB/SFTP 这类慢速来源)可能几十分钟,
- * 期间用户会切走应用——没有前台通知的话进程随时可能被回收,复制就断在半路。
- * 通知栏那条进度条同时也是「转到后台」之后唯一的入口:点它回到 [MainActivity]
- * 重新弹出进度框(见 [MainActivity.transferIntent])。
+ * Just spinning up a thread isn't enough: copying a large directory (especially to slow
+ * sources like SMB/SFTP) can take dozens of minutes, and during that time the user will
+ * switch away from the app — without a foreground notification the process can be killed
+ * at any moment, and the copy breaks halfway through. The notification's progress bar is
+ * also the only entry point after sending the task to the background: tapping it returns
+ * to [MainActivity] and re-pops the progress dialog (see [MainActivity.transferIntent]).
  */
 class TransferService : Service() {
 
@@ -317,7 +338,7 @@ class TransferService : Service() {
                 NotificationChannel(
                     CHANNEL,
                     getString(R.string.transfer_channel),
-                    NotificationManager.IMPORTANCE_LOW, // 进度条不该出声/浮动打断
+                    NotificationManager.IMPORTANCE_LOW, // A progress bar shouldn't sound/peek
                 ).apply { setShowBadge(false) },
             )
         }
@@ -340,8 +361,10 @@ class TransferService : Service() {
     }
 
     /**
-     * 进度变化时刷通知——1s 一次足够,更密只是白白唤醒系统 UI。
-     * 唯一不节流的是"等着用户决定冲突":那之后不会再有进度事件来触发刷新了。
+     * Refresh the notification when progress changes — once per second is enough; any
+     * more just wakes the system UI for nothing. The only thing we don't throttle is
+     * "waiting for the user to resolve a conflict": after that, no further progress
+     * events will come in to trigger a refresh.
      */
     private fun tick(s: Session) {
         val now = android.os.SystemClock.elapsedRealtime()
@@ -380,15 +403,16 @@ class TransferService : Service() {
     }
 
     /**
-     * 完成/失败的收尾通知;界面还在场的话它自己会 toast,不必再打扰。
-     * **取消不发**:那是用户自己按的,结果他当场就知道,再补一条只是噪音。
+     * Completion/failure wrap-up notification; if the UI is still on stage it toasts
+     * itself, no need to bother again. **No notification on cancel**: that's the user
+     * pressing it themselves, they already know the result, and another ping is just noise.
      */
     private fun doneNotification(s: Session): Notification? {
         if (Transfers.ui != null) return null
         if (s.cancelled.get()) return null
         val r = s.finished ?: return null
         val failed = r.isFailure && r.exceptionOrNull() !is ArchiveWriter.Cancelled
-        if (r.isFailure && !failed) return null // ArchiveWriter.Cancelled 也是取消
+        if (r.isFailure && !failed) return null // ArchiveWriter.Cancelled also counts as cancel
         return baseBuilder()
             .setContentTitle(
                 if (failed) getString(R.string.transfer_failed) else getString(R.string.transfer_done),

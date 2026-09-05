@@ -1,0 +1,23 @@
+<!--
+  SSH (SFTP): a shell prompt ">" with a padlock in the bottom-right corner — "a remote shell,
+  over an encrypted channel". Deliberately different from ic_server (a bare monitor, still the
+  generic "some server" row) and from ic_terminal (the local shell: same chevron but with the
+  underscore, and no lock — the underscore is dropped here because it would collide with the
+  padlock).
+  Same recipe as the other source icons: white fill / white stroke, all colour from android:tint.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/primary">
+    <!-- The prompt chevron -->
+    <path android:strokeColor="@android:color/white"
+        android:strokeWidth="2.6" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M3.5,5.5L10.6,12L3.5,18.5" />
+    <!-- Padlock: shackle then body -->
+    <path android:strokeColor="@android:color/white"
+        android:strokeWidth="1.6" android:strokeLineCap="round"
+        android:pathData="M16.1,17.2v-1.7a2,2 0 0,1 4,0v1.7" />
+    <path android:fillColor="@android:color/white"
+        android:pathData="M14.4,16.6h7.4c0.6,0 1,0.45 1,1v4.3c0,0.55 -0.4,1 -1,1h-7.4c-0.6,0 -1,-0.45 -1,-1v-4.3c0,-0.55 0.4,-1 1,-1z" />
+</vector>

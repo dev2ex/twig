@@ -1,4 +1,4 @@
-<!-- 上下并排布局下的"搬到上面那栏":ic_merge_right 转 -90° -->
+<!-- "Move to the upper row" in the top/bottom side-by-side layout: ic_merge_right rotated -90° -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"

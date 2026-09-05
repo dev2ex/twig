@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 横屏双栏:左侧封面,右侧歌名/歌词/操作区——歌词常驻显示,不需要像竖屏那样点击切换。
-     控件 id 与竖屏版(layout/activity_music_player.xml)保持一致,ViewBinding 字段复用,
-     MusicPlayerActivity 无需区分布局各写一套逻辑。 -->
+<!-- Landscape two-column layout: cover on the left, title/lyrics/controls on the right — lyrics are shown persistently, no need for a tap to switch like in portrait.
+     The view ids match the portrait version (layout/activity_music_player.xml) so ViewBinding fields can be shared,
+     and MusicPlayerActivity does not need a separate code path for each layout. -->
 <androidx.drawerlayout.widget.DrawerLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/drawer"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- 主内容 -->
+    <!-- Main content -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- 毛玻璃背景:全屏铺满(含状态栏区域,沉浸式) -->
+        <!-- Frosted-glass background: covers the full screen (including the status bar area, immersive) -->
         <ImageView
             android:id="@+id/bgBlur"
             android:layout_width="match_parent"
@@ -27,7 +27,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <!-- 顶行 -->
+            <!-- Top row -->
             <LinearLayout
                 android:id="@+id/topBar"
                 android:layout_width="match_parent"
@@ -60,14 +60,14 @@
                     android:contentDescription="@string/music_info" />
             </LinearLayout>
 
-            <!-- 双栏行:左封面 / 右(歌名·歌词·操作) -->
+            <!-- Two-column row: left cover / right (title · lyrics · controls) -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
                 android:orientation="horizontal">
 
-                <!-- 左:封面(左右滑切歌,单击无效果——歌词已常驻右侧) -->
+                <!-- Left: cover (swipe left/right to change track; tap does nothing — lyrics are always visible on the right) -->
                 <FrameLayout
                     android:id="@+id/centerArea"
                     android:layout_width="0dp"
@@ -86,7 +86,7 @@
                         android:contentDescription="@null" />
                 </FrameLayout>
 
-                <!-- 右:歌名/艺术家/专辑 + 歌词(占满剩余空间)+ 播放操作 -->
+                <!-- Right: title/artist/album + lyrics (filling remaining space) + playback controls -->
                 <LinearLayout
                     android:id="@+id/controls"
                     android:layout_width="0dp"
@@ -108,7 +108,7 @@
                         android:textSize="17sp"
                         android:textStyle="bold" />
 
-                    <!-- 艺术家一行:左=加入我的最爱,右=当前播放列表 -->
+                    <!-- Artist row: left = add to favorites, right = current playlist -->
                     <LinearLayout
                         android:id="@+id/artistRow"
                         android:layout_width="match_parent"
@@ -160,14 +160,14 @@
                         android:textSize="11sp"
                         android:layout_marginBottom="2dp" />
 
-                    <!-- 歌词:常驻显示,占满标题区与操作区之间的剩余空间 -->
+                    <!-- Lyrics: shown persistently, filling the remaining space between the title area and the controls -->
                     <com.twig.app.ui.LyricsView
                         android:id="@+id/lyrics"
                         android:layout_width="match_parent"
                         android:layout_height="0dp"
                         android:layout_weight="1" />
 
-                    <!-- 播放操作栏:两侧弹性占位挤到中间靠拢 -->
+                    <!-- Playback controls bar: flex spacers on both sides push the buttons toward the center -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -237,14 +237,14 @@
                             android:contentDescription="@null" />
                     </LinearLayout>
 
-                    <!-- 波形进度条 -->
+                    <!-- Waveform progress bar -->
                     <com.twig.app.ui.WaveformSeekBar
                         android:id="@+id/wave"
                         android:layout_width="match_parent"
                         android:layout_height="28dp"
                         android:layout_marginTop="2dp" />
 
-                    <!-- 最下一行:当前时间 / 曲目序号·总数 / 时长 -->
+                    <!-- Bottom row: current time / track number · total / duration -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -281,7 +281,7 @@
         </LinearLayout>
     </FrameLayout>
 
-    <!-- 抽屉 -->
+    <!-- Drawer -->
     <LinearLayout
         android:id="@+id/drawerContent"
         android:layout_width="290dp"
@@ -306,7 +306,7 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <!-- 退出播放器 -->
+        <!-- Exit the player -->
         <LinearLayout
             android:id="@+id/drawerExit"
             android:layout_width="match_parent"

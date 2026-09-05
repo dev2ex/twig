@@ -1,6 +1,6 @@
 package com.twig.git
 
-/** 一条提交记录。 */
+/** A single commit record. */
 data class GitCommit(
     val sha: String,
     val parents: List<String>,
@@ -14,12 +14,12 @@ data class GitCommit(
     val shortSha: String get() = sha.take(7)
 }
 
-/** 变更类型。 */
+/** Kind of change. */
 enum class ChangeKind { ADDED, MODIFIED, DELETED }
 
 data class GitChange(val path: String, val kind: ChangeKind)
 
-/** 工作区状态:分支 + 三组变更。 */
+/** Worktree status: branch + three groups of changes. */
 data class GitStatus(
     val branch: String,
     val staged: List<GitChange>,
@@ -27,15 +27,17 @@ data class GitStatus(
     val untracked: List<String>,
 )
 
-/** 一条本地分支:名字 + 指向的 commit sha。 */
+/** A local branch: name + commit sha it points to. */
 data class GitBranch(val name: String, val sha: String, val current: Boolean)
 
 /**
- * 一条工作区(`git worktree`)。
+ * A worktree (`git worktree`).
  *
- * [path] 是它的**工作目录**,取自仓库里记着的绝对路径 —— 那是"建这个 worktree 的那台
- * 机器"上的路径,经网络来源看时得由上层映射回本地可达的路径(见 :app 的 `worktreeChild`)。
- * [main] 为 true 表示主工作区(仓库自己那份,不是 `git worktree add` 出来的)。
+ * [path] is its **working directory**, taken from the absolute path recorded in the
+ * repo — which is the path on "the machine that created this worktree"; when viewed
+ * over a network source it must be mapped back to a locally reachable path by the
+ * upper layer (see `:app`'s `worktreeChild`).
+ * [main] true means the main worktree (the repo's own, not created via `git worktree add`).
  */
 data class GitWorktree(
     val name: String,

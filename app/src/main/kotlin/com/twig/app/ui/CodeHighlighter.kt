@@ -12,13 +12,16 @@ import android.text.style.TypefaceSpan
 import android.text.style.UnderlineSpan
 
 /**
- * 手写词法着色器(体积优先,不引库):单遍扫描产出 token 区间,[render] 按主题上色。
- * 词法级高亮——关键字/字符串/注释/数字/注解/函数名/大写开头类型,不做语义分析,
- * 看源码与配置文件够用。加一种语言 = 一个关键字集合 + 注释/字符串风格配置。
+ * Hand-rolled lexical highlighter (size-first, no library): a single-pass scan produces
+ * token spans, and [render] colors them per theme.
+ * Lexical-level highlighting — keywords / strings / comments / numbers / annotations /
+ * function names / capitalized type names — no semantic analysis, which is enough for
+ * reading source and config files. Adding a language = a keyword set plus comment/string
+ * style configuration.
  */
 object CodeHighlighter {
 
-    // token 类型(兼作主题色数组下标)
+    // token type (also serves as an index into the theme color array)
     private const val KEYWORD = 0
     private const val STRING = 1
     private const val COMMENT = 2
@@ -27,8 +30,9 @@ object CodeHighlighter {
     private const val FUNC = 5
     private const val TYPE = 6
 
-    // Markdown 专用 token 类型:不进 theme.colors 数组,render() 里单独 when 分支处理
-    // (需要背景色/粗斜体/字号等颜色以外的效果,不适合复用"kind 即数组下标"这套映射)
+    // Markdown-only token types: not in theme.colors array; render() handles them via a
+    // dedicated when branch (they need effects beyond color — background, bold/italic,
+    // font size — which doesn't fit the "kind = array index" mapping)
     private const val MD_HEADER = 7
     private const val MD_BOLD = 8
     private const val MD_ITALIC = 9
@@ -39,10 +43,10 @@ object CodeHighlighter {
     private const val MD_LIST = 14
     private const val MD_HR = 15
 
-    /** [level] 仅 MD_HEADER 用(1-6 级标题,决定字号)。 */
+    /** [level] is only used by MD_HEADER (1-6, determines font size). */
     class Token(val start: Int, val end: Int, val kind: Int, val level: Int = 0)
 
-    /** 一套配色;色值与应用日夜主题无关,代码查看自成一体。[colors] 按 token 类型取色。 */
+    /** A color scheme; colors are independent of the app's light/dark theme — the code viewer stands on its own. [colors] are indexed by token type. */
     class Theme(val name: String, val bg: Int, val fg: Int, val colors: IntArray)
 
     val THEMES = listOf(
@@ -74,22 +78,29 @@ object CodeHighlighter {
                 0xFFD33682.toInt(), 0xFF268BD2.toInt(), 0xFF268BD2.toInt(), 0xFFB58900.toInt(),
             ),
         ),
+        Theme(
+            "Solarized Dark", 0xFF002B36.toInt(), 0xFF839496.toInt(),
+            intArrayOf(
+                0xFF859900.toInt(), 0xFF2AA198.toInt(), 0xFF586E75.toInt(),
+                0xFFD33682.toInt(), 0xFF268BD2.toInt(), 0xFF268BD2.toInt(), 0xFFB58900.toInt(),
+            ),
+        ),
     )
 
-    /** 一种语言的词法配置。 */
+    /** Lexical configuration for one language. */
     class Lang(
         val keywords: Set<String>,
         val lineComments: Array<String> = arrayOf("//"),
         val blockStart: String? = "/*",
         val blockEnd: String = "*/",
         val quotes: String = "\"'",
-        val triple: Boolean = false,     // """ / ''' 跨行字符串(py/kt)
-        val backtick: Boolean = false,   // ` 跨行字符串(js 模板/go raw/sh 命令替换)
-        val annotation: Char? = null,    // '@' 注解/装饰器,'#' C 预处理
+        val triple: Boolean = false,     // """ / ''' multi-line strings (py/kt)
+        val backtick: Boolean = false,   // ` multi-line strings (JS template / Go raw / sh command substitution)
+        val annotation: Char? = null,    // '@' for annotations/decorators, '#' for C preprocessor
         val caseInsensitive: Boolean = false,
-        val typeHl: Boolean = true,      // 大写开头标识符按类型上色
-        val xml: Boolean = false,        // 走 XML 专用扫描
-        val markdown: Boolean = false,   // 走 Markdown 专用扫描
+        val typeHl: Boolean = true,      // identifiers starting with an uppercase letter are colored as types
+        val xml: Boolean = false,        // use the dedicated XML scanner
+        val markdown: Boolean = false,   // use the dedicated Markdown scanner
     )
 
     private val LANGS: Map<String, Lang> = buildMap {
@@ -232,10 +243,10 @@ object CodeHighlighter {
         put("md", md); put("markdown", md)
     }
 
-    /** 按文件名找语言配置;不认识返回 null(不着色)。 */
+    /** Find the language configuration by file name; returns null if unknown (no highlighting). */
     fun langFor(name: String): Lang? = LANGS[name.substringAfterLast('.', "").lowercase()]
 
-    /** 词法扫描产出 token 表(可离线算好,主题切换时复用重上色)。 */
+    /** Lexical scan producing a token table (can be computed offline; re-colored on theme change). */
     fun tokenize(text: String, lang: Lang): List<Token> {
         if (lang.xml) return tokenizeXml(text)
         if (lang.markdown) return tokenizeMarkdown(text)
@@ -298,7 +309,7 @@ object CodeHighlighter {
             val c = text[i]
             if (c == '\\') { i += 2; continue }
             if (c == q) { i++; break }
-            if (c == '\n' && q != '`') break // 未闭合引号止于行尾,防后文整篇染成字符串色
+            if (c == '\n' && q != '`') break // unclosed quote ends at end-of-line, so the rest of the text doesn't get painted as a string color
             i++
         }
         i = minOf(i, n)
@@ -306,7 +317,7 @@ object CodeHighlighter {
         return i
     }
 
-    /** XML/HTML:注释、标签名(关键字色)、属性名(类型色)、属性值(字符串色)。 */
+    /** XML/HTML: comments, tag names (keyword color), attribute names (type color), attribute values (string color). */
     private fun tokenizeXml(text: String): List<Token> {
         val out = ArrayList<Token>()
         val n = text.length
@@ -355,10 +366,13 @@ object CodeHighlighter {
     private val MD_TABLE_SEP_RE = Regex("^\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?$")
 
     /**
-     * 逐行扫描块级结构(标题/引用/列表/分隔线/围栏代码块/表格),块内文字再走
-     * [tokenizeMarkdownInline] 扫行内语法(粗斜体/行内代码/链接)。围栏代码块与表格
-     * 内部不做行内扫描——原样只加背景+等宽,不重排列宽(不改动原文字符,避免破坏
-     * 搜索用的字符偏移),不追求"块内按语言二次高亮"。
+     * Scan block-level structures line by line (headings / quotes / lists / horizontal rules /
+     * fenced code blocks / tables), then run [tokenizeMarkdownInline] over the inline text
+     * within each block (bold/italic/inline code/links). Fenced code blocks and table bodies
+     * are not inline-scanned — they only get a background and a monospace font without
+     * re-laying out the column widths (so the original characters are not touched, preserving
+     * character offsets for search) and without trying to do "second-pass highlighting by
+     * language inside the block".
      */
     private fun tokenizeMarkdown(text: String): List<Token> {
         val out = ArrayList<Token>()
@@ -426,11 +440,11 @@ object CodeHighlighter {
             tokenizeMarkdownInline(text, contentStart, lineEnd, out)
             i = next
         }
-        if (fenceOpen in 0 until n) out.add(Token(fenceOpen, n, MD_CODE_BLOCK)) // 未闭合围栏,染到文末
+        if (fenceOpen in 0 until n) out.add(Token(fenceOpen, n, MD_CODE_BLOCK)) // unclosed fence: paint to end of text
         return out
     }
 
-    /** 单行内扫描:反引号行内代码、星号或下划线的粗体与斜体、[text](url) 链接。 */
+    /** Inline scan within a line: backtick inline code, asterisk or underscore bold and italic, [text](url) links. */
     private fun tokenizeMarkdownInline(text: String, start: Int, end: Int, out: MutableList<Token>) {
         var i = start
         while (i < end) {
@@ -482,15 +496,18 @@ object CodeHighlighter {
         else -> 1f
     }
 
-    // 行内代码/围栏代码块的底色:半透明灰,叠在任何主题背景上都有区分度,不用为
-    // Markdown 单独扩主题配色表。
+    // Background color for inline/fenced code blocks: a translucent gray that gives
+    // contrast on top of any theme background, so we don't need to extend the theme palette
+    // just for Markdown.
     private const val CODE_CHIP_BG = 0x33888888
 
     /**
-     * 高亮 span 的标记接口。编辑模式下要在 [Editable] 上反复"清掉旧色重上",
-     * 清理时必须只摘自己加的这些——`getSpans(Any::class)` 一把清会连搜索高亮
-     * 和输入法的 composing span 一起摘掉(后者一摘,拼音串当场散架)。
-     * 各 span 类型薄薄包一层实现本接口,[applyTo] 靠它精确回收。
+     * Marker interface for highlight spans. In edit mode, on [Editable], "remove the old
+     * color and apply the new" is done repeatedly, and only these spans we added must be
+     * removed — a blanket `getSpans(Any::class)` would also clear the search highlights
+     * and the IME's composing span (clearing the latter immediately breaks the pinyin
+     * composition string). Each span type is wrapped in a thin implementation of this
+     * interface; [applyTo] relies on it for precise cleanup.
      */
     interface Hl
 
@@ -502,8 +519,9 @@ object CodeHighlighter {
     private class HlUnderline : UnderlineSpan(), Hl
 
     /**
-     * 按主题把 token 摊成 span,逐个交给 [emit]。Markdown 专用 kind 需要颜色以外的
-     * 效果(粗斜体/字号/背景),单独分支。[length] 是目标文本长度,用于越界保护。
+     * Flatten tokens into spans per theme, handing each one to [emit]. Markdown-only kinds
+     * need effects beyond color (bold/italic/font size/background) and have a dedicated
+     * branch. [length] is the target text length, used for bounds protection.
      */
     private inline fun emitSpans(
         length: Int,
@@ -537,7 +555,7 @@ object CodeHighlighter {
         }
     }
 
-    /** 按主题把 token 上色成 Spannable(只读路径:整份文本一次成型)。 */
+    /** Color tokens into a Spannable per theme (read-only path: the entire text is formed in one go). */
     fun render(text: String, tokens: List<Token>, theme: Theme): SpannableString {
         val s = SpannableString(text)
         emitSpans(s.length, tokens, theme) { span, start, end ->
@@ -547,9 +565,10 @@ object CodeHighlighter {
     }
 
     /**
-     * 编辑路径:就地给 [editable] 换色,**不重建文本**——`setText` 会重置光标与选区,
-     * 更要命的是打断输入法的 composing 状态(中文拼音会丢字/重复上屏)。
-     * 先摘掉上一轮的 [Hl] span,再打新的;搜索高亮与 composing span 不受影响。
+     * Edit path: recolor [editable] in place, **without rebuilding the text** — `setText`
+     * resets the cursor and selection, and worse, breaks the IME's composing state (the
+     * Chinese pinyan string loses characters / duplicates). Strip last round's [Hl] spans
+     * first, then apply new ones; search highlights and composing spans are untouched.
      */
     fun applyTo(editable: Editable, tokens: List<Token>, theme: Theme) {
         for (old in editable.getSpans(0, editable.length, Hl::class.java)) editable.removeSpan(old)
@@ -558,13 +577,15 @@ object CodeHighlighter {
         }
     }
 
-    /** 超过该大小不着色(span 过多 TextView 布局会卡)。 */
+    /** Past this size, do not highlight (too many spans make TextView layout janky). */
     const val MAX_HIGHLIGHT = 512 * 1024
 
     /**
-     * 编辑期间"边打字边重着色"的上限,比 [MAX_HIGHLIGHT] 严得多:每敲一次都要全量
-     * removeSpan+setSpan 再触发重排,接近 512KB 时主线程明显掉帧。超过它就只在
-     * 进入编辑前/保存后各上一次色,打字期间不动 span。
+     * Upper bound for "recolor while typing" during editing; much stricter than
+     * [MAX_HIGHLIGHT]: each keystroke triggers a full removeSpan+setSpan and a relayout,
+     * and near 512 KB the main thread noticeably drops frames. Past this, we only color
+     * once before entering edit mode and once after saving, and leave spans alone while
+     * the user is typing.
      */
     const val MAX_LIVE_HIGHLIGHT = 100 * 1024
     private const val MAX_TOKENS = 20_000

@@ -2,6 +2,7 @@ package com.twig.app.ui
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
@@ -25,31 +26,42 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.Format
 import com.twig.app.OpenFiles
 import com.twig.app.Prefs
 import com.twig.app.R
+import com.twig.app.TextCodec
 import com.twig.app.databinding.ActivityTextViewerBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.nio.charset.Charset
 
 /**
- * 内置纯文本查看器/编辑器。通过 [FsRegistry] 经 openInput 读取,因此本地、压缩包内、FTP 上的
- * 文本文件都能直接查看,无需先解压/下载——又一次复用统一的 FileSystem 抽象。
- * 认识的代码类扩展名走 [CodeHighlighter] 词法着色(Monokai 等主题,菜单可切换);
- * 标题栏搜索图标展开搜索栏,高亮全部命中,▲▼ 在命中间跳转。
+ * Built-in plain-text viewer / editor. Reads through [FsRegistry]'s `openInput`, so text files on local storage, inside
+ * archives, on FTP, etc. can all be viewed directly — no need to extract / download first. Another reuse of the unified
+ * FileSystem abstraction. Recognised code extensions go through [CodeHighlighter] for lexical highlighting (themes
+ * like Monokai, switchable from the menu); the search icon in the action bar opens a search bar, highlights every hit,
+ * and ▲▼ jump between them.
  *
- * 编辑:同一个 EditText 就地切换只读/可编辑([enterEdit]),保存经 [writeAtomically]
- * 写回同一来源。三种情况不给编辑(见 [editBlockReason] 与 [canEdit]),都是"存下去会
- * 毁掉原文件"的场景,宁可不给入口:
- *  1. 文件超 [MAX_BYTES] 被截断——存回去等于把文件砍成 1MB;
- *  2. 内容不是合法 UTF-8——[readText] 宽容解码出的 U+FFFD 存回去是不可逆损坏;
- *  3. 来源整体只读(7z/RAR/restic/git 视图/`share`)或条目不可写。
+ * Editing: the same EditText toggles read-only / editable in place ([enterEdit]); save goes through [writeAtomically]
+ * back to the same source. Editing is disallowed in three cases (see [editBlockReason] and [canEdit]) — all are
+ * scenarios where "save would destroy the original file", better not to expose the entry:
+ *  1. The file exceeded [MAX_BYTES] and was truncated — saving would chop the file down to 1 MB;
+ *  2. **No encoding strictly decoded it** — the U+FFFDs produced by [readTextFile]'s lenient decode would be
+ *     irreversible damage on save;
+ *  3. The source is read-only overall (7z/RAR/restic/git viewer/`share`) or the entry isn't writable.
+ *
+ * ★ Encoding isn't a binary "UTF-8 vs non-UTF-8" — [TextCodec] recognising a file as GBK (etc.) is still editable,
+ * but it **must be written back in the original encoding** ([fileCharset] + [fileBom]) — saving as UTF-8 leaves the
+ * contents character-for-character unchanged, but other programs then open it as mojibake. When the original encoding
+ * can't represent a newly-typed character (e.g. emoji inside GBK), the save fails; that's when we ask the user whether
+ * to convert to UTF-8.
  */
 class TextViewerActivity : AppCompatActivity() {
 
@@ -69,26 +81,31 @@ class TextViewerActivity : AppCompatActivity() {
     private var previewMenuItem: MenuItem? = null
     private var searchMenuItem: MenuItem? = null
 
-    // 编辑态
+    // Edit state
     private var truncated = false
-    private var isUtf8 = true
+
+    /** Encoding used when reading; null = no encoding strictly decoded it (lenient UTF-8 display); editing is disallowed. */
+    private var fileCharset: Charset? = Charsets.UTF_8
+
+    /** Original BOM at the file's head (stripped during decode); restored verbatim on save. */
+    private var fileBom: ByteArray? = null
     private var canEdit = false
     private var editMode = false
     private var dirty = false
     private var saving = false
     private var liveHighlight = false
-    private var settingText = false // applyTheme 的 setText 不该被当成用户编辑
-    private var hlGen = 0 // 在途重着色的作废标记
+    private var settingText = false // applyTheme's setText shouldn't be treated as a user edit
+    private var hlGen = 0 // invalidation marker for in-flight re-highlighting
     private var editMenuItem: MenuItem? = null
     private var saveMenuItem: MenuItem? = null
 
-    /** 只读态把 keyListener 摘掉(仍可选中/复制),编辑态还回去——原件存这。 */
+    /** Read-only state removes the keyListener (still selectable / copyable); edit state restores it — the original lives here. */
     private var savedKeyListener: KeyListener? = null
 
-    // 双指缩放字号:sp 单位,onCreate 从 Prefs 恢复,手势结束时写回。
+    // Pinch-zoom font size: in sp, restored from Prefs in onCreate, written back on gesture end.
     private var contentTextSizeSp = 13f
 
-    // 搜索状态:命中起点表、当前序号、已加的高亮 span(换主题重建文本后须重打)
+    // Search state: hit offsets, current index, applied highlight spans (must be re-applied after theme change rebuilds text)
     private var matches: List<Int> = emptyList()
     private var matchLen = 0
     private var cur = -1
@@ -109,11 +126,11 @@ class TextViewerActivity : AppCompatActivity() {
         b.toolbar.setNavigationOnClickListener { handleBack() }
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(name))
 
-        // 只读态:摘掉 keyListener——不弹键盘、不显光标。仅摘 keyListener 并不够,
-        // 得靠 setTextIsSelectable(true) 才真正保证长按能选中/复制(它不碰 keyListener,
-        // 只管 movement method 与 focusable/clickable 那套,后续 setText 仍显式传
-        // BufferType.EDITABLE,不会被它内部改成 SPANNABLE)。进编辑模式再把 keyListener
-        // 还回去即可(见 enterEdit),不用换视图、不搬文本。
+        // Read-only state: remove the keyListener — no keyboard pop, no cursor. Just removing it isn't enough;
+        // we also need setTextIsSelectable(true) to truly guarantee long-press select/copy (it doesn't touch
+        // keyListener, only manages movement method and focusable/clickable, and subsequent setText still passes
+        // BufferType.EDITABLE explicitly — it won't get internally changed to SPANNABLE). Enter edit mode and just
+        // restore the keyListener (see enterEdit) — no view swap, no text move.
         savedKeyListener = b.content.keyListener
         b.content.keyListener = null
         b.content.setTextIsSelectable(true)
@@ -122,13 +139,17 @@ class TextViewerActivity : AppCompatActivity() {
         b.content.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
         wireEditor()
 
-        // 字号:从上次记住的值恢复,双指捏合实时调整、松手写回 Prefs。
+        b.lineNumbers.target = b.content
+        b.lineNumbers.numberColor = ContextCompat.getColor(this, R.color.text_secondary)
+        applyLineNumbersVisibility()
+
+        // Font size: restored from last remembered value; pinch-zoom adjusts in real time, written back to Prefs on release.
         contentTextSizeSp = Prefs.viewerTextSize(this)
         b.content.setTextSize(TypedValue.COMPLEX_UNIT_SP, contentTextSizeSp)
         b.scroll.onScale = { factor -> applyTextSize(contentTextSizeSp * factor) }
         b.scroll.onScaleEnd = { Prefs.setViewerTextSize(this, contentTextSizeSp) }
 
-        // 横向滚动指示条钉在视口底(原生的画在内容底边,不滚到文末看不见)
+        // Horizontal scroll indicator pinned to the viewport's bottom (native draws at the content's bottom edge, hidden if you don't scroll to the end)
         b.scroll.hsv = b.hscroll
         b.hscroll.setOnScrollChangeListener { _, _, _, _, _ -> b.scroll.invalidate() }
 
@@ -140,7 +161,7 @@ class TextViewerActivity : AppCompatActivity() {
         editMenuItem = b.toolbar.menu.add(R.string.viewer_edit).apply {
             setIcon(R.drawable.ic_edit)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            isVisible = false // 载入完才知道能不能编辑
+            isVisible = false // we only know whether editing is allowed after loading completes
             setOnMenuItemClickListener { enterEdit(); true }
         }
         saveMenuItem = b.toolbar.menu.add(R.string.viewer_save).apply {
@@ -157,6 +178,17 @@ class TextViewerActivity : AppCompatActivity() {
                 Prefs.setViewerWrap(this@TextViewerActivity, on)
                 it.isChecked = on
                 applyWrap()
+                true
+            }
+        }
+        b.toolbar.menu.add(R.string.viewer_line_numbers).apply {
+            isCheckable = true
+            isChecked = Prefs.viewerLineNumbers(this@TextViewerActivity)
+            setOnMenuItemClickListener {
+                val on = !Prefs.viewerLineNumbers(this@TextViewerActivity)
+                Prefs.setViewerLineNumbers(this@TextViewerActivity, on)
+                it.isChecked = on
+                applyLineNumbersVisibility()
                 true
             }
         }
@@ -179,9 +211,9 @@ class TextViewerActivity : AppCompatActivity() {
                 }
             }
         }
-        b.scroll.post { applyWrap() } // 等布局完拿到视口宽
+        b.scroll.post { applyWrap() } // wait for layout to complete to get viewport width
 
-        // displayName 带上:content:// 的 path 里没有文件名,丢了它扩展名就没了(语法高亮/预览判定要用)
+        // Carry the displayName: content:// paths don't include the file name; losing it means losing the extension (used for syntax-highlight / preview detection)
         currentFile = XFile(scheme = scheme, path = path, isDir = false, displayName = name)
         setupWebView()
         wireSearchBar()
@@ -196,10 +228,10 @@ class TextViewerActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /** 编辑中的返回:先退编辑态,有改动先问;都没有才真退出。 */
+    /** Back during editing: first exit edit state, prompt on unsaved changes; only really exit if neither applies. */
     private fun handleBack() {
         when {
-            saving -> return // 写入进行中,别让 Activity 跑掉
+            saving -> return // write in progress, don't let the Activity run away
             editMode && dirty -> confirmDiscard()
             editMode -> exitEdit()
             else -> finish()
@@ -207,10 +239,11 @@ class TextViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * 预览模式 WebView:JS 关闭(纯展示,不需要脚本能力,降低攻击面);相对资源请求
-     * (图片/CSS)靠 [shouldInterceptRequest] 映射回 [currentFile] 同目录,经统一的
-     * FileSystem 抽象读取——本地/压缩包内/SMB/WebDAV 等来源天然都能显示。内部相对
-     * 链接与外部 http(s) 链接都拦截:前者暂不支持文档间跳转,后者丢给系统浏览器。
+     * Preview-mode WebView: JS disabled (pure display, no scripting capability needed, reduces attack surface); relative
+     * resource requests (images / CSS) are mapped back to [currentFile]'s directory by [shouldInterceptRequest], read
+     * via the unified FileSystem abstraction — local / inside-archive / SMB / WebDAV etc. sources naturally all work.
+     * Both internal relative links and external http(s) links are intercepted: the former because cross-document
+     * navigation isn't supported yet, the latter gets handed off to the system browser.
      */
     private fun setupWebView() {
         b.webview.settings.javaScriptEnabled = false
@@ -224,9 +257,9 @@ class TextViewerActivity : AppCompatActivity() {
             ): WebResourceResponse? {
                 if (request.url.host != WEBVIEW_HOST) return null
                 return runCatching {
-                    // Uri.path 已经是解码过的路径,且 base URL 本身就是文件真实所在目录
-                    // (见 webviewBaseUrl()),浏览器解析 "../" 时按真实目录深度往上跳,
-                    // 不会在这之前被"假根路径"提前夹断——父目录相对引用天然可用。
+                    // Uri.path is already decoded, and the base URL itself is the file's real directory
+                    // (see webviewBaseUrl()), so when the browser resolves "../" it climbs along the real directory
+                    // depth, not getting truncated at a "fake root" earlier — parent-directory relative refs just work.
                     val abs = normalizePath(request.url.path.orEmpty().ifEmpty { return null })
                     val target = XFile(currentFile.scheme, abs, isDir = false)
                     val input = FsRegistry.of(target).openInput(target)
@@ -251,11 +284,11 @@ class TextViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * 假 origin(不联网)+ 文件真实所在目录路径,拼成相对资源解析的 base URL。
-     * 路径深度必须是真的——如果固定用根路径("https://host/"),浏览器解析
-     * "../xxx" 会在根处直接夹断(RFC 3986 remove_dot_segments 对着空路径没法再往上跳),
-     * 父目录的相对引用就永远失效,只有同级/子目录能用。按真实目录深度铺出 base URL,
-     * ".." 才能正确沿真实层级网上跳。
+     * A fake origin (no network) + the file's real directory path, composed into the base URL for relative-resource
+     * resolution. The path depth must be real — using a fixed root ("https://host/") would make the browser's
+     * "../xxx" parse truncate at the root (RFC 3986 remove_dot_segments has nothing left to climb past an empty path),
+     * so parent-directory relative references would forever break, and only siblings / sub-dirs work. Laying out
+     * the base URL at the real directory depth lets ".." climb up along the real hierarchy.
      */
     private fun webviewBaseUrl(): String {
         val dir = currentFile.parentPath.trim('/')
@@ -266,11 +299,12 @@ class TextViewerActivity : AppCompatActivity() {
     private fun applyPreviewVisibility() {
         b.scroll.visibility = if (previewMode) View.GONE else View.VISIBLE
         b.webview.visibility = if (previewMode) View.VISIBLE else View.GONE
-        syncEditMenu() // 搜索/编辑入口在预览下都要让位
+        syncNavBar() // preview page's background is the markdown set (follows system light/dark), unrelated to the code theme
+        syncEditMenu() // search/edit entries take a back seat in preview mode
         if (previewMode && b.searchBar.visibility == View.VISIBLE) toggleSearch(false)
     }
 
-    /** 规整路径:折叠 `.`/`..`,去掉多余斜杠(与 [com.twig.app.M3uPlaylist] 同款算法)。 */
+    /** Normalize path: collapse `.`/`..`, strip extra slashes (same algorithm as [com.twig.app.M3uPlaylist]). */
     private fun normalizePath(path: String): String {
         val stack = ArrayList<String>()
         for (p in path.split('/')) when (p) {
@@ -282,27 +316,48 @@ class TextViewerActivity : AppCompatActivity() {
     }
 
     /**
-     * 自动换行:TextView 在 HorizontalScrollView 里被 UNSPECIFIED 测量,layoutParams
-     * 宽度不起作用,但 maxWidth 在非 EXACTLY 模式下仍生效——限到视口宽即换行,
-     * 横向滚动自然消失;关掉恢复 MAX_VALUE 回到长行横滚。不用动布局层级。
+     * Word wrap: TextView inside HorizontalScrollView is measured as UNSPECIFIED, so layoutParams width doesn't apply,
+     * but maxWidth still takes effect in non-EXACTLY mode — clamp to viewport width and lines wrap; horizontal
+     * scroll naturally disappears. Turning it off restores MAX_VALUE and we go back to long-line horizontal scroll.
+     * No need to touch the layout hierarchy.
      */
     private fun applyTextSize(sp: Float) {
         contentTextSizeSp = sp.coerceIn(MIN_TEXT_SIZE_SP, MAX_TEXT_SIZE_SP)
         b.content.setTextSize(TypedValue.COMPLEX_UNIT_SP, contentTextSizeSp)
+        b.lineNumbers.requestLayout()
+        b.lineNumbers.invalidate()
     }
 
     private fun applyWrap() {
         b.content.maxWidth = if (Prefs.viewerWrap(this)) {
-            // 减掉光标预留位:CodeEditText 量完会把它加回去,不减的话换行后正好比视口
-            // 宽出这几像素,凭空多出一段横向滚动
+            // Subtract the cursor pad: CodeEditText adds it back after measuring; without subtracting,
+            // wrap ends up a few pixels wider than the viewport and a phantom horizontal scroll appears.
+            // Also subtract the gutter: it shares the row with hscroll (layout_weight="1"), so the space
+            // actually available to content is narrower than the whole viewport by the gutter's width.
             val vp = if (b.scroll.width > 0) b.scroll.width else resources.displayMetrics.widthPixels
-            (vp - b.content.cursorPad).coerceAtLeast(1)
+            val gutter = if (b.lineNumbers.visibility == View.VISIBLE) b.lineNumbers.width else 0
+            (vp - gutter - b.content.cursorPad).coerceAtLeast(1)
         } else {
             Int.MAX_VALUE
         }
+        b.lineNumbers.invalidate()
     }
 
-    // ---- 搜索 ----
+    private fun applyLineNumbersVisibility() {
+        b.lineNumbers.visibility = if (Prefs.viewerLineNumbers(this)) View.VISIBLE else View.GONE
+        refreshLineNumbers()
+        applyWrap() // the gutter taking/releasing width shifts where wrap kicks in
+    }
+
+    /** [LineNumberGutter] rereads [b.content]'s live Layout on every draw for row positions — this only needs to
+     * keep its logical line count (hence gutter width) and redraw in sync after text or size changes. */
+    private fun refreshLineNumbers() {
+        val text = b.content.text
+        b.lineNumbers.lineCount = if (text.isNullOrEmpty()) 1 else text.count { it == '\n' } + 1
+        b.lineNumbers.invalidate()
+    }
+
+    // ---- Search ----
 
     private fun wireSearchBar() {
         b.searchInput.doAfterTextChanged { runSearch(jumpFirst = true) }
@@ -321,11 +376,11 @@ class TextViewerActivity : AppCompatActivity() {
         } else {
             imm.hideSoftInputFromWindow(b.searchInput.windowToken, 0)
             b.searchInput.setText("")
-            runSearch(jumpFirst = false) // 清空高亮
+            runSearch(jumpFirst = false) // clear highlights
         }
     }
 
-    /** 全文查找并高亮所有命中(不区分大小写,命中数封顶防极端输入)。 */
+    /** Full-text search and highlight every hit (case-insensitive, hit count capped to guard against pathological input). */
     private fun runSearch(jumpFirst: Boolean) {
         val sp = b.content.text as? Spannable
         hitSpans.forEach { sp?.removeSpan(it) }
@@ -380,12 +435,13 @@ class TextViewerActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 编辑 ----
+    // ---- Editing ----
 
     private fun wireEditor() {
         b.content.doAfterTextChanged {
+            refreshLineNumbers()
             if (settingText || !editMode) return@doAfterTextChanged
-            hlGen++ // 文本变了,在途的那批 token 作废
+            hlGen++ // text changed, in-flight token batch invalidated
             if (!dirty) {
                 dirty = true
                 updateTitle()
@@ -394,10 +450,10 @@ class TextViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** 不能编辑的理由;null 表示可以。来源不可写不在此列——那种情况直接不给入口。 */
+    /** Reason editing is blocked; null means it's allowed. A non-writable source isn't in this list — that case simply doesn't expose the entry. */
     private fun editBlockReason(): String? = when {
         truncated -> getString(R.string.viewer_readonly_truncated, Format.size(MAX_BYTES))
-        !isUtf8 -> getString(R.string.viewer_readonly_encoding)
+        fileCharset == null -> getString(R.string.viewer_readonly_encoding)
         else -> null
     }
 
@@ -408,14 +464,15 @@ class TextViewerActivity : AppCompatActivity() {
         if (b.searchBar.visibility == View.VISIBLE) toggleSearch(false)
         b.content.keyListener = savedKeyListener
         b.content.isCursorVisible = true
-        // ★ 光标闪烁的定时器只在**焦点真的变化**时才重启(Editor.onFocusChanged →
-        //   makeBlink),而 setCursorVisible(true) 只是 invalidate 一次。进编辑态时
-        //   正文往往**早就是焦点**了——onCreate 的 setTextIsSelectable 让它成了页面上
-        //   唯一可聚焦的视图,布局时就自动拿到焦点,requestFocus() 直接返回什么都不做。
-        //   于是那一帧画出来的光标若正好落在"灭"的相位上,就再没人重画它,表现为
-        //   「光标看不见,打一个字才出现」(文本变化会走 handleTextChanged → makeBlink)。
-        //   先 clearFocus 逼出一次真正的焦点变化;它内部会让根视图重新找焦点,
-        //   本来就只有正文可聚焦,焦点原地转一圈回来,闪烁也就活了。
+        // ★ The cursor blink timer only restarts on **actual focus change** (Editor.onFocusChanged → makeBlink),
+        //   and setCursorVisible(true) just invalidates once. When entering edit mode the body is **already focused**
+        //   — onCreate's setTextIsSelectable made it the page's only focusable view, so layout auto-focuses it,
+        //   and requestFocus() returns immediately without doing anything. So if the cursor drawn that frame happens
+        //   to be in the "off" phase, no one ever repaints it, and the symptom is "cursor is invisible, type one character
+        //   to make it appear" (text change goes through handleTextChanged → makeBlink). clearFocus first to force a real
+        //   focus change; internally it makes the root view find focus again — the body is the only focusable, so focus
+        //   cycles around in place, and the blink comes alive.
+        b.content.clearFocus()
         b.content.clearFocus()
         b.content.requestFocus()
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -436,7 +493,7 @@ class TextViewerActivity : AppCompatActivity() {
     private fun syncEditMenu() {
         editMenuItem?.isVisible = canEdit && !editMode && !previewMode
         saveMenuItem?.isVisible = editMode
-        // 编辑期间搜索/预览让位:搜索的命中偏移会被编辑打乱,预览与编辑互斥
+        // Search/preview yield to editing: search hit offsets get scrambled by edits, preview and edit are mutually exclusive
         searchMenuItem?.isVisible = !editMode && !previewMode
         previewMenuItem?.isVisible = !editMode
     }
@@ -452,7 +509,7 @@ class TextViewerActivity : AppCompatActivity() {
             .setPositiveButton(R.string.viewer_save) { _, _ -> save(exitAfter = true) }
             .setNegativeButton(R.string.viewer_discard_ok) { _, _ ->
                 dirty = false
-                applyTheme() // 丢掉改动,把 raw 重新铺回去
+                applyTheme() // discard changes, lay raw back down
                 updateTitle()
                 exitEdit()
             }
@@ -460,15 +517,29 @@ class TextViewerActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Save. **Write back in the encoding the file was read with**, not always UTF-8: a GBK file silently converted to
+     * UTF-8 shows no anomaly in twig (it recognises it itself), but other programs open it as mojibake — the user
+     * changed one line, and the whole file is ruined.
+     *
+     * If the original encoding can't represent the new content (e.g. emoji inside GBK), don't force-save:
+     * [TextCodec.encode] returns null, surface the stuck characters and let the user pick "save as UTF-8" or go back.
+     */
     private fun save(exitAfter: Boolean = false) {
         if (saving) return
         val text = b.content.text.toString()
+        val cs = fileCharset ?: Charsets.UTF_8 // fallback: if we got into edit state, decoding must have succeeded once
+        val bytes = TextCodec.encode(text, cs, fileBom)
+        if (bytes == null) {
+            askConvertUtf8(cs, text, exitAfter)
+            return
+        }
         saving = true
         b.loadingBox.visibility = View.VISIBLE
         lifecycleScope.launch {
             val r = runCatching {
                 withContext(Dispatchers.IO) {
-                    writeAtomically(currentFile, text.toByteArray(Charsets.UTF_8))
+                    writeAtomically(currentFile, bytes)
                 }
             }
             saving = false
@@ -479,13 +550,35 @@ class TextViewerActivity : AppCompatActivity() {
                     rawLower = text.lowercase()
                     dirty = false
                     updateTitle()
-                    if (isCode && !liveHighlight) relight() // 大文件打字期间没重扫,存完补一次
+                    if (isCode && !liveHighlight) relight() // large files don't rescan while typing, catch up after save
                     toast(getString(R.string.viewer_saved))
-                    if (exitAfter) exitEdit() // 返回键问出来的保存:存完就该走
+                    if (exitAfter) exitEdit() // save triggered by back key prompt: should leave after saving
                 },
                 onFailure = { showSaveError(it) },
             )
         }
+    }
+
+    /** The original encoding can't hold the new content: surface the stuck characters and let the user decide whether to convert to UTF-8 for save. */
+    private fun askConvertUtf8(cs: Charset, text: String, exitAfter: Boolean) {
+        val chars = TextCodec.unmappable(text, cs).joinToString(" ")
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.viewer_charset_failed_title, cs.name()))
+            .setMessage(getString(R.string.viewer_charset_failed, cs.name(), chars))
+            .setPositiveButton(R.string.viewer_save_as_utf8) { _, _ ->
+                fileCharset = Charsets.UTF_8
+                fileBom = null // the original BOM was for the old encoding, becomes invalid after conversion
+                updateEncodingLabel()
+                save(exitAfter)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** For non-UTF-8 files, show the encoding name under the title — the user needs to know they're seeing "decoded as GBK". */
+    private fun updateEncodingLabel() {
+        val cs = fileCharset
+        b.toolbar.subtitle = if (cs == null || cs == Charsets.UTF_8) null else cs.name()
     }
 
     private fun scheduleRelight() {
@@ -496,15 +589,17 @@ class TextViewerActivity : AppCompatActivity() {
     private val relightTask = Runnable { relight() }
 
     /**
-     * 编辑期间重新着色。**整篇重扫**——跨行注释/多行字符串/md 围栏的状态只有整篇
-     * tokenize 才对(与 [DiffActivity] 整侧扫一次再切片同理),局部重扫会串色。
-     * 扫描本身放后台,回主线程只做 [CodeHighlighter.applyTo] 的就地换 span。
+     * Re-highlight during editing. **Rescan the whole document** — only a full tokenize gets cross-line comment /
+     * multi-line string / md-fence state right (same reasoning as [DiffActivity] scanning each side in one go and
+     * slicing per line), a partial rescan will scramble the colours. The scan itself runs on a background thread,
+     * and back on the main thread only [CodeHighlighter.applyTo] swaps spans in place.
      */
     private fun relight() {
         val l = lang ?: return
         val ed: Editable = b.content.text ?: return
-        // ★ 输入法组词期间绝不动 span:composing 文本本身就是靠 span 标出来的,
-        //   这一轮把它摘掉,拼音串当场散架(丢字/重复上屏)。推迟到上屏之后再补。
+        // ★ Never touch spans during IME composition: the composing text is itself marked by spans,
+        //   removing them this round collapses the pinyin string on the spot (lost characters / duplicates
+        //   going to the screen). Defer to after the composition is committed.
         if (BaseInputConnection.getComposingSpanStart(ed) >= 0) {
             scheduleRelight()
             return
@@ -514,7 +609,7 @@ class TextViewerActivity : AppCompatActivity() {
         val gen = ++hlGen
         lifecycleScope.launch {
             val toks = withContext(Dispatchers.Default) { CodeHighlighter.tokenize(text, l) }
-            if (gen != hlGen) return@launch // 扫的过程中又改了,这批作废
+            if (gen != hlGen) return@launch // text changed during the scan, this batch is invalid
             val live: Editable = b.content.text ?: return@launch
             if (live.length != text.length) return@launch
             tokens = toks
@@ -522,7 +617,7 @@ class TextViewerActivity : AppCompatActivity() {
         }
     }
 
-    // ---- 加载与主题 ----
+    // ---- Loading and themes ----
 
     private fun load(file: XFile, startPreview: Boolean) {
         val l = lang
@@ -530,19 +625,19 @@ class TextViewerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val read = readText(file)
+                    val read = readTextFile(file, MAX_BYTES.toInt())
                     val full = if (read.truncated) {
                         read.text + "\n\n" + getString(R.string.viewer_too_large, Format.size(MAX_BYTES))
                     } else {
                         read.text
                     }
-                    // token 离线算好,主题切换时仅重上色,不重扫
+                    // tokens are computed off-thread; theme switches just re-colour, no rescan
                     val toks = if (l != null && full.length <= CodeHighlighter.MAX_HIGHLIGHT) {
                         CodeHighlighter.tokenize(full, l)
                     } else {
                         emptyList()
                     }
-                    Loaded(full, full.lowercase(), toks, read.truncated, read.utf8, canWriteTo(file))
+                    Loaded(full, full.lowercase(), toks, read.truncated, read.charset, read.bom, canWriteTo(file))
                 }
             }
             b.loadingBox.visibility = View.GONE
@@ -552,12 +647,16 @@ class TextViewerActivity : AppCompatActivity() {
                     rawLower = r.lower
                     tokens = r.tokens
                     truncated = r.truncated
-                    isUtf8 = r.utf8
+                    fileCharset = r.charset
+                    fileBom = r.bom
+                    updateEncodingLabel()
                     isCode = l != null
                     isMarkdown = l?.markdown == true
-                    // 边打字边整篇重扫,量大了会掉帧;超阈值就只在进编辑前/保存后各上一次色
+                    // Rescanning the whole document on every keystroke drops frames at scale; over the threshold,
+                    // only highlight on entry to edit / after save
                     liveHighlight = isCode && raw.length <= CodeHighlighter.MAX_LIVE_HIGHLIGHT
-                    // 截断/非 UTF-8 仍给按钮,点了 Toast 说明原因;来源只读则彻底没入口
+                    // Truncated / non-UTF-8 still get the button — tap shows a Toast explaining why;
+                    // read-only source hides the entry entirely
                     canEdit = r.writable
                     applyTheme()
                     syncEditMenu()
@@ -567,7 +666,7 @@ class TextViewerActivity : AppCompatActivity() {
                         renderPreview()
                         applyPreviewVisibility()
                     } else if (intent.getBooleanExtra(EXTRA_EDIT, false)) {
-                        enterEdit() // 建不成也无妨:enterEdit 自己会挡下不可编辑的情况
+                        enterEdit() // fine if it can't build: enterEdit itself rejects non-editable cases
                     }
                 },
                 onFailure = {
@@ -581,27 +680,30 @@ class TextViewerActivity : AppCompatActivity() {
         CodeHighlighter.THEMES[Prefs.codeTheme(this).coerceIn(0, CodeHighlighter.THEMES.size - 1)]
 
     /**
-     * 把 [raw] 铺回视图并按主题上色。
+     * Lay [raw] back into the view and colour it by theme.
      *
-     * ★ 先建 Spannable 再 setText 会踩到大文件的老坑:文本以 EDITABLE 持有,
-     * `setText(spannable, EDITABLE)` 要把万级 span 逐个拷进 SpannableStringBuilder
-     * (平方级开销)。所以这里先 setText 纯文本(零 span 可拷),再往 Editable 上
-     * 直接 [CodeHighlighter.applyTo],只剩一趟 setSpan。
+     * ★ Building a Spannable first and then setText hits an old large-file trap: the text is held as EDITABLE,
+     * `setText(spannable, EDITABLE)` has to copy every one of the tens of thousands of spans into the
+     * SpannableStringBuilder (quadratic cost). So here we setText plain text first (zero spans to copy), then
+     * call [CodeHighlighter.applyTo] directly on the Editable — only one setSpan pass.
      */
     private fun applyTheme() {
-        // Markdown 正文用系统默认字体(区别于代码),围栏代码块/行内代码的 span 会
-        // 自带 monospace 覆盖回来,其余文件类型不受影响,继续走布局里的等宽字体。
+        // Markdown body uses the system default font (as opposed to code); fenced code blocks / inline code spans
+        // come with their own monospace override, and other file types are unaffected, continuing to use the monospace font from the layout.
         b.content.typeface = if (isMarkdown) Typeface.DEFAULT else Typeface.MONOSPACE
         setContentText(raw)
-        // 背景/默认前景色不分是否认识语言——没有词法着色的纯文本也套用同一套主题色,
-        // 不然打开一个不认识扩展名的文件时颜色跟旁边高亮过的文件对不上。
+        // Background / default foreground don't care whether the language is recognised — plain text with no
+        // lexical highlighting also uses the same theme palette, otherwise opening a file with an unknown extension
+        // would have colours mismatched with the highlighted files next to it.
         val t = currentTheme()
         b.scroll.setBackgroundColor(t.bg)
         b.content.setTextColor(t.fg)
+        b.lineNumbers.numberColor = t.colors[2] // COMMENT — muted but tuned for this theme's own background
+        syncNavBar()
         if (isCode) {
             b.content.text?.let { CodeHighlighter.applyTo(it, tokens, t) }
         }
-        // 文本换了新实例,搜索高亮 span 全丢,若搜索栏开着就重打
+        // Text got a new instance, search highlight spans are all lost; if the search bar is open, re-apply
         hitSpans.clear()
         curSpan = null
         if (b.searchBar.visibility == View.VISIBLE && b.searchInput.text.isNotEmpty()) {
@@ -609,7 +711,22 @@ class TextViewerActivity : AppCompatActivity() {
         }
     }
 
-    /** 铺文本;[settingText] 兜住 doAfterTextChanged,免得程序性赋值被当成用户编辑。 */
+    /**
+     * Tint the navigation bar to the bottom-most layer's colour. **The two states don't pull from the same palette**:
+     * the text area follows the "viewer colours" (code theme, independent of system light/dark), whereas the
+     * markdown preview is a self-contained HTML inside a WebView, whose background is decided by its
+     * `prefers-color-scheme` — i.e. follows system light/dark.
+     */
+    private fun syncNavBar() {
+        val night = resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        NavBarTint.apply(
+            this,
+            if (previewMode) MarkdownHtml.pageBg(night) else currentTheme().bg,
+        )
+    }
+
+    /** Lay text; [settingText] shields doAfterTextChanged so programmatic assignment isn't treated as a user edit. */
     private fun setContentText(text: CharSequence) {
         settingText = true
         b.content.setText(text, TextView.BufferType.EDITABLE)
@@ -622,11 +739,13 @@ class TextViewerActivity : AppCompatActivity() {
             .setTitle(R.string.viewer_theme)
             .setSingleChoiceItems(names, Prefs.codeTheme(this).coerceIn(0, names.size - 1)) { d, i ->
                 Prefs.setCodeTheme(this, i)
-                // 编辑态不能重铺文本(光标与未保存的改动都会没),只就地换色
+                // Edit mode can't re-lay text (cursor and unsaved changes would vanish), just recolour in place
                 if (editMode) {
                     val t = currentTheme()
                     b.scroll.setBackgroundColor(t.bg)
                     b.content.setTextColor(t.fg)
+                    b.lineNumbers.numberColor = t.colors[2]
+                    syncNavBar()
                     b.content.text?.let { e -> CodeHighlighter.applyTo(e, tokens, t) }
                 } else {
                     applyTheme()
@@ -638,7 +757,7 @@ class TextViewerActivity : AppCompatActivity() {
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
-    /** 保存失败走对话框不走 Toast:底层错误串(SMB 的 NT 状态等)长,Toast 显示不全。 */
+    /** Save failures go through a dialog, not a Toast: the underlying error strings (SMB NTSTATUS etc.) are long, and Toast can't fit them. */
     private fun showSaveError(e: Throwable) {
         AlertDialog.Builder(this)
             .setTitle(R.string.viewer_save_failed_title)
@@ -652,35 +771,11 @@ class TextViewerActivity : AppCompatActivity() {
         val lower: String,
         val tokens: List<CodeHighlighter.Token>,
         val truncated: Boolean,
-        val utf8: Boolean,
+        val charset: Charset?,
+        val bom: ByteArray?,
         val writable: Boolean,
     )
 
-    private class ReadResult(val text: String, val truncated: Boolean, val utf8: Boolean)
-
-    /**
-     * 读取文本,并顺带判定内容是不是合法 UTF-8——这决定能不能编辑:宽容解码把非法
-     * 字节换成 U+FFFD,显示成乱码尚可接受(只是看),但存回去 U+FFFD 会被当成真字符
-     * 写下去,原字节永久丢失。所以先用严格解码器试一遍,成功就直接用它的结果,
-     * 失败才回落到宽容解码(显示行为与从前一致)并标记不可编辑。
-     */
-    private fun readText(file: XFile): ReadResult {
-        FsRegistry.of(file).openInput(file).use { input ->
-            val buf = ByteArray(MAX_BYTES.toInt())
-            var read = 0
-            while (read < buf.size) {
-                val n = input.read(buf, read, buf.size - read)
-                if (n < 0) break
-                read += n
-            }
-            val truncated = input.read() >= 0
-            val strict = strictUtf8(buf.copyOf(read))
-            if (strict != null) return ReadResult(strict, truncated, utf8 = true)
-            // 截断处很可能正好切在多字节字符中间——那是我们自己切的,不能算文件编码有
-            // 问题(截断本身已经禁用编辑了,不必再叠一条编码理由)。
-            return ReadResult(String(buf, 0, read, Charsets.UTF_8), truncated, utf8 = truncated)
-        }
-    }
 
     companion object {
         private const val EXTRA_SCHEME = "scheme"
@@ -688,21 +783,21 @@ class TextViewerActivity : AppCompatActivity() {
         private const val EXTRA_NAME = "name"
         private const val EXTRA_PREVIEW = "preview"
         private const val EXTRA_EDIT = "edit"
-        private const val MAX_BYTES = 1L * 1024 * 1024 // 1 MB 上限,避免 OOM
+        private const val MAX_BYTES = 1L * 1024 * 1024 // 1 MB cap, to avoid OOM
         private const val MAX_MATCHES = 2000
-        private const val RELIGHT_DELAY = 300L // 打字停顿多久后重着色
+        private const val RELIGHT_DELAY = 300L // how long to wait after typing stops before re-highlighting
         private const val MIN_TEXT_SIZE_SP = 8f
         private const val MAX_TEXT_SIZE_SP = 40f
-        private const val HIT_BG = 0x66FFC107 // 全部命中:半透明琥珀
-        private val CUR_BG = 0xB3FF6F00.toInt() // 当前命中:深橙
+        private const val HIT_BG = 0x66FFC107 // all hits: translucent amber
+        private val CUR_BG = 0xB3FF6F00.toInt() // current hit: deep orange
 
-        // 预览 WebView 的假源:shouldInterceptRequest 靠 host 识别"这是我们自己发出的
-        // 相对资源请求",不是真的联网——图片/CSS 等相对路径实际经 FileSystem 读取。
-        // base URL 的路径部分按当前文件真实所在目录动态拼(见 webviewBaseUrl()),
-        // 不能固定成根路径,否则 "../" 会被提前夹断,见该函数注释。
+        // Fake origin for the preview WebView: shouldInterceptRequest uses the host to identify "this is a relative
+        // resource request we issued ourselves", not a real network call — images / CSS / etc. relative paths are
+        // actually read via FileSystem. The path part of the base URL is built dynamically from the file's real
+        // directory (see webviewBaseUrl()); it can't be a fixed root, otherwise "../" gets truncated early, see that function's comment.
         private const val WEBVIEW_HOST = "twig.local"
 
-        /** [edit]:载入完直接进编辑态(新建空文件后打开用,省一次点击)。 */
+        /** [edit]: go straight into edit mode once loaded (used when opening a newly-created empty file, saves one tap). */
         fun start(context: Context, file: XFile, preview: Boolean = false, edit: Boolean = false) {
             context.startActivity(
                 Intent(context, TextViewerActivity::class.java).apply {

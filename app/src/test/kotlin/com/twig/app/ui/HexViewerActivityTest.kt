@@ -25,11 +25,13 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 十六进制查看器能不能真的开起来、开起来有没有行。
+ * Whether the hex viewer actually opens, and whether it has rows once open.
  *
- * 为什么值得单测:这个界面是"读文件 → 算版式 → 铺行"三段异步接力,任何一段没接上,
- * 表现都是同一个——**白屏**,而白屏在真机上看不出是哪一段断的。尤其
- * "文件读完时视图还没量到宽"这种顺序,手上的机器不一定复现得出来。
+ * Why this is worth a unit test: this screen is a three-stage asynchronous relay
+ * ("read file -> compute layout -> lay out rows"); if any stage fails to connect, the
+ * symptom is always the same — **a blank screen** — and on a real device you cannot tell
+ * which stage broke. In particular the ordering "the file finishes reading before the
+ * view has even been measured for width" may not reproduce on whatever device is in hand.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -38,30 +40,30 @@ class HexViewerActivityTest {
     private val ctx: Application = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun `打开后列出行_并且每行字节数落在合理范围`() {
+    fun `rows are listed after opening, and each row's byte count falls in a sane range`() {
         val data = ByteArray(4096) { it.toByte() }
         val rv = launch(data)
-        assertTrue("列表不该是空的", rv.adapter!!.itemCount > 0)
-        // 行数 = 总字节 / 每行字节数,每行至少 4 个、至多 64 个
+        assertTrue("the list should not be empty", rv.adapter!!.itemCount > 0)
+        // row count = total bytes / bytes per row, at least 4 and at most 64 per row
         val bpr = data.size / rv.adapter!!.itemCount
-        assertTrue("每行 $bpr 字节,不在 4..64 内", bpr in 4..64)
+        assertTrue("$bpr bytes per row, not within 4..64", bpr in 4..64)
     }
 
     @Test
-    fun `文件读完时还没量到宽也要铺出行`() {
-        // 先把源准备好再布局,复现"读得比第一次布局快"的顺序:布局回调必须接住它
+    fun `rows are still laid out even if the width has not been measured by the time the file finishes reading`() {
+        // prepare the source before laying out, reproducing the ordering "reading finishes faster than the first layout pass": the layout callback must catch it
         val data = ByteArray(1024) { it.toByte() }
         val rv = launch(data, layoutFirst = false)
-        assertTrue("布局晚到时行数不能停在 0", rv.adapter!!.itemCount > 0)
+        assertTrue("when layout arrives late, the row count must not stay stuck at 0", rv.adapter!!.itemCount > 0)
     }
 
     @Test
-    fun `空文件不崩_只是没有行`() {
+    fun `an empty file does not crash, it just has no rows`() {
         val rv = launch(ByteArray(0))
         assertEquals(0, rv.adapter!!.itemCount)
     }
 
-    /** 起 Activity 并把主线程的消息推完;[layoutFirst] 控制"先布局还是先读完文件"。 */
+    /** Starts the Activity and drains the main thread's message queue; [layoutFirst] controls whether layout happens before or after the file finishes reading. */
     private fun launch(data: ByteArray, layoutFirst: Boolean = true): RecyclerView {
         FsRegistry.register(ByteFs(data))
         val intent = Intent(ctx, HexViewerActivity::class.java)
@@ -88,7 +90,7 @@ class HexViewerActivityTest {
         v.layout(0, 0, 1080, 1920)
     }
 
-    /** 读文件那一段在 Dispatchers.IO 上,主线程 idle 一轮可能还没轮到,给几次机会。 */
+    /** The file-reading stage runs on Dispatchers.IO, so a single idle round on the main thread might not catch up to it yet — give it several chances. */
     private fun idle() {
         repeat(20) {
             shadowOf(Looper.getMainLooper()).idle()

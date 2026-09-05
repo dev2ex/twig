@@ -34,9 +34,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
- * 这一对 diff 的两侧各是哪个版本(对应 `GitVfs.diffSides` 的取值)。
- * 同样叫"旧/新",staged 比的是 HEAD↔暂存区、unstaged 比的是暂存区↔工作区——
- * 不写出来就看不出这次到底比了哪两个版本。untracked 是新增文件,旧侧压根不存在,给空串。
+ * Which two versions each side of a diff corresponds to (matches the values of
+ * `GitVfs.diffSides`). Even though both sides are called "old" and "new", staged
+ * compares HEAD↔index and unstaged compares index↔worktree — without spelling that out,
+ * it is impossible to tell which two versions this diff actually compared. `untracked`
+ * is a newly-added file, so the old side does not exist; we give the empty string.
  */
 internal fun gitSideSources(ctx: android.content.Context, p: String): Pair<String, String>? = when {
     p.startsWith("/changes/") -> when (p.removePrefix("/changes/").substringBefore('/')) {
@@ -45,7 +47,7 @@ internal fun gitSideSources(ctx: android.content.Context, p: String): Pair<Strin
         "untracked" -> "" to ctx.getString(R.string.git_src_work)
         else -> null
     }
-    // 父提交 ↔ 该提交;短 sha 够认了,完整的 40 位在标题里太占地方
+    // Parent commit ↔ this commit; the short SHA is enough to recognize, the full 40 chars would take up too much space in the title
     p.startsWith("/history/") ->
         p.removePrefix("/history/").substringBefore('/').take(7)
             .takeIf { it.isNotEmpty() }?.let { "$it^" to it }
@@ -53,86 +55,100 @@ internal fun gitSideSources(ctx: android.content.Context, p: String): Pair<Strin
 }
 
 /**
- * git 虚拟路径 → 仓库内相对路径:`/changes/<组>/a/b.kt` 与 `/history/<sha>/a/b.kt` 都取 `a/b.kt`
- * (前缀后面那一段分别是 GitVfs 的分组名与提交 sha,不属于仓库里的路径)。
+ * git virtual path → repo-relative path: `/changes/<group>/a/b.kt` and
+ * `/history/<sha>/a/b.kt` both yield `a/b.kt` (the segment after the prefix is
+ * GitVfs's group name / commit SHA, not a path inside the repo).
  */
 internal fun gitRelPath(p: String): String =
     p.removePrefix("/changes/").removePrefix("/history/").substringAfter('/', "")
 
 /**
- * diff 行文本的固定配置。抽成函数是为了能单测锁住(见 `DiffLineLayoutTest`)——这三条
- * 少哪一条都会让"超长行看不全"以不同的形式回来。
+ * Fixed configuration for diff-line text. Extracted into a function so it can be pinned
+ * down in a unit test (see `DiffLineLayoutTest`) — drop any one of these three and
+ * "long lines can't be fully seen" will come back in a different form.
  */
 internal fun configureDiffLineText(tv: android.widget.TextView) {
-    // ★ 省略号只能在这里关。XML 的 `ellipsize="none"` 等于"没设",而 TextView 构造函数里有
-    // `if (singleLine && keyListener == null && ellipsize 未设) ellipsize = END`
-    // ——**只读的单行 TextView 默认就在末尾省略**。排版本身是无限宽的(横滚滚得动),
-    // 但绘制被省略号截断,于是表现成"能滚却始终看不到后面"。
+    // ★ Ellipsizing can only be turned off here. XML's `ellipsize="none"` is the same as
+    // "not set", and the TextView constructor has
+    // `if (singleLine && keyListener == null && ellipsize not set) ellipsize = END`
+    // — **a read-only single-line TextView defaults to ellipsizing at the end**.
+    // Layout itself is infinitely wide (horizontal scrolling works), but drawing is
+    // cut off by the ellipsis, which manifests as "you can scroll but can never see
+    // what's after".
     tv.ellipsize = null
-    // 横滚要求按"无限宽"排版,否则超出视图宽度的部分压根不参与布局,scrollTo 只会滚出
-    // 一片空白。`singleLine="true"` 内部顺带开了它,但那是副作用——显式写一遍,免得哪天
-    // 换成 `maxLines="1"`(不开横滚)就悄悄失效。
+    // Horizontal scrolling requires "infinitely wide" layout; otherwise the part that
+    // exceeds the view's width does not participate in layout at all, and scrollTo only
+    // scrolls out a blank area. `singleLine="true"` happens to enable this internally,
+    // but that is a side effect — write it explicitly so switching to `maxLines="1"`
+    // (which does not enable horizontal scrolling) does not silently break it.
     tv.setHorizontallyScrolling(true)
-    // 长按选中、复制片段(而不是只能整行复制)。代价是每个 TextView 会多一个 Editor,
-    // 并且变成 focusable/longClickable;横滚与竖直滚动都由 RecyclerView 层的
-    // OnItemTouchListener 先行拦截,优先级在它之上,不会被抢走。
+    // Long-press to select and copy a fragment (rather than being limited to copying
+    // whole lines). The cost is that each TextView gets an extra Editor and becomes
+    // focusable/longClickable; horizontal and vertical scrolling are intercepted first
+    // by the RecyclerView-level OnItemTouchListener at higher priority and will not
+    // be hijacked.
     tv.setTextIsSelectable(true)
 }
 
 /**
- * 双栏 diff 视图(左旧右新):横屏并排 + 同步滚动;竖屏一次只显示一侧,顶栏按钮切换。
+ * Two-pane diff view (old on the left, new on the right): landscape side-by-side with
+ * synchronized scrolling; portrait shows one side at a time, switched via the toolbar
+ * button.
  *
- * **横滑是横向滚动长行**,不是切换侧——代码行动辄超出屏幕宽度,而 [ItemDiffLineBinding]
- * 的文本是单行不折行的(折行会让两栏的行彻底对不齐,diff 就没法看了),看不到行尾就只能
- * 靠横滚。两栏共用一个 [hScroll],否则左右错开同样对不齐;行号列不跟着滚,始终留在左边。
+ * **Horizontal swipe scrolls long lines horizontally, not switching sides** — code lines
+ * routinely exceed screen width, and [ItemDiffLineBinding]'s text is single-line without
+ * wrapping (wrapping would break alignment between the two sides and make the diff
+ * unreadable), so the only way to see the end of a line is horizontal scrolling. The two
+ * sides share a single [hScroll] — otherwise the offset between them would also break
+ * alignment; the line-number column does not scroll with it and stays pinned to the left.
  */
 class DiffActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityDiffBinding
     private var rows: List<Diff.Row> = emptyList()
-    private var side = 1 // 竖屏当前显示侧:0=旧 1=新(默认看新版)
-    /** 任意两文件对比(目录对比页进来),而不是 git 的旧/新两版。 */
+    private var side = 1 // Currently displayed side in portrait: 0=old, 1=new (default to the new version)
+    /** Comparing any two files (entered from the directory-compare page), rather than git's old/new versions. */
     private var pairMode = false
-    /** 两侧各自的来源,标题条上写完整路径用;git 模式两边是同一个文件的两版,只有左边有值。 */
+    /** Source for each side, used to write the full path on the title bar; in git mode both sides are two versions of the same file, so only the left has a value. */
     private var fileLeft: XFile? = null
     private var fileRight: XFile? = null
     private var itemSwap: MenuItem? = null
     private var itemStack: MenuItem? = null
-    /** 上下两栏(而不是左右并排 / 竖屏单侧切换);记在 [Prefs] 里,下次打开还是这个。 */
+    /** Top-and-bottom two panes (rather than left-and-right side-by-side / portrait single-side switching); stored in [Prefs], so the next open is the same. */
     private var stacked = false
     private var syncing = false
-    /** 两栏共用的横向滚动量(px)。 */
+    /** Shared horizontal scroll amount (px) between the two panes. */
     private var hScroll = 0
-    /** 最长一行的像素宽;后台量完再填,量之前不许横滚(否则不知道边界在哪)。 */
+    /** Pixel width of the longest line; measured on a background thread before being filled in; horizontal scrolling is disabled before that is done (otherwise the bounds are unknown). */
     private var maxLineWidth = 0f
     private var hFling: android.animation.ValueAnimator? = null
-    /** 按行号取整侧预着色好的行(见 [highlightLines]);null = 该侧不着色。 */
+    /** Pre-highlighted lines for the whole side, keyed by line number (see [highlightLines]); null = that side is not highlighted. */
     private var hlLeft: List<CharSequence>? = null
     private var hlRight: List<CharSequence>? = null
-    /** 差异块(连续变更行段)的起始行下标;[blockIdx] 为当前所在块。 */
+    /** Starting row index of each difference block (a run of consecutive changed lines); [blockIdx] is the current block. */
     private var blocks: List<Int> = emptyList()
     private var blockIdx = -1
     private var statBase = ""
-    /** 非空 = 本次高亮生效的主题,SideAdapter 里用它兜底没被 token 覆盖的字符颜色。 */
+    /** Non-null = the theme currently in effect for highlighting; SideAdapter uses it as the fallback color for characters not covered by a token. */
     private var hlTheme: CodeHighlighter.Theme? = null
 
-    // ---- 合并态(把一段差异搬到对侧,见 [mergeBlock]) ----
-    /** 两侧当前的行序列;合并改的是它们,[rows] 每次由它们重算。 */
+    // ---- Merge state (moving a block to the other side; see [mergeBlock]) ----
+    /** Current line sequences on both sides; merge operations mutate these, and [rows] is recomputed from them each time. */
     private var linesLeft: List<String> = emptyList()
     private var linesRight: List<String> = emptyList()
-    /** 各侧原文件末尾有没有换行——切行时唯一丢掉的信息,写回要原样还回去。 */
+    /** Whether the original file on each side had a trailing newline — the only piece of information lost when splitting into lines, and which must be restored verbatim on write-back. */
     private var nlLeft = false
     private var nlRight = false
-    /** 打开时的内容,与当前行序列一比即知某侧是否有未保存改动。 */
+    /** Content at open time; comparing against the current line sequence tells you whether each side has unsaved changes. */
     private var baseLeft: List<String> = emptyList()
     private var baseRight: List<String> = emptyList()
-    /** 能不能合并;不能时 [mergeBlocked] 是理由(点了箭头 toast 出来),null = 压根没这回事。 */
+    /** Whether merging is allowed; when it is not, [mergeBlocked] is the reason (toasted when an arrow is tapped); null = this whole thing does not apply. */
     private var mergeable = false
     private var mergeBlocked: String? = null
-    /** 各侧能不能写。只有一侧只读时(比如对面是压缩包内的条目)另一个方向照样能合。 */
+    /** Whether each side is writable. When only one side is read-only (e.g. the other side is an entry inside an archive), merging in the other direction still works. */
     private var writableLeft = false
     private var writableRight = false
-    /** 每次合并前的两侧快照,撤销就是弹一层。 */
+    /** Snapshots of both sides before each merge; undo pops one layer. */
     private val undoStack = ArrayList<Pair<List<String>, List<String>>>()
     private var saving = false
     private var lang: CodeHighlighter.Lang? = null
@@ -163,8 +179,9 @@ class DiffActivity : AppCompatActivity() {
                 stacked = !stacked
                 Prefs.setDiffStacked(this@DiffActivity, stacked)
                 applyLayoutMode()
-                // 换布局后一行的可见宽变了(左右并排是半屏、上下并排是整屏),
-                // 原来的横向位置可能已经越界
+                // After switching layout, a line's visible width has changed (left/right side-by-side
+                // is half a screen, top/bottom side-by-side is the full screen), so the
+                // original horizontal position may have gone out of range
                 b.listLeft.post { setHScroll(hScroll) }
                 true
             }
@@ -187,17 +204,19 @@ class DiffActivity : AppCompatActivity() {
         itemSave = b.toolbar.menu.add(getString(R.string.viewer_save)).apply {
             setIcon(R.drawable.ic_save)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            isVisible = false // 有未保存改动才出现
+            isVisible = false // Appears only when there are unsaved changes
             setOnMenuItemClickListener { save(); true }
         }
         itemUndo = b.toolbar.menu.add(getString(R.string.diff_undo)).apply {
             isVisible = false
             setOnMenuItemClickListener { undo(); true }
         }
-        b.toolbar.menu.showIcons() // 撤销掉进溢出菜单,也要有图标
+        b.toolbar.menu.showIcons() // Even when "Undo" overflows into the overflow menu, it still gets an icon
 
-        // 合并这两个按钮不进 toolbar——挤,而且离要合并的那行内容太远,不直观。改用悬浮
-        // 胶囊贴在当前差异块旁边(见 updateMergePill),这里只接线点击行为。
+        // The two merge buttons do not go in the toolbar — it is cramped, and too far from the
+        // line of content being merged to be intuitive. Instead, a floating pill is
+        // attached next to the current diff block (see updateMergePill); here we just
+        // wire up the click behavior.
         b.btnMergeA.setOnClickListener { mergeBlock(toRight = false) }
         b.btnMergeB.setOnClickListener { mergeBlock(toRight = true) }
 
@@ -215,7 +234,8 @@ class DiffActivity : AppCompatActivity() {
         pairMode = rightScheme != null && rightPath != null
         fileLeft = XFile(scheme, path, isDir = false)
         fileRight = if (pairMode) XFile(rightScheme!!, rightPath!!, isDir = false) else null
-        // 从对比页哪一侧点进来的,竖屏就先显示哪一侧——点的是左边那份,当然想先看左边
+        // The side on the compare page that was tapped decides which side is shown first in
+        // portrait — if you tapped the left copy, of course you want to see the left first
         if (pairMode) side = intent.getIntExtra(EXTRA_SIDE, 0)
         applyLayoutMode()
 
@@ -227,6 +247,9 @@ class DiffActivity : AppCompatActivity() {
         lifecycleScope.launch {
             if (tooBig) {
                 b.loading.visibility = View.GONE
+                // Too large to hold two copies in memory and diff by line — but the hex page streams,
+                // so it can compare a pair of any size. Hand over instead of dead-ending.
+                if (toHexCompare()) return@launch
                 b.tvEmpty.text = getString(R.string.diff_too_big)
                 b.tvEmpty.visibility = View.VISIBLE
                 return@launch
@@ -249,21 +272,28 @@ class DiffActivity : AppCompatActivity() {
             }
             val (old, new) = sides
             if (isBinary(old) || isBinary(new)) {
+                // Whether a file is binary is only knowable after reading it, so the compare page
+                // cannot route around this one — the decision is made here and the page swaps itself
+                // out for the byte-level comparison.
+                if (toHexCompare()) return@launch
                 b.tvEmpty.text = getString(R.string.diff_binary)
                 b.tvEmpty.visibility = View.VISIBLE
                 return@launch
             }
             if (pairMode) {
-                // 只有两侧都是真实文件时才谈得上"搬过去再写回"。git 那边左侧是 HEAD /
-                // 暂存区这种虚拟版本,写回去的含义是 stage/checkout,是另一回事。
+                // Only when both sides are real files does "move it across and write it back" make sense.
+                // On the git side the left is a virtual version like HEAD / index, where
+                // "write back" means stage / checkout — that's a different story.
                 val l = fileLeft!!
                 val r = fileRight!!
                 val w = withContext(Dispatchers.IO) { canWriteTo(l) to canWriteTo(r) }
                 writableLeft = w.first
                 writableRight = w.second
                 mergeable = writableLeft || writableRight
-                // 读取端写死 UTF-8:不是合法 UTF-8 的文件本来就显示成乱码,再写回去
-                // 等于把原字节永久毁掉。仍给按钮,点了 toast 说明原因(与文本编辑器一致)。
+                // Reading side is locked to UTF-8: a file that is not valid UTF-8 already
+                // displays as mojibake, and writing it back would permanently destroy the
+                // original bytes. Still show the button; tapping it toasts the reason
+                // (same as the text editor).
                 mergeBlocked = if (strictUtf8(old ?: ByteArray(0)) == null ||
                     strictUtf8(new ?: ByteArray(0)) == null
                 ) {
@@ -286,8 +316,10 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * 由两侧当前的行序列算出 [rows]/高亮/差异块并铺到界面。合并之后再走一遍——合并掉
-     * 一处,后面所有块的行下标都变了,不整体重算就会指到错的行上。
+     * Compute [rows] / highlighting / difference blocks from the current line sequences
+     * on both sides and lay them out on the UI. Run again after a merge — once you merge
+     * away one block, every later block's row index shifts, so without a full recompute
+     * they would point at the wrong rows.
      */
     @android.annotation.SuppressLint("NotifyDataSetChanged")
     private suspend fun render(first: Boolean) {
@@ -301,9 +333,11 @@ class DiffActivity : AppCompatActivity() {
             hlRight = l?.let { highlightLines(rText, it, theme) }
         }
         if (l != null) {
-            // 整侧背景换成主题底色,不然深色主题的浅色前景字会叠在系统默认的
-            // 亮色列表背景上看不清——之前靠强制回退浅色主题绕开这个问题,现在
-            // 换成让背景跟着主题走,深色主题也能正常用。
+            // The whole side's background is swapped to the theme's bg; otherwise the dark
+            // theme's light foreground text sits on the system's default light list
+            // background and becomes unreadable — previously we worked around this by
+            // forcing a fallback to the light theme; now the background follows the
+            // theme and the dark theme works correctly too.
             hlTheme = theme
             b.listLeft.setBackgroundColor(theme.bg)
             b.listRight.setBackgroundColor(theme.bg)
@@ -318,7 +352,8 @@ class DiffActivity : AppCompatActivity() {
             b.listLeft.adapter = SideAdapter(left = true)
             b.listRight.adapter = SideAdapter(left = false)
         } else {
-            // 整表重绑:合并会把行整段增删,位置对不上,payload 局部刷新没有意义
+            // Re-bind the whole table: merge adds or removes whole row ranges, so
+            // positions no longer line up; a partial refresh via payload has no meaning
             b.listLeft.adapter?.notifyDataSetChanged()
             b.listRight.adapter?.notifyDataSetChanged()
         }
@@ -326,17 +361,19 @@ class DiffActivity : AppCompatActivity() {
         b.tvEmpty.visibility = if (rows.isEmpty()) View.VISIBLE else View.GONE
         refreshSideTitles()
         refreshToolbar()
-        updateMergePill() // 行还没重新布局,多半只是先隐藏;setBlock 的 post 会再摆一次
-        measureMaxLineWidth() // 横滚的边界靠它,量完之前横滚被自然禁掉
-        // 打开即定位到第一处差异(等布局完拿到视口高)
+        updateMergePill() // Rows have not been laid out yet — usually this just hides; setBlock's post will reposition
+        measureMaxLineWidth() // Horizontal scrolling's bounds depend on this; before it finishes, horizontal scrolling is naturally disabled
+        // On open, jump to the first difference (wait for layout so we get the viewport height)
         if (first && blocks.isNotEmpty()) b.listRight.post { setBlock(0) }
     }
 
-    // ---- 合并差异 ----
+    // ---- Merge differences ----
 
     /**
-     * 把当前所在的差异块整段搬到对侧。**只改内存**,写盘要另点保存:一处一处挑着合的
-     * 时候,每合一次就写回去既慢(网络来源尤其)又没法反悔。
+     * Move the entire current diff block over to the other side. **Memory-only**;
+     * writing to disk requires an explicit save: when merging one block at a time,
+     * writing back after every merge is slow (especially on network sources) and
+     * there is no way to undo.
      */
     private fun mergeBlock(toRight: Boolean) {
         if (saving) return
@@ -358,8 +395,10 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * 重新渲染并停在原来那一处。合并掉当前块之后它就不存在了,同一个下标顺延指到的正是
-     * **下一处**差异——正好是接着往下合的位置,不用手动再跳一次。
+     * Re-render and stay on the same position. Once the current block is merged away, it
+     * no longer exists, and the same index sliding forward points exactly at the **next**
+     * difference — which is precisely where you would want to keep merging, without having
+     * to jump manually again.
      */
     private fun rerender() {
         lifecycleScope.launch {
@@ -398,11 +437,12 @@ class DiffActivity : AppCompatActivity() {
             }
             saving = false
             b.loading.visibility = View.GONE
-            // 逐侧认账:一侧存上了另一侧失败时,存上的那侧不能还标着"未保存",
-            // 否则用户再点保存会把它又写一遍
+            // Acknowledge per side: when one side's save succeeded and the other side's failed,
+            // the successful side must not still be marked as "unsaved", otherwise tapping
+            // Save again would write it back once more
             if (okL) baseLeft = snapL
             if (okR) baseRight = snapR
-            if (okL || okR) setResult(RESULT_OK) // 对比页据此就地重判这一对,不整树重扫
+            if (okL || okR) setResult(RESULT_OK) // The compare page uses this to reclassify this pair locally, not to rescan the whole tree
             refreshToolbar()
             val e = err
             if (e == null) {
@@ -420,7 +460,7 @@ class DiffActivity : AppCompatActivity() {
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        if (saving) return // 写入进行中,别让 Activity 跑掉
+        if (saving) return // A save is in progress; do not let the Activity escape
         if (!dirtyLeft && !dirtyRight) return finish()
         AlertDialog.Builder(this)
             .setTitle(R.string.viewer_discard_title)
@@ -431,25 +471,32 @@ class DiffActivity : AppCompatActivity() {
             .show()
     }
 
-    /** toolbar 上跟合并/保存状态有关的那几项:保存按钮的出现、撤销的出现、标题的 `*`。 */
+    /** Toolbar items tied to merge / save state: save button visibility, undo visibility, and the `*` in the title. */
     private fun refreshToolbar() {
         itemSave?.isVisible = dirtyLeft || dirtyRight
         itemUndo?.isVisible = undoStack.isNotEmpty()
         itemUndo?.icon = tinted(R.drawable.ic_undo, R.color.text_primary)
-        // 标题带 * 是"有未保存改动"的常驻提示——保存图标在窄屏上挤没了也还看得见
+        // A `*` in the title is a persistent indicator of "unsaved changes" — even when
+        // the save icon is squeezed off the narrow screen, it remains visible
         b.toolbar.title = if (dirtyLeft || dirtyRight) "*$fileTitle" else fileTitle
     }
 
     /**
-     * 合并悬浮胶囊:位置贴着当前定位的那块差异([blockIdx]),跟着滚动移动;那块滚出
-     * 视口就整体隐藏(没有意义的位置不如不显示)。
+     * Floating merge pill: position sticks to the currently located diff block
+     * ([blockIdx]) and moves with scrolling; when that block scrolls out of the viewport,
+     * hide it entirely (a position without meaning is worse than no position).
      *
-     * - **左右并排**(横屏,或上下布局):胶囊卡在两栏中间的分隔线上,y 取该行在
-     *   [b.listLeft] 里的位置——两栏行高严格一致、又同步滚动,取哪栏的 y 都一样。
-     * - **上下并排**:分隔线是水平的,不提供有意义的 x 参照,退回屏幕水平居中;
-     *   上下两栏各自独立占半屏,y 优先取上栏([b.listLeft])里的位置,那行滚出上栏
-     *   (仍在下栏)才退而取下栏的。
-     * - **竖屏单栏切换**:同上退回居中,y 取当前显示那一栏的位置。
+     * - **Side-by-side left/right** (landscape, or in the top/bottom layout): the pill
+     *   sits on the divider between the two panes, with y taken from that row's position
+     *   in [b.listLeft] — both panes have strictly matching row heights and synchronized
+     *   scrolling, so either pane's y is identical.
+     * - **Top/bottom side-by-side**: the divider is horizontal and offers no meaningful x
+     *   reference, so fall back to horizontally centered; the two panes each occupy half
+     *   the screen, with y preferring the top pane ([b.listLeft]), falling back to the
+     *   bottom pane only when the row has scrolled out of the top (still visible in the
+     *   bottom).
+     * - **Portrait single-side switching**: same as above, fall back to centered; y is
+     *   taken from whichever side is currently displayed.
      */
     private fun updateMergePill() {
         if (!mergeable || blockIdx !in blocks.indices) {
@@ -485,8 +532,9 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * [row] 这一行在 [rv] 里当前的竖直中心,换算到 [b.overlayHost] 的坐标系;
-     * 那一行没被布局出来(滚出视口)就返回 null。
+     * The current vertical center of row [row] inside [rv], translated into the coordinate
+     * system of [b.overlayHost]; returns null when that row has not been laid out
+     * (scrolled out of the viewport).
      */
     private fun rowCenterY(rv: RecyclerView, row: Int): Float? {
         val child = (rv.layoutManager as LinearLayoutManager).findViewByPosition(row) ?: return null
@@ -494,7 +542,7 @@ class DiffActivity : AppCompatActivity() {
         return top + child.height / 2f
     }
 
-    /** [view] 左上角相对 [container] 的坐标(两者可能不在同一父子链上,靠屏幕坐标换算)。 */
+    /** Coordinates of [view]'s top-left relative to [container] (they may not share a parent chain; convert via screen coordinates). */
     private fun locationWithin(view: View, container: View): Pair<Float, Float> {
         val a = IntArray(2)
         val b0 = IntArray(2)
@@ -503,7 +551,7 @@ class DiffActivity : AppCompatActivity() {
         return (a[0] - b0[0]).toFloat() to (a[1] - b0[1]).toFloat()
     }
 
-    /** 滚动(含横竖屏切换后的重新布局)要跟着重摆悬浮胶囊的位置。 */
+    /** Scrolling (including re-layout after an orientation change) must reposition the floating pill. */
     private fun trackMergePill(rv: RecyclerView) {
         rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(v: RecyclerView, dx: Int, dy: Int) = updateMergePill()
@@ -518,15 +566,19 @@ class DiffActivity : AppCompatActivity() {
     private fun toast(msg: String) =
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show()
 
-    // ---- 语法高亮 ----
+    // ---- Syntax highlighting ----
 
     /**
-     * 用户在 [Prefs.codeTheme] 选的主题深浅色跟系统当前深浅色模式冲突时(比如系统
-     * 浅色模式下选的是 Monokai),临时换成对应深浅色的默认主题,让 diff 区域跟
-     * toolbar/系统状态栏这些还是跟着系统走的 chrome 不撞色;不冲突就直接用用户选的。
-     * 只影响这次显示,不改 [Prefs.codeTheme] 本身。增删行底色([DEL_BG]/[ADD_BG])是
-     * 半透明叠色,盖在任意背景上都会自然偏红/偏绿,不用为换后的主题单独调配色;
-     * 真正需要配合的是 onCreate 里把整侧背景同步换成 [CodeHighlighter.Theme.bg]。
+     * When the light/dark of the user's chosen [Prefs.codeTheme] clashes with the
+     * system's current light/dark mode (e.g. Monokai chosen while the system is in light
+     * mode), temporarily substitute the default theme of the matching light/dark, so the
+     * diff area does not collide with the toolbar / system status bar and other chrome
+     * that still follow the system. If there is no clash, use the user's choice directly.
+     * Only affects this display; [Prefs.codeTheme] itself is not changed. The added /
+     * removed row backgrounds ([DEL_BG] / [ADD_BG]) are translucent overlays that
+     * naturally read as reddish / greenish over any background, so no per-substituted-
+     * theme palette adjustment is needed; what truly needs to coordinate is onCreate,
+     * which swaps the whole side's background to [CodeHighlighter.Theme.bg].
      */
     private fun diffTheme(): CodeHighlighter.Theme {
         val chosen = CodeHighlighter.THEMES[Prefs.codeTheme(this).coerceIn(0, CodeHighlighter.THEMES.size - 1)]
@@ -548,8 +600,10 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * 整侧文本一次词法着色(块注释/跨行字符串状态才正确),再按行切成带 span 的片段,
-     * 行号即下标。超过 [CodeHighlighter.MAX_HIGHLIGHT] 不着色。
+     * Lexically color the whole side's text in one pass (multi-line block-comment /
+     * cross-line string states only stay correct this way), then split by line into
+     * span-bearing fragments, where the line number is the index. Exceeding
+     * [CodeHighlighter.MAX_HIGHLIGHT] skips highlighting.
      */
     private fun highlightLines(
         text: String,
@@ -567,15 +621,15 @@ class DiffActivity : AppCompatActivity() {
             if (j == text.length) break
             i = j + 1
         }
-        if (text.endsWith("\n")) out.removeAt(out.size - 1) // 与 toLines 一致:末尾换行不算一行
+        if (text.endsWith("\n")) out.removeAt(out.size - 1) // Consistent with toLines: trailing newline does not count as a line
         return out
     }
 
-    // ---- 差异块导航 ----
+    // ---- Difference-block navigation ----
 
     private fun jump(dir: Int) {
         if (blocks.isEmpty()) return
-        setBlock(((blockIdx + dir) % blocks.size + blocks.size) % blocks.size) // 循环
+        setBlock(((blockIdx + dir) % blocks.size + blocks.size) % blocks.size) // Wraps around
     }
 
     private fun setBlock(i: Int) {
@@ -585,20 +639,41 @@ class DiffActivity : AppCompatActivity() {
         (b.listLeft.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(blocks[i], off)
         (b.listRight.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(blocks[i], off)
         refreshSubtitle()
-        // scrollToPositionWithOffset 只是排上了下一次布局,这一刻子 View 还在老位置——
-        // 悬浮胶囊要等布局落定才知道该摆哪,跟横滚边界量宽的道理一样都得 post。
+        // scrollToPositionWithOffset only schedules the next layout pass; at this very moment
+        // the child views are still at their old positions — the floating pill has to wait
+        // for layout to settle before knowing where to go, which is why it has to be
+        // posted, the same reasoning as waiting for horizontal scroll bounds to be measured
         b.listLeft.post { updateMergePill() }
+    }
+
+    /**
+     * Replace this page with [HexCompareActivity] for the same pair. Only possible in pair mode: on the
+     * git side the left is a virtual version (HEAD / index) with no file behind it to open twice.
+     * Returns false when it can't, so the caller falls back to its own message.
+     */
+    private fun toHexCompare(): Boolean {
+        if (!pairMode) return false
+        val l = fileLeft ?: return false
+        val r = fileRight ?: return false
+        HexCompareActivity.start(
+            this,
+            l.copy(size = intent.getLongExtra(EXTRA_L_SIZE, 0L)),
+            r.copy(size = intent.getLongExtra(EXTRA_R_SIZE, 0L)),
+            b.toolbar.title?.toString().orEmpty(),
+        )
+        finish()
+        return true
     }
 
     private fun isBinary(bytes: ByteArray?): Boolean {
         if (bytes == null) return false
-        if (bytes.size > 4 shl 20) return true // >4MB 不做行 diff
+        if (bytes.size > 4 shl 20) return true // >4MB, skip line-level diff
         val n = minOf(bytes.size, 8192)
         for (i in 0 until n) if (bytes[i].toInt() == 0) return true
         return false
     }
 
-    // ---- 横竖屏布局 ----
+    // ---- Portrait / landscape layout ----
 
     private val isLandscape: Boolean
         get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -608,12 +683,14 @@ class DiffActivity : AppCompatActivity() {
 
         b.panes.orientation = if (stacked) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         val sideBySide = !stacked && isLandscape
-        // 上下并排与横屏左右并排都是两栏全显;只有竖屏的左右模式才一次看一侧
+        // Top/bottom side-by-side and landscape left/right side-by-side both show both panes;
+        // only portrait in the left/right mode shows one side at a time
         b.sideLeft.visibility = if (stacked || sideBySide || side == 0) View.VISIBLE else View.GONE
         b.sideRight.visibility = if (stacked || sideBySide || side == 1) View.VISIBLE else View.GONE
         b.divider.visibility = if (stacked || sideBySide) View.VISIBLE else View.GONE
 
-        // 两栏在主轴上各占一半:左右并排是宽,上下并排是高
+        // Each pane takes half of the main axis: left/right side-by-side is width,
+        // top/bottom side-by-side is height
         for (rv in listOf(b.sideLeft, b.sideRight)) {
             rv.layoutParams = LinearLayout.LayoutParams(
                 if (stacked) LinearLayout.LayoutParams.MATCH_PARENT else 0,
@@ -626,13 +703,15 @@ class DiffActivity : AppCompatActivity() {
             if (stacked) dp(1) else LinearLayout.LayoutParams.MATCH_PARENT,
         )
         refreshSubtitle()
-        // 分隔线方向、哪栏可见都变了,悬浮胶囊的参照系跟着变——等这轮布局落定再重摆
+        // Divider direction and which pane is visible both changed; the floating pill's
+        // reference frame follows — wait for this layout pass to settle before repositioning
         b.listLeft.post { updateMergePill() }
     }
 
     /**
-     * 每栏标题:侧别 + 路径。两侧路径通常只差中间一小段,光看文件名分不出谁是谁,
-     * 而 toolbar 标题只有文件名。
+     * Per-pane title: side + path. The two sides' paths usually differ only in a small
+     * middle segment, so the file name alone cannot tell them apart, while the toolbar
+     * title only carries the file name.
      */
     private fun refreshSideTitles() {
         val l = getString(if (pairMode) R.string.compare_side_left else R.string.diff_old)
@@ -642,16 +721,19 @@ class DiffActivity : AppCompatActivity() {
             b.titleRight.text = fileRight?.let { "$r · ${Format.pathLabel(it)}" } ?: r
             return
         }
-        // ★ git 模式给的是**虚拟路径**(/changes/<组>/… 、/history/<sha>/…),
-        // 直接套 Format.pathLabel 会显示成 "git:/changes/…"——那既不是磁盘上的路径,
-        // 前缀那段也只是 GitVfs 的分组名/提交 sha,对用户没有意义。剥掉前缀只留仓库内
-        // 相对路径。两栏都写:虽然是同一个文件的两个版本、路径必然相同,但只给一边写、
-        // 另一边空着,看着就像"右边这版没有出处"。
+        // ★ In git mode the path is **virtual** (/changes/<group>/…, /history/<sha>/…);
+        // applying Format.pathLabel directly would render as "git:/changes/…" — which is
+        // neither a path on disk nor meaningful to the user (the prefix segment is just
+        // GitVfs's group name / commit SHA). Strip the prefix and keep only the
+        // repo-relative path. Write to both panes: even though both sides are versions
+        // of the same file with identical paths, only filling one side and leaving the
+        // other empty looks like "the right version has no origin".
         val p = fileLeft?.path.orEmpty()
         val rel = gitRelPath(p)
         val src = gitSideSources(this, p)
-        // 同样叫"旧/新",staged 比的是 HEAD↔暂存区、unstaged 比的是暂存区↔工作区,
-        // 光写"旧/新"看不出这次到底比了哪两个版本
+        // Both sides are called "old" / "new", but staged compares HEAD↔index and
+        // unstaged compares index↔worktree — without spelling that out, just writing
+        // "old / new" does not show which two versions were compared
         val lt = src?.first?.takeIf { it.isNotEmpty() }?.let { "$l($it)" } ?: l
         val rt = src?.second?.takeIf { it.isNotEmpty() }?.let { "$r($it)" } ?: r
         b.titleLeft.text = if (rel.isEmpty()) lt else "$lt · $rel"
@@ -662,22 +744,24 @@ class DiffActivity : AppCompatActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    /** 整份读一侧;走 [FsRegistry] 所以本地/压缩包内/网络来源都一样。 */
+    /** Read one side in full; goes through [FsRegistry] so local / inside-archive / network sources are all the same. */
     private fun readSide(f: XFile): ByteArray =
         FsRegistry.of(f).openInput(f).use { OpenFiles.readAllBytes(it) }
 
     private fun refreshSubtitle() {
         if (statBase.isEmpty()) return
         val pos = if (blockIdx >= 0) " · ${blockIdx + 1}/${blocks.size}" else ""
-        // 不再往这里塞"左/右""旧/新":那是每栏标题条的活儿,写两遍只会把本来就窄的
-        // 副标题挤到显示不全(竖屏尤其明显)
+        // No longer pack "left / right" / "old / new" here: that is the job of each pane's
+        // title bar, and writing it twice would just squeeze the already-narrow subtitle
+        // into being truncated (especially noticeable in portrait)
         b.toolbar.subtitle = "$statBase$pos"
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyLayoutMode()
-        // 换方向后一行的可见宽度变了,原来的横向位置可能已经越界
+        // After changing orientation, a line's visible width has changed; the original
+        // horizontal position may have gone out of range
         b.listLeft.post { setHScroll(hScroll) }
     }
 
@@ -687,8 +771,10 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * 横滑 = 横向滚动长行。判定为横向意图后**接管整串事件**,不然 RecyclerView 还会
-     * 跟着做竖直滚动,手感是斜着飘。切换侧交给顶栏按钮,不再抢这个手势。
+     * Horizontal swipe = horizontal scrolling of long lines. Once a horizontal intent
+     * is detected, **take over the whole event sequence** — otherwise RecyclerView will
+     * also do vertical scrolling, and the feel is a drifting slant. Side switching is
+     * handled by the toolbar button and no longer fights for this gesture.
      */
     private fun installHScroll(rv: RecyclerView) {
         val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
@@ -717,8 +803,9 @@ class DiffActivity : AppCompatActivity() {
                     MotionEvent.ACTION_MOVE -> if (!dragging && hScrollMax() > 0) {
                         val dx = abs(e.x - downX)
                         val dy = abs(e.y - downY)
-                        // 明确横向才接管:横向超过 slop 且比纵向多出一半以上,
-                        // 免得把正常的上下滚动误判成横滚
+                        // Only take over on a clear horizontal: horizontal exceeds slop and is at least
+                        // 1.5x vertical, so as not to misjudge normal up/down scrolling as
+                        // horizontal scrolling
                         if (dx > slop && dx > dy * 1.5f) {
                             dragging = true
                             lastX = e.x
@@ -755,14 +842,14 @@ class DiffActivity : AppCompatActivity() {
         }
     }
 
-    /** 能横滚多远:最长行的宽度减去一行文本区的可见宽度。 */
+    /** How far horizontal scrolling can go: the longest line's width minus the visible width of the text region. */
     private fun hScrollMax(): Int {
         val vw = visibleTextWidth()
         if (vw <= 0) return 0
         return (maxLineWidth - vw).coerceAtLeast(0f).toInt()
     }
 
-    /** 文本区(扣掉左边固定的行号列)的可见宽度;还没有行时退回整个列表宽度。 */
+    /** Visible width of the text region (excluding the fixed line-number column on the left); fall back to the whole list width when there are no rows yet. */
     private fun visibleTextWidth(): Int {
         for (rv in listOf(b.listLeft, b.listRight)) {
             if (!rv.isShown) continue
@@ -780,7 +867,7 @@ class DiffActivity : AppCompatActivity() {
         applyHScroll(b.listRight)
     }
 
-    /** 把当前横向滚动量刷到某一栏已经绑好的行上(新绑定的行在 onBindViewHolder 里各自应用)。 */
+    /** Apply the current horizontal scroll amount to a pane's already-bound rows (newly bound rows apply it themselves inside onBindViewHolder). */
     private fun applyHScroll(rv: RecyclerView) {
         for (i in 0 until rv.childCount) {
             val holder = rv.getChildViewHolder(rv.getChildAt(i)) as? VH ?: continue
@@ -789,8 +876,10 @@ class DiffActivity : AppCompatActivity() {
     }
 
     /**
-     * 量出最长一行有多宽,横滚的边界靠它。放后台是因为要逐行 measureText,大文件几万行;
-     * 量完之前 [hScrollMax] 返回 0,横滚被自然禁掉,不会滚进一片空白。
+     * Measure how wide the longest line is; horizontal scrolling's bounds depend on it.
+     * Put it on a background thread because measureText is called per line, and large
+     * files have tens of thousands of lines; before this finishes, [hScrollMax] returns 0
+     * and horizontal scrolling is naturally disabled, so it does not scroll into a blank.
      */
     private fun measureMaxLineWidth() {
         val paint = ItemDiffLineBinding.inflate(layoutInflater).tvText.paint
@@ -813,17 +902,18 @@ class DiffActivity : AppCompatActivity() {
         val from = if (side == 0) b.listLeft else b.listRight
         val dest = if (to == 0) b.listLeft else b.listRight
         side = to
-        // 带上滚动位置
+        // Carry the scroll position over
         val lm = from.layoutManager as LinearLayoutManager
         val pos = lm.findFirstVisibleItemPosition()
         val off = from.getChildAt(0)?.top ?: 0
         applyLayoutMode()
         if (pos >= 0) (dest.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(pos, off)
-        // 切过去那一栏的行可能是早先绑的,带的还是旧的横向位置
+        // The rows in the destination pane may have been bound earlier and still carry
+        // the old horizontal position
         dest.post { applyHScroll(dest) }
     }
 
-    /** 横屏两栏同步滚动。 */
+    /** Landscape two-pane synchronized scrolling. */
     private fun linkScroll(src: RecyclerView, dst: RecyclerView) {
         src.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
@@ -835,7 +925,7 @@ class DiffActivity : AppCompatActivity() {
         })
     }
 
-    // ---- 列表 ----
+    // ---- List ----
 
     private inner class SideAdapter(private val left: Boolean) : RecyclerView.Adapter<VH>() {
         override fun getItemCount() = rows.size
@@ -852,9 +942,12 @@ class DiffActivity : AppCompatActivity() {
             val hl = if (left) hlLeft else hlRight
             holder.b.tvText.text = if (text == null) "" else hl?.getOrNull(no - 1) ?: text
             holder.b.tvText.scrollTo(hScroll, 0)
-            // 没被 token 覆盖的字符(标点/空白/未识别语言)沿用 XML 默认色,除非本次
-            // 高亮生效——那样整侧背景已换成主题底色,默认字色也要跟着换,不然大半
-            // 字符还是 app 自己的 text_primary,深色主题背景上可能是黑字看不清。
+            // Characters not covered by a token (punctuation / whitespace / unrecognized
+            // language) keep the XML default color, unless highlighting is in effect this
+            // time — in that case the entire side's background has been swapped to the
+            // theme's bg and the default text color must follow too; otherwise most
+            // characters are still the app's own text_primary, which may be black on a
+            // dark-theme background and unreadable.
             hlTheme?.let { holder.b.tvText.setTextColor(it.fg) }
             holder.b.row.setBackgroundColor(
                 when {
@@ -881,7 +974,7 @@ class DiffActivity : AppCompatActivity() {
         private const val ADD_BG = 0x2666BB6A
         private const val PLACEHOLDER_BG = 0x14888888
 
-        /** patience diff 是内存算法,两侧都得整份读进来再切行——超过这个大小直接拒绝。 */
+        /** Patience diff is an in-memory algorithm: both sides must be read in full before splitting into lines — past this size, refuse outright. */
         private const val PAIR_MAX_BYTES = 4L shl 20
 
         fun start(context: Context, scheme: String, path: String, title: String) {
@@ -894,11 +987,13 @@ class DiffActivity : AppCompatActivity() {
         }
 
         /**
-         * 对比任意两个文件(目录对比页点进来的那条路)。与 git 模式共用整套双栏渲染,
-         * 只是文本来源从 `GitFileSystem.diffSides` 换成两侧各读一份。
+         * Compare any two files (the path entered from the directory-compare page).
+         * Shares the full two-pane rendering with git mode; only the text source changes
+         * from `GitFileSystem.diffSides` to one read per side.
          *
-         * 给的是 Intent 而不是直接启动:这条路要拿返回值——页内合并差异并保存过的话,
-         * 回 RESULT_OK 让对比页就地重判这一对的状态。
+         * Returns an Intent rather than starting it directly: this path needs the result
+         * code — if differences were merged and saved inside the page, RESULT_OK lets the
+         * compare page reclassify this pair's state locally.
          */
         fun pairIntent(context: Context, left: XFile, right: XFile, title: String, side: Int = 0): Intent =
             Intent(context, DiffActivity::class.java)

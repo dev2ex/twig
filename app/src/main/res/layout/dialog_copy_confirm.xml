@@ -7,7 +7,7 @@
     android:paddingEnd="20dp"
     android:paddingTop="12dp">
 
-    <!-- 源:名称(单项)或"N 项" -->
+    <!-- Source: name (single) or "N items" -->
     <TextView
         android:id="@+id/tv_src"
         android:layout_width="match_parent"
@@ -42,7 +42,7 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <!-- 图标按目标来源类型设置(FileIcons.sourceIconRes),这里只是占位 -->
+        <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
         <ImageView
             android:id="@+id/iv_dest"
             android:layout_width="22dp"

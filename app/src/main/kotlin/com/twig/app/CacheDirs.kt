@@ -4,40 +4,48 @@ import android.content.Context
 import java.io.File
 
 /**
- * 应用缓存目录的容量管理。
+ * Capacity management for the app's cache directory.
  *
- * 会往 `cacheDir` 里堆东西的地方:
- * - `arc/` —— 必须落到本地才读得了的归档(RAR:junrar 只认本地文件;压缩率高的嵌套包:
- *   隔着外层解压流 seek 会退化成反复全量解压),见 [ui.PaneViewModel] 的 localArchive;
- * - `open/` —— "用其他应用打开"时物化的副本,见 [OpenFiles.materialize];
- * - `thumbs/` —— 缩略图,自带 LRU(见 `Thumbs.trim`),不归这里管。
+ * Places that pile things into `cacheDir`:
+ * - `arc/` — archives that must land on disk before they can be read (RAR: junrar only
+ *   accepts local files; nested packages with high compression: seeking through the
+ *   outer decompression stream degrades into repeated full decompression); see
+ *   [ui.PaneViewModel]'s localArchive.
+ * - `open/` — materialised copies for "open with another app"; see [OpenFiles.materialize].
+ * - `restic/` — restic repository index ciphertext; see [ResticCache] (content-addressed,
+ *   never expires).
+ * - `thumbs/` — thumbnails with their own LRU (see `Thumbs.trim`), not managed here.
  *
- * 前两处原来**只增不减**。浏览十几个 SMB 上的大 rar,`cacheDir` 就能涨到几个 GB;
- * 系统只在存储紧张时才会清 cacheDir,在那之前用户在系统设置里看到的是
- * "这个文件管理器占了 5 个 G"。这里给它们一个上限,超了按最后访问时间从旧到新删。
+ * The first two previously **only grew**. Browsing several large rars on SMB could push
+ * `cacheDir` up to several GB; the system only clears cacheDir when storage is tight, and
+ * until then the user sees "this file manager is taking 5 GB" in system settings. Here we
+ * give them a cap, and trim oldest-first by last-access time when exceeded.
  */
 object CacheDirs {
 
     const val ARCHIVES = "arc"
     const val OPEN = "open"
+    const val RESTIC = "restic"
 
-    /** 物化缓存的上限(每个子目录各算各的)。 */
+    /** Cap on the materialised cache (each subdirectory is counted independently). */
     private const val CAP = 512L * 1024 * 1024
 
-    /** 超限后删到这个水位,别每次只删一个文件、下次立刻又超。 */
+    /** After exceeding the cap, trim down to this water level; don't delete one file at a time only to immediately exceed again. */
     private const val LOW_WATER = 8 / 10.0
 
     fun dir(ctx: Context, name: String): File =
         File(ctx.cacheDir, name).apply { mkdirs() }
 
     /**
-     * 按需裁剪:总量超过 [CAP] 时,按 `lastModified`(读取时会刷新,近似 LRU)
-     * 从旧到新删到 80% 水位。调用方在**写入之后**调一次即可——两处调用点本来就在
-     * 做一次大文件拷贝,多一次 listFiles() 可以忽略。
+     * Trim on demand: when the total exceeds [CAP], delete from oldest to newest by
+     * `lastModified` (refreshed on read, approximates LRU) until 80% water level.
+     * The caller just needs to invoke this once **after writing** — both call sites
+     * are already doing a large file copy, so one more listFiles() is negligible.
      *
-     * [keep] 是本次刚写好、马上要用的那个文件,一定不能删:单个文件就超过上限时
-     * (比如一个 1GB 的 rar,而上限是 512MB),不排除的话循环会一路删到把它也删掉,
-     * 调用方随即拿到一个指向已删除文件的路径。
+     * [keep] is the file just written and about to be used, which must never be deleted:
+     * when a single file already exceeds the cap (e.g. a 1 GB rar with a 512 MB cap),
+     * without excluding it the loop would keep deleting until that file is gone too,
+     * leaving the caller holding a path pointing at a deleted file.
      */
     fun trim(dir: File, keep: File? = null, cap: Long = CAP) {
         val files = dir.listFiles()?.filter { it.isFile } ?: return
@@ -52,7 +60,7 @@ object CacheDirs {
         }
     }
 
-    /** 当前占用(设置页展示 / 排查用)。 */
+    /** Current usage (settings page display / diagnostics). */
     fun bytes(ctx: Context, name: String): Long =
         File(ctx.cacheDir, name).listFiles()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
 }

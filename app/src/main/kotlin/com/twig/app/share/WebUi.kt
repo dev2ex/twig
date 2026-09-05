@@ -10,15 +10,21 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /**
- * 浏览器那张脸:目录列表 + 上传/新建/改名/删除 + 图片/音视频就地预览。
+ * The browser-side face: directory listing + upload / new / rename / delete
+ * + inline image / audio / video preview.
  *
- * 样式与脚本在 [WebPage];这里只管**结构**和服务端那几个写操作。
+ * Styles and scripts live in [WebPage]; this class only owns the **structure**
+ * plus the few write operations on the server side.
  *
- * 两个设计取向:
- *  - **排序与筛选在前端做**。一次请求把整个目录发过去,之后点表头/打字都不回服务端——
- *    手机当服务器,每次交互都走一趟 SMB/SFTP 是很肉的。
- *  - **预览直接用原文件**,不做缩略图服务。Range 已经支持,`<video>` 拖进度条是通的;
- *    再加一套服务端解码/缩放,既要在手机上跑解码器又要缓存,与体积优先冲突。
+ * Two design choices:
+ *  - **Sort and filter are done in the browser**. One request ships the
+ *    whole directory, after which clicking headers or typing in the filter
+ *    does not hit the server — and when the phone is the server, every
+ *    round-trip is another SMB / SFTP hop, which is expensive.
+ *  - **Previews use the file itself**, with no separate thumbnail service.
+ *    Range is supported, so `<video>` seek bars work; adding server-side
+ *    decode / scaling would mean running a decoder on the phone and caching
+ *    thumbnails, which conflicts with size-first.
  */
 class WebUi(
     private val ctx: Context,
@@ -29,9 +35,9 @@ class WebUi(
     private fun str(id: Int): String = ctx.getString(id)
     private fun str(id: Int, vararg a: Any): String = ctx.getString(id, *a)
 
-    // ---- 渲染 ----
+    // ---- Rendering ----
 
-    /** "所有来源"模式的虚拟根:列出各个可浏览来源。 */
+    /** The "all sources" mode's virtual root: lists each browsable source. */
     fun renderSources(res: HttpResponder) {
         val rows = root.sources().joinToString("") { s ->
             row(
@@ -47,9 +53,11 @@ class WebUi(
     }
 
     fun renderDir(req: HttpRequest, res: HttpResponder, dir: XFile) {
-        // 列不动时**不要**回一个光秃秃的 500:页面照常渲染,把原因摆在最上面。
-        // 「打不开」和「打开了但里面是空的」在浏览器上长得一模一样,而原因(权限被拒、
-        // SMB 连接掉了、目录不存在)恰恰是唯一能让人往下查的线索。
+        // When the listing fails, **do not** return a bare 500: render the
+        // page as usual and put the reason at the top. "Could not open" and
+        // "opened but empty" look identical in the browser, and the reason
+        // (permission denied, SMB connection dropped, directory gone) is
+        // exactly the only clue that lets the user investigate.
         val children = runCatching { root.list(dir) }.getOrElse { e ->
             page(
                 res, dir.name.ifEmpty { "/" }, crumbs(req.rawPath), "",
@@ -84,14 +92,14 @@ class WebUi(
         )
     }
 
-    /** 上级目录链接;已在共享根则为 null(没有"上一级"可去)。 */
+    /** Up-directory link; null when already at the share root (nowhere to go "up" to). */
     private fun parentHref(rawPath: String): String? {
         val segs = rawPath.trim('/').split('/').filter { it.isNotEmpty() }
         if (segs.isEmpty()) return null
         return "/" + segs.dropLast(1).joinToString("/") + if (segs.size > 1) "/" else ""
     }
 
-    /** 面包屑:每一级都是可点的链接。[rawPath] 已编码,显示时才解回来。 */
+    /** Breadcrumbs: every level is a clickable link. [rawPath] is already encoded; it is decoded only for display. */
     private fun crumbs(rawPath: String): List<Pair<String, String>> {
         val segs = rawPath.trim('/').split('/').filter { it.isNotEmpty() }
         val out = ArrayList<Pair<String, String>>()
@@ -104,8 +112,9 @@ class WebUi(
     }
 
     /**
-     * 一行。`data-*` 是给前端排序/筛选用的**原始值**——显示的是格式化过的文本,
-     * 拿它去排序会得到 "1 KB" < "9 B" 这种按字典序的笑话。
+     * One row. The `data-*` attributes hold the **raw values** used by the
+     * front-end for sort and filter — the displayed text is formatted, and
+     * sorting on it produces the lexicographic joke of "1 KB" < "9 B".
      */
     private fun row(
         href: String,
@@ -118,7 +127,8 @@ class WebUi(
         val cat = if (isDir) Cat.FOLDER else Cat.of(name)
         val sizeText = if (isDir) "—" else Format.size(maxOf(0L, size))
         val timeText = if (mtime > 0) DATE_FMT.format(java.util.Date(mtime)) else "—"
-        // 图片/音视频点名字就地预览,别的照常下载/进目录
+        // Image / audio / video file names preview inline; everything else
+        // just downloads or drills into the directory
         val prev = if (isDir) null else previewKind(name)
         val prevAttr = prev?.let { """ data-prev="$it"""" } ?: ""
         val acts = buildString {
@@ -131,7 +141,7 @@ class WebUi(
         val check = if (writable) {
             """<td class="ck"><input type="checkbox" class="sel" data-name="${attr(name)}"></td>"""
         } else {
-            "" // 只读共享没有勾选列,空着也会白占一列宽度
+            "" // Read-only shares have no checkbox column; leaving the cell empty would still take up column width for nothing
         }
         return """
             <tr data-c="${cat.id}" data-name="${attr(name.lowercase())}"
@@ -146,7 +156,7 @@ class WebUi(
         """.trimIndent()
     }
 
-    /** 行尾的小图标按钮;[href] 非空时是个下载链接,否则是带 data-name 的按钮。 */
+    /** The little icon buttons at the end of each row; when [href] is non-null it is a download link, otherwise a button carrying data-name. */
     private fun act(cls: String, sym: String, title: String, href: String? = null, name: String? = null): String =
         if (href != null) {
             """<a class="act $cls" href="${attr(href)}" download title="${attr(title)}">${icon(sym)}</a>"""
@@ -157,7 +167,7 @@ class WebUi(
 
     private fun icon(id: String) = """<svg class="ic"><use href="#$id"/></svg>"""
 
-    /** 共享范围的短名,面包屑首项用。 */
+    /** Short label for the share scope, used as the first breadcrumb. */
     private fun scopeLabel(): String = when (val s = cfg.scope) {
         is ShareScope.Dir -> s.label
         ShareScope.AllSources -> str(R.string.share_scope_all)
@@ -173,8 +183,10 @@ class WebUi(
         stats: String,
         error: String?,
     ) {
-        // 首项是共享范围(「所有来源」/ 共享目录名),**不是设备名**——设备名已经在顶栏
-        // 挂着了,面包屑再写一遍就成了同一个词并排出现两次
+        // The first crumb is the share scope ("All sources" / shared directory
+        // name), **not the device name** — the device name is already in the
+        // top bar, and showing it again here would put the same word next to
+        // itself twice
         val crumbHtml = buildString {
             append("""<a href="/">${icon("i-home")}${html(scopeLabel())}</a>""")
             for ((name, href) in crumbs) {
@@ -256,7 +268,7 @@ class WebUi(
         res.send(200, "text/html; charset=utf-8", doc.toByteArray(Charsets.UTF_8))
     }
 
-    /** 可写共享才有的那半段脚本(上传/新建/改名/删除)。 */
+    /** The half of the script only present in writable shares (upload / new / rename / delete). */
     private fun writeScript(): String = """
         var drop=${'$'}('#drop'),upBox=${'$'}('#up'),fill=${'$'}('#fill'),upName=${'$'}('#upname'),
             input=${'$'}('#files'),delsel=${'$'}('#delsel');
@@ -308,13 +320,15 @@ class WebUi(
           post('delete',fd);};
     """.trimIndent()
 
-    // ---- 写操作(浏览器表单) ----
+    // ---- Write operations (browser form) ----
 
     /**
-     * 浏览器端的写操作,靠 `?op=` 区分:
-     *  - `upload`:multipart/form-data,**边收边写**(见 [Multipart]),不落临时文件;
-     *  - `mkdir` / `delete` / `rename`:同样是 multipart(前端统一用 FormData,
-     *    少一套编码要处理)。delete 可以带多个 `name` 字段,那就是批量删。
+     * The browser-side write operations, distinguished by `?op=`:
+     *  - `upload`: multipart/form-data, **written as it arrives** (see
+     *    [Multipart]), no temporary file;
+     *  - `mkdir` / `delete` / `rename`: also multipart (the front-end uses
+     *    FormData everywhere, so there is one fewer encoding to handle).
+     *    `delete` can carry multiple `name` fields — that is the bulk delete.
      */
     fun post(req: HttpRequest, res: HttpResponder) {
         val dir = root.resolve(req.path)
@@ -364,7 +378,8 @@ class WebUi(
                 if (from == null || to == null) { res.sendText(400, "Bad name"); return }
                 val victim = root.list(dir).firstOrNull { it.name == from }
                     ?: run { res.sendText(404, "Not found"); return }
-                // 同名目标已存在时 FileSystem.rename 按约定会抛,不会静默覆盖
+                // When a same-name target already exists, FileSystem.rename
+                // is contracted to throw rather than silently overwrite
                 FsRegistry.of(victim).rename(victim, to)
                 root.invalidate(dir.path)
                 res.sendText(200, "ok")
@@ -374,9 +389,13 @@ class WebUi(
     }
 
     /**
-     * 收窄成一个安全的文件名:只取末段(浏览器上传整个目录时会带 `webkitRelativePath`),
-     * 掐掉分隔符与 `.`/`..`。**别指望下游 FileSystem 帮忙挡**——各实现的路径拼接
-     * 规则不一样,能不能挡住全看运气,而这里挡不住就是往共享目录外面写。
+     * Narrow a raw uploaded name down to something safe: only the last
+     * segment (the browser can include `webkitRelativePath` when uploading
+     * a whole directory), separators and `.`/`..` are stripped.
+     * **Do not rely on the downstream FileSystem to filter this out** —
+     * every implementation has its own path-joining rules and whether it
+     * defends against this is a matter of luck; failing here means writing
+     * outside the shared directory.
      */
     private fun safeName(raw: String): String? {
         val n = raw.replace('\\', '/').substringAfterLast('/').trim()
@@ -385,7 +404,7 @@ class WebUi(
         return n
     }
 
-    /** 一次读完所有非文件字段(同名可重复,批量删除靠它)。 */
+    /** Read all non-file fields at once (same name may repeat; bulk delete relies on this). */
     private fun fields(body: InputStream, boundary: String): Map<String, List<String>> {
         val out = HashMap<String, MutableList<String>>()
         Multipart(body, boundary).forEachPart { name, filename, part ->
@@ -408,10 +427,12 @@ class WebUi(
     }
 
     /**
-     * 文件类别,只决定**图标与配色**。
+     * The file category — only drives the **icon and colour**.
      *
-     * 按扩展名分,不看 MIME——列目录时手上只有名字,为了分个类去嗅探每个文件的头部
-     * 意味着一个目录页几十次额外 IO(网络来源上就是几十次往返)。
+     * Classified by extension, not by MIME — at listing time only the name is
+     * in hand, and sniffing the header of every file to categorise them would
+     * mean dozens of extra IOs per directory page (dozens of round-trips on
+     * network sources).
      */
     private enum class Cat(val id: String, val icon: String) {
         FOLDER("folder", "i-folder"),
@@ -446,7 +467,10 @@ class WebUi(
             private val AUDIO_EXT = setOf(
                 "mp3", "flac", "wav", "aac", "ogg", "m4a", "wma", "ape", "opus", "dsf", "dff",
             )
-            private val ARCHIVE_EXT = setOf("zip", "7z", "rar", "tar", "gz", "bz2", "xz", "zst", "tgz", "jar")
+            private val ARCHIVE_EXT = setOf(
+                "zip", "7z", "rar", "tar", "gz", "bz2", "xz", "zst", "jar",
+                "tgz", "txz", "tbz", "tbz2",
+            )
             private val APP_EXT = setOf("apk", "xapk", "apks", "aab")
             private val DOC_EXT = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "rtf", "epub")
             private val CODE_EXT = setOf(
@@ -458,11 +482,13 @@ class WebUi(
     }
 
     /**
-     * 点名字要不要就地预览,以及用哪种标签。
+     * Whether clicking a name should preview it inline, and which tag to use.
      *
-     * **与 [Cat] 分开判**:图标该按"这是个视频"来给,预览却只能给**浏览器真放得动**的
-     * 那几种。mkv/ape/heic 都是正经的视频/音频/图片,可 `<video>` 打开就是一片空白——
-     * 那种情况下老老实实让它走下载,比弹一个黑框出来强。
+     * **Decided separately from [Cat]**: the icon should be "this is a video",
+     * but the preview can only be one of the formats the browser can actually
+     * play. mkv/ape/heic are all perfectly valid video/audio/image formats,
+     * yet opening them in `<video>` is just a blank frame — in that case
+     * honestly letting them download is better than popping up a black box.
      */
     private fun previewKind(name: String): String? =
         when (name.substringAfterLast('.', "").lowercase()) {
@@ -475,17 +501,17 @@ class WebUi(
     companion object {
         private val DATE_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
-        // 浏览器普遍放得动的那几种(见 previewKind)
+        // The formats browsers can actually be relied on to play (see previewKind)
         private val PREVIEW_IMAGE = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "svg", "ico")
         private val PREVIEW_VIDEO = setOf("mp4", "webm", "m4v", "ogv")
         private val PREVIEW_AUDIO = setOf("mp3", "m4a", "aac", "ogg", "opus", "wav", "flac")
 
         fun html(s: String): String = ShareHandler.xml(s)
 
-        /** 属性值:与文本转义同一套(引号也转了),够用。 */
+        /** Attribute value: same escape set as text (including the quote), which is enough. */
         fun attr(s: String): String = ShareHandler.xml(s)
 
-        /** 嵌进 <script> 里的字符串字面量。 */
+        /** A string literal to be embedded in <script>. */
         fun jsStr(s: String): String = buildString {
             append('"')
             for (c in s) when (c) {
@@ -493,7 +519,7 @@ class WebUi(
                 '\\' -> append("\\\\")
                 '\n' -> append("\\n")
                 '\r' -> append("\\r")
-                '<' -> append("\\u003c") // 别让 </script> 提前结束脚本块
+                '<' -> append("\\u003c") // do not let a </script> in the string end the script block early
                 '&' -> append("\\u0026")
                 else -> append(c)
             }

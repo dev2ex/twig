@@ -15,30 +15,41 @@ import com.twig.core.XFile
 import java.io.File
 
 /**
- * 从 [XFile] 构建 media3 [MediaSource] 的共享 helper。
+ * Shared helper that builds a media3 [MediaSource] from an [XFile].
  *
- * - 本地(scheme=="file"):[FileDataSource]。
- * - 其它来源:URI 必须带真实扩展名(`twig:///media.<ext>`,三斜杠让扩展名落在 path 里),
- *   否则 DefaultExtractorsFactory 认不出容器、退化到固定 sniff 顺序(MP3 排 AVI 前会误判)。
+ * - Local (scheme=="file"): [FileDataSource].
+ * - Other sources: the URI must carry a real extension (`twig:///media.<ext>`, the triple slash
+ *   puts the extension in the path); otherwise DefaultExtractorsFactory cannot recognize the
+ *   container and falls back to a fixed sniff order (MP3 before AVI causes misdetection).
  *
- * [networkEager] 供视频播放器复用:预开一条共享 [RandomSource](seek 重开 DataSource 零成本),
- * 返回给调用方在 onDestroy 统一关闭——行为与原 MediaPlayerActivity 一致。
+ * [networkEager] is for the video player: pre-open one shared [RandomSource] (seek that reopens
+ * the DataSource costs zero), returned to the caller for unified close in onDestroy — behavior
+ * matches the original MediaPlayerActivity.
  *
- * [lazy] 供音乐队列:网络来源在 DataSource.open() 时才建连接、close() 时释放,避免载入
- * 整个队列就把所有网络连接一次开满。
+ * [lazy] is for the music queue: network sources open the connection on DataSource.open() and
+ * release on close(), avoiding opening all network connections at once when loading the entire
+ * queue.
  */
 @UnstableApi
 object MediaSources {
 
     /**
-     * 默认容器工厂 + 自己的字幕解析工厂([TwigSubtitleParserFactory]):PGS 要用自己的
-     * 解析器,官方那个一组 Display Set 只出得来一个 Cue(一屏多块字幕只显示一块)。
-     * `DefaultExtractorsFactory` 有内部可变状态,每条源建一个新的,别共享。
+     * Default container factory + our own subtitle parser factory ([TwigSubtitleParserFactory]):
+     * PGS needs our own parser; the official one only emits one Cue per Display Set (multi-segment
+     * subtitles on the same screen only show one). `DefaultExtractorsFactory` has internal mutable
+     * state; build a new one per source, do not share.
+     *
+     * Wrapped in [AviRepairExtractorsFactory] for the two things media3 gets wrong about AVI:
+     * its MP3 audio is a byte stream that has to be cut back into frames, and its MPEG-4 video
+     * carries no display timestamps, so B-frames need reordering. Every other container is
+     * untouched.
      */
     fun extractors(): ExtractorsFactory =
-        DefaultExtractorsFactory().setSubtitleParserFactory(TwigSubtitleParserFactory())
+        AviRepairExtractorsFactory(
+            DefaultExtractorsFactory().setSubtitleParserFactory(TwigSubtitleParserFactory()),
+        )
 
-    /** 预开共享随机源(视频播放器用)。返回 (源, 待关闭的 RandomSource)。 */
+    /** Pre-open shared random source (for the video player). Returns (source, RandomSource to close). */
     fun networkEager(file: XFile): Pair<MediaSource, RandomSource> {
         val shared = BufferedRandomSource(FsRegistry.of(file).openRandom(file))
         val factory = DataSource.Factory { RandomSourceDataSource(shared) }
@@ -48,9 +59,11 @@ object MediaSources {
     }
 
     /**
-     * 懒开(音乐队列用):网络来源走 [AudioCache] 的每曲共享磁盘缓存——播放/波形/seek 共用
-     * 同一份已下载字节,seek 命中不重新下载,连接与缓存生命周期由 [AudioCache] 统管
-     * (LazyRandomDataSource.close → 共享源 close 为空操作,不会误关正在复用的连接)。
+     * Lazy open (for the music queue): network sources go through [AudioCache]'s per-track shared
+     * disk cache — playback / waveform / seek share the same already-downloaded bytes; seek hits
+     * don't re-download; connection and cache lifecycle are managed by [AudioCache]
+     * (LazyRandomDataSource.close → shared source close is a no-op, won't accidentally close a
+     * connection that's still being reused).
      */
     fun lazy(file: XFile): MediaSource {
         if (file.scheme == "file") {

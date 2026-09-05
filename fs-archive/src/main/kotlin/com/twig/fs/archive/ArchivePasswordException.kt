@@ -1,11 +1,14 @@
 package com.twig.fs.archive
 
 /**
- * 归档要密码才能读:[wrong] 为 false 表示还没给过密码,为 true 表示给的那个不对。
- * UI 靠这两种情况分别弹「请输入密码」与「密码错误,请重试」。
+ * Thrown when an archive needs a password to read.
+ * [wrong] = false means no password has been supplied yet;
+ * [wrong] = true means the password that was supplied is incorrect.
+ * The UI uses these two cases to prompt "enter password" vs. "wrong password, try again".
  *
- * 消息是英文的 —— 纯 JVM 模块拿不到 Context/R(见 CLAUDE.md 的文案约定);
- * app 那边捕获这个类型后用 strings.xml 里的中文覆盖,不会把英文露给用户。
+ * The message is in English — this pure-JVM module has no Context/R (see CLAUDE.md's
+ * "Conventions" / strings section); the app layer catches this type and overrides
+ * the message via strings.xml so the user never sees the English.
  */
 class ArchivePasswordException(
     val archivePath: String,

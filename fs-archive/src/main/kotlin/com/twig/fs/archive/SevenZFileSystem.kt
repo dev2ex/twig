@@ -7,9 +7,10 @@ import java.io.FilterInputStream
 import java.io.InputStream
 
 /**
- * 7z 文件系统(只读),基于 Apache Commons Compress(纯 Java)。
- * 加密包直接用库自带的 AES-256 解密([SevenZFile.Builder.setPassword]),包括**头加密**
- * ——那种包连文件名都要密码才列得出来,所以 [readEntries] 也得带着密码走。
+ * 7z filesystem (read-only), built on Apache Commons Compress (pure Java).
+ * Encrypted archives are decrypted directly by the library's AES-256 ([SevenZFile.Builder.setPassword]),
+ * including **header encryption** — those archives need the password even to list the file names,
+ * so [readEntries] also has to carry the password.
  */
 class SevenZFileSystem : ArchiveFileSystem() {
 
@@ -17,7 +18,7 @@ class SevenZFileSystem : ArchiveFileSystem() {
     override val displayName: String = "7z archive"
     override fun writable(): Boolean = false
 
-    /** 走定位读通道:本地与远程通用,远程只拉归档头与被访问的数据段。 */
+    /** Goes through a random-access channel: works for local and remote alike, remote only fetches the archive header and the data segments actually accessed. */
     private fun openSz(archivePath: String, password: String? = passwordOf(archivePath)): SevenZFile =
         SevenZFile.builder()
             .setSeekableByteChannel(openChannel(archivePath))
@@ -42,7 +43,7 @@ class SevenZFileSystem : ArchiveFileSystem() {
                 }
             }
         } catch (t: Throwable) {
-            // 头加密的包没密码连清单都读不出来 —— 换成 UI 认得的异常去弹密码框
+            // A header-encrypted archive cannot even produce its listing without the password — convert to the UI-recognized exception so the password dialog opens
             throw asPasswordIssue(archivePath, t) ?: t
         }
         return list
@@ -75,17 +76,17 @@ class SevenZFileSystem : ArchiveFileSystem() {
         throw FsException("No such file in 7z archive: $inner")
     }
 
-    // ---- 密码 ----
+    // ---- password ----
 
-    /** 归档 → 无密码时是否读不动(头加密或内容加密);探测一次记下来。 */
+    /** Archive -> whether it cannot be read without a password (header-encrypted or content-encrypted); probe once and remember. */
     private val encCache = HashMap<String, Boolean>()
 
     override fun needsPassword(archivePath: String): Boolean {
-        val key = stampOf(archivePath) // 同名文件被换掉时自动失效
+        val key = stampOf(archivePath) // automatically invalidated when a same-named file is swapped out
         synchronized(encCache) { encCache[key]?.let { return it } }
         val enc = try {
             openSz(archivePath, password = null).use { sz ->
-                // 头没加密的话清单能列出来,但内容仍可能是加密的:试读第一个非空文件
+                // If the header is not encrypted, the listing can be enumerated, but the content may still be encrypted: try reading the first non-empty file
                 var e: SevenZArchiveEntry? = sz.nextEntry
                 while (e != null) {
                     if (!e.isDirectory && e.size > 0) {
@@ -97,7 +98,7 @@ class SevenZFileSystem : ArchiveFileSystem() {
             }
             false
         } catch (t: Throwable) {
-            // 只有"缺密码"才算需要密码;包本身坏了要让原异常在正常路径上报出来
+            // Only "missing password" counts as needing a password; a genuinely broken archive must surface its original exception on the normal path
             isPasswordIssue(t)
         }
         synchronized(encCache) { encCache[key] = enc }
@@ -105,9 +106,11 @@ class SevenZFileSystem : ArchiveFileSystem() {
     }
 
     /**
-     * 校验密码:第一个非空条目**整读**一遍(7z 的 CRC 要读到流末才校验,只读个开头
-     * 判不出密码对错)。条目很大时封顶 [VERIFY_LIMIT],那时靠 LZMA 解码当场报错兜底
-     * ——密码错解出来的是随机字节,轮不到 CRC 就已经不是合法的 LZMA 流了。
+     * Verify the password: read the first non-empty entry **in full** (7z's CRC is only checked at
+     * the end of the stream; reading only the head cannot distinguish right from wrong password).
+     * Capped at [VERIFY_LIMIT] for large entries; if that is not enough, the LZMA decoder will
+     * error out earlier on a wrong password — it does not even produce a valid LZMA stream from
+     * random bytes, never mind making it as far as the CRC.
      */
     override fun checkPassword(archivePath: String, password: String): Boolean = try {
         openSz(archivePath, password).use { sz ->
@@ -119,7 +122,7 @@ class SevenZFileSystem : ArchiveFileSystem() {
                     var total = 0L
                     while (total < VERIFY_LIMIT) {
                         val n = input.read(buf)
-                        if (n < 0) break // 整条读完了,CRC 也就跟着校验过了
+                        if (n < 0) break // read the whole entry, which means the CRC was also checked
                         total += n
                     }
                     break
@@ -142,7 +145,7 @@ class SevenZFileSystem : ArchiveFileSystem() {
     companion object {
         const val SCHEME = "7z"
 
-        /** 校验密码时最多读这么多(足够让 LZMA 解码在密码错时炸出来)。 */
+        /** Maximum bytes to read when verifying the password (enough for LZMA to error out on a wrong password). */
         private const val VERIFY_LIMIT = 4L * 1024 * 1024
 
         private fun causes(t: Throwable): Sequence<Throwable> = generateSequence(t) { it.cause.takeIf { c -> c !== it } }
@@ -154,9 +157,10 @@ class SevenZFileSystem : ArchiveFileSystem() {
         }
 
         /**
-         * 密码错时 AES 解出来的是垃圾:LZMA 解码当场报 `CorruptedInputException`,
-         * 侥幸解得动也过不了 CRC。**只在"已经给过密码"的前提下**用这个判据——
-         * 否则真损坏的包会被说成密码错。
+         * With a wrong password AES produces garbage: the LZMA decoder fails right there with
+         * `CorruptedInputException`, and even if it accidentally parses, the CRC will catch it.
+         * **Only apply this criterion when a password has already been supplied** — otherwise a
+         * genuinely corrupted archive would be misreported as a wrong password.
          */
         private fun isChecksumIssue(t: Throwable): Boolean = causes(t).any {
             it is org.tukaani.xz.CorruptedInputException ||

@@ -1,40 +1,44 @@
 package com.twig.git
 
 /**
- * git-lite 的文件访问抽象:本地用 [LocalGitFs],SMB/WebDAV 等远程由调用方适配。
- * 路径一律 '/' 分隔、相对各自的根("" 表示根本身)。
+ * File access abstraction for git-lite: local uses [LocalGitFs], while remote backends
+ * like SMB/WebDAV are adapted by the caller. Paths are always '/' separated and relative
+ * to their root ("" means the root itself).
  */
 interface GitFs {
     class Entry(val name: String, val isDir: Boolean, val size: Long, val mtimeSec: Long)
 
-    /** 列目录;不存在返回空表。 */
+    /** List a directory; returns an empty list if it does not exist. */
     fun list(path: String): List<Entry>
 
-    /** 整读文件;不存在返回 null。 */
+    /** Read an entire file; returns null if it does not exist. */
     fun readBytes(path: String): ByteArray?
 
-    /** 文件/目录 stat;不存在返回 null。 */
+    /** Stat a file/directory; returns null if it does not exist. */
     fun stat(path: String): Entry?
 
-    /** 打开定位读(packfile 用);不存在返回 null。 */
+    /** Open a seekable read (for packfile use); returns null if it does not exist. */
     fun openRandom(path: String): GitRandom?
 }
 
-/** 定位读源。 */
+/** Seekable read source. */
 interface GitRandom : java.io.Closeable {
     fun read(pos: Long, buf: ByteArray, off: Int, len: Int): Int
     val size: Long
 }
 
 /**
- * worktree 的元数据视图:一部分路径落在本工作区的 gitdir([own],
- * `<主仓库>/.git/worktrees/<名>`),其余落在公共目录([common],主仓库的 `.git`)。
+ * Worktree's metadata view: some paths live in this worktree's gitdir ([own],
+ * `<main repo>/.git/worktrees/<name>`), the rest live in the common directory
+ * ([common], the main repo's `.git`).
  *
- * 分界线按 git 的 "per-worktree file" 定义(见 gitrepository-layout):HEAD、index、
- * ORIG_HEAD、logs/HEAD、rebase 状态、refs/bisect 与 refs/worktree 是每个工作区一份;
- * objects、refs/heads、packed-refs、info/exclude 全局共用。分错的后果很直接——
- * 把 HEAD 读到公共目录就成了主仓库的分支,把 objects 读到 worktree 目录则是**空的**
- * (那目录里根本没有对象库),历史、diff、status 的 HEAD 树会一起变空。
+ * The dividing line follows git's "per-worktree file" definition (see gitrepository-layout):
+ * HEAD, index, ORIG_HEAD, logs/HEAD, rebase state, refs/bisect and refs/worktree are
+ * one-per-worktree; objects, refs/heads, packed-refs and info/exclude are shared globally.
+ * Mixing them up has very direct consequences — reading HEAD from the common directory
+ * becomes the main repo's branch, and reading objects from the worktree directory is
+ * **empty** (there is no object database in that directory), so history, diff and
+ * status's HEAD tree will all become empty.
  */
 class WorktreeGitFs(private val own: GitFs, val common: GitFs) : GitFs {
 
@@ -54,7 +58,7 @@ class WorktreeGitFs(private val own: GitFs, val common: GitFs) : GitFs {
         }
     }
 
-    /** 根目录的清单两边合并(own 优先):调用方只在极少数场景列根,合并比二选一诚实。 */
+    /** The root directory listing is the union of both sides (own wins): callers list the root only in very few scenarios, merging is more honest than choosing one side. */
     override fun list(path: String): List<GitFs.Entry> {
         if (path.isNotEmpty()) return fs(path).list(path)
         val out = LinkedHashMap<String, GitFs.Entry>()
@@ -70,7 +74,7 @@ class WorktreeGitFs(private val own: GitFs, val common: GitFs) : GitFs {
     override fun openRandom(path: String): GitRandom? = fs(path).openRandom(path)
 }
 
-/** 本地文件实现;[root] 为该 fs 的根目录。 */
+/** Local file implementation; [root] is this fs's root directory. */
 class LocalGitFs(private val root: java.io.File) : GitFs {
 
     private fun f(p: String) = if (p.isEmpty()) root else java.io.File(root, p)

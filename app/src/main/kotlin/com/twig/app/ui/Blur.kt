@@ -6,33 +6,40 @@ import android.graphics.Color
 import android.graphics.Paint
 
 /**
- * 手写毛玻璃:把封面缩到 ~64px、盒式模糊几遍再交给 View 放大平滑,依主题叠遮罩。
- * 零依赖(不用已弃用的 RenderScript),CPU 上跑一次几毫秒。
+ * Hand-rolled frosted glass: shrink the cover to ~64px, run a few passes of box blur, then
+ * hand it to the View to upscale smoothly, with a theme-dependent scrim overlay.
+ * Zero dependencies (no deprecated RenderScript), runs in a few milliseconds on the CPU.
  */
 object Blur {
 
     /**
-     * 动态范围压缩系数:每个像素往整图平均色靠(0 = 全铺平均色的纯色,1 = 原样)。
-     * 模糊只是把边界抹掉,亮暗块本身还在——0.5 把明暗差砍掉一半,亮处压暗、暗处提亮,
-     * 背景更"平",前景文字压在上面各处观感一致(对比度是按平均色算的,背景越平越准)。
+     * Dynamic-range compression factor: every pixel is pulled toward the overall mean color
+     * (0 = a flat color at the mean, 1 = original). Blurring only smears edges; the bright
+     * and dark patches themselves are still there — 0.5 cuts the contrast in half, bright
+     * areas get darker and dark areas get lighter, so the background becomes "flatter" and
+     * foreground text laid over it looks the same everywhere (contrast is computed against
+     * the mean, so the flatter the background the more accurate the contrast).
      */
     private const val FLATTEN = 0.5f
 
     /**
-     * 遮罩浓度(0 = 不叠)。深色主题叠黑压暗;**浅色主题不叠**——叠白等于往封面上倒一层
-     * 牛奶,配上压平之后整块背景又白又平、封面颜色基本没了,很难看。文字可读性不靠它:
-     * [MusicTint] 按实际背景色反推前景,浅底自动解出深色字。
+     * Scrim opacity (0 = no overlay). On dark themes a black overlay is applied to darken;
+     * **on light themes no overlay is applied** — layering white is like pouring a layer of
+     * milk on the cover: combined with flattening, the background becomes uniformly white
+     * and flat, with the cover's color almost entirely gone, which looks terrible. Text
+     * readability does not depend on it: [MusicTint] derives the foreground from the actual
+     * background color, so a light background automatically resolves to dark text.
      */
     private const val SCRIM_DARK = 140
     private const val SCRIM_LIGHT = 0
 
-    /** 生成一张模糊背景位图([out] 尺寸),压平动态范围后按主题叠遮罩(浅色主题不叠)。 */
+    /** Produce a blurred background bitmap (with size [out]), flatten dynamic range, and overlay the theme's scrim (no scrim on light themes). */
     fun background(src: Bitmap, out: Int, dark: Boolean): Bitmap {
         val small = scaleDown(src, 64)
         val blurred = flatten(boxBlur(boxBlur(boxBlur(small, 2), 3), 4), FLATTEN)
         val result = Bitmap.createBitmap(out, out, Bitmap.Config.ARGB_8888)
         val c = Canvas(result)
-        // 放大填满(center-crop 到方形)
+        // scale up to fill (center-crop to a square)
         val s = out.toFloat() / minOf(blurred.width, blurred.height)
         val dw = (blurred.width * s); val dh = (blurred.height * s)
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -49,8 +56,10 @@ object Blur {
     }
 
     /**
-     * 把每个像素按 [k] 往整图平均色插值(逐通道各自取均值,所以整体色相/色调不变,
-     * 只是明暗与饱和的起伏被压缩)。就地改 [src](调用方传进来的是刚生成的临时位图)。
+     * Interpolate each pixel toward the whole-image mean color by [k] (means are computed
+     * per channel, so the overall hue/tone is preserved — only the brightness and saturation
+     * undulations are compressed). Mutates [src] in place (the caller passes a freshly
+     * generated temporary bitmap).
      */
     private fun flatten(src: Bitmap, k: Float): Bitmap {
         if (k >= 1f) return src
@@ -79,7 +88,7 @@ object Blur {
         return Bitmap.createScaledBitmap(src, w, h, true)
     }
 
-    /** 半径 r 的水平+垂直盒式模糊(简单均值),就地生成新位图。 */
+    /** Horizontal+vertical box blur (simple mean) of radius r; produces a new bitmap in place. */
     private fun boxBlur(src: Bitmap, r: Int): Bitmap {
         val w = src.width; val h = src.height
         val px = IntArray(w * h)

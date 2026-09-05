@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary">#2E7D32</color>        <!-- 枝叶绿,呼应 Twig -->
+    <color name="primary">#2E7D32</color>        <!-- Leaf green, echoes the Twig brand -->
     <color name="primary_dark">#1B5E20</color>
     <color name="accent">#66BB6A</color>
     <color name="bg">#FAFAFA</color>
@@ -13,19 +13,31 @@
     <color name="white">#FFFFFF</color>
     <color name="bar">#ECECEC</color>
     <color name="toolbar">#2E7D32</color>
-    <color name="action_text">#2E7D32</color>   <!-- 栏内文字按钮:深色主题下换亮绿保对比度 -->
-    <!-- 面板路径栏:活动面板用亮色,非活动用暗色(深色主题下两者差异靠这对颜色拉开,
-         只靠 alpha 会跟面板底色糊在一起) -->
+    <color name="action_text">#2E7D32</color>   <!-- In-bar text buttons: switch to bright green under the dark theme to preserve contrast -->
+    <!-- Pane path bar: active pane uses the bright color, inactive uses the dim one (in the dark theme the difference between the two is carried by this color pair,
+         relying on alpha alone would blur them into the pane background) -->
     <color name="path_bar_active">#2E7D32</color>
     <color name="path_bar">#2E7D32</color>
-    <!-- 目录对比:两侧都有但不同 / 只在一侧 / 该侧缺失的占位行。文字色与行底色成对,
-         底色要淡到不盖住文字,深浅两套各调一遍 -->
+    <!-- Directory compare: present on both sides but different / present on only one side / placeholder row for a missing entry. Text and row background colors come in pairs,
+         the background must be light enough not to cover the text; both light and dark variants are tuned -->
     <color name="cmp_diff">#C05300</color>
     <color name="cmp_diff_bg">#FFF1E0</color>
     <color name="cmp_only">#1565C0</color>
     <color name="cmp_only_bg">#E4F0FC</color>
     <color name="cmp_missing_bg">#EFEFEF</color>
-    <!-- 长按菜单的图标:默认跟正文一个灰度;删除/卸载这类不可逆动作单独染红 -->
+    <!-- Long-press menu icons: default shares the body-text gray; irreversible actions (delete / uninstall) are colored red on their own -->
     <color name="menu_icon">#5F6368</color>
     <color name="menu_icon_danger">#D32F2F</color>
+    <color name="media_dir">#5F6368</color>
+
+    <!-- Adaptive icon background layer; not in values-night, icons do not change with night mode -->
+    <color name="ic_launcher_bg">#2E7D32</color>
+    <!-- PDF reader backdrop: a white page has to separate from it, so it cannot be surface/bg -->
+    <color name="pdf_backdrop">#C9CCCE</color>
+    <!-- PDF search hits: translucent so they read as highlighter over any page content -->
+    <color name="pdf_hit">#66FFD54F</color>
+    <color name="pdf_hit_current">#99FF9800</color>
+    <!-- PDF text selection: translucent fill plus solid drag handles -->
+    <color name="pdf_selection">#553F51B5</color>
+    <color name="pdf_handle">#FF3F51B5</color>
 </resources>

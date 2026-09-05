@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Themed icon: the system tints away this color based on the wallpaper, only the shape carries meaning.
+         If you change ic_launcher_foreground's geometry, change this one too. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.73"
+        android:scaleY="0.73"
+        android:translateX="1"
+        android:translateY="-2.4">
+        <path
+            android:strokeColor="#000000"
+            android:strokeWidth="5"
+            android:strokeLineCap="round"
+            android:pathData="M54,90 C50,74 50,58 56,32" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M52,68 C40,68 27,59 23,42 C40,40 50,53 52,68 Z" />
+        <path
+            android:fillColor="#000000"
+            android:pathData="M53,55 C66,53 79,44 83,27 C66,26 55,39 53,55 Z" />
+    </group>
+</vector>

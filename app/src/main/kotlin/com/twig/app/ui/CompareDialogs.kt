@@ -16,10 +16,11 @@ import com.twig.app.R
 import org.json.JSONObject
 
 /**
- * 对比选项与排除规则的对话框。手写视图,不引 preference 库(与 [SettingsActivity] 同一约定)。
+ * Compare options and exclude-rules dialogs. Hand-written views, no preference library
+ * (same convention as [SettingsActivity]).
  */
 
-/** 上次用的选项;没存过就是 [CompareOptions] 的默认值。 */
+/** Last-used options; defaults of [CompareOptions] when nothing is stored yet. */
 fun loadCompareOptions(ctx: Context): CompareOptions {
     val raw = Prefs.compareOptions(ctx)
     if (raw.isBlank()) return CompareOptions()
@@ -30,10 +31,10 @@ fun saveCompareOptions(ctx: Context, o: CompareOptions) {
     Prefs.setCompareOptions(ctx, CompareSession.optionsToJson(o).toString())
 }
 
-/** 时间容差档位。最后一档"忽略时间"= 只按大小(和内容)判。 */
+/** Time-tolerance tiers. The last tier "ignore time" = only by size (and content). */
 private val TOLERANCES = longArrayOf(0L, 1_000L, 2_000L, 60_000L, Long.MAX_VALUE / 4)
 
-/** 内容对比的大小上限档位;0 = 关。 */
+/** Content-compare size cap tiers; 0 = off. */
 private val CONTENT_LIMITS = longArrayOf(0L, 256L * 1024, 1L shl 20, 16L shl 20)
 
 private fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
@@ -79,6 +80,10 @@ fun showCompareOptions(ctx: Context, current: CompareOptions, onApply: (CompareO
         text = ctx.getString(R.string.compare_content_time_gate)
         isChecked = current.contentOnlyIfTimeDiffers
     }
+    val cbIncremental = CheckBox(ctx).apply {
+        text = ctx.getString(R.string.compare_sync_incremental_opt)
+        isChecked = current.incrementalSync
+    }
 
     val box = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
@@ -107,6 +112,13 @@ fun showCompareOptions(ctx: Context, current: CompareOptions, onApply: (CompareO
             textSize = 11f
             alpha = 0.7f
         })
+        addView(label(ctx, ctx.getString(R.string.compare_sync_section)))
+        addView(cbIncremental)
+        addView(TextView(ctx).apply {
+            text = ctx.getString(R.string.compare_sync_incremental_hint)
+            textSize = 11f
+            alpha = 0.7f
+        })
     }
 
     AlertDialog.Builder(ctx)
@@ -121,6 +133,7 @@ fun showCompareOptions(ctx: Context, current: CompareOptions, onApply: (CompareO
                 contentLimitLocal = CONTENT_LIMITS[spLocal.selectedItemPosition],
                 contentLimitNetwork = CONTENT_LIMITS[spNet.selectedItemPosition],
                 contentOnlyIfTimeDiffers = cbTimeGate.isChecked,
+                incrementalSync = cbIncremental.isChecked,
             )
             saveCompareOptions(ctx, o)
             onApply(o)
@@ -128,7 +141,7 @@ fun showCompareOptions(ctx: Context, current: CompareOptions, onApply: (CompareO
         .show()
 }
 
-/** 常用排除规则,一键塞进编辑框——手打 `node_modules` 这种没人乐意每次都来一遍。 */
+/** Common exclude rules, one-tap into the editor — no one wants to type `node_modules` every time. */
 private val EXCLUDE_PRESETS = listOf(".git", "node_modules", "build", ".DS_Store", "Thumbs.db", "*.tmp")
 
 fun showExcludeEditor(ctx: Context, current: List<String>, onApply: (List<String>) -> Unit) {

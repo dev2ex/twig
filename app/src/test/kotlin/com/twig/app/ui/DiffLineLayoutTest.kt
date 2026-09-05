@@ -15,9 +15,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * diff 行的布局契约。这几条决定了"超长行能不能看全":
- * 文本不能被省略、要按无限宽排版(否则 scrollTo 只能滚出空白)、
- * 文本区的宽度必须是**扣掉行号列之后**的宽度(算错就滚不到行尾)。
+ * The layout contract for a diff row. These few tests decide whether "an overly long line
+ * can be seen in full": the text must not be ellipsized, it must be laid out at unlimited
+ * width (otherwise scrollTo only scrolls into blank space), and the text area's width must
+ * be the width **after subtracting the line-number column** (get that wrong and it cannot
+ * scroll to the end of the line).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -28,26 +30,27 @@ class DiffLineLayoutTest {
     private fun inflate() = ItemDiffLineBinding.inflate(LayoutInflater.from(ctx))
 
     @Test
-    fun `只读单行 TextView 默认会末尾省略,必须显式关掉`() {
+    fun `a read-only single-line TextView ellipsizes at the end by default, and it must be turned off explicitly`() {
         val b = inflate()
-        // 记录这个坑本身:XML 里根本没写 ellipsize,值却是 END——TextView 构造函数里有
-        // `if (singleLine && keyListener == null && ellipsize 未设) ellipsize = END`。
-        // 所以 `android:ellipsize="none"`(等于"没设")也关不掉,只能在代码里关。
+        // record the pitfall itself: the XML never sets ellipsize at all, yet the value comes
+        // out as END — TextView's constructor has
+        // `if (singleLine && keyListener == null && ellipsize not set) ellipsize = END`.
+        // So `android:ellipsize="none"` (which is equivalent to "not set") cannot turn it off either; it has to be turned off in code.
         assertEquals(TextUtils.TruncateAt.END, b.tvText.ellipsize)
 
         configureDiffLineText(b.tvText)
-        assertNull("省略之后,后面的内容绘制不出来,横滚也救不回来", b.tvText.ellipsize)
+        assertNull("once ellipsized, the content past that point cannot be drawn, and horizontal scrolling cannot bring it back", b.tvText.ellipsize)
     }
 
     @Test
-    fun `行文本可长按选中复制`() {
+    fun `line text can be long-pressed to select and copy`() {
         val b = inflate()
         configureDiffLineText(b.tvText)
         assertTrue(b.tvText.isTextSelectable)
     }
 
     @Test
-    fun `行文本按无限宽排版,超出部分才滚得到`() {
+    fun `line text is laid out at unlimited width, so only the overflowing part can be scrolled to`() {
         val b = inflate()
         configureDiffLineText(b.tvText)
         b.tvText.text = "x".repeat(4000)
@@ -59,13 +62,13 @@ class DiffLineLayoutTest {
         b.root.layout(0, 0, w, b.root.measuredHeight)
         val layoutWidth = b.tvText.layout?.getLineWidth(0) ?: 0f
         assertTrue(
-            "整行的排版宽度($layoutWidth)必须超过视图宽度(${b.tvText.width}),否则没得滚",
+            "the whole line's laid-out width ($layoutWidth) must exceed the view's width (${b.tvText.width}), otherwise there is nothing to scroll",
             layoutWidth > b.tvText.width,
         )
     }
 
     @Test
-    fun `文本区宽度是扣掉行号列之后的宽度`() {
+    fun `the text area's width is the width after subtracting the line-number column`() {
         val b = inflate()
         val w = 1080
         b.root.measure(
@@ -73,31 +76,34 @@ class DiffLineLayoutTest {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
         )
         b.root.layout(0, 0, w, b.root.measuredHeight)
-        // ★ 水平 LinearLayout 里 match_parent 的子 view 拿到的是**整个父宽**
-        // (getChildMeasureSpec 不扣兄弟占掉的部分),那样可见宽被高估、横滚到不了行尾
-        assertEquals("行号列占掉的宽度必须从文本区里扣掉", w - b.tvNo.width, b.tvText.width)
+        // a match_parent child inside a horizontal LinearLayout gets **the whole parent width**
+        // (getChildMeasureSpec does not subtract what siblings take up), which would overestimate
+        // the visible width and leave horizontal scrolling unable to reach the end of the line
+        assertEquals("the width taken up by the line-number column must be subtracted from the text area", w - b.tvNo.width, b.tvText.width)
     }
 
     @Test
-    fun `git 虚拟路径剥成仓库内相对路径`() {
-        // 前缀后面那一段是 GitVfs 的分组名 / 提交 sha,不属于仓库里的路径;
-        // 直接拿虚拟路径当真实路径显示,会变成没有意义的 "git:/changes/…"
+    fun `a git virtual path is stripped down to a path relative to the repo`() {
+        // the segment right after the prefix is GitVfs's group name / commit sha, not part of
+        // the repo's own path; showing the virtual path as-is would render as the meaningless
+        // "git:/changes/…"
         assertEquals("src/Foo.kt", gitRelPath("/changes/staged/src/Foo.kt"))
-        // ★ 只切掉前缀那一段,后面的层级一个都不能少——写成 substringAfterLast
-        // 就只剩文件名了,而这里要的正是"相对 .git 所在目录的完整路径"
+        // only the prefix segment gets cut off, none of the levels after it may be dropped —
+        // writing this as substringAfterLast would leave only the file name, while what is
+        // wanted here is exactly "the full path relative to the directory containing .git"
         assertEquals("a/b/c/d/Deep.kt", gitRelPath("/changes/unstaged/a/b/c/d/Deep.kt"))
         assertEquals("a/b/c/d/Deep.kt", gitRelPath("/history/a1b2c3d/a/b/c/d/Deep.kt"))
         assertEquals("src/Foo.kt", gitRelPath("/changes/unstaged/src/Foo.kt"))
         assertEquals("README.md", gitRelPath("/changes/untracked/README.md"))
         assertEquals("src/Foo.kt", gitRelPath("/history/a1b2c3d/src/Foo.kt"))
-        assertEquals("剥完什么都不剩时给空串,标题就只显示侧别", "", gitRelPath("/changes/staged"))
+        assertEquals("when stripping leaves nothing at all, the result is an empty string, and the title shows only the side label", "", gitRelPath("/changes/staged"))
     }
 
     @Test
-    fun `两侧各是哪个版本要跟 diffSides 对得上`() {
-        // GitVfs.diffSides:staged = HEAD↔INDEX、unstaged = INDEX↔WORK、
-        // untracked = 无↔WORK、history = <sha>^↔<sha>。标题不写出来的话,
-        // 同样一句"旧/新"在这几种情况下指的完全不是一回事
+    fun `which version each side represents must line up with diffSides`() {
+        // GitVfs.diffSides: staged = HEAD<->INDEX, unstaged = INDEX<->WORK,
+        // untracked = none<->WORK, history = <sha>^<->sha. If the title does not spell this
+        // out, the same phrase "old/new" means something completely different across these cases
         assertEquals("HEAD", gitSideSources(ctx, "/changes/staged/a.kt")?.first)
         assertEquals(
             gitSideSources(ctx, "/changes/staged/a.kt")?.second,

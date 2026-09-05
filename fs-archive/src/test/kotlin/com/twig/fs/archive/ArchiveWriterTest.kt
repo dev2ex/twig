@@ -12,7 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 
-/** 打包器:zip / 7z 写出的包能被对应的只读实现原样读回,move 模式删源。 */
+/** The packer: zip / 7z packages it writes can be read back unchanged by the corresponding read-only implementation, and move mode deletes the source. */
 class ArchiveWriterTest {
 
     private lateinit var tmp: File
@@ -36,10 +36,10 @@ class ArchiveWriterTest {
         out = File(tmp, "out").apply { mkdirs() }
     }
 
-    /** 目标归档还不存在,不能走 resolve();直接拼(与 createFile 得到的一样)。 */
+    /** The destination archive does not exist yet, so resolve() cannot be used; build it directly (same as what createFile would produce). */
     private fun local(f: File) = XFile("file", f.absolutePath, isDir = f.isDirectory)
 
-    /** 归档内 "路径:是否目录" 的排序清单(递归)。 */
+    /** A sorted "path:isDir" listing inside the archive (recursive). */
     private fun tree(fs: ArchiveFileSystem, archive: File): List<String> {
         val list = ArrayList<String>()
         fun walk(dir: XFile) {
@@ -82,11 +82,11 @@ class ArchiveWriterTest {
         assertEquals("aaa", sevenZFs.openInput(a).bufferedReader().use { it.readText() })
     }
 
-    /** 多项(平铺在归档根)+ 进度回调 + 移动模式删源。 */
+    /** Multiple items (flattened at the archive root) + progress callback + move mode deletes the source. */
     @Test
     fun multipleItemsAndMove() {
         val items = listOf(local(File(src, "hello.txt")), local(File(src, "dir")))
-        val archive = File(out, "多项.zip")
+        val archive = File(out, "multiple.zip")
         var files = 0
         var dirs = 0
         val listener = object : CopyEngine.ProgressListener {
@@ -103,7 +103,7 @@ class ArchiveWriterTest {
         assertFalse(File(src, "dir").exists())
     }
 
-    /** 取消:抛 Cancelled,半成品归档不留下。 */
+    /** Cancellation: throws Cancelled, no half-finished archive is left behind. */
     @Test
     fun cancelDeletesPartialArchive() {
         val big = File(src, "big.bin")
@@ -117,19 +117,21 @@ class ArchiveWriterTest {
         }
         assertTrue(result.exceptionOrNull() is ArchiveWriter.Cancelled)
         assertFalse(archive.exists())
-        assertFalse(File(out, "cancel.zip.twigpart").exists()) // 临时包也要清掉
+        assertFalse(File(out, "cancel.zip.twigpart").exists()) // the temp package must be cleaned up too
     }
 
     /**
-     * 回归:**压到一个已存在的同名归档上,中途取消不能动那个旧包**。
-     * 老实现直接往目标上写、失败时 delete(target),于是用户点一下"取消"就把原来的
-     * backup.zip 删了——新内容没写成,旧内容也没了。
+     * Regression: **compressing on top of an already-existing archive of the same name,
+     * cancelling midway must not touch the old package**.
+     * The old implementation wrote directly to the target and called delete(target) on
+     * failure, so a user clicking "cancel" would delete the existing backup.zip — the
+     * new content never got written, and the old content was gone too.
      */
     @Test
     fun cancelKeepsExistingArchiveIntact() {
         File(src, "big.bin").writeBytes(ByteArray(4 shl 20))
         val archive = File(out, "keep.zip")
-        val original = "假装这是用户原来的包".toByteArray()
+        val original = "pretend this is the user's original package".toByteArray()
         archive.writeBytes(original)
 
         val result = runCatching {
@@ -143,11 +145,11 @@ class ArchiveWriterTest {
         assertArrayEquals(original, archive.readBytes())
     }
 
-    /** 覆盖已有归档:成功时才顶替,内容换成新的。 */
+    /** Overwriting an existing archive: it is replaced only on success, with the new content. */
     @Test
     fun successReplacesExistingArchive() {
         val archive = File(out, "replace.zip")
-        archive.writeBytes("旧内容".toByteArray())
+        archive.writeBytes("old content".toByteArray())
 
         ArchiveWriter.compress(listOf(local(src)), local(out), local(archive), ArchiveWriter.Format.ZIP)
 

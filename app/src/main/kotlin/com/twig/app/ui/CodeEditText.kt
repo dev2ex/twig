@@ -5,17 +5,22 @@ import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatEditText
 
 /**
- * 查看器/编辑器正文用的 EditText:`wrap_content` 测出来的宽度上再多留一个光标的位置。
+ * EditText used as the body of the viewer/editor: leaves an extra cursor's worth of width
+ * beyond the `wrap_content` measurement.
  *
- * ★ 不多留的话,**最宽那一行行尾的光标会压在最后一个字上**:框架的
- * `Editor.clampHorizontalPosition` 一旦发现光标 x 顶到了文本区右边界,就把它整体往左
- * 拉一个光标宽度塞回可见区(本意是"别让光标被裁掉"),而 wrap_content 的文本区宽度
- * **恰好等于最长行的宽度**——光标走到那一行行尾必然触发夹取。多给几个像素,夹取的
- * 条件就不再成立,光标回到它该在的位置。
+ * ★ Without the extra padding, **the cursor at the end of the widest line gets pushed
+ * against the last character**: the framework's `Editor.clampHorizontalPosition` notices
+ * that the cursor's x has hit the text area's right edge and pulls it left by one cursor
+ * width to keep it visible (intending "don't let the cursor get clipped"); but the
+ * wrap_content text area width **is exactly the width of the longest line**, so the cursor
+ * at the end of that line inevitably triggers clamping. Give it a few extra pixels and the
+ * clamping condition no longer holds, so the cursor lands where it should.
  *
- * 加宽只发生在非 EXACTLY 测量下(本来就是被 HorizontalScrollView 按 UNSPECIFIED 量的);
- * 自动换行那条路要把 `maxWidth` 相应减掉 [cursorPad],否则加完正好比视口宽出这几像素、
- * 平白多出一段横向滚动(见 `TextViewerActivity.applyWrap`)。
+ * The widening only happens under non-EXACTLY measurement (HorizontalScrollView already
+ * measures with UNSPECIFIED); for the word-wrap path, `maxWidth` must be reduced by the
+ * corresponding [cursorPad], otherwise the post-padding width is exactly those pixels
+ * wider than the viewport, producing gratuitous horizontal scrolling (see
+ * `TextViewerActivity.applyWrap`).
  */
 class CodeEditText @JvmOverloads constructor(
     context: Context,
@@ -23,7 +28,7 @@ class CodeEditText @JvmOverloads constructor(
     defStyleAttr: Int = androidx.appcompat.R.attr.editTextStyle,
 ) : AppCompatEditText(context, attrs, defStyleAttr) {
 
-    /** 给光标预留的宽度(px)。光标画笔通常 2px 上下,给 3dp 留足余量。 */
+    /** Width reserved for the cursor (px). The cursor paint is typically about 2px wide; 3dp leaves enough headroom. */
     val cursorPad: Int = (resources.displayMetrics.density * 3f).toInt().coerceAtLeast(2)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

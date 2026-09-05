@@ -1,31 +1,34 @@
 package com.twig.git
 
 /**
- * 工作区目录下 `.git` 的解析结果。
+ * Parsed result of the `.git` inside a worktree directory.
  *
- * - 普通仓库:`.git` 是目录,[gitDir] == [commonDir]。
- * - worktree(`git worktree add`)/子模块:`.git` 是文本文件 `gitdir: <path>`,
- *   [gitDir] 指向 `<主仓库>/.git/worktrees/<名>`(子模块是 `.git/modules/<名>`)。
- *   worktree 的那个目录里**只有** HEAD / index / ORIG_HEAD / logs/HEAD 这些"每工作区一份"
- *   的东西,objects、refs、packed-refs、info/exclude 全在 [commonDir](由 gitDir 下的
- *   `commondir` 文件指出)。分开取才既能拿到本工作区的 HEAD/index,又读得到对象库。
+ * - Plain repo: `.git` is a directory, [gitDir] == [commonDir].
+ * - Worktree (`git worktree add`) / submodule: `.git` is a text file `gitdir: <path>`,
+ *   [gitDir] points to `<main repo>/.git/worktrees/<name>` (for submodules it's
+ *   `.git/modules/<name>`). That worktree directory contains **only** the "one-per-worktree"
+ *   files: HEAD, index, ORIG_HEAD, logs/HEAD. objects, refs, packed-refs and
+ *   info/exclude all live in [commonDir] (pointed to by the `commondir` file under gitDir).
+ *   Reading them separately is the only way to both get this worktree's HEAD/index
+ *   and reach the object database.
  */
 class GitDirs(val gitDir: String, val commonDir: String) {
-    /** 是否需要 [WorktreeGitFs] 这种"两段拼"的元数据视图(子模块 commondir 缺省=自身,不需要)。 */
+    /** Whether this needs a "two-piece" metadata view like [WorktreeGitFs] (submodule commondir defaults to self, so does not). */
     val split: Boolean get() = gitDir != commonDir
 }
 
 /**
- * 解析 `.git`。路径一律 '/' 分隔(本地 Android 与 SMB/WebDAV/SFTP 都是),
- * 所以本地与远程共用这一份实现,只是把"看目录/读文本"两个动作作为参数传进来。
+ * Resolves `.git`. Paths are always '/' separated (so for both local Android and
+ * SMB/WebDAV/SFTP), which is why local and remote share this single implementation,
+ * just passing in the "look at directory" / "read text" two actions as parameters.
  */
 object GitLayout {
 
     /**
-     * @param workDir 工作区根目录路径(不带尾 '/')
-     * @param isDir   该路径是否为存在的目录
-     * @param readText 读该路径的文本;不是文件/不存在返回 null
-     * @return 解析不出(不是仓库、gitdir 指向的目录找不到)返回 null
+     * @param workDir Worktree root directory path (no trailing '/')
+     * @param isDir   Whether the given path is an existing directory
+     * @param readText Read the text at the given path; returns null if it isn't a file or doesn't exist
+     * @return Returns null if it cannot be resolved (not a repo, or the gitdir points to a directory that can't be found)
      */
     fun resolve(workDir: String, isDir: (String) -> Boolean, readText: (String) -> String?): GitDirs? {
         val base = workDir.trimEnd('/').ifEmpty { "/" }
@@ -50,29 +53,32 @@ object GitLayout {
     }
 
     /**
-     * 把 `.git` / `commondir` 里写的路径解析成真实目录。
+     * Resolves the path written in `.git` / `commondir` to a real directory.
      *
-     * ★ `gitdir:` 里 git 写的是**绝对路径**,而它是"建这个 worktree 的那台机器"上的绝对
-     * 路径 —— 经 SMB/WebDAV 挂载看到的只是那台机器的某棵子树,拿它直接找必然落空。
-     * 所以直取不中时再兜一层:worktree 常常就建在仓库自己里面(`repo/.claude/worktrees/x`),
-     * 从工作区目录逐级往上找同样的尾巴(`.git/worktrees/x`)就能对上。
+     * ★ Git writes an **absolute path** in `gitdir:`, and that is the absolute path on
+     * "the machine that created this worktree" — what is seen over an SMB/WebDAV mount
+     * is just some subtree of that machine, so using the path directly to look it up
+     * will always miss. So when the direct lookup fails, fall back another layer: worktrees
+     * are often created inside the repo itself (`repo/.claude/worktrees/x`), so walking
+     * up from the worktree directory looking for the same tail (`.git/worktrees/x`)
+     * matches it up.
      */
     private fun resolveDir(base: String, ref: String, isDir: (String) -> Boolean): String? {
         val direct = join(base, ref)
         if (isDir(direct)) return direct
         val idx = direct.indexOf("/.git/")
         if (idx < 0) return null
-        val tail = direct.substring(idx + 1) // ".git/worktrees/<名>"
+        val tail = direct.substring(idx + 1) // ".git/worktrees/<name>"
         var dir = base
         while (true) {
             val cand = join(dir, tail)
             if (isDir(cand)) return cand
             if (dir.isEmpty() || dir == "/") return null
-            dir = dir.substringBeforeLast('/', "").ifEmpty { "/" } // 挂载点可能就在根下一层
+            dir = dir.substringBeforeLast('/', "").ifEmpty { "/" } // the mount point may sit right under root
         }
     }
 
-    /** 拼接并规范化(消掉 "." 与 ".." 段);[rel] 是绝对路径时忽略 [base]。 */
+    /** Joins and normalizes (collapsing "." and ".." segments); ignores [base] when [rel] is an absolute path. */
     fun join(base: String, rel: String): String {
         val abs = rel.startsWith("/")
         val raw = if (abs) rel else "$base/$rel"

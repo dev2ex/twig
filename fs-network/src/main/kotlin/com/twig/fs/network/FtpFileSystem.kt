@@ -14,24 +14,44 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 把一个 FTP 服务器当作文件系统来浏览(Phase 3)。
+ * Browses an FTP server as a filesystem (Phase 3).
  *
- * 连接模型:离散操作(list/mkdir/delete/rename)用短连接即连即断;
- * 流式读写(openInput/openOutput)在流关闭时收尾(completePendingCommand + 断开),
- * 保证 FTP 数据连接被正确终结。后续可加连接池优化。
+ * Connection model: discrete operations (list/mkdir/delete/rename) use short
+ * connections (connect, do the work, disconnect); streaming reads/writes
+ * (openInput/openOutput) are torn down on stream close (completePendingCommand +
+ * disconnect) to ensure the FTP data connection is properly terminated.
+ * A connection pool can be added later.
  *
- * 上传/下载/解压到 FTP 全部由 [CopyEngine] 经 openInput/openOutput 完成,本类无需额外代码。
+ * All upload/download/extraction to FTP is done by [CopyEngine] through
+ * openInput/openOutput, so this class needs no extra code for that.
  */
 class FtpFileSystem(
     private val config: FtpConfig,
     override val scheme: String = SCHEME,
 ) : FileSystem {
 
-    override val displayName: String = "FTP (${config.host})"
+    /**
+     * [FtpConfig.path] without the surrounding slashes; "" = rooted at the server root.
+     */
+    private val base = config.path.trim('/')
+
+    override val displayName: String =
+        "FTP (${config.host}" + (if (base.isEmpty()) "" else "/$base") + ")"
+
+    /**
+     * Visible path → the path actually sent to the server. **Every command argument goes
+     * through here** ([listRaw] covers the listing ones); everything that builds an
+     * [XFile] keeps using the visible path, which is what makes the root a hard floor.
+     */
+    private fun srv(p: String): String {
+        if (base.isEmpty()) return p
+        val rel = p.trim('/')
+        return if (rel.isEmpty()) "/$base" else "/$base/$rel"
+    }
 
     override fun root(): XFile = dir("/")
 
-    override fun resolve(path: String): XFile = dir(path) // 导航用,目录乐观构造
+    override fun resolve(path: String): XFile = dir(path) // navigation: directories are constructed optimistically
 
     override fun list(dir: XFile): List<XFile> = withClient { c ->
         listRaw(c, dir.path).asSequence()
@@ -44,7 +64,7 @@ class FtpFileSystem(
 
     override fun openInput(file: XFile): InputStream {
         val c = connect()
-        val stream = c.retrieveFileStream(file.path)
+        val stream = c.retrieveFileStream(srv(file.path))
         if (stream == null) {
             quietClose(c)
             throw FsException("Cannot read: ${file.path} (${c.replyString})")
@@ -61,10 +81,13 @@ class FtpFileSystem(
         }
     }
 
-    // FTP 靠 REST(restart offset)+ RETR 做定位读:服务端直接从指定偏移开始发,不发
-    // 前面的字节(字节层面高效,只传所需 ~2MB)。代价是"跳位"要重开一条数据传输——
-    // FTP 流不能在流内 seek。所以缩略图对 MKV/mp4 能走精确路径(否则退化成只取时间 0
-    // 黑图),只是每次跳位重连一条连接,略慢于 SMB/SFTP。
+    // FTP does positioned reads via REST (restart offset) + RETR: the server sends
+    // directly from the given offset and does not retransmit the preceding bytes
+    // (byte-level efficient, only the ~2MB needed is transferred). The cost is
+    // that "jumping" requires opening a new data transfer — FTP streams cannot
+    // seek in-stream. So thumbnails for MKV/mp4 can take the precise path
+    // (otherwise they degrade to a black frame at time 0); it is just that every
+    // jump opens a new connection, slightly slower than SMB/SFTP.
     override fun randomAccessEfficient(): Boolean = true
 
     override fun openRandom(file: XFile): RandomSource = object : RandomSource {
@@ -72,13 +95,15 @@ class FtpFileSystem(
         private var stream: InputStream? = null
         private var pos = -1L
 
-        /** 跳到 [position]:拆掉旧连接(免去 completePendingCommand 在半传输时卡住的坑),
-         * 新连接上 REST + RETR 从该偏移起读。连续读(pos 吻合)不会走到这里。 */
+        /** Jumps to [position]: tears down the old connection (to avoid the pitfall where
+         * completePendingCommand stalls when a transfer is half-finished), then opens
+         * a new connection and issues REST + RETR from that offset. Sequential reads
+         * (matching pos) never reach this method. */
         private fun openAt(position: Long) {
             close()
             val cc = connect()
             cc.restartOffset = position
-            val s = cc.retrieveFileStream(file.path)
+            val s = cc.retrieveFileStream(srv(file.path))
             if (s == null) { quietClose(cc); throw FsException("FTP random read failed: ${cc.replyString}") }
             c = cc
             stream = s
@@ -97,20 +122,20 @@ class FtpFileSystem(
         override fun close() {
             runCatching { stream?.close() }
             stream = null
-            c?.let { quietClose(it) } // 直接断开,不 completePendingCommand(半传输时会卡)
+            c?.let { quietClose(it) } // disconnect directly without completePendingCommand (it stalls when a transfer is half-finished)
             c = null
         }
     }
 
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         val c = connect()
-        val stream = if (append) c.appendFileStream(file.path) else c.storeFileStream(file.path)
+        val stream = if (append) c.appendFileStream(srv(file.path)) else c.storeFileStream(srv(file.path))
         if (stream == null) {
             quietClose(c)
             throw FsException("Cannot write: ${file.path} (${c.replyString})")
         }
         return object : FilterOutputStream(stream) {
-            // FilterOutputStream 默认逐字节写,这里直接转发以保证吞吐
+            // FilterOutputStream defaults to byte-by-byte writes; we forward directly to preserve throughput
             override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
             override fun close() {
                 try {
@@ -125,7 +150,7 @@ class FtpFileSystem(
 
     override fun mkdir(parent: XFile, name: String): XFile = withClient { c ->
         val path = join(parent.path, name)
-        if (!c.makeDirectory(path)) throw FsException("Could not create directory: $path (${c.replyString})")
+        if (!c.makeDirectory(srv(path))) throw FsException("Could not create directory: $path (${c.replyString})")
         dir(path)
     }
 
@@ -135,15 +160,18 @@ class FtpFileSystem(
 
     override fun rename(file: XFile, newName: String): XFile = withClient { c ->
         val to = join(file.parentPath, newName)
-        if (!c.rename(file.path, to)) throw FsException("Rename failed (${c.replyString})")
+        if (!c.rename(srv(file.path), srv(to))) throw FsException("Rename failed (${c.replyString})")
         file.copy(path = to)
     }
 
-    // 老实现是 `listFiles(path) 非空`:空目录会被判成不存在,忽略 LIST 参数的服务端更是
-    // 一律判成存在。改走 CWD(目录)/ SIZE(文件),都不支持才退回列父目录比名字。
+    // The old implementation was `listFiles(path) is non-empty`: empty directories
+    // would be judged as nonexistent, and servers that ignore the LIST argument
+    // would always be judged as existent. Switched to CWD (for directories) /
+    // SIZE (for files); only fall back to listing the parent directory and
+    // matching the name when neither is supported.
     override fun exists(file: XFile): Boolean = withClient { c ->
-        if (c.changeWorkingDirectory(file.path)) return@withClient true
-        if (runCatching { c.sendCommand("SIZE", file.path) }.getOrDefault(-1) == 213) {
+        if (c.changeWorkingDirectory(srv(file.path))) return@withClient true
+        if (runCatching { c.sendCommand("SIZE", srv(file.path)) }.getOrDefault(-1) == 213) {
             return@withClient true
         }
         val name = file.name
@@ -151,34 +179,45 @@ class FtpFileSystem(
             .any { baseName(it.name) == name }
     }
 
-    /** MFMT(RFC 3659),按 UTC 报时间;老服务器不认这个命令,失败当"不支持"处理不报错。 */
+    /** MFMT (RFC 3659), reports time in UTC; older servers do not recognize this command and the failure is treated as "not supported" without raising an error. */
     override fun setModifiedTime(file: XFile, time: Long): Boolean = runCatching {
-        // SimpleDateFormat 非线程安全,每次现建一个——这条路径不算热路径,没必要池化
+        // SimpleDateFormat is not thread-safe, so a new one is built each time — this path is not hot enough to justify pooling
         val fmt = java.text.SimpleDateFormat("yyyyMMddHHmmss").apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
         }
-        withClient { c -> c.setModificationTime(file.path, fmt.format(java.util.Date(time))) }
+        withClient { c -> c.setModificationTime(srv(file.path), fmt.format(java.util.Date(time))) }
     }.getOrDefault(false)
 
-    // ---- 内部 ----
+    // ---- internals ----
 
     /**
-     * 列目录的兼容实现:**先 CWD 进目录,再发不带参数的 LIST**。
+     * Compatibility implementation of directory listing: **CWD into the directory
+     * first, then send an unparameterized LIST**.
      *
-     * 曾经直接 `LIST <绝对路径>`,根目录正常、再往下展开却总是空的——因为不少 FTP 服务端
-     * (嵌入式设备、路由器/NAS 固件、安卓端的 FTP 共享 App)对带路径参数的 LIST 支持很差:
-     * 要么答 550、要么干脆忽略参数;非 ASCII 目录名遇上编码不一致时同样定位不到。这些情况
-     * commons-net 一律只返回**空数组**(不抛异常),UI 上就表现成"能展开一级,再展开是空的"。
-     * CWD 由服务端自己解析路径,兼容性最好,也顺带把"目录不存在/没权限"变成明确的失败。
+     * Previously the code did `LIST <absolute path>` directly. The root worked,
+     * but deeper expansion always returned empty — because many FTP servers
+     * (embedded devices, router/NAS firmware, FTP-share apps on Android) handle
+     * parameterized LIST poorly: they either reply 550 or simply ignore the
+     * argument; non-ASCII directory names also fail to resolve when encodings
+     * disagree. In all these cases commons-net just returns an **empty array**
+     * (no exception), and the UI symptom is "the first level expands, the next
+     * one is empty". CWD lets the server parse the path itself, which has the
+     * best compatibility, and it also turns "directory missing / no permission"
+     * into an explicit failure.
      *
-     * 兜底顺序:CWD 成功 → 无参 LIST;CWD 失败 → 退回老的带参 LIST;再空就**抛错**
-     * (带上 replyString),不再静默当成空目录——空目录与失败必须能区分开。
+     * Fallback order: CWD succeeds → unparameterized LIST; CWD fails → fall back
+     * to the old parameterized LIST; if that is also empty, **throw** (with
+     * replyString) — we no longer silently treat it as an empty directory, since
+     * empty directories and failures must be distinguishable.
      */
-    private fun listRaw(c: FTPClient, path: String): Array<FTPFile> {
+    private fun listRaw(c: FTPClient, visible: String): Array<FTPFile> {
+        val path = srv(visible)
         if (c.changeWorkingDirectory(path)) {
             val files = c.listFiles()
-            // LIST 传完是 226/250;不是正向完成说明数据连接没建起来(PASV 被 NAT/防火墙挡等),
-            // 此时 commons-net 也只给空数组,得报出来而不是假装目录是空的
+            // A successful LIST finishes with 226/250; if the reply is not a positive
+            // completion, the data connection never came up (e.g. PASV blocked by
+            // NAT/firewall). commons-net just returns an empty array there — we
+            // must report it instead of pretending the directory is empty.
             if (files.isNullOrEmpty() && !FTPReply.isPositiveCompletion(c.replyCode)) {
                 throw FsException("List failed: $path (${c.replyString})")
             }
@@ -190,7 +229,7 @@ class FtpFileSystem(
         return byArg
     }
 
-    /** 有的服务端在 LIST 结果里给的是全路径,取末段当名字。 */
+    /** Some servers return the full path in LIST results; take the last segment as the name. */
     private fun baseName(name: String): String = name.trimEnd('/').substringAfterLast('/')
 
     private fun deleteRecursive(c: FTPClient, file: XFile) {
@@ -201,12 +240,12 @@ class FtpFileSystem(
                 if (n.isEmpty() || n == "." || n == "..") continue
                 deleteRecursive(c, toXFile(file.path, f, n))
             }
-            // 列子项时 CWD 进去了,有的服务端不许删当前工作目录,先退出来
+            // When listing children we CWD'd in; some servers refuse to delete the current working directory, so leave it first
             runCatching { c.changeWorkingDirectory("/") }
-            if (!c.removeDirectory(file.path)) {
+            if (!c.removeDirectory(srv(file.path))) {
                 throw FsException("Could not delete directory: ${file.path} (${c.replyString})")
             }
-        } else if (!c.deleteFile(file.path)) {
+        } else if (!c.deleteFile(srv(file.path))) {
             throw FsException("Could not delete file: ${file.path} (${c.replyString})")
         }
     }

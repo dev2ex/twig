@@ -8,31 +8,38 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * 测试用的内存文件系统:注册进 [com.twig.core.FsRegistry] 就能冒充一台服务器。
+ * An in-memory file system for tests: register it into [com.twig.core.FsRegistry] and it
+ * passes for a server.
  *
- * 为什么需要它——`revealPath` / `resolveFavorite` 的网络分支要"连上某台服务器再逐级
- * 展开",真跑的话得有 FTP/SMB 服务端。而这两条链路本身的逻辑(反查连接、展开分组与
- * 服务器节点、按路径逐级下钻)跟对面是什么协议毫无关系,拿假的来跑正好把它们隔离出来。
+ * Why this is needed — the network branch of `revealPath` / `resolveFavorite` needs to
+ * "connect to some server and then expand it level by level"; doing that for real would
+ * require an actual FTP/SMB server. But the logic of those two code paths themselves
+ * (looking up the connection, expanding group and server nodes, drilling down level by
+ * level along a path) has nothing to do with which protocol is on the other end, so
+ * running it against a fake is exactly what isolates them.
  *
- * ★ 提前把它注册到目标 scheme 上,[com.twig.app.Connections.ensure] 开头那句
- * "已注册就复用"就会直接返回,不会去 new 真的 FtpFileSystem。
+ * Register this ahead of time under the target scheme, and the "already registered, so
+ * reuse it" line at the top of [com.twig.app.Connections.ensure] returns immediately
+ * without `new`-ing up a real FtpFileSystem.
  */
 class FakeFileSystem(
     override val scheme: String,
-    /** 目录路径 → 子项名字;文件不在这里出现(见 [files])。 */
+    /** Directory path -> child names; files do not appear here (see [files]). */
     private val dirs: Map<String, List<String>>,
-    /** 文件路径 → 内容。 */
+    /** File path -> content. */
     private val files: Map<String, String> = emptyMap(),
-    /** 文件路径 → mtime(毫秒);没给的按 0。对比功能要按时间判定,需要能精确摆布。 */
+    /** File path -> mtime (milliseconds); defaults to 0 when not given. The compare feature judges by time, so this needs to be precisely controllable. */
     private val times: Map<String, Long> = emptyMap(),
+    /** Whether the whole source is writable. Read-only by default -- most test cases only use it as "a server that can list directories". */
+    private val writable: Boolean = false,
 ) : FileSystem {
 
     override val displayName: String = "Fake($scheme)"
 
-    /** 记录 list 被调过哪些路径,便于断言"确实逐级展开过"。 */
+    /** Records which paths `list` was called on, so a test can assert "it really did expand level by level". */
     val listed = mutableListOf<String>()
 
-    /** 记录哪些文件被真的读过,便于断言"该省的读取确实省掉了"。 */
+    /** Records which files were actually read, so a test can assert "the read that should have been skipped really was skipped". */
     val opened = mutableListOf<String>()
 
     override fun root(): XFile = XFile(scheme, "/", isDir = true)
@@ -62,8 +69,8 @@ class FakeFileSystem(
     override fun exists(file: XFile): Boolean =
         dirs.containsKey(file.path) || files.containsKey(file.path)
 
-    // ---- 只读:这些路径在被测的链路上不会走到 ----
-    override fun writable(): Boolean = false
+    // ---- read-only: these paths are never hit by the code paths under test ----
+    override fun writable(): Boolean = writable
     override fun openOutput(file: XFile, append: Boolean): OutputStream = throw FsException("read-only")
     override fun mkdir(parent: XFile, name: String): XFile = throw FsException("read-only")
     override fun delete(file: XFile) = throw FsException("read-only")

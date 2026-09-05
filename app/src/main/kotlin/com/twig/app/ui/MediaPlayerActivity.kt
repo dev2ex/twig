@@ -5,6 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.ColorStateList
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.drawable.BitmapDrawable
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
@@ -13,6 +21,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.GestureDetector
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
@@ -38,6 +47,7 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.FileDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -49,16 +59,19 @@ import com.twig.app.R
 import com.twig.app.databinding.ActivityMediaPlayerBinding
 import com.twig.core.FsRegistry
 import com.twig.core.RandomSource
+import com.twig.core.PlayState
 import com.twig.core.XFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 内置音视频播放器,基于 media3 ExoPlayer:
- * - 自带解封装(MKV/MP4 等),不受系统 MediaPlayer 容器限制;
- * - ffmpeg 音频软解扩展兜底(AC3/EAC3/DTS/TrueHD 等设备没有的解码器);
- * - 非本地来源经 [RandomSourceDataSource] 直接从 [RandomSource] 定位读(SMB 原生 pread)。
+ * Built-in audio/video player, based on media3 ExoPlayer:
+ * - Self demuxer (MKV/MP4 etc.), not limited to system MediaPlayer's container support;
+ * - ffmpeg audio software-decoding extension as fallback (AC3/EAC3/DTS/TrueHD and other decoders
+ *   that devices don't have);
+ * - Non-local sources go through [RandomSourceDataSource] for direct positioned reads from
+ *   [RandomSource] (SMB native pread).
  */
 @UnstableApi
 class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
@@ -68,20 +81,42 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var isVideo = false
 
     private var player: ExoPlayer? = null
-    private var fsSrc: RandomSource? = null // 共享一条 SMB 专用连接,seek 重开 DataSource 零成本
+    private var fsSrc: RandomSource? = null // share a single SMB-dedicated connection, seek that reopens DataSource costs zero
     private var prepared = false
-    // 解码运行时崩溃的两级降级:0=系统优先 1=已切 ffmpeg 优先重试 2=已彻底关掉音轨(哑巴放视频)
+    // Two-stage fallback for runtime decode crashes: 0=system preferred, 1=already tried ffmpeg-first retry, 2=audio track turned off entirely (play video silently)
     private var fallbackStage = 0
     private var videoW = 0
     private var videoH = 0
-    private var rootW = 0 // 上一次算过的可用区域,用来认出旋转/分屏引起的尺寸变化
+    private var rootW = 0 // last computed available area, used to recognize size changes from rotation / split-screen
     private var rootH = 0
     private var scaleMode = SCALE_BEST_FIT
-    // 上次看到哪儿(onCreate 时查一次;真正 seek 过去是在播放器 prepare 那步)
+    // last position (looked up once in onCreate; the actual seek happens during player prepare)
     private var resumeFrom = 0L
     private var lastSaveAt = 0L
 
-    // 手势:横滑定位 / 左侧竖滑亮度 / 右侧竖滑音量
+    /**
+     * When progress is kept by the source itself (Jellyfin / Emby) take this path and don't write
+     * to the local `PlaybackStore` — if both sides record it, the same movie gets one position
+     * on the server and another on the device, and neither side can tell which is right.
+     */
+    private var remote: RemoteProgress? = null
+
+    /** Series queue (episodes of the same show, in order); empty when not computable, in which case the two buttons are not shown. */
+    private var queue: List<XFile> = emptyList()
+    private var queueIndex = -1
+
+    /**
+     * Whether the resume position is ready. Remote progress requires a network round-trip to
+     * know, while [surfaceCreated] usually arrives first — at that point **don't prepare yet**;
+     * wait for the position to come back before starting. Going the other way — "start from the
+     * beginning, then seek when the position arrives" — produces a visible jump on screen, while
+     * the extra two or three hundred milliseconds of waiting are lost in buffering and invisible.
+     */
+    private var resumeReady = true
+    private var pendingHolder: SurfaceHolder? = null
+    private var startedReported = false
+
+    // Gestures: horizontal swipe to seek / left-side vertical swipe for brightness / right-side vertical swipe for volume
     private enum class Gesture { NONE, SEEK, BRIGHT, VOL }
     private var gesture = Gesture.NONE
     private var gestureSeekTo = -1
@@ -89,20 +124,42 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var gestureStartBright = 0.5f
     private var gestureStartVol = 0
     private var orientationLocked = false
-    private var speedBoosted = false // 长按加速中(抬手恢复原速)
+    private var speedBoosted = false // long-press to speed up; release to restore original speed
     private var speedBeforeBoost = 1f
     private lateinit var audio: AudioManager
 
-    // 字幕:外挂(自解析)优先;内嵌文本轨(SRT/ASS in MKV 等)由 ExoPlayer 解出经 onCues 显示
+    // Subtitles: external (self-parsed) preferred; embedded text tracks (SRT/ASS in MKV etc.) are decoded by ExoPlayer and shown via onCues
     private var cues: List<SubCue> = emptyList()
     private var subEnabled = true
     private var subFiles: List<XFile> = emptyList()
     private var textGroups: List<Tracks.Group> = emptyList()
     private var audioGroups: List<Tracks.Group> = emptyList()
-    private var subChoice = 0 // 0=关闭;1..subFiles.size=外挂;之后=内嵌文本轨
-    private var subUserChosen = false // 用户手动选过字幕后,不再自动启用内嵌轨
+    private var subChoice = 0 // 0=off; 1..subFiles.size=external; afterwards=embedded text track
+    private var subUserChosen = false // once the user has manually picked subtitles, no longer auto-enable embedded tracks
+
+    /**
+     * Pause dimming: the window holds FLAG_KEEP_SCREEN_ON for the whole session, so a video left
+     * paused used to sit at full brightness forever. Once playback is paused it goes in two steps:
+     * after the system's own screen-off timeout the window drops to [DIM_BRIGHTNESS] (still awake,
+     * just dark), and after [SCREEN_OFF_DELAY] FLAG_KEEP_SCREEN_ON is dropped as well, so a video
+     * paused and forgotten lets the screen go off like any other app. Any touch or key press
+     * restores both, along with [userBrightness] — BRIGHTNESS_OVERRIDE_NONE (follow the system)
+     * until the brightness gesture sets a value.
+     */
+    private var dimmed = false
+    private var keepOn = true
+    private var userBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+    private var swallowTouch = false // the touch that wakes the screen must not also toggle playback
 
     private val handler = Handler(Looper.getMainLooper())
+    private val dimRunnable = Runnable {
+        dimmed = true
+        setWindowBrightness(DIM_BRIGHTNESS)
+    }
+    private val screenOffRunnable = Runnable {
+        keepOn = false
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
     private val ticker = object : Runnable {
         override fun run() {
             player?.let {
@@ -110,7 +167,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     val pos = it.currentPosition.toInt()
                     if (gesture != Gesture.SEEK) { b.seek.progress = pos; b.tvPos.text = fmt(pos) }
                     updateSubtitle(pos)
-                    // 定期落一次进度:onPause 覆盖正常退出,这条覆盖「进程被系统直接杀掉」
+                    // Periodically persist progress: onPause covers normal exit, this covers "process killed directly by the system"
                     if (it.isPlaying && SystemClock.elapsedRealtime() - lastSaveAt > 10_000) saveProgress()
                 }
             }
@@ -127,9 +184,10 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val path = intent.getStringExtra(EXTRA_PATH) ?: return finish()
         val name = intent.getStringExtra(EXTRA_NAME) ?: path
         val size = intent.getLongExtra(EXTRA_SIZE, 0L)
-        // ★ displayName 必须带上:content:// 这类"路径里没有文件名"的来源,扩展名只能从
-        // 显示名取。丢了它 → isVideo 判成 false(不绑 surface,只剩声音)、
-        // MediaSources 的 `twig:///media.<ext>` 也没了扩展名(容器识别退化到 sniff 顺序)
+        // ★ displayName must be carried along: for sources like content:// where "the path has no
+        // file name", the extension can only come from the display name. Lose it → isVideo is
+        // judged false (no surface bound, only sound remains), and MediaSources's `twig:///media.<ext>`
+        // also loses its extension (container recognition degrades to sniff order)
         file = XFile(scheme, path, isDir = false, size = size, displayName = name)
         isVideo = OpenFiles.isVideo(file)
 
@@ -150,7 +208,10 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             b.btnScale.visibility = View.GONE
             b.btnOrientation.visibility = View.GONE
         }
-        if (isVideo) setupGestures()
+        if (isVideo) {
+            setupGestures()
+            b.tvSpeed.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, fastForwardIcon(), null)
+        }
         b.seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar, p: Int, fromUser: Boolean) {
                 if (fromUser) b.tvPos.text = fmt(p)
@@ -162,9 +223,14 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
         })
 
+        b.btnPrev.setOnClickListener { playAt(queueIndex - 1) }
+        b.btnNext.setOnClickListener { playAt(queueIndex + 1) }
+
         if (isVideo) {
-            // 进度记忆只给视频:音频文件的续播归 MusicEngine/PlaylistStore 那套管
-            resumeFrom = PlaybackStore.positionFor(this, file)
+            loadQueue()
+            // Resume memory is for video only: audio file resume is the MusicEngine/PlaylistStore's job
+            remote = RemoteProgress.of(this, file)
+            if (remote != null) fetchRemoteResume() else resumeFrom = PlaybackStore.positionFor(this, file)
             b.surface.holder.addCallback(this)
             watchRootSize()
             scanSubtitles()
@@ -175,7 +241,37 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
-    // ---- 播放器 ----
+    // ---- Player ----
+
+    /**
+     * Cap how much demuxed data the player is allowed to hold. **Without this the process
+     * dies on high-bitrate 4K over the network**, and because the master password's DEK
+     * only lives in memory, the crash shows up to the user as "the player quit and now it
+     * asks for my password again".
+     *
+     * media3's own defaults are far too generous for a 256MB heap
+     * (`dalvik.vm.heapgrowthlimit` on a normal phone): `DEFAULT_VIDEO_BUFFER_SIZE` is
+     * 125MB and the muxed variant 137MB. media3 1.9 does have a much smaller local-playback
+     * tier (`DEFAULT_VIDEO_BUFFER_SIZE_FOR_LOCAL_PLAYBACK`, 18.7MB), but it picks it by URI
+     * scheme against `LOCAL_PLAYBACK_SCHEMES` = file/content/data/android.resource/
+     * rawresource/asset — **our network playback URI is `twig:///media.$ext`, so it never
+     * qualifies** and always lands in the largest tier. Add [BufferedRandomSource]'s own
+     * 24MB block cache on top and a 60fps HDR10 remux fills the heap in under a minute;
+     * the OOM then lands on whatever allocates next, typically inside MediaCodec.
+     *
+     * 48MB is still several seconds of headroom even at 80Mbps, and the duration bounds
+     * below are what actually governs low-bitrate files (where the byte cap is never hit).
+     */
+    private fun loadControl(): DefaultLoadControl =
+        DefaultLoadControl.Builder()
+            .setTargetBufferBytes(48 * 1024 * 1024)
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 30_000,
+                /* bufferForPlaybackMs = */ 1_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+            )
+            .build()
 
     private fun preparePlayer(
         holder: SurfaceHolder?,
@@ -185,10 +281,13 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     ) {
         if (player != null) return
         b.loading.visibility = View.VISIBLE
-        // EXTENSION_RENDERER_MODE_ON:优先系统 MediaCodec(省电),没有对应解码器时落到 ffmpeg 软解。
-        // 部分设备的系统解码器对特定流会直接崩溃(而非声明不支持)——这种运行时崩溃
-        // 拿不到"没有解码器"的判断依据,只能等 onPlayerError 后整体降级成 PREFER 重试一次。
-        // 自定义 AudioSink:>2 声道 PCM 先降混立体声(部分设备 6ch AudioTrack 反复 dead → 播放卡顿)
+        // EXTENSION_RENDERER_MODE_ON: prefer the system MediaCodec (power saving); fall back to
+        // ffmpeg software decoding when no matching decoder is available.
+        // Some devices' system decoders crash directly on certain streams (instead of reporting
+        // "unsupported") — for such runtime crashes there's no way to read "no decoder" as a hint;
+        // we can only wait for onPlayerError and downgrade the whole thing to PREFER for a retry.
+        // Custom AudioSink: downmix >2-channel PCM to stereo first (some devices' 6-channel
+        // AudioTrack repeatedly dies → playback stalls)
         val renderers = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
@@ -207,13 +306,17 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
             },
         )
-        // 本地文件走 setMediaItem,容器解析交给播放器默认的 MediaSource 工厂——挂上
-        // [MediaSources.extractors](内含 [TwigSubtitleParserFactory]),不然本地 MKV 的
-        // PGS 字幕仍会落到官方 PgsParser,一屏多块只显示一块。
-        // 音频焦点:不请求的话别处(内置 MusicEngine / 外部音乐 App)正在放的音乐不会被暂停,
-        // 声音直接叠在一起。becomingNoisy 一并开,拔耳机/断蓝牙时自动暂停不外放。
+        // Local files use setMediaItem, with container parsing handled by the player's default
+        // MediaSource factory — attach [MediaSources.extractors] (which includes
+        // [TwigSubtitleParserFactory]); otherwise PGS subtitles in local MKV still fall back to
+        // the official PgsParser and only show one segment per screen.
+        // Audio focus: without requesting it, music playing elsewhere (the built-in MusicEngine
+        // / external music apps) won't be paused and the sounds just stack on top of each other.
+        // becomingNoisy is also on — auto-pause without speaker output when headphones unplug
+        // or Bluetooth disconnects.
         val p = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this, MediaSources.extractors()))
+            .setLoadControl(loadControl())
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
@@ -224,9 +327,10 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = p
-        // 元数据轨(SCTE-35 广告插播信令等)这个播放器从不消费,却有实测崩过:
-        // 部分 m2ts remux 里的 SCTE-35 数据不太规范,media3 的 SpliceInfoDecoder
-        // 对越界直接抛 IllegalStateException 崩整个播放器。反正用不上,直接关掉。
+        // Metadata tracks (SCTE-35 ad insertion signaling, etc.) are never consumed by this player,
+        // yet have crashed in practice: SCTE-35 data in some m2ts remuxes is non-conforming, and
+        // media3's SpliceInfoDecoder throws IllegalStateException directly on out-of-bounds,
+        // bringing down the whole player. Since we don't use it, disable it directly.
         p.trackSelectionParameters =
             p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_METADATA, true).build()
 
@@ -257,12 +361,18 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     Player.STATE_ENDED -> {
                         android.util.Log.d("twig", "player: ended pos=${p.currentPosition} dur=${p.duration}")
                         b.btnPlay.setImageResource(R.drawable.ic_play)
+                        if (com.twig.app.Prefs.autoNextEpisode(this@MediaPlayerActivity) &&
+                            queueIndex in 0 until queue.size - 1
+                        ) {
+                            playAt(queueIndex + 1)
+                        }
                     }
                     else -> {}
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 b.btnPlay.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+                if (isPlaying) wakeScreen() else scheduleDim()
             }
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
@@ -277,19 +387,24 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
             override fun onPlayerError(error: PlaybackException) {
                 android.util.Log.e("twig", "player: error ${error.errorCodeName}", error)
-                // ERROR_CODE_UNSPECIFIED 也算:实测 jellyfin 那个 ffmpeg 扩展对某些
-                // DTS 变体解码器构造函数直接 NPE(不是喂坏数据解码失败,是解码器本身
-                // 建不起来),ExoPlayer 把这类没归类的运行时异常都报成 UNSPECIFIED。
+                // ERROR_CODE_UNSPECIFIED counts too: in practice, jellyfin's ffmpeg extension NPEs
+                // directly in the constructor for some DTS variants (not bad input feeding decode
+                // failure, but the decoder itself failing to build); ExoPlayer reports all such
+                // uncategorized runtime exceptions as UNSPECIFIED.
                 val recoverable = error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
                     error.errorCode == PlaybackException.ERROR_CODE_TIMEOUT ||
                     error.errorCode == PlaybackException.ERROR_CODE_UNSPECIFIED
                 if (fallbackStage < 2 && recoverable) {
-                    // 解码运行时崩溃(非"没有解码器",是声明支持但一解就炸/喂到坏数据)——
-                    // 或者没崩但每包都解码失败、playback 卡住不动触发的 TIMEOUT。
-                    // 第一级:整体切到 ffmpeg 优先重来一次(部分设备系统解码器本身有 bug)。
-                    // 第二级:ffmpeg 也吃不动(比如源文件音轨本身局部损坏/填充垃圾字节)——
-                    // 干脆整段关掉音轨、哑巴放视频,总比直接卡死强。就地换 renderer 不行,
-                    // 播放器已进入 error 状态、renderer 都已 disable,只能整个重建。
+                    // Runtime decode crash (not "no decoder" but "claims support but explodes on
+                    // first decode / bad input feeding in") — or no crash but every packet fails
+                    // and playback stalls, triggering TIMEOUT.
+                    // First level: switch the whole thing to ffmpeg-first and retry (some devices'
+                    // system decoders are themselves buggy).
+                    // Second level: ffmpeg can't handle it either (e.g. the source audio track is
+                    // locally corrupted / padded with garbage bytes) — just turn off the audio
+                    // track and play video silently, better than freezing outright. Swapping
+                    // renderer in place won't work: the player is already in error state, all
+                    // renderers are disabled; we have to rebuild the whole thing.
                     val resumeAt = p.currentPosition
                     fallbackStage++
                     if (fallbackStage >= 2) {
@@ -314,7 +429,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     b.pgsView.setCues(emptyList())
                     return
                 }
-                // 位图字幕(PGS 等)画到叠加层;文本字幕走 TextView
+                // Bitmap subtitles (PGS, etc.) drawn onto the overlay layer; text subtitles go through TextView
                 b.pgsView.setCues(cueGroup.cues.filter { it.bitmap != null })
                 showSubtitleText(cueGroup.cues.mapNotNull { it.text }.joinToString("\n").trim())
             }
@@ -328,17 +443,19 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                             "sr=${f.sampleRate} ch=${f.channelCount} supported=${g.isTrackSupported(i)}",
                     )
                 }
-                // 不支持的音轨(比如 DTS-HD LBR 扩展子流,设备没有对应解码器)也留着
-                // 显示——之前直接从列表里过滤掉,用户会觉得"音轨少了一条"(其实提取
-                // 没问题,是真解不了);trackName() 会标出来,选择时挡掉不真的应用。
+                // Unsupported audio tracks (e.g. DTS-HD LBR extension sub-stream, no matching decoder
+                // on the device) are also kept visible — previously they were filtered from the list
+                // and the user would think "one audio track is missing" (when actually extraction
+                // is fine, the device just can't decode it); trackName() marks them so the selection
+                // blocks applying an unplayable track.
                 audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
                 textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                if (cues.isNotEmpty()) return // 外挂字幕优先
-                // ExoPlayer 可能按 default/forced 标志自行选中文本轨,同步到 subChoice(radio 才对得上)
+                if (cues.isNotEmpty()) return // external subtitles take priority
+                // ExoPlayer may auto-select a text track by its default/forced flag; sync that to subChoice (so the radio lines up)
                 val sel = textGroups.indexOfFirst { it.isSelected }
                 when {
                     sel >= 0 -> { subChoice = subFiles.size + 1 + sel; subEnabled = true }
-                    // 无自动选中且用户没手动选过(点过"关闭"后不能再自动开)→ 启用第一条内嵌轨
+                    // No auto-selection and the user hasn't manually chosen (after tapping "off" it must not auto-enable) → enable the first embedded track
                     !subUserChosen && subChoice == 0 && textGroups.isNotEmpty() -> {
                         selectTextTrack(0)
                         subChoice = subFiles.size + 1
@@ -348,10 +465,12 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
         })
 
-        // 非本地来源要连网(SFTP/SMB/WebDAV/FTP 握手是阻塞 socket IO),必须放后台线程——
-        // 主线程直接调会被 StrictMode 判 NetworkOnMainThreadException(该异常 message 为
-        // null,曾在 SFTP 上表现成一句没有信息量的"SFTP 连接失败: null")。lifecycleScope
-        // 绑定 Activity 生命周期,onDestroy 时未完成的连接尝试自动放弃续做后续 UI 更新。
+        // Non-local sources require networking (SFTP/SMB/WebDAV/FTP handshakes are blocking socket IO),
+        // must be on a background thread — calling on the main thread triggers StrictMode's
+        // NetworkOnMainThreadException (whose message is null, which on SFTP showed up as an
+        // uninformative "SFTP connection failed: null"). lifecycleScope binds to the Activity
+        // lifecycle; on onDestroy, in-flight connection attempts are automatically abandoned
+        // and won't continue updating the UI.
         lifecycleScope.launch {
             try {
                 if (file.extension == "m2ts") {
@@ -359,9 +478,11 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 } else if (file.scheme == "file") {
                     p.setMediaItem(MediaItem.fromUri(Uri.fromFile(java.io.File(file.path))))
                 } else {
-                    // URI 必须带真实扩展名(见 [MediaSources]):DefaultExtractorsFactory 认不出
-                    // 无扩展名 URI,退化 sniff 顺序会让 AVI 被 Mp3Extractor 误判。共享 helper 与
-                    // 音乐引擎复用同一构建逻辑;这里预开一条共享随机源、onDestroy 统一关。
+                    // The URI must carry a real extension (see [MediaSources]): DefaultExtractorsFactory
+                    // cannot recognize a URI without an extension, and the degraded sniff order would
+                    // let AVI be misidentified by Mp3Extractor. The shared helper reuses the same
+                    // construction as the music engine; here we pre-open a shared random source and
+                    // close them all together in onDestroy.
                     val (src, shared) = withContext(Dispatchers.IO) { MediaSources.networkEager(file) }
                     fsSrc = shared
                     p.setMediaSource(src)
@@ -383,16 +504,20 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     /**
-     * 真正的 M2TS(蓝光 BDAV 封装)每 192 字节一包(4 字节时间戳前缀 + 188 字节标准
-     * TS 包),media3 `TsExtractor` 硬编码按 188 步进找同步字节,对不上直接判"无法
-     * 识别容器"。但也有工具把普通 188 字节 TS 流存成 .m2ts 后缀——先探测真实包大小
-     * 再决定要不要剥前缀,不能看后缀就假设。剥的话顺带显式指定 TsExtractor,不吃
-     * DefaultExtractorsFactory 的 sniff 顺序(剥干净的 188 流本该没有歧义,但求稳)。
+     * True M2TS (Blu-ray BDAV container) uses one packet every 192 bytes (4-byte timestamp prefix
+     * + 188-byte standard TS packet); media3's `TsExtractor` hardcodes a 188-byte step when
+     * searching for sync bytes, and a stream that doesn't match is reported as "unrecognized
+     * container". But some tools also store ordinary 188-byte TS streams under the .m2ts
+     * extension — first detect the real packet size, then decide whether to strip prefixes;
+     * never assume from the extension alone. When stripping, also explicitly specify TsExtractor
+     * rather than relying on DefaultExtractorsFactory's sniff order (a clean 188-byte stream
+     * shouldn't be ambiguous in theory, but better safe).
      */
     private suspend fun prepareM2ts(p: ExoPlayer, file: XFile) {
         val local = file.scheme == "file"
-        // 探测包大小要读文件头,非本地来源还要先建连接(SFTP/SMB/... 阻塞 socket IO)——挪
-        // 后台线程,原因同 preparePlayer 里 networkEager 那处。
+        // Detecting the packet size needs to read the file header; non-local sources also need
+        // to open a connection first (SFTP/SMB/... blocking socket IO) — move to a background
+        // thread, same reason as networkEager in preparePlayer.
         val (shared, rawPacketSize) = withContext(Dispatchers.IO) {
             val s = if (local) null else BufferedRandomSource(FsRegistry.of(file).openRandom(file))
             s to detectM2tsPacketSize(file, s)
@@ -423,22 +548,25 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (p.isPlaying) p.pause() else p.play()
     }
 
-    // ---- 手势 ----
+    // ---- Gestures ----
 
-    /** 左右边缘留给系统边缘返回手势,这个宽度内按下的触摸整个不处理(不喂手势识别器),
-     *  避免和系统的返回手势抢——不止快进快退,连同这条边上的单击/双击一起让开。 */
+    /** The left and right edges are reserved for the system's edge-back gesture; touches inside
+     *  this width aren't processed at all (not fed to the gesture detector) to avoid fighting
+     *  the system gesture — not just fast-forward/rewind, but also single/double taps on these
+     *  edges are let through. */
     private val edgeGuardPx by lazy { 24f * resources.displayMetrics.density }
 
     private fun setupGestures() {
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean { toggleControls(); return true }
 
-            // 双击整屏都是播放/暂停:分左右三档快进快退太容易误触(横滑定位本来就更好用)
+            // Double-tap anywhere on the screen is play/pause: splitting left/right into three-step
+            // seek is too easy to trigger by accident (horizontal swipe seek works better anyway)
             override fun onDoubleTap(e: MotionEvent): Boolean { toggle(); return true }
 
-            /** 按住不动 ≈0.5s:临时加速播放,抬手([endGesture])恢复原速。 */
+            /** Holding ≈0.5s: temporarily speed up playback; on release ([endGesture]) restore original speed. */
             override fun onLongPress(e: MotionEvent) {
-                if (gesture != Gesture.NONE || speedBoosted) return // 已在滑动定位/调亮度,不抢
+                if (gesture != Gesture.NONE || speedBoosted) return // already seeking/adjusting brightness, don't steal
                 val p = player?.takeIf { prepared && it.isPlaying } ?: return
                 speedBoosted = true
                 speedBeforeBoost = p.playbackParameters.speed
@@ -449,7 +577,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             }
 
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
-                if (speedBoosted) return true // 加速中手指的微动不该变成定位/亮度手势
+                if (speedBoosted) return true // micro-movements while speeding up shouldn't turn into seek/brightness gestures
                 val start = e1 ?: return false
                 val totalDx = e2.x - start.x
                 val totalDy = e2.y - start.y
@@ -470,7 +598,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 when (gesture) {
                     Gesture.SEEK -> {
                         val dur = player?.takeIf { prepared }?.duration?.toInt() ?: return true
-                        // 整屏宽 = ±90 秒
+                        // full screen width = ±90 seconds
                         val target = (gestureStartPos + (totalDx / b.root.width * 90_000).toInt())
                             .coerceIn(0, dur)
                         gestureSeekTo = target
@@ -481,7 +609,8 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     }
                     Gesture.BRIGHT -> {
                         val v = (gestureStartBright - totalDy / b.root.height).coerceIn(0.01f, 1f)
-                        window.attributes = window.attributes.apply { screenBrightness = v }
+                        userBrightness = v
+                        setWindowBrightness(v)
                         showGestureHint(getString(R.string.player_brightness, (v * 100).toInt()))
                     }
                     Gesture.VOL -> {
@@ -520,9 +649,63 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         handler.postDelayed({ b.tvGesture.visibility = View.GONE }, 300)
     }
 
-    /** 2.0f → "2"、1.5f → "1.5"(整数不拖个没用的 .0)。 */
+    /** 2.0f → "2", 1.5f → "1.5" (integers don't carry a useless .0). */
     private fun fmtSpeed(s: Float): String =
         if (s == s.toInt().toFloat()) s.toInt().toString() else s.toString()
+
+    /** The fast-forward glyph shown after "2x" in [tv_speed]. A compound drawable never picks up
+     *  the host TextView's shadowColor/Dx/Dy/Radius — those only paint the text layout — so a
+     *  static drawableEnd icon stayed flat while the digits got a shadow. This bakes the glyph
+     *  into a bitmap using the exact same [Paint.setShadowLayer] call, with the exact same
+     *  radius/dx/dy/color as tv_speed's own shadow* attrs (raw pixels, unscaled by density —
+     *  matching them, not "close to" them, is the point), so the two shadows read as one style.
+     *
+     *  The vertical bias is measured from [tv_speed]'s own live [android.text.TextPaint], not a
+     *  hand-tuned dp constant: TextView centers a compound drawable against the view's content
+     *  box, but "×" — the character actually adjacent to the icon, not the variable digit before
+     *  it — has its own ink sitting off that box's center. A constant calibrated by eye on one
+     *  phone would drift on another device/OEM font with different metrics; deriving it from
+     *  [getTextBounds] on the actual paint at the actual text size self-corrects instead.
+     *  ★ This box is `fontMetrics.ascent..descent` ONLY because tv_speed has
+     *  `includeFontPadding="false"` — the default (true) sizes wrap_content against the font's
+     *  wider top/bottom metrics instead (extra headroom for accents/CJK that this run of ASCII
+     *  digits never uses), which on a CJK-fallback font pushed the box's true center well above
+     *  what this ascent/descent math accounted for — the actual cause of the icon reading
+     *  "too high" through two rounds of tuning this value directly, both against the wrong box. */
+    private fun fastForwardIcon(iconSizeDp: Float = 16f): BitmapDrawable {
+        val density = resources.displayMetrics.density
+        val iconPx = iconSizeDp * density
+        val shadowRadius = 4f; val shadowDx = 1f; val shadowDy = 1f // matches tv_speed's shadow* attrs verbatim
+        val bleed = shadowRadius + kotlin.math.max(shadowDx, shadowDy) + 1f
+
+        val textPaint = b.tvSpeed.paint
+        val fm = textPaint.fontMetrics
+        val lineBoxCenter = (fm.ascent + fm.descent) / 2f
+        val glyphBounds = Rect()
+        textPaint.getTextBounds("×", 0, 1, glyphBounds)
+        val glyphCenter = (glyphBounds.top + glyphBounds.bottom) / 2f
+        val risePx = lineBoxCenter - glyphCenter // >0: box center sits below "×"'s ink center
+
+        val topPad = (bleed - risePx).coerceAtLeast(0f)
+        val bottomPad = (bleed + risePx).coerceAtLeast(0f)
+        val w = (iconPx + bleed * 2).toInt()
+        val h = (iconPx + topPad + bottomPad).toInt()
+        val path = Path().apply {
+            moveTo(2f, 6f); lineTo(2f, 18f); lineTo(10.5f, 12f); close()
+            moveTo(12f, 6f); lineTo(12f, 18f); lineTo(20.5f, 12f); close()
+        }
+        path.transform(Matrix().apply {
+            setScale(iconPx / 24f, iconPx / 24f)
+            postTranslate(bleed, topPad)
+        })
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            setShadowLayer(shadowRadius, shadowDx, shadowDy, 0xCC000000.toInt())
+        }
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        Canvas(bmp).drawPath(path, paint)
+        return BitmapDrawable(resources, bmp)
+    }
 
     private fun showGestureHint(text: String, autoHide: Boolean = false) {
         b.tvGesture.text = text
@@ -530,30 +713,49 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (autoHide) handler.postDelayed({ b.tvGesture.visibility = View.GONE }, 600)
     }
 
-    // ---- 字幕 ----
+    // ---- Subtitles ----
 
-    /** 后台扫描同目录的 .srt/.ass/.ssa(同名靠前),同名的自动加载。 */
+    /** Background scan the same directory for .srt/.ass/.ssa (same-name ones first); same-name files auto-load. */
     private fun scanSubtitles() {
         Thread {
             runCatching {
                 val fs = FsRegistry.of(file)
-                val parent = XFile(file.scheme, file.parentPath, isDir = true)
+                // External subtitles from the source itself (media servers expose them as subtitle
+                // streams, with nothing in the same directory to scan); they come back as ordinary
+                // XFile, and the read/parse/select path below is the same
+                val remote = runCatching {
+                    (fs as? com.twig.core.MediaInfoSource)?.subtitlesOf(file).orEmpty()
+                }.getOrDefault(emptyList())
                 val base = file.name.substringBeforeLast('.').lowercase()
-                val subs = fs.list(parent)
-                    .filter { !it.isDir && it.name.substringAfterLast('.', "").lowercase() in SubtitleParser.EXTENSIONS }
-                    .sortedByDescending { it.name.substringBeforeLast('.').lowercase() == base }
+                // Don't list the parent directory again when the source already provided some:
+                // those sources don't have subtitle files in their directories, just a wasted
+                // network round-trip
+                val sidecars = if (remote.isNotEmpty()) {
+                    emptyList()
+                } else {
+                    val parent = XFile(file.scheme, file.parentPath, isDir = true)
+                    fs.list(parent)
+                        .filter {
+                            !it.isDir &&
+                                it.name.substringAfterLast('.', "").lowercase() in SubtitleParser.EXTENSIONS
+                        }
+                        .sortedByDescending { it.name.substringBeforeLast('.').lowercase() == base }
+                }
+                val subs = remote + sidecars
                 runOnUiThread { subFiles = subs }
-                subs.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base }
+                // Auto-attach: take the first one given by the source (usually the default track),
+                // otherwise take the same-named file
+                (remote.firstOrNull() ?: sidecars.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base })
                     ?.let { loadSubtitleFile(it) }
             }
         }.apply { isDaemon = true }.start()
     }
 
-    /** 后台读取并解析一个外挂字幕文件(任何来源经 openInput 读字节)。 */
+    /** Background read and parse an external subtitle file (reads bytes via openInput from any source). */
     private fun loadSubtitleFile(f: XFile) {
         Thread {
             runCatching {
-                if (f.size > 4L shl 20) return@runCatching // >4MB 不像字幕
+                if (f.size > 4L shl 20) return@runCatching // >4MB doesn't look like subtitles
                 val parsed = SubtitleParser.parse(FsRegistry.of(file).openInput(f).use { OpenFiles.readAllBytes(it) })
                 if (parsed.isNotEmpty()) runOnUiThread {
                     cues = parsed
@@ -569,7 +771,8 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         showSubtitleText(if (subEnabled) activeCueText(pos) else null)
     }
 
-    /** 当前时刻应显示的文本;ASS 常有多条重叠(对话+注释),向前回扫合并,最多 3 条。 */
+    /** The text that should be shown at the current moment; ASS often has multiple overlapping
+     *  lines (dialogue + commentary); scan backward and merge, up to 3. */
     private fun activeCueText(pos: Int): String? {
         var lo = 0; var hi = cues.size - 1; var idx = -1
         while (lo <= hi) {
@@ -596,7 +799,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
-    // ---- 字幕 / 音轨选择 ----
+    // ---- Subtitle / audio track selection ----
 
     private fun showScaleDialog() {
         val names = arrayOf(
@@ -621,16 +824,18 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val lang = f.language?.takeIf { it.isNotEmpty() && it != "und" }
         val label = f.label?.takeIf { it.isNotEmpty() }
         val format = if (g.type == C.TRACK_TYPE_AUDIO) audioFormatLabel(f).takeIf { it.isNotEmpty() } else null
-        // 设备没有对应解码器时标出来(比如某些 DTS-HD 扩展子流)——之前直接把这种轨道
-        // 从列表里隐藏,用户会以为提取漏了一条,其实是识别出来了但真解不了。
+        // Mark tracks the device can't decode (e.g. some DTS-HD extension sub-streams) — previously
+        // such tracks were hidden from the list and the user thought extraction missed one; in fact
+        // they're recognized, the device just can't decode them.
         val unsupported = if (!g.isTrackSupported(0)) getString(R.string.player_track_unsupported) else null
         return "$prefix ${i + 1}" + (format?.let { " · $it" } ?: "") + (label?.let { " · $it" } ?: "") +
             (lang?.let { " ($it)" } ?: "") + (unsupported?.let { " $it" } ?: "")
     }
 
     /**
-     * 音轨格式简称 + 声道数,比如 "DTS-HD 5.1"、"AC-3 立体声"——和属性卡片"媒体" tab
-     * 用的是同一份映射([FileInfo.codecName]/[FileInfo.channels]),两处显示保持一致。
+     * Audio format short name + channel count, e.g. "DTS-HD 5.1", "AC-3 Stereo" — uses the same
+     * mapping as the "Media" tab in the properties card ([FileInfo.codecName]/[FileInfo.channels]),
+     * keeping the two displays consistent.
      */
     private fun audioFormatLabel(f: Format): String {
         val mime = f.sampleMimeType ?: return ""
@@ -713,11 +918,13 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             .show()
     }
 
-    // ---- 控制栏 / 画面 ----
+    // ---- Controls / video ----
 
     /**
-     * 锁定/解锁屏幕方向。`SCREEN_ORIENTATION_LOCKED` 锁的是**当前**方向,所以躺着看时先转到
-     * 想要的方向再按。只在本次播放有效,不进 Prefs——横竖屏偏好是跟着片子和姿势走的。
+     * Lock/unlock the screen orientation. `SCREEN_ORIENTATION_LOCKED` locks to the **current**
+     * orientation, so if watching lying down, rotate to the desired direction first then press.
+     * Only takes effect for this playback, doesn't go into Prefs — landscape/portrait preference
+     * depends on the video and posture.
      */
     private fun toggleOrientationLock() {
         orientationLocked = !orientationLocked
@@ -740,6 +947,64 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         )
     }
 
+    // ---- Screen dimming while paused ----
+
+    private fun setWindowBrightness(v: Float) {
+        window.attributes = window.attributes.apply { screenBrightness = v }
+    }
+
+    /** How long to stay bright after pausing: the system's own screen-off timeout, clamped so that
+     *  "never sleep" (Int.MAX_VALUE) still dims eventually — and always well before
+     *  [SCREEN_OFF_DELAY], so the two steps never collapse into one. */
+    private fun dimDelay(): Long = runCatching {
+        Settings.System.getInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT).toLong()
+    }.getOrDefault(30_000L).coerceIn(15_000L, 5 * 60_000L)
+
+    /** Arm both timers, but only while paused — playing keeps the screen bright and awake. */
+    private fun scheduleDim() {
+        handler.removeCallbacks(dimRunnable)
+        handler.removeCallbacks(screenOffRunnable)
+        if (player?.isPlaying != true) {
+            handler.postDelayed(dimRunnable, dimDelay())
+            handler.postDelayed(screenOffRunnable, SCREEN_OFF_DELAY)
+        }
+    }
+
+    /** Restore brightness and the keep-awake flag, then start the wait over. */
+    private fun wakeScreen() {
+        if (dimmed) {
+            dimmed = false
+            setWindowBrightness(userBrightness)
+        }
+        if (!keepOn) {
+            keepOn = true
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        scheduleDim()
+    }
+
+    /** Any interaction wakes a dimmed screen, and the waking touch itself is swallowed — the whole
+     *  gesture, not just the DOWN, since a half-delivered gesture confuses the detector — so that a
+     *  tap meant only to see the picture doesn't also toggle playback. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            swallowTouch = dimmed
+            wakeScreen()
+        }
+        if (swallowTouch) {
+            if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+                swallowTouch = false
+            }
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) wakeScreen()
+        return super.dispatchKeyEvent(event)
+    }
+
     private fun toggleControls() {
         val show = b.toolbar.visibility != View.VISIBLE
         val v = if (show) View.VISIBLE else View.GONE
@@ -748,13 +1013,15 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     /**
-     * 可用区域一变(旋转、分屏拖拽、多窗口)就重算一次画面尺寸。
+     * Recompute the picture size whenever the available area changes (rotation, split-screen drag, multi-window).
      *
-     * ★ 不能指望 `surfaceChanged`:[resizeSurface] 把 SurfaceView 的 layoutParams 写成
-     * **固定像素**宽高,旋转后这个值原样不动 → SurfaceView 自身尺寸没变化 → 回调不来,
-     * 画面就一直按旧方向的比例摆着。(以前点一下屏幕能"修好",是显隐控制栏触发的整树
-     * relayout 顺带让 surface 重走一遍回调,纯属巧合。)configChanges 里带了
-     * orientation|screenSize,Activity 不重建,所以也没有 onCreate 兜底。
+     * ★ Can't rely on `surfaceChanged`: [resizeSurface] writes the SurfaceView's layoutParams as
+     * **fixed pixel** width/height; after rotation this value doesn't change → the SurfaceView's
+     * own size doesn't change → no callback arrives, and the picture stays laid out at the old
+     * direction's aspect ratio. (Previously a screen tap would "fix" it because showing/hiding
+     * the controls triggered a full-tree relayout that incidentally made the surface redo its
+     * callback — pure coincidence.) configChanges includes orientation|screenSize so the Activity
+     * doesn't get recreated, and there's no onCreate fallback.
      */
     private fun watchRootSize() {
         b.root.addOnLayoutChangeListener { _, l, t, r, bo, _, _, _, _ ->
@@ -762,7 +1029,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             val h = bo - t
             if (w == rootW && h == rootH) return@addOnLayoutChangeListener
             rootW = w; rootH = h
-            // 布局回调里改 layoutParams 会被推到下一帧,干脆自己 post 一次
+            // Changing layoutParams inside the layout callback gets pushed to the next frame; just post once ourselves
             b.root.post { resizeSurface() }
         }
     }
@@ -772,26 +1039,166 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val vw = b.root.width.toFloat(); val vh = b.root.height.toFloat()
         if (vw == 0f) return
         val (w, h) = when (scaleMode) {
-            SCALE_CROP -> { // 保持比例填满屏幕,多出的裁掉(画面居中,FrameLayout 裁剪)
+            SCALE_CROP -> { // preserve aspect ratio to fill the screen, crop the excess (centered, FrameLayout clipping)
                 val s = maxOf(vw / videoW, vh / videoH)
                 (videoW * s).toInt() to (videoH * s).toInt()
             }
-            SCALE_FILL -> vw.toInt() to vh.toInt() // 拉伸填充,不保比例
-            else -> { // 最佳适配:完整显示
+            SCALE_FILL -> vw.toInt() to vh.toInt() // stretch to fill, doesn't preserve aspect
+            else -> { // best fit: show fully
                 val s = minOf(vw / videoW, vh / videoH)
                 (videoW * s).toInt() to (videoH * s).toInt()
             }
         }
         b.surface.layoutParams = b.surface.layoutParams.apply { width = w; height = h }
         b.surface.requestLayout()
-        // 位图字幕按视频显示矩形映射坐标(画面居中)
+        // Bitmap subtitles are mapped to the video display rectangle (centered)
         b.pgsView.setVideoRect((vw - w) / 2f, (vh - h) / 2f, w.toFloat(), h.toFloat())
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         immersive()
+        // The remote resume position is still in flight: remember the holder, wait for it (or
+        // timeout) before starting; see [resumeReady]
+        if (!resumeReady) { pendingHolder = holder; return }
+        startPlayback(holder)
+    }
+
+    private fun startPlayback(holder: SurfaceHolder) {
+        if (isFinishing || isDestroyed) return
         preparePlayer(holder, resumePositionMs = resumeFrom)
         player?.setVideoSurfaceHolder(holder)
+    }
+
+    // ---- Series queue ----
+
+    /**
+     * Compute this episode's series queue (background thread: both paths need network I/O).
+     *
+     * Two paths, **ask the source first, then guess from filenames**:
+     * - The source knows its own series structure ([EpisodeSeries], currently Jellyfin/Emby):
+     *   one request returns the whole show, ordered across seasons. ★ An episode in "Continue
+     *   Watching" **only has this path** — its sibling on the tree is another show.
+     * - Other sources: list video files in the same directory and group them by season/episode
+     *   numbers in the filename (see [Episodes]).
+     *
+     * If it can't be computed, keep an empty queue and don't show the two buttons — better
+     * no button than a button that does something random when tapped.
+     */
+    private fun loadQueue() {
+        Thread {
+            val q = runCatching { computeQueue() }.getOrElse { e ->
+                android.util.Log.w("twig", "player: queue failed: ${e.message}")
+                emptyList()
+            }
+            val idx = q.indexOfFirst { it.scheme == file.scheme && it.path == file.path }
+            runOnUiThread {
+                // The user may have manually skipped an episode before we finished computing;
+                // in that case don't overwrite with this stale result
+                if (isFinishing || isDestroyed || queue.isNotEmpty()) return@runOnUiThread
+                if (idx < 0) return@runOnUiThread // current episode not in the queue = bad computation, treat as none
+                queue = q
+                queueIndex = idx
+                syncQueueButtons()
+            }
+        }.apply { isDaemon = true; name = "twig-queue" }.start()
+    }
+
+    private fun computeQueue(): List<XFile> {
+        val fs = runCatching { FsRegistry.of(file) }.getOrNull() ?: return emptyList()
+        (fs as? com.twig.core.EpisodeSeries)?.episodesOf(file)?.let { return it }
+        val parent = runCatching { fs.resolve(file.parentPath) }.getOrNull() ?: return emptyList()
+        val sibs = runCatching { fs.list(parent) }.getOrNull()
+            ?.filter { !it.isDir && OpenFiles.isVideo(it) } ?: return emptyList()
+        return com.twig.app.Episodes.queueOf(file, sibs)
+    }
+
+    /** When there's no previous/next episode in the queue, hide the corresponding button to avoid dead taps. */
+    private fun syncQueueButtons() {
+        val has = queueIndex >= 0 && queue.size > 1
+        b.btnPrev.visibility = if (has && queueIndex > 0) View.VISIBLE else View.GONE
+        b.btnNext.visibility = if (has && queueIndex < queue.size - 1) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Play a different episode. **Do not recreate the Activity** — the surface is still there,
+     * and recreation would cause a black flash, plus we'd have to re-run the immersive / gesture /
+     * orientation lock setup.
+     *
+     * Ending the current episode must report [PlayState.STOP]: the server uses this to end the
+     * "now playing" session; without it, the session hangs, and the next episode's START collides
+     * with it.
+     */
+    private fun playAt(index: Int) {
+        val next = queue.getOrNull(index) ?: return
+        saveProgress(PlayState.STOP)
+        remote?.shutdown()
+        remote = null
+        handler.removeCallbacks(ticker)
+        player?.release()
+        player = null
+        prepared = false
+        startedReported = false
+        val old = fsSrc
+        fsSrc = null
+        if (old != null) Thread { runCatching { old.close() } }.apply { isDaemon = true }.start()
+
+        queueIndex = index
+        file = next
+        resumeFrom = 0
+        b.toolbar.title = file.name
+        @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(file.name))
+        syncQueueButtons()
+        scanSubtitles()
+
+        // ★ The surface is already created, no surfaceCreated callback coming — manually hand
+        // the holder to the resume gate so it follows the same path as the first play (wait for
+        // the remote position to arrive before preparing)
+        pendingHolder = b.surface.holder
+        resumeReady = false
+        remote = RemoteProgress.of(this, file)
+        if (remote != null) {
+            fetchRemoteResume()
+        } else {
+            resumeFrom = PlaybackStore.positionFor(this, file)
+            releaseResumeGate()
+        }
+    }
+
+    /**
+     * Ask the server for the resume position. If the server has no record (or marks the video
+     * as fully watched), fall back to the local copy — switching devices, or having previously
+     * watched this from local, the local record still matters.
+     *
+     * A timeout fallback is required: when the network stalls, "wait for the position" must not
+     * become "never plays", which on screen just looks like a stuck loading spinner with no clue.
+     */
+    private fun fetchRemoteResume() {
+        val r = remote ?: return
+        resumeReady = false
+        Thread {
+            val pos = runCatching { r.position() }.getOrElse { e ->
+                android.util.Log.w("twig", "playback: resume position fetch failed: ${e.message}")
+                -1L
+            }
+            runOnUiThread {
+                if (resumeReady) return@runOnUiThread // the timeout path already let it through, don't change the position
+                resumeFrom = if (pos > 0) pos else PlaybackStore.positionFor(this, file)
+                releaseResumeGate()
+            }
+        }.apply { isDaemon = true; name = "twig-resume" }.start()
+        handler.postDelayed({
+            if (!resumeReady) {
+                android.util.Log.w("twig", "playback: resume position timed out, starting from 0")
+                releaseResumeGate()
+            }
+        }, RESUME_TIMEOUT_MS)
+    }
+
+    private fun releaseResumeGate() {
+        resumeReady = true
+        val h = pendingHolder ?: return
+        pendingHolder = null
+        startPlayback(h)
     }
     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) { resizeSurface() }
     override fun surfaceDestroyed(holder: SurfaceHolder) {}
@@ -808,32 +1215,54 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         c.hide(WindowInsetsCompat.Type.systemBars())
     }
 
+    override fun onResume() {
+        super.onResume()
+        wakeScreen()
+    }
+
     override fun onPause() {
         super.onPause()
         saveProgress()
         player?.takeIf { prepared && it.isPlaying }?.pause()
+        // In the background the window isn't visible, so the timers mean nothing; onResume decides again
+        handler.removeCallbacks(dimRunnable)
+        handler.removeCallbacks(screenOffRunnable)
     }
 
     /**
-     * 落一次播放进度。SharedPreferences 的读是内存里的、写走 apply() 异步落盘,主线程调
-     * 没问题;「该不该记 / 该不该删」的判断全在 [PlaybackStore.save] 里。
+     * Persist playback progress once. SharedPreferences reads are in-memory and writes go through
+     * apply() (asynchronous to disk), so calling on the main thread is fine; the "should we save
+     * / delete" decisions are all in [PlaybackStore.save].
      */
-    private fun saveProgress() {
+    private fun saveProgress(state: PlayState = PlayState.PROGRESS) {
         if (!isVideo || !prepared) return
         val p = player ?: return
         val dur = p.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         lastSaveAt = SystemClock.elapsedRealtime()
-        PlaybackStore.save(this, file, p.currentPosition, dur)
+        val r = remote
+        if (r != null) {
+            // Progress is the server's job: reporting goes on a background thread (see RemoteProgress),
+            // the local copy is no longer written
+            if (!startedReported) { startedReported = true; r.report(p.currentPosition, dur, PlayState.START) }
+            r.report(p.currentPosition, dur, state)
+        } else {
+            PlaybackStore.save(this, file, p.currentPosition, dur)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        saveProgress()
+        // Report STOP on this exit: the server uses this to end the "now playing" session,
+        // otherwise the session hangs
+        saveProgress(PlayState.STOP)
+        remote?.shutdown()
         handler.removeCallbacks(ticker)
-        player?.release() // 异步收尾,不阻塞主线程
+        handler.removeCallbacks(dimRunnable)
+        handler.removeCallbacks(screenOffRunnable)
+        player?.release() // asynchronous teardown, doesn't block the main thread
         player = null
         val src = fsSrc; fsSrc = null
-        // SMB 专用连接的销毁走 smb-io 线程,放后台避免等待
+        // SMB-dedicated connection cleanup goes on the smb-io thread, in the background to avoid waiting
         if (src != null) Thread { runCatching { src.close() } }.apply { isDaemon = true }.start()
     }
 
@@ -843,9 +1272,17 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     companion object {
-        const val SCALE_BEST_FIT = 0 // 原始比例完整显示
-        const val SCALE_CROP = 1     // 保比例裁切填满
-        const val SCALE_FILL = 2     // 拉伸填充
+        const val SCALE_BEST_FIT = 0 // original aspect ratio, shown in full
+        const val SCALE_CROP = 1     // preserve aspect, crop to fill
+        const val SCALE_FILL = 2     // stretch to fill
+        /** Upper bound for waiting on the remote resume position: beyond this, start from the beginning — don't let one network hiccup become "stuck on the loading spinner forever". */
+        private const val RESUME_TIMEOUT_MS = 2500L
+        /** Brightness a paused screen falls back to: dark enough to save power and to stop being a
+         *  lamp in a dark room, bright enough that the paused frame is still recognisable. */
+        private const val DIM_BRIGHTNESS = 0.05f
+        /** After this long paused, stop holding the screen awake at all and let the system turn it
+         *  off — dimmed-but-on is for "I'll be right back", not for a video paused and forgotten. */
+        private const val SCREEN_OFF_DELAY = 10 * 60_000L
         private const val EXTRA_SCHEME = "scheme"
         private const val EXTRA_PATH = "path"
         private const val EXTRA_NAME = "name"

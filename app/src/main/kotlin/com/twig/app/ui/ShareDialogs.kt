@@ -29,19 +29,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * WiFi 共享的两个对话框:配置/状态,以及"扫描附近的 Twig 设备"。
+ * The two dialogs for WiFi sharing: configuration/status, and "scan nearby Twig
+ * devices".
  *
- * 这个功能没有独立页面——开启后真正要看的只有一行地址,而它已经常驻在通知栏里
- * ([com.twig.app.share.ShareService]),再为它开一个 Activity 只是多一层壳。
+ * There is no dedicated page for this feature — once enabled, the only thing you
+ * actually want to see is one line of address, which is already pinned to the
+ * notification shade ([com.twig.app.share.ShareService]); spinning up another
+ * Activity for it would be just another shell.
  */
 object ShareDialogs {
 
     /**
-     * 配置 / 状态对话框。
+     * Configuration / status dialog.
      *
-     * @param dir 要共享的目录——调用方给的就是**当前绿框选中的那个目录**
-     *   ([com.twig.app.ui.PaneViewModel.currentDir]),或长按菜单点中的目录。
-     *   为 null(树上什么都没选)时只剩"所有来源"。
+     * @param dir the directory to share — what the caller passes is exactly the
+     *   currently green-highlighted directory
+     *   ([com.twig.app.ui.PaneViewModel.currentDir]), or the directory picked from
+     *   the long-press menu. When null (nothing selected in the tree) only
+     *   "all sources" remains.
      */
     fun show(act: AppCompatActivity, dir: XFile? = null) {
         val ctx = act
@@ -50,9 +55,13 @@ object ShareDialogs {
 
         val b = DialogShareBinding.inflate(act.layoutInflater)
 
-        // "指定目录"就是调用方给的那个(当前绿框 / 长按的目录);没有的话回退到上次存的。
-        // **不在框里另做目录选择器**:入口本来就长在文件树上,用户点开对话框之前
-        // 已经用绿框指定过位置了,再让他在一个小对话框里重走一遍目录树是多余的一步。
+        // "Specify directory" is whatever the caller passed (the current green highlight
+        // / the long-press menu's directory); when that's absent, fall back to the
+        // last saved one.
+        // **Do not build another directory picker inside the dialog**: the entry point
+        // is already attached to the file tree, the user has already chosen the location
+        // with the green highlight before opening the dialog, and making them walk the
+        // tree again in a small dialog is one extra step too many.
         val dirScope: ShareScope.Dir? = when {
             dir != null -> scopeOf(ctx, dir)
             else -> saved.scope as? ShareScope.Dir
@@ -103,9 +112,12 @@ object ShareDialogs {
                 b.rbDir.visibility = View.VISIBLE
                 b.tvDirPath.visibility = View.VISIBLE
                 b.tvDirPath.text = scopePath(ctx, dirScope)
-                // 路径那一行点着也算选中这一项——它在视觉上就是同一项的第二行
+                // Tapping the path line also selects this radio entry — visually it is the
+                // same row's second line.
                 b.tvDirPath.setOnClickListener { b.rbDir.isChecked = true }
-                // 带着目录进来的默认就共享它;没带(从上次配置恢复的)才跟上次的选择走
+                // Coming in with a directory, default to sharing it; only when not
+                // provided (restored from the previous config) do we follow the
+                // previous choice.
                 val useDir = dir != null || saved.scope is ShareScope.Dir
                 b.rbDir.isChecked = useDir
                 b.rbAll.isChecked = !useDir
@@ -118,7 +130,7 @@ object ShareDialogs {
             .setNegativeButton(R.string.dialog_close, null)
             .setPositiveButton(
                 if (running != null) R.string.share_stop else R.string.share_start,
-                null, // 自己接管点击,免得校验没过也把框关掉
+                null, // We take over the click ourselves, so a validation failure doesn't still dismiss the dialog.
             )
             .setNeutralButton(
                 if (running != null) R.string.share_copy_address else R.string.share_scan,
@@ -151,11 +163,14 @@ object ShareDialogs {
     }
 
     /**
-     * 指定目录那一行显示的路径,与**最近位置/路径栏同一写法**
-     * (`类型:/服务器名/路径`,见 [formatLocationPath]);本地就是绝对路径。
+     * Path shown on the "specify directory" row, written the same way as the recent
+     * location / path bar (`scheme:/server name/path`, see [formatLocationPath]);
+     * for local it's just the absolute path.
      *
-     * 用带别名的那一版而不是 `formatRawLocationPath`:这里是给人看"共享的是哪儿",
-     * 用户给服务器起的名字比 IP 好认;要能直接定位的原始地址是收藏行那种场景。
+     * We use the alias version rather than `formatRawLocationPath`: this row tells
+     * humans "what am I sharing", and the user-set server name reads better than
+     * an IP; the raw address that can be navigated to directly is the favorites
+     * row's use case.
      */
     private fun scopePath(ctx: Context, s: ShareScope.Dir): String {
         val conn = if (s.connLabel.isEmpty()) null else Connections.find(ctx, s.connLabel)
@@ -169,7 +184,7 @@ object ShareDialogs {
         connLabel = ShareStore.connLabelOf(ctx, dir.scheme),
     )
 
-    /** 读表单;端口非法时当场提示并返回 null(调用方据此不关框)。 */
+    /** Read the form; if the port is invalid, show a toast right here and return null (so the caller knows not to close the dialog). */
     private fun readForm(
         ctx: Context,
         b: DialogShareBinding,
@@ -178,8 +193,9 @@ object ShareDialogs {
     ): ShareConfig? {
         val port = b.etPort.text.toString().trim().toIntOrNull()
         if (port == null || port < 1024 || port > 65535) {
-            // 1024 以下是特权端口,非 root 的应用进程根本绑不上,与其让它绑定失败
-            // 再报一句看不懂的 Permission denied,不如在这儿就说清楚
+            // Below 1024 is privileged; a non-root app process cannot bind there. Rather
+            // than letting the bind fail and report an opaque "Permission denied", say so
+            // right here.
             Toast.makeText(ctx, R.string.share_bad_port, Toast.LENGTH_LONG).show()
             return null
         }
@@ -194,7 +210,7 @@ object ShareDialogs {
         )
     }
 
-    /** 起服务:连接可能要重建、绑定可能失败,整段放 IO 线程,结果回主线程说话。 */
+    /** Start the service: the connection may need re-establishment, the bind may fail — the whole thing goes on an IO thread, and the result is delivered back on the main thread. */
     private fun startShare(act: AppCompatActivity, cfg: ShareConfig, dir: XFile?) {
         val ctx = act.applicationContext
         val label = when (val s = cfg.scope) {
@@ -207,7 +223,7 @@ object ShareDialogs {
                 runCatching { WebShare.start(ctx, cfg, label) }
             }
             result.onSuccess {
-                // 重新弹一次:这时候是"共享中"那一面,地址就在最上面
+                // Re-open: this shows the "Sharing" face, with the address right at the top.
                 show(act, dir)
             }.onFailure {
                 AlertDialog.Builder(act)
@@ -219,14 +235,16 @@ object ShareDialogs {
         }
     }
 
-    // ---- 扫描 ----
+    // ---- Scan ----
 
     /**
-     * 扫描局域网里正在共享的 Twig,选中的存成一条 WebDAV 连接。
+     * Scan for Twig instances sharing over the LAN, and save the chosen one as a
+     * WebDAV connection.
      *
-     * 存成 WebDAV 而不是发明新连接类型:服务端本来就说 WebDAV,现成的
-     * [com.twig.fs.network.WebDavFileSystem] 直接就能读写它,树上、复制引擎、
-     * 播放器那些通路一行都不用改。
+     * Saved as WebDAV rather than inventing a new connection type: the server speaks
+     * WebDAV natively, the existing [com.twig.fs.network.WebDavFileSystem] already
+     * reads and writes it, and not a single line in the tree, copy engine or player
+     * needs to change.
      */
     fun scanAndAdd(act: AppCompatActivity, onAdded: () -> Unit = {}) {
         val progress = AlertDialog.Builder(act)
@@ -265,7 +283,8 @@ object ShareDialogs {
             onAdded()
             return
         }
-        // 对面设了密码:现问,存进连接里,以后展开就不用再输
+        // The other side set a password: ask now and persist into the connection, so
+        // future expansions don't need to re-enter it.
         val box = android.widget.LinearLayout(act).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             val p = (20 * resources.displayMetrics.density).toInt()
@@ -274,7 +293,7 @@ object ShareDialogs {
         val etUser = android.widget.EditText(act).apply {
             hint = act.getString(R.string.share_user)
             setSingleLine()
-            setText("twig") // 服务端 user 留空时用的就是这个默认值
+            setText("twig") // This is the default the server uses when its user is left empty.
         }
         val etPass = android.widget.EditText(act).apply {
             hint = act.getString(R.string.share_password)
@@ -309,7 +328,7 @@ object ShareDialogs {
         Toast.makeText(act, act.getString(R.string.share_scan_added, f.name), Toast.LENGTH_SHORT).show()
     }
 
-    // ---- 杂项 ----
+    // ---- Misc ----
 
     private fun copyToClipboard(ctx: Context, text: String) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -318,8 +337,10 @@ object ShareDialogs {
     }
 
     /**
-     * 还在被电池优化管着吗。前台服务能挡住大部分回收,但厂商 ROM 的"省电"策略
-     * 常常更狠(息屏一段时间后照样冻结后台进程),加白名单才稳。
+     * Whether we're still under battery optimization. A foreground service can keep
+     * us out of most reaping, but vendor ROMs' "battery saver" strategies are often
+     * harsher (freezing background processes after the screen is off for a while),
+     * so getting onto the whitelist is what makes this steady.
      */
     private fun batteryOptimized(ctx: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false
@@ -328,11 +349,13 @@ object ShareDialogs {
     }
 
     /**
-     * 打开电池优化列表让用户自己把 Twig 设成"不优化"。
+     * Open the battery optimization list and let the user set Twig to "don't optimize".
      *
-     * 故意**不用** `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 那个一步到位的弹框:
-     * 它要求声明 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 权限,而这个权限在 Google Play
-     * 上是受限的(要单独申报),为一个可选的保活提示背上上架风险不划算。
+     * Deliberately **don't** use the one-shot dialog at
+     * `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`: that path requires the
+     * `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission, which on Google Play is
+     * restricted (needs a separate declaration), and the listing risk isn't worth
+     * carrying just to keep an optional keep-alive prompt alive.
      */
     private fun openBatterySettings(ctx: Context) {
         runCatching {

@@ -1,6 +1,6 @@
 package com.twig.app.ui
 
-import android.app.Activity
+import androidx.appcompat.app.AppCompatActivity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -19,31 +19,40 @@ import com.twig.core.XFile
 import java.io.File
 
 /**
- * 「用 Twig 打开」的入口:接住其他 App 发来的 ACTION_VIEW,把 file:// / content:// URI
- * 包成 [XFile] 后分发给内置查看器(文本/图片/音频/视频)或主界面(压缩包就地挂载展开)。
+ * "Open with Twig" entry point: catches ACTION_VIEW from other apps, wraps
+ * file:// / content:// URIs into [XFile], then dispatches to the built-in viewers
+ * (text/image/audio/video) or to the main screen (archives are mounted in place
+ * and expanded).
  *
- * 自身不显示任何界面(透明主题),分发完立刻 finish。
+ * Displays no UI itself (transparent theme) and finishes immediately after dispatch.
  *
- * ★ 目标查看器必须启动在**本 Activity 所在的任务栈里**(不加 FLAG_ACTIVITY_NEW_TASK):
- * content:// 的临时读权限随"接收方任务栈"存活,本 Activity finish 掉之后,只要同栈里还有
- * 我们的界面,权限就还在;一旦丢到新任务栈,查看器可能一读就 SecurityException。
+ * ★ The target viewer must start in **the task stack of this Activity** (no
+ * FLAG_ACTIVITY_NEW_TASK): the temporary read grant on a content:// URI follows
+ * the receiving task stack, so after this Activity finishes, as long as the same
+ * stack still has our UI, the grant is still valid; once it lands in a new stack
+ * the viewer may SecurityException on the first read.
  */
-class ViewIntentActivity : Activity() {
+class ViewIntentActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        TwigApp.registerBaseFs(this) // 冷启动时 FsRegistry 还是空的(主界面没起来过)
+        TwigApp.registerBaseFs(this) // on cold start FsRegistry is still empty (main screen never came up)
         val uri = intent?.data
         val file = uri?.let { runCatching { toXFile(it) }.getOrNull() }
         if (file == null) {
             Toast.makeText(this, R.string.err_unsupported_type, Toast.LENGTH_SHORT).show()
             finish(); return
         }
-        dispatch(file, intent.type)
-        finish()
+        // If the master password is on, unlock first: this path can open viewers and
+        // also mount archives onto the main screen tree; skipping it would mean the
+        // master password only locks the front door
+        SecurityUi.gate(this) {
+            dispatch(file, intent.type)
+            finish()
+        }
     }
 
-    /** file:// 直接落到本地来源;其余(content://)交给 [ShareSourceFileSystem] 承载。 */
+    /** file:// falls straight onto a local source; everything else (content://) is carried by [ShareSourceFileSystem]. */
     private fun toXFile(uri: Uri): XFile? = when (uri.scheme?.lowercase()) {
         "file" -> uri.path?.let { p ->
             val f = File(p)
@@ -55,41 +64,50 @@ class ViewIntentActivity : Activity() {
     }
 
     /**
-     * 分发:优先按文件名扩展名判断(与面板里点开同一套 [OpenFiles] 规则),
-     * 扩展名认不出来时(content:// 的显示名可能没后缀)再退回调用方给的 MIME 大类。
+     * Dispatch: first by filename extension (same [OpenFiles] rules as tapping a file
+     * in the pane); when the extension is unrecognised (content:// display names may
+     * lack a suffix) fall back to the caller's MIME major type.
      */
     private fun dispatch(file: XFile, mime: String?) {
         when {
-            // apk 虽然也是 zip,但树里默认不当压缩包展开(见 PaneViewModel.expandableArchive),
-            // 挂进去只会得到一行点不开的死行;交给系统安装器更合用场景
+            // APK is also a zip, but the tree by default doesn't expand it as an archive
+            // (see PaneViewModel.expandableArchive); mounting it would just yield a dead
+            // row you can't open. Handing it to the system installer fits the use case better.
             OpenFiles.isApk(file) -> if (!OpenFiles.openWith(this, file)) HexViewerActivity.start(this, file)
             com.twig.fs.archive.Archives.isArchive(file) -> mountArchive(file)
+            OpenFiles.canViewPdf(file) -> PdfViewerActivity.start(this, file)
             OpenFiles.isText(file) -> TextViewerActivity.start(this, file)
             OpenFiles.isImage(file) -> openImage(file)
             OpenFiles.isPlaylist(file) -> openM3u(file)
             OpenFiles.isAudio(file) -> openAudio(file)
             OpenFiles.isVideo(file) -> MediaPlayerActivity.start(this, file)
+            // A content:// display name often has no suffix, so the extension rules above miss;
+            // PDF is the one application/* type we open ourselves, and it is matched whole
+            // rather than by major type (an "application" bucket would swallow everything).
+            mime?.lowercase() == "application/pdf" -> PdfViewerActivity.start(this, file)
             else -> when (mime?.substringBefore('/')?.lowercase()) {
                 "text" -> TextViewerActivity.start(this, file)
                 "image" -> openImage(file)
                 "audio" -> openAudio(file)
                 "video" -> MediaPlayerActivity.start(this, file)
-                else -> HexViewerActivity.start(this, file) // 认不出类型的至少能看字节
+                else -> HexViewerActivity.start(this, file) // unrecognised types can at least show their bytes
             }
         }
     }
 
-    /** 本地图片顺带把同目录图片按面板排序一起带上,左右滑能翻;非本地来源只看这一张。 */
+    /** Local images also bring along siblings in the same directory, sorted by the pane's order, so swiping left/right pages through them; non-local sources just show this one. */
     private fun openImage(file: XFile) {
         val siblings = localSiblings(file) { OpenFiles.isImage(it) }
         val index = siblings.indexOfFirst { it.path == file.path }.coerceAtLeast(0)
-        // 从别的应用进来,没有文件树可同步勾选,不给「选择」入口
+        // Coming in from another app, there's no file tree to sync selection with, so don't show the "Select" entry
         ImageViewerActivity.start(this, siblings.ifEmpty { listOf(file) }, index, allowSelect = false)
     }
 
     /**
-     * 音频一律进音乐播放器(封面/歌词/波形/后台播放都在那边):本地的顺带把同目录音频
-     * 入"当前播放",能上一首/下一首;content:// 只有孤零零一首,队列里就它一个。
+     * Audio always goes into the music player (cover / lyrics / waveform / background
+     * playback are all there): for local sources, siblings in the same directory are
+     * put into "Now playing", enabling prev/next; content:// only has a lone track,
+     * so the queue contains only that one.
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openAudio(file: XFile) {
@@ -105,8 +123,10 @@ class ViewIntentActivity : Activity() {
     }
 
     /**
-     * 播放列表曲目。content:// 走 "share" 种类([MusicEngine] 里对应 [ShareSourceFileSystem]),
-     * 名字必须随身带——URI 的末段是 provider 的内部 id,取不出文件名更取不出扩展名。
+     * Playlist track. content:// uses the "share" kind ([MusicEngine] maps it to
+     * [ShareSourceFileSystem]); the name must travel with it — the URI's last segment
+     * is the provider's internal id, from which neither the filename nor the
+     * extension can be recovered.
      */
     private fun trackOf(f: XFile) = PlaylistTrack(
         kind = if (f.scheme == "file") "local" else "share",
@@ -115,8 +135,10 @@ class ViewIntentActivity : Activity() {
     )
 
     /**
-     * m3u/m3u8:只有本地列表解析得出东西(条目多为相对路径,且要能持久化进播放列表),
-     * 其余来源当文本看。解析是本地小文件读,直接同步做——这个中转页本身就是"读完即走"。
+     * m3u/m3u8: only local playlists yield useful content (entries are mostly relative
+     * paths and must be persistable into the playlist); other sources are treated as
+     * text. Parsing is a small local file read, done synchronously — this relay
+     * page is itself a "read and go" screen.
      */
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     private fun openM3u(file: XFile) {
@@ -132,14 +154,15 @@ class ViewIntentActivity : Activity() {
         startActivity(Intent(this, MusicPlayerActivity::class.java))
     }
 
-    /** 压缩包:回到主界面,在当前面板里把它挂成一行就地展开(与树里点开压缩包同一条路径)。 */
+    /** Archive: return to the main screen and mount it as a single row in the current pane, expanding in place (same path as tapping an archive in the tree). */
     private fun mountArchive(file: XFile) {
         startActivity(MainActivity.mountIntent(this, file))
     }
 
     /**
-     * 同目录里同类文件(按面板当前排序);非本地来源返回空列表——外部传进来的
-     * content:// 只是一个孤立条目,没有"同目录"可言。
+     * Same-kind files in the same directory (using the pane's current sort);
+     * non-local sources return an empty list — content:// passed in from outside is
+     * just an isolated entry, with no "same directory" concept.
      */
     private fun localSiblings(file: XFile, keep: (XFile) -> Boolean): List<XFile> {
         if (file.scheme != "file") return emptyList()

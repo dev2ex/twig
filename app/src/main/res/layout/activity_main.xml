@@ -11,11 +11,14 @@
         android:layout_height="?attr/actionBarSize"
         android:background="@color/toolbar"
         android:elevation="4dp"
+        app:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
         app:title="@string/app_name"
         app:titleTextColor="@color/white" />
 
-    <!-- 竖屏:单面板 + 操作列在对侧(左面板→右列,右面板→左列),横向滑动切换;
-         横屏:双面板并排 + 操作列居中。可见性由 MainActivity.applyLayoutMode 控制 -->
+    <!-- Portrait: single pane + action strip on the opposite side (left pane → right
+         column, right pane → left column), swiped horizontally to switch. Landscape:
+         dual panes side by side + action strip centered. Visibility controlled by
+         MainActivity.applyLayoutMode. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -57,9 +60,11 @@
             android:layout_height="match_parent" />
     </LinearLayout>
 
-    <!-- 剪贴板栏(有内容时才显示):横跨整个窗口而不在某一侧面板内,粘贴目标是
-         **活动面板**的当前目录,切面板即换目标。分两行:上行信息(内容 + 关闭),
-         下行操作(目标 + 移动 + 粘贴)——一行塞不下,挤成一排后按钮点不准 -->
+    <!-- Clipboard bar (visible only when there is content): spans the whole window rather
+         than living inside one pane, and the paste target is the **active pane's** current
+         directory — switching panes switches the target. Two rows: top row is info
+         (content + close), bottom row is actions (target + move + paste). One row was
+         not enough — squeezed onto one row the buttons became hard to tap accurately. -->
     <LinearLayout
         android:id="@+id/clip_bar"
         android:layout_width="match_parent"
@@ -106,7 +111,7 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <!-- 粘贴目标 = 本面板当前目录,跟着绿框走 -->
+            <!-- Paste target = current directory of this pane; follows the green frame -->
             <TextView
                 android:id="@+id/tv_clip_dest"
                 android:layout_width="0dp"

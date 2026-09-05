@@ -6,11 +6,13 @@ import java.nio.channels.NonWritableChannelException
 import java.nio.channels.SeekableByteChannel
 
 /**
- * 把 [RandomSource](SMB pread / WebDAV Range 定位读)适配成只读 [SeekableByteChannel],
- * 供 commons-compress 的 ZipFile/SevenZFile 直接在远程源上解析归档——
- * 只读取目录与被访问的数据段,无需整包下载。
+ * Adapts a [RandomSource] (SMB pread / WebDAV Range, position-based reads) into a
+ * read-only [SeekableByteChannel], so commons-compress's ZipFile / SevenZFile can
+ * parse archives straight off a remote source — only the central directory and
+ * the data segments actually accessed are fetched, no full download needed.
  *
- * 内置单块缓冲(256KB):归档解析是大量小读 + 定位,裸转发会产生海量网络往返。
+ * Internal single-block buffer (256KB): archive parsing is many small reads
+ * plus positioning; naively forwarding each one produces huge amounts of round-trips.
  */
 class RandomSourceChannel(
     private val src: RandomSource,

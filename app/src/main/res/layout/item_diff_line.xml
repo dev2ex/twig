@@ -17,11 +17,11 @@
         android:textColor="@color/text_secondary" />
 
     <!--
-      ★ 省略号只能在代码里关(见 DiffActivity.onCreateViewHolder)。XML 的
-      android:ellipsize="none" 等于"没设",而 TextView 构造函数里有一句
-      `if (singleLine && getKeyListener() == null && ellipsize 未设) ellipsize = END`
-      ——**只读的单行 TextView 默认就是末尾省略**。排版是无限宽的(横滚滚得动),
-      但绘制被省略号截断,于是"能滚却看不到后面"。
+      ★ Ellipsis can only be disabled in code (see DiffActivity.onCreateViewHolder). XML's
+      android:ellipsize="none" is equivalent to "not set", and the TextView constructor contains the line
+      `if (singleLine && getKeyListener() == null && ellipsize not set) ellipsize = END`
+      — **a read-only single-line TextView defaults to end ellipsis**. Layout has infinite width (horizontal scrolling works),
+      but drawing is truncated by the ellipsis, leading to "can scroll but cannot see what comes after".
     -->
     <TextView
         android:id="@+id/tv_text"

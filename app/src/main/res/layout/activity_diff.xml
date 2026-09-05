@@ -22,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <!-- 方向由代码定:左右并排 / 上下并排(见 DiffActivity.applyLayoutMode) -->
+        <!-- Direction is set in code: side-by-side / stacked (see DiffActivity.applyLayoutMode) -->
         <LinearLayout
             android:id="@+id/panes"
             android:layout_width="match_parent"
@@ -30,8 +30,9 @@
             android:orientation="horizontal"
             android:baselineAligned="false">
 
-            <!-- 每栏顶上一条标题,标明这边是旧/新(或左/右)——两栏同时显示时不标就得
-                 靠位置猜,竖屏一次看一侧时更是完全没线索 -->
+            <!-- Title strip at the top of each column, indicating which side is old/new
+                 (or left/right) — without it, in side-by-side mode you have to guess from
+                 position, and in portrait (one side at a time) there is no clue at all. -->
             <LinearLayout
                 android:id="@+id/side_left"
                 android:layout_width="0dp"
@@ -108,10 +109,12 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center" />
 
-        <!-- 合并差异的悬浮按钮:位置由代码算(见 DiffActivity.updateMergePill)——
-             跟着当前定位的那块差异走,并排布局贴在分隔线上、跟随滚动;不可见就整体
-             GONE。x/y 用 View.setX/setY 直接摆,不走 layout_gravity,因为位置是连续
-             变化的,margin 改起来比 translation 麻烦。 -->
+        <!-- Floating button for merging a diff hunk: position is computed in code (see
+             DiffActivity.updateMergePill) — it tracks the currently-focused hunk, sticks
+             to the divider line in side-by-side mode and follows scroll; when invisible
+             the whole pill goes GONE. x/y are placed directly via View.setX/setY rather
+             than layout_gravity, because the position varies continuously and changing
+             margins is more awkward than translations. -->
         <LinearLayout
             android:id="@+id/merge_pill"
             android:layout_width="wrap_content"

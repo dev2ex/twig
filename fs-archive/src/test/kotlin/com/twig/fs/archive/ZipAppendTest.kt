@@ -13,12 +13,15 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * 往已有 zip 里加文件走的是**追加**:新条目接在包尾,旧条目一个字节不动。
+ * Adding a file to an existing zip goes through **append**: the new entry is tacked onto
+ * the tail of the package, and existing entries are not touched by a single byte.
  *
- * 这里最要紧的一条断言是「原包前 N 字节逐字节相等」——它直接证明旧数据没被重写,
- * 而不是去卡耗时(那种断言在 CI 上必然时好时坏)。老实现每加一个文件都要把整包
- * 解压再重压一遍,而 `CopyEngine` 是一个文件一次 `openOutput`,于是往大包里拖 N 个
- * 文件就是 N 遍全包解压+压缩。
+ * The most important assertion here is "the first N bytes of the original package are
+ * byte-for-byte identical" — it directly proves the old data was not rewritten, rather
+ * than timing the operation (that kind of assertion is inevitably flaky on CI). The old
+ * implementation had to decompress and recompress the whole package for every file
+ * added, whereas `CopyEngine` does one `openOutput` per file, so dragging N files into a
+ * large package used to mean N full decompress+recompress passes.
  */
 class ZipAppendTest {
 
@@ -26,7 +29,7 @@ class ZipAppendTest {
     private lateinit var archive: File
     private val zfs = ZipFileSystem()
 
-    /** 不可压缩的随机数据:压缩率骗不了人,重写与否在字节上看得见。 */
+    /** Incompressible random data: the compression ratio cannot be faked, so whether it was rewritten is visible in the bytes. */
     private val bulk = ByteArray(2 * 1024 * 1024).also { java.util.Random(7).nextBytes(it) }
 
     @Before
@@ -72,21 +75,21 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `加新文件时原有字节原封不动`() {
+    fun addingANewFileLeavesExistingBytesUntouched() {
         val before = archive.readBytes()
         add("added.txt", "brand new".toByteArray())
 
         val after = archive.readBytes()
-        assertTrue("追加只会让包变长", after.size > before.size)
+        assertTrue("appending should only make the package grow", after.size > before.size)
         assertArrayEquals(
-            "旧条目所在的那一段必须逐字节相同(动了就说明又整包重写了一遍)",
+            "the region holding existing entries must be byte-for-byte identical (a change would mean the whole package got rewritten again)",
             before,
             after.copyOfRange(0, before.size),
         )
     }
 
     @Test
-    fun `追加后新旧条目都读得出来`() {
+    fun bothOldAndNewEntriesAreReadableAfterAppending() {
         add("added.txt", "brand new".toByteArray())
 
         assertEquals(listOf("added.txt", "dir/bulk.bin", "old.txt"), names())
@@ -96,19 +99,19 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `连着追加多次,每次都只往后接`() {
+    fun repeatedAppendsEachOnlyTackOntoTheEnd() {
         val sizes = ArrayList<Int>()
         for (i in 1..5) {
             val before = archive.readBytes()
             add("f$i.txt", "content $i".toByteArray())
             sizes.add(archive.readBytes().size)
             assertArrayEquals(
-                "第 $i 次追加动了前面的字节",
+                "append #$i touched the preceding bytes",
                 before,
                 archive.readBytes().copyOfRange(0, before.size),
             )
         }
-        assertEquals(sizes.sorted(), sizes) // 单调增长
+        assertEquals(sizes.sorted(), sizes) // monotonically increasing
         assertEquals(
             listOf("dir/bulk.bin", "f1.txt", "f2.txt", "f3.txt", "f4.txt", "f5.txt", "old.txt"),
             names(),
@@ -118,7 +121,7 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `包里已有同名条目时退回整包重写,内容被覆盖且不留两份`() {
+    fun existingSameNameEntryFallsBackToFullRewriteOverwritingWithoutLeavingADuplicate() {
         add("old.txt", "replaced".toByteArray())
 
         assertEquals(listOf("dir/bulk.bin", "old.txt"), names())
@@ -127,7 +130,7 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `子目录里的新条目也走追加`() {
+    fun aNewEntryInASubdirectoryAlsoGoesThroughAppend() {
         val before = archive.readBytes()
         add("dir/added.bin", bulk)
 
@@ -137,8 +140,8 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `新建目录条目后仍能继续追加文件`() {
-        // mkdir 走整包重写,之后 EOCD 位置变了,追加得照样认得出来
+    fun canStillAppendFilesAfterCreatingADirectoryEntry() {
+        // mkdir goes through a full rewrite, after which the EOCD position changes; append must still recognize it correctly
         zfs.mkdir(zfs.rootOf(archiveX()), "fresh")
         add("fresh/x.txt", "inside".toByteArray())
 
@@ -147,9 +150,9 @@ class ZipAppendTest {
         assertEquals("original", read("old.txt").toString(Charsets.UTF_8))
     }
 
-    /** 追加后包尾结构要经得起别家解析器验;这里用 java.util.zip 当第二双眼睛。 */
+    /** After appending, the tail structure of the package must survive scrutiny from another parser; java.util.zip serves as the second pair of eyes here. */
     @Test
-    fun `追加出来的包 JDK 自己也读得懂`() {
+    fun theAppendedPackageIsAlsoReadableByTheJdkItself() {
         add("added.txt", "brand new".toByteArray())
         add("added2.txt", "another".toByteArray())
 
@@ -163,11 +166,13 @@ class ZipAppendTest {
     }
 
     /**
-     * 界面上「展开 zip → 对侧点复制」最终走的就是 `CopyEngine.transfer(源, 包根)`。
-     * 上面那些用例直接调 [ZipFileSystem.openOutput],这条把真实入口串起来验一遍。
+     * In the UI, "expand a zip -> copy on the other side" ultimately goes through
+     * `CopyEngine.transfer(source, archive root)`. The cases above call
+     * [ZipFileSystem.openOutput] directly; this one strings the real entry point
+     * together to verify it too.
      */
     @Test
-    fun `经 CopyEngine 复制进包根,走的也是追加`() {
+    fun copyingIntoTheArchiveRootViaCopyEngineAlsoGoesThroughAppend() {
         val src = File(tmp, "outside.txt").apply { writeText("from outside") }
         val before = archive.readBytes()
 
@@ -178,7 +183,7 @@ class ZipAppendTest {
         )
 
         assertArrayEquals(
-            "复制进包不该把旧条目重写一遍",
+            "copying into the package must not rewrite existing entries",
             before,
             archive.readBytes().copyOfRange(0, before.size),
         )
@@ -188,7 +193,7 @@ class ZipAppendTest {
     }
 
     @Test
-    fun `删除仍然整包重写,顺带把追加留下的垃圾清掉`() {
+    fun deleteStillDoesAFullRewriteAndCleansUpTheGarbageLeftByAppending() {
         add("added.txt", "brand new".toByteArray())
         val afterAppend = archive.length()
 
@@ -196,7 +201,7 @@ class ZipAppendTest {
         zfs.delete(zfs.list(root).first { it.name == "added.txt" })
 
         assertEquals(listOf("dir/bulk.bin", "old.txt"), names())
-        assertTrue("整包重写后不该还留着旧中央目录那份垃圾", archive.length() < afterAppend)
+        assertTrue("the old central directory garbage should not remain after a full rewrite", archive.length() < afterAppend)
         assertArrayEquals(bulk, read("dir/bulk.bin"))
     }
 }

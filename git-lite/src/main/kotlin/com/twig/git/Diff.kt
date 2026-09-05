@@ -1,14 +1,16 @@
 package com.twig.git
 
 /**
- * 行级 diff(patience 算法):双侧唯一行做锚点 + LIS,递归分治;
- * 产出左右对齐的行序列,直接供双栏 diff 视图渲染。
+ * Line-level diff (patience algorithm): unique lines on both sides are used as anchors
+ * combined with LIS, recursively dividing and conquering; produces a left/right-aligned
+ * sequence of rows, ready for the two-column diff view to render.
  */
 object Diff {
 
     /**
-     * 对齐后的一行:[left]/[right] 为 null 表示该侧占位(对侧新增/删除);
-     * [changed] 为 false 时两侧相同(上下文行)。行号 1 起,占位为 0。
+     * An aligned row: when [left]/[right] is null it is a placeholder on that side
+     * (add/delete on the other side); when [changed] is false, both sides match (context line).
+     * Line numbers start at 1; placeholders are 0.
      */
     class Row(
         val leftNo: Int,
@@ -19,10 +21,10 @@ object Diff {
     )
 
     fun rows(old: List<String>, new: List<String>): List<Row> {
-        val ops = ArrayList<IntArray>(old.size + new.size) // [kind(0同/1删/2增), aIdx, bIdx]
+        val ops = ArrayList<IntArray>(old.size + new.size) // [kind(0 same / 1 delete / 2 add), aIdx, bIdx]
         solve(old, new, 0, old.size, 0, new.size, ops)
 
-        // del/add 相邻段两两配对为"修改"行,长短差补占位
+        // adjacent del/add segments are paired into "modified" rows; padding with placeholders for length differences
         val rows = ArrayList<Row>(ops.size)
         var i = 0
         while (i < ops.size) {
@@ -60,11 +62,11 @@ object Diff {
     ) {
         var aLo = aLo0; var aHi = aHi0
         var bLo = bLo0; var bHi = bHi0
-        while (aLo < aHi && bLo < bHi && a[aLo] == b[bLo]) { // 公共前缀
+        while (aLo < aHi && bLo < bHi && a[aLo] == b[bLo]) { // common prefix
             out.add(intArrayOf(0, aLo, bLo)); aLo++; bLo++
         }
         var suffix = 0
-        while (aLo < aHi && bLo < bHi && a[aHi - 1] == b[bHi - 1]) { // 公共后缀,最后补
+        while (aLo < aHi && bLo < bHi && a[aHi - 1] == b[bHi - 1]) { // common suffix; appended last
             aHi--; bHi--; suffix++
         }
         when {
@@ -72,7 +74,7 @@ object Diff {
             bLo == bHi -> for (j in aLo until aHi) out.add(intArrayOf(1, j, 0))
             else -> {
                 val anchors = anchors(a, b, aLo, aHi, bLo, bHi)
-                if (anchors.isEmpty()) { // 无锚点:整段视为替换
+                if (anchors.isEmpty()) { // no anchors: treat the whole segment as a replacement
                     for (j in aLo until aHi) out.add(intArrayOf(1, j, 0))
                     for (j in bLo until bHi) out.add(intArrayOf(2, 0, j))
                 } else {
@@ -89,7 +91,7 @@ object Diff {
         for (k in 0 until suffix) out.add(intArrayOf(0, aHi + k, bHi + k))
     }
 
-    /** 双侧唯一行的位置对,按最长递增子序列取一致的锚点链。 */
+    /** Position pairs of lines unique on both sides, picking a consistent anchor chain by longest increasing subsequence. */
     private fun anchors(
         a: List<String>, b: List<String>,
         aLo: Int, aHi: Int, bLo: Int, bHi: Int,
@@ -102,15 +104,15 @@ object Diff {
             countB.merge(b[i], 1, Int::plus)
             posB[b[i]] = i
         }
-        val pairs = ArrayList<IntArray>() // 按 aIdx 递增
+        val pairs = ArrayList<IntArray>() // ordered by aIdx ascending
         for (i in aLo until aHi) {
             val line = a[i]
             if (countA[line] == 1 && countB[line] == 1) pairs.add(intArrayOf(i, posB[line]!!))
         }
         if (pairs.isEmpty()) return emptyList()
 
-        // LIS(按 bIdx),带回溯
-        val tails = ArrayList<Int>() // pairs 下标
+        // LIS (by bIdx), with backtracking
+        val tails = ArrayList<Int>() // pair indices
         val prev = IntArray(pairs.size) { -1 }
         for (i in pairs.indices) {
             val x = pairs[i][1]

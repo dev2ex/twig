@@ -9,7 +9,7 @@
         android:orientation="vertical"
         android:padding="20dp">
 
-        <!-- 共享中:地址 + 状态。未开启时整块隐藏 -->
+        <!-- While sharing: address + status. Hidden entirely when not running -->
         <LinearLayout
             android:id="@+id/box_running"
             android:layout_width="match_parent"
@@ -58,7 +58,7 @@
                 android:text="@string/share_battery_settings" />
         </LinearLayout>
 
-        <!-- 未开启:配置表单 -->
+        <!-- When not running: configuration form -->
         <LinearLayout
             android:id="@+id/box_form"
             android:layout_width="match_parent"
@@ -91,10 +91,10 @@
             </RadioGroup>
 
             <!--
-              目录路径单独一行,不拼进单选项的文字里:路径要能从**开头**省略
-              (`ellipsize="start"`,末尾那几级才是有信息量的),而
-              "指定目录:" 这个前缀恰恰在开头,拼在一起会被一起吃掉。
-              marginStart 让它对齐到单选钮右边的文字,读起来是同一项的第二行。
+              The directory path is on its own line, not appended to the radio's text: the path must be ellipsizable from the **start**
+              (`ellipsize="start"`, the trailing segments are the informative part), and
+              the "Directory:" prefix is exactly at the start, so appending them would let the prefix be eaten together with the path.
+              marginStart aligns it with the text to the right of the radio button, reading as a second line of the same item.
             -->
             <TextView
                 android:id="@+id/tv_dir_path"
