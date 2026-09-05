@@ -1,6 +1,10 @@
-# Twig 🌿
+<p align="center">
+  <img src="docs/img/logo.png" width="120" alt="">
+</p>
 
-**English** · [Simplified Chinese](README.zh-CN.md)
+<h1 align="center">Twig</h1>
+
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>
 
 A size-first, dual-pane file manager for Android — in the spirit of X-plore.
 Native Kotlin and XML views, no Material library, minimal dependencies. When
@@ -163,6 +167,9 @@ needs no special case.
 - **Go to path**: type a path on any root — a server, internal storage, a removable
   volume, a document tree, a favourite — and the tree expands its way down to that
   directory or file, connecting the server on the way if it is not open yet.
+- **Split-APK bundles install directly**: `.xapk`, `.apks` and `.apkm` are read out of
+  the archive and written to a `PackageInstaller` session, so a bundle from a mirror
+  installs without a helper app.
 - **Twig works as a file picker**, both for other apps (`GET_CONTENT`) and for its
   own imports — which is how you can pick a file from inside an SMB share or an
   archive, something the system picker cannot do.
@@ -181,6 +188,11 @@ needs no special case.
   one tap away and can be synced straight from its row.
 - **Text compare** with two columns, synchronised horizontal scrolling and per-hunk merge
   arrows; **image compare** side by side with linked zoom and pan.
+- **Binary compare in hex.** Whether a file is binary is only knowable after reading it, so a
+  pair that turns out to be binary — or too large for the text view — is handed on to the hex
+  comparison instead of dead-ending. Offsets are aligned as they are, with no resynchronisation,
+  which is the honest answer for firmware and patched binaries; the shorter side is padded with
+  blank rows so the difference at the tail stays reachable.
 
 ### Viewers and player
 
@@ -195,6 +207,9 @@ all work the same way.
   original encoding cannot represent something you typed, Twig asks instead of silently
   substituting `?`
 - Hex viewer with virtual scrolling, a draggable scrollbar and text/HEX search
+- **PDF reader** on the platform renderer: continuous or single-page scrolling,
+  double-tap to crop the page margins away, text selection, and full-text search
+  where the system provides it (Android 15+)
 - Image viewer with downsampling, plus a slideshow that starts on the first image
   found while still scanning
 - **Video/audio player** (media3 + FFmpeg software decoding) covering AVI, real
@@ -368,7 +383,7 @@ I have read the CLA (CLA.md) and I agree to its terms.
 ```
 
 Implementation decisions and the reasoning behind them are recorded in
-[CLAUDE.md](CLAUDE.md), and the long list of bugs that were expensive to find lives one
+[AGENTS.md](AGENTS.md), and the long list of bugs that were expensive to find lives one
 file per area under [docs/lessons/](docs/lessons/). Read the matching file before
 changing subsystems like the terminal, thumbnails or the TS demuxer.
 
@@ -461,5 +476,14 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
 - **1.5** — **Go to path** from any root row; favourites and saved comparisons can point
   inside a document tree; terminal accessory bar polish (hold an arrow to repeat, one
   shared text size) and the emulator size surviving a screen off/on cycle.
+- **1.6** — **tar, and gz/xz/bz2/zst as single-file compression.** Entries in a tar are read
+  in place by slicing, so an archive nested inside one opens without being unpacked first and
+  video inside it can seek; the single-stream formats mount as a one-entry archive, so
+  `foo.tar.gz` opens to `foo.tar` and expands again — `.tgz`/`.txz`/`.tbz2`/`.tzst` included.
+  Where a container does not record the original size, the size is left blank rather than
+  reading `0 B`.
+- **Unreleased** (in this tree, after 1.6.0) — a built-in **PDF reader**; **hex comparison**
+  for binary and oversized pairs; installing split-APK bundles (`.xapk`, `.apks`, `.apkm`);
+  text encoding widened to GB18030.
 
 </details>
