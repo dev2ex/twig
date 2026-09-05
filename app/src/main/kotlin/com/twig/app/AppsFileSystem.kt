@@ -179,10 +179,14 @@ class AppsFileSystem(context: Context) : FileSystem {
             files += (f.name.ifEmpty { "split_${names?.getOrNull(i) ?: i}.apk" }) to f
         }
         val total = files.sumOf { it.second.length() }
-        val manifest = manifestJson(info, files, total).toByteArray(Charsets.UTF_8)
+        // ★ Render the icon **before** the manifest: the manifest has to declare it
+        // (`"icon"`), and when the render fails there must be no dangling reference to a
+        // file the bundle doesn't carry.
+        val icon = iconPng(info, ai)
+        val manifest = manifestJson(info, files, total, icon != null).toByteArray(Charsets.UTF_8)
         val entries = ArrayList<XapkPack.Entry>(files.size + 2)
         entries += XapkPack.Entry("manifest.json", manifest, null)
-        iconPng(info, ai)?.let { entries += XapkPack.Entry("icon.png", null, it) }
+        icon?.let { entries += XapkPack.Entry(ICON_NAME, null, it) }
         files.forEach { (n, f) -> entries += XapkPack.Entry(n, null, f) }
         val pack = XapkPack(entries)
         return if (pack.totalSize() in 1..MAX_ZIP32) pack else null
@@ -225,8 +229,21 @@ class AppsFileSystem(context: Context) : FileSystem {
         }.getOrNull()
     }
 
-    /** APKPure's XAPK manifest; field names follow its conventions, installers restore base + splits from this. */
-    private fun manifestJson(info: PackageInfo, files: List<Pair<String, File>>, total: Long): String {
+    /**
+     * APKPure's XAPK manifest; field names follow its conventions, installers restore base + splits from this.
+     *
+     * ★ [hasIcon] writes the `icon` field. The png alone is not enough: installers that show an
+     * app icon for a bundle (SAI, APKPure) read the manifest's `icon` field for the entry name
+     * rather than probing for a well-known one, so without it the packed [ICON_NAME] is dead
+     * weight there. Twig's own row icon reads the entry directly ([com.twig.app.ui.FileIcons]),
+     * which is why this went unnoticed.
+     */
+    private fun manifestJson(
+        info: PackageInfo,
+        files: List<Pair<String, File>>,
+        total: Long,
+        hasIcon: Boolean,
+    ): String {
         val ai = info.applicationInfo
         val label = ai?.let { runCatching { pm.getApplicationLabel(it).toString() }.getOrNull() }
             ?: info.packageName
@@ -242,6 +259,7 @@ class AppsFileSystem(context: Context) : FileSystem {
             append(",\"version_name\":").append(jsonStr(info.versionName ?: ""))
             append(",\"min_sdk_version\":").append(jsonStr(minSdkOf(ai).toString()))
             append(",\"target_sdk_version\":").append(jsonStr((ai?.targetSdkVersion ?: 0).toString()))
+            if (hasIcon) append(",\"icon\":").append(jsonStr(ICON_NAME))
             append(",\"total_size\":").append(total)
             append(",\"split_apks\":[").append(splits).append("]}")
         }
@@ -332,6 +350,9 @@ class AppsFileSystem(context: Context) : FileSystem {
 
         /** Rendered app icons for packing (see iconPng); tiny and keyed by version, so it is not trimmed. */
         private const val ICON_DIR = "xapk-icon"
+
+        /** Entry name of the packed app icon, at the bundle root; also what manifest.json's `icon` points at. */
+        private const val ICON_NAME = "icon.png"
         private const val ICON_PX = 192
         private const val USER = "user"
         private const val SYSTEM = "system"
