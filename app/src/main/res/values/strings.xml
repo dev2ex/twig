@@ -360,7 +360,6 @@
     <string name="hex_cmp_identical">The two files are byte-for-byte identical</string>
     <string name="hex_cmp_count">%1$d differences</string>
     <string name="hex_cmp_count_more">Over %1$d differences</string>
-    <string name="viewer_preview">Preview</string>
     <string name="viewer_edit">Edit</string>
     <string name="viewer_save">Save</string>
     <string name="viewer_saving">Saving…</string>

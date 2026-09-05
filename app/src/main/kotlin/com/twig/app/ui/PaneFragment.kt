@@ -454,8 +454,10 @@ class PaneFragment : Fragment() {
     private fun chooseOpen(file: XFile) {
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.open_with_app), R.drawable.ic_open_with) { openExternal(file) }
+        // preview = false: this entry means "show me the text", even for markdown/html,
+        // which TextViewerActivity otherwise opens rendered.
         actions.item(getString(R.string.open_text), R.drawable.ic_file_doc) {
-            TextViewerActivity.start(requireContext(), file)
+            TextViewerActivity.start(requireContext(), file, preview = false)
         }
         actions.item(getString(R.string.open_hex), R.drawable.ic_file) {
             HexViewerActivity.start(requireContext(), file)
@@ -1612,11 +1614,6 @@ class PaneFragment : Fragment() {
         } else {
             actions.item(getString(R.string.open_with_external), R.drawable.ic_open_with) { openExternal(file) }
             actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file) }
-            if (OpenFiles.isPreviewable(file)) {
-                actions.item(getString(R.string.viewer_preview), R.drawable.ic_preview) {
-                    TextViewerActivity.start(requireContext(), file, preview = true)
-                }
-            }
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFile(file) }
         }
         if (includeFavorite) {

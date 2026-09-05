@@ -49,6 +49,11 @@ import java.nio.charset.Charset
  * like Monokai, switchable from the menu); the search icon in the action bar opens a search bar, highlights every hit,
  * and ▲▼ jump between them.
  *
+ * Markdown and HTML open **rendered** (a WebView, see [renderPreview]) — that is what you want to see nine times out
+ * of ten, so it is the default and there is no Preview toggle in the menu. The action bar's pencil is the way to the
+ * source: it leaves the render and enters edit mode in one tap, and backing out of editing returns to the render
+ * ([previewHome]). "Open as text" in the long-press menu still opens the raw source.
+ *
  * Editing: the same EditText toggles read-only / editable in place ([enterEdit]); save goes through [writeAtomically]
  * back to the same source. Editing is disallowed in three cases (see [editBlockReason] and [canEdit]) — all are
  * scenarios where "save would destroy the original file", better not to expose the entry:
@@ -77,8 +82,14 @@ class TextViewerActivity : AppCompatActivity() {
     private var isHtml = false
     private var isPreviewable = false
     private var previewMode = false
-    private var previewLoaded = false
-    private var previewMenuItem: MenuItem? = null
+
+    /**
+     * Preview is this file's *home* view — set when the activity was opened in preview mode.
+     * There is no preview toggle in the menu any more (markdown/html open rendered by default,
+     * and the pencil is the way out), so this is what tells [exitEdit] to go back to the render
+     * instead of dropping the reader into raw source they never asked for.
+     */
+    private var previewHome = false
     private var searchMenuItem: MenuItem? = null
 
     // Edit state
@@ -199,18 +210,6 @@ class TextViewerActivity : AppCompatActivity() {
         val ext = name.substringAfterLast('.', "").lowercase()
         isHtml = ext == "html" || ext == "htm"
         isPreviewable = isHtml || lang?.markdown == true
-        if (isPreviewable) {
-            previewMenuItem = b.toolbar.menu.add(R.string.viewer_preview).apply {
-                isCheckable = true
-                setOnMenuItemClickListener {
-                    previewMode = !previewMode
-                    it.isChecked = previewMode
-                    if (previewMode) renderPreview()
-                    applyPreviewVisibility()
-                    true
-                }
-            }
-        }
         b.scroll.post { applyWrap() } // wait for layout to complete to get viewport width
 
         // Carry the displayName: content:// paths don't include the file name; losing it means losing the extension (used for syntax-highlight / preview detection)
@@ -280,7 +279,6 @@ class TextViewerActivity : AppCompatActivity() {
     private fun renderPreview() {
         val html = if (isHtml) raw else MarkdownHtml.render(raw)
         b.webview.loadDataWithBaseURL(webviewBaseUrl(), html, "text/html", "utf-8", null)
-        previewLoaded = true
     }
 
     /**
@@ -300,8 +298,7 @@ class TextViewerActivity : AppCompatActivity() {
         b.scroll.visibility = if (previewMode) View.GONE else View.VISIBLE
         b.webview.visibility = if (previewMode) View.VISIBLE else View.GONE
         syncNavBar() // preview page's background is the markdown set (follows system light/dark), unrelated to the code theme
-        syncEditMenu() // search/edit entries take a back seat in preview mode
-        if (previewMode && b.searchBar.visibility == View.VISIBLE) toggleSearch(false)
+        syncEditMenu()
     }
 
     /** Normalize path: collapse `.`/`..`, strip extra slashes (same algorithm as [com.twig.app.M3uPlaylist]). */
@@ -460,6 +457,12 @@ class TextViewerActivity : AppCompatActivity() {
     private fun enterEdit() {
         editBlockReason()?.let { toast(it); return }
         if (!canEdit) return
+        // Editing always happens on the source text, so the pencil doubles as "leave the render".
+        // [exitEdit] brings the preview back, so the pair reads as one preview <-> edit round trip.
+        if (previewMode) {
+            previewMode = false
+            applyPreviewVisibility()
+        }
         editMode = true
         if (b.searchBar.visibility == View.VISIBLE) toggleSearch(false)
         b.content.keyListener = savedKeyListener
@@ -488,14 +491,20 @@ class TextViewerActivity : AppCompatActivity() {
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(b.content.windowToken, 0)
         syncEditMenu()
+        if (previewHome) {
+            previewMode = true
+            renderPreview() // the text may have been saved in the meantime
+            applyPreviewVisibility()
+        }
     }
 
     private fun syncEditMenu() {
-        editMenuItem?.isVisible = canEdit && !editMode && !previewMode
+        // The pencil stays up in preview mode: it is the only way out of the render now that
+        // the Preview toggle is gone (see [enterEdit]).
+        editMenuItem?.isVisible = canEdit && !editMode
         saveMenuItem?.isVisible = editMode
-        // Search/preview yield to editing: search hit offsets get scrambled by edits, preview and edit are mutually exclusive
-        searchMenuItem?.isVisible = !editMode && !previewMode
-        previewMenuItem?.isVisible = !editMode
+        // Search yields to editing: hit offsets get scrambled by edits
+        searchMenuItem?.isVisible = !editMode
     }
 
     private fun updateTitle() {
@@ -660,13 +669,15 @@ class TextViewerActivity : AppCompatActivity() {
                     canEdit = r.writable
                     applyTheme()
                     syncEditMenu()
-                    if (startPreview && isPreviewable) {
+                    previewHome = startPreview && isPreviewable
+                    if (intent.getBooleanExtra(EXTRA_EDIT, false)) {
+                        // Explicitly asked to edit (a file we just created) — that beats the render,
+                        // which exitEdit will drop back to afterwards when previewHome is set.
+                        enterEdit() // fine if it can't build: enterEdit itself rejects non-editable cases
+                    } else if (previewHome) {
                         previewMode = true
-                        previewMenuItem?.isChecked = true
                         renderPreview()
                         applyPreviewVisibility()
-                    } else if (intent.getBooleanExtra(EXTRA_EDIT, false)) {
-                        enterEdit() // fine if it can't build: enterEdit itself rejects non-editable cases
                     }
                 },
                 onFailure = {
@@ -797,8 +808,20 @@ class TextViewerActivity : AppCompatActivity() {
         // directory (see webviewBaseUrl()); it can't be a fixed root, otherwise "../" gets truncated early, see that function's comment.
         private const val WEBVIEW_HOST = "twig.local"
 
-        /** [edit]: go straight into edit mode once loaded (used when opening a newly-created empty file, saves one tap). */
-        fun start(context: Context, file: XFile, preview: Boolean = false, edit: Boolean = false) {
+        /**
+         * [preview]: markdown/html open **rendered by default** — that is what you want to see
+         * nine times out of ten, and the pencil in the action bar takes you to the source.
+         * Pass `false` explicitly for the entry points that mean "show me the text"
+         * (`chooseOpen`'s open-as-text).
+         *
+         * [edit]: go straight into edit mode once loaded (used when opening a newly-created empty file, saves one tap).
+         */
+        fun start(
+            context: Context,
+            file: XFile,
+            preview: Boolean = OpenFiles.isPreviewable(file),
+            edit: Boolean = false,
+        ) {
             context.startActivity(
                 Intent(context, TextViewerActivity::class.java).apply {
                     putExtra(EXTRA_SCHEME, file.scheme)

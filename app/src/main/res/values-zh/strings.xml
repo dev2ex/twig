@@ -357,7 +357,6 @@
     <string name="hex_cmp_identical">两个文件完全相同</string>
     <string name="hex_cmp_count">%1$d 处差异</string>
     <string name="hex_cmp_count_more">超过 %1$d 处差异</string>
-    <string name="viewer_preview">预览</string>
     <string name="viewer_edit">编辑</string>
     <string name="viewer_save">保存</string>
     <string name="viewer_saving">正在保存…</string>
