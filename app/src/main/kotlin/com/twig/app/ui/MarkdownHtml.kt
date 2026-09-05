@@ -9,6 +9,9 @@ package com.twig.app.ui
  */
 object MarkdownHtml {
 
+    /** Class on the `<div>` wrapping every table; see the rule in [CSS]. */
+    private const val TABLE_WRAP_CLASS = "table-scroll"
+
     private val FENCE = Regex("^(`{3,}|~{3,})")
     private val HEADER = Regex("^(#{1,6})\\s+(.*)$")
     private val HR = Regex("^([-*_])\\1{2,}$")
@@ -49,7 +52,9 @@ object MarkdownHtml {
 
             if (trimmed.contains('|') && i + 1 < lines.size && TABLE_SEP.matches(lines[i + 1].trim())) {
                 closeLists()
-                body.append("<table><thead><tr>")
+                // Wrapped in a scroller: a wide table has to scroll on its own rather than either
+                // squeeze its columns to shreds or push the whole page sideways. See TABLE_WRAP_CLASS.
+                body.append("<div class=\"$TABLE_WRAP_CLASS\"><table><thead><tr>")
                 for (h in splitRow(trimmed)) body.append("<th>").append(inline(h)).append("</th>")
                 body.append("</tr></thead><tbody>\n")
                 i += 2
@@ -59,7 +64,7 @@ object MarkdownHtml {
                     body.append("</tr>\n")
                     i++
                 }
-                body.append("</tbody></table>\n")
+                body.append("</tbody></table></div>\n")
                 continue
             }
 
@@ -218,8 +223,13 @@ object MarkdownHtml {
             border-radius: 4px; font-size: .9em; }
         pre { background: rgba(128,128,128,.12); padding: 12px; border-radius: 6px; overflow-x: auto; }
         pre code { background: none; padding: 0; }
+        /* Table scroller: the div is what is clipped to the page width and scrolls, the table
+           itself is left at its natural width (max-content) so columns keep their content on one
+           line. Putting overflow on the table instead does nothing — a table is not a block box
+           for overflow purposes, and max-width alone just crushes the columns. */
+        .$TABLE_WRAP_CLASS { overflow-x: auto; max-width: 100%; margin: .6em 0; }
         blockquote { margin: .6em 0; padding: 0 1em; color: #656d76; border-left: 4px solid #d0d7de; }
-        table { border-collapse: collapse; margin: .6em 0; width: max-content; max-width: 100%; }
+        table { border-collapse: collapse; margin: 0; width: max-content; }
         th, td { border: 1px solid #d0d7de; padding: 6px 12px; }
         th { font-weight: 600; }
         ul, ol { padding-left: 1.6em; margin: .6em 0; }
