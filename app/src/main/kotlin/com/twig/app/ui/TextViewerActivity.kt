@@ -274,6 +274,12 @@ class TextViewerActivity : AppCompatActivity() {
                 return true
             }
         }
+        // Hit counter for preview-mode search (see runPreviewSearch). Only the final callback of a
+        // pass carries the real total — the interim ones stream partial counts as the page is walked.
+        b.webview.setFindListener { active, count, done ->
+            if (!done) return@setFindListener
+            b.searchCount.text = if (count == 0) "0" else "${active + 1}/$count"
+        }
     }
 
     private fun renderPreview() {
@@ -374,11 +380,22 @@ class TextViewerActivity : AppCompatActivity() {
             imm.hideSoftInputFromWindow(b.searchInput.windowToken, 0)
             b.searchInput.setText("")
             runSearch(jumpFirst = false) // clear highlights
+            // Unconditional: entering edit mode leaves preview *first* and closes the bar after,
+            // so by now previewMode is already false while the render still holds its matches.
+            b.webview.clearMatches()
         }
     }
 
-    /** Full-text search and highlight every hit (case-insensitive, hit count capped to guard against pathological input). */
+    /**
+     * Full-text search and highlight every hit (case-insensitive, hit count capped to guard against
+     * pathological input). In preview mode the source text isn't what's on screen, so the search is
+     * handed to the WebView instead — see [runPreviewSearch].
+     */
     private fun runSearch(jumpFirst: Boolean) {
+        if (previewMode) {
+            runPreviewSearch(b.searchInput.text.toString())
+            return
+        }
         val sp = b.content.text as? Spannable
         hitSpans.forEach { sp?.removeSpan(it) }
         hitSpans.clear()
@@ -408,7 +425,28 @@ class TextViewerActivity : AppCompatActivity() {
         if (list.isEmpty()) b.searchCount.text = "0" else if (jumpFirst) jumpTo(0)
     }
 
+    /**
+     * Preview-mode search: the WebView's own find-in-page rather than our offsets into [raw].
+     * The rendered page is a different document from the source — a markdown table becomes cells,
+     * a fenced block becomes a `<pre>`, and `**bold**`'s asterisks aren't on screen at all — so a
+     * source offset has nothing to scroll to. Find-in-page highlights and scrolls in the rendered
+     * layout, and reports its counts through the [setFindListener] wired in [setupWebView].
+     */
+    private fun runPreviewSearch(query: String) {
+        b.webview.clearMatches()
+        if (query.isEmpty()) {
+            b.searchCount.text = ""
+            return
+        }
+        b.webview.findAllAsync(query)
+    }
+
     private fun move(delta: Int) {
+        // findNext wraps around by itself and re-fires the find listener with the new ordinal.
+        if (previewMode) {
+            b.webview.findNext(delta > 0)
+            return
+        }
         if (matches.isEmpty()) return
         jumpTo((cur + delta + matches.size) % matches.size)
     }
