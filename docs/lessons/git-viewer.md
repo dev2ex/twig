@@ -65,7 +65,7 @@
     is driven by `git` **on the server** (`SshGitData`), so `git worktree list --porcelain`
     prints paths in the *server's* coordinates — `/srv/git/repo/wt`. That was the same
     string as the tree's path until connections gained an optional start directory
-    (1.6.0): rooted at `srv/git`, the tree calls that directory `/repo/wt`, so every
+    (1.7.0): rooted at `srv/git`, the tree calls that directory `/repo/wt`, so every
     lookup missed and every worktree mapped to null. `serverPath()` was applied at the
     three places where a path leaves for a shell, but paths also come **back** in command
     output; `SftpFileSystem.visiblePath()` is the inverse, and `SshGitData` takes it as a

@@ -10,7 +10,7 @@
 不引入 Material 库,依赖压到最低。能手写就手写——WebDAV、S3 签名、git、restic
 全部从零实现。
 
-**版本 1.6.0**(versionCode 285)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**版本 1.7.0**(versionCode 286)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- TODO: 截图 / GIF 放这里。四个最有说服力的演示:
@@ -392,7 +392,10 @@ I have read the CLA (CLA.md) and I agree to its terms.
   所以里面套着的压缩包不必先解出来就能打开、里面的视频还能 seek;单流格式挂成只有一个
   条目的包,于是 `foo.tar.gz` 打开是 `foo.tar`,再展开就是 tar,`.tgz`/`.txz`/`.tbz2`/
   `.tzst` 同理。容器里没记原始大小的,大小显示留空,不再写成 `0 B`。
-- **未发布**(在本代码树里,1.6.0 之后)—— 内置 **PDF 阅读器**;二进制与超大文件对的
-  **hex 对比**;分包 APK(`.xapk`、`.apks`、`.apkm`)安装;文本编码候选扩到 GB18030。
+- **1.7** —— 内置 **PDF 阅读器**:连续或单页滚动、双击裁掉页边空白、文本选择,系统支持时
+  还有全文搜索(Android 15+)。判定为二进制、或大到文本视图扛不住的那一对,转交 **hex 对比**。
+  **分包 APK**(`.xapk`、`.apks`、`.apkm`)经 `PackageInstaller` 直接安装。SMB 不填共享名即
+  列出全部共享,FTP / SFTP / S3 连接可指定起始路径。文本编码候选里 GB18030 取代 GBK。
+  值得一提的修复:AVI 声音重组帧与 B 帧顺序、4K 网络播放撑爆堆、SSH 上的 git 工作区。
 
 </details>

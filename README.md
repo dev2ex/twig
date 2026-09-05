@@ -11,7 +11,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.6.0** (versionCode 285) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.7.0** (versionCode 286) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- TODO: screenshots / GIFs go here. Four that make the case:
@@ -482,8 +482,13 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   `foo.tar.gz` opens to `foo.tar` and expands again — `.tgz`/`.txz`/`.tbz2`/`.tzst` included.
   Where a container does not record the original size, the size is left blank rather than
   reading `0 B`.
-- **Unreleased** (in this tree, after 1.6.0) — a built-in **PDF reader**; **hex comparison**
-  for binary and oversized pairs; installing split-APK bundles (`.xapk`, `.apks`, `.apkm`);
-  text encoding widened to GB18030.
+- **1.7** — A built-in **PDF reader**: continuous or single-page scrolling, double-tap to
+  crop the page margins away, text selection, and full-text search where the system provides
+  it (Android 15+). **Hex comparison** for pairs that turn out to be binary or too large for
+  the text view. **Split-APK bundles** (`.xapk`, `.apks`, `.apkm`) install through
+  `PackageInstaller`. SMB lists every share when the share name is left blank, and FTP, SFTP
+  and S3 connections can open at a start path. GB18030 replaces GBK in the encoding
+  candidates. Fixes worth naming: AVI audio reframing and B-frame order, 4K network playback
+  exhausting the heap, and git worktrees over SSH.
 
 </details>
