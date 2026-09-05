@@ -29,7 +29,7 @@ restic repositories and Jellyfin/Emby servers are all the same thing to the UI. 
 of them is the same code path — an SMB folder can be compressed straight into a
 local zip, a file inside a remote archive can be streamed to an FTP server.
 
-**It stays small.** A per-device download is about 6.9 MB *including* an FFmpeg
+**It stays small.** A per-device download is about 7.1 MB *including* an FFmpeg
 audio decoder, an SMB implementation and a video player. Comparable file managers
 ship several times that. Dependencies are added only after their APK cost is
 measured.
@@ -67,23 +67,23 @@ measured.
 
 ## Size
 
-Measured on the 1.5.0 release build (R8 + resource shrinking):
+Measured on the 1.7.0 release build (R8 + resource shrinking):
 
 | | Size |
 |---|---|
-| Release APK (`arm64-v8a` + `x86_64`) | 9.1 MB |
-| **Per-device download (`arm64-v8a`)** | **≈ 6.9 MB** |
+| Release APK (`arm64-v8a` + `x86_64`) | 9.2 MB |
+| **Per-device download (`arm64-v8a`)** | **≈ 7.1 MB** |
 
 Where it goes (compressed sizes inside the APK):
 
 | Component | Size |
 |---|---|
-| `classes.dex` (all our code plus every JVM dependency) | 2.7 MB |
+| `classes.dex` (all our code plus every JVM dependency) | 2.8 MB |
 | `libffmpegJNI.so` | 1.4 MB |
 | Bouncy Castle data files | 1.2 MB |
-| Resources (`resources.arsc` + `res`) | 865 KB |
-| `libsamba_jni.so` (libsmb2) | 464 KB |
-| `libtwigzstd` / `libtermux` / `libtwigpty` | 108 KB |
+| Resources (`resources.arsc` + `res`) | 887 KB |
+| `libsamba_jni.so` (libsmb2) | 484 KB |
+| `libtwigzstd` / `libtermux` / `libtwigpty` | 109 KB |
 
 Nearly all of the Bouncy Castle figure is three lookup tables for the `picnic`
 post-quantum signature scheme (`lowmcL{1,3,5}.bin.properties`). Twig pulls in the
