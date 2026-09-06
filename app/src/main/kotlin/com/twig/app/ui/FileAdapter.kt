@@ -619,11 +619,7 @@ class FileAdapter(
             setMeta(
                 node.capacity ?: when {
                     file.isDir -> Format.time(file.lastModified).takeIf { file.lastModified > 0 }
-                    else -> listOfNotNull(
-                        // When size is unknown (media servers don't give byte counts for photos) don't show the whole segment, don't write "0 B"
-                        Format.sizeOrNull(file)?.takeIf { file.size > 0 || file.lastModified > 0 },
-                        Format.time(file.lastModified).takeIf { file.lastModified > 0 },
-                    ).joinToString("  ").ifEmpty { null } // virtual entries (git etc.) with no size / time are hidden
+                    else -> fileMeta(file)
                 },
             )
             // ★★ Do **not touch `imageTintList` here** (bitten on 2026-08-19):
@@ -784,7 +780,35 @@ class FileAdapter(
             b.sub.text = meta.pkg
         }
 
-        private fun setMeta(text: String?) {
+        /**
+         * A file row's "size  time" line, with the **size** coloured [R.color.row_meta] and the
+         * timestamp left at the line's own secondary grey.
+         *
+         * ★ The colour is a span rather than the TextView's textColor: `meta` is one view shared by
+         * every row kind — a directory's timestamp, a favourite's full path, a server's address,
+         * restic's lock state, a search pattern — so tinting the view brightens all of those too.
+         * Size is the one thing this file manager is built around, and it is the only part that
+         * earns the extra contrast.
+         *
+         * Returns null when the entry has neither (virtual git entries etc.), which hides the line.
+         */
+        private fun fileMeta(file: XFile): CharSequence? {
+            // When size is unknown (media servers don't give byte counts for photos) don't show the whole segment, don't write "0 B"
+            val size = Format.sizeOrNull(file)?.takeIf { file.size > 0 || file.lastModified > 0 }
+            val time = Format.time(file.lastModified).takeIf { file.lastModified > 0 }
+            if (size == null) return time
+            val sb = SpannableStringBuilder(size)
+            sb.setSpan(
+                ForegroundColorSpan(ContextCompat.getColor(b.root.context, R.color.row_meta)),
+                0,
+                sb.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+            if (time != null) sb.append("  ").append(time)
+            return sb
+        }
+
+        private fun setMeta(text: CharSequence?) {
             if (text.isNullOrBlank()) {
                 b.meta.visibility = View.GONE
             } else {

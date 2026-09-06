@@ -67,14 +67,15 @@
             android:textSize="10sp"
             android:visibility="gone" />
 
-        <!-- Size/time right-aligned; row_meta rather than text_secondary, see colors.xml -->
+        <!-- Size/time right-aligned. The size segment is re-coloured row_meta by a span in
+             FileAdapter.fileMeta; everything else on this line stays secondary. -->
         <TextView
             android:id="@+id/meta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:singleLine="true"
             android:gravity="end"
-            android:textColor="@color/row_meta"
+            android:textColor="@color/text_secondary"
             android:textSize="10sp" />
     </LinearLayout>
 
