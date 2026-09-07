@@ -11,7 +11,7 @@ metadata/android/<locale>/
   images/
     icon.png             512x512
     featureGraphic.png   1024x500, banner above the description
-    phoneScreenshots/    1.png, 2.png, …  (png / jpg / jpeg only)
+    phoneScreenshots/    01-*.png … 08-*.png, shown in filename order
   changelogs/<versionCode>.txt                 max 500 chars
 ```
 
@@ -34,16 +34,48 @@ Locales present: `en-US`, `zh-CN`. Keep both in sync when either changes.
 - **The F-Droid build is the `libre` flavor — it has no RAR support.** The
   descriptions say so. If the flavors ever diverge further, update that paragraph.
 
-## Still missing: screenshots
+## Screenshots
 
-`images/phoneScreenshots/` is empty; the listing works without it but looks
-sparse. Capture on a real device (`adb exec-out screencap -p > 1.png`), then keep
-the same order in both locales. Four that make the case:
+Eight, in `images/phoneScreenshots/`, and eight is a decision rather than a
+budget: the listing is a horizontal strip, nobody swipes past the first handful,
+and every extra shot dilutes the ones that actually argue for the app. The order
+is the argument — what it is, then what nothing else does:
 
-1. Both panes side by side, a folder on one side being copied to a remote source
-2. Tree-style in-place expansion, with an archive opened like a directory
-3. The disk-usage treemap
-4. Wi-Fi sharing mounted as a network drive from a desktop file manager
+```
+01-one-tree            the tree itself, one source expanded in place
+02-dual-pane           landscape, both panes (the headline claim)
+03-restic-repository   a restic backup browsed on device
+04-media-server        a Jellyfin/Emby library as a filesystem
+05-directory-compare   two trees aligned row by row
+06-space-map           the treemap
+07-wifi-sharing        Twig serving its own files
+08-terminal            htop in the built-in terminal
+```
+
+Rules that are easy to get wrong:
+
+- **PNG or JPEG only** — the extension must be `png`, `jpg` or `jpeg`. A `.webp`
+  is not rendered badly, it is ignored, and the listing silently shows nothing.
+- **The filename is the sort key.** F-Droid displays them in sorted order, so the
+  numeric prefix is what fixes the sequence; zero-pad it or 10 sorts before 2.
+- **No `+` in a name.** It decodes as a space in form-encoded contexts — the same
+  trap `docs/lessons/s3.md` records for object keys.
+- **F-Droid strips metadata and may recompress**, so squeezing the last KB out
+  here buys little. Capture, crop, commit.
+- Compression, copying, favourites, context menus — every file manager has those.
+  They belong in the README, not in the eight.
+
+**Images live in `en-US` only, and that is deliberate.** F-Droid falls back to
+en-US for graphics as well as text, so anything placed there is shown to every
+visitor whatever their language — duplicating it into `zh-CN` costs 2.1 MB in
+the repository and changes nothing on screen. Localised images are worth adding
+only when they are actually localised: if these are ever recaptured with the app
+in Chinese, `zh-CN/images/` can be created then and will take precedence for
+Chinese users on its own.
+
+The text is the opposite case. `title` / `short_description` / `full_description`
+/ `changelogs` in `zh-CN` are a few KB and are the whole listing a Chinese user
+reads, so both locales carry them and both must be updated together.
 
 The icon and feature graphic are generated from `app/src/main/res/drawable/ic_launcher.xml`
 and can be regenerated with `rsvg-convert`; see the commit that added them.

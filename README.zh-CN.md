@@ -13,11 +13,25 @@
 **版本 1.8.2**(versionCode 287)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-<!-- TODO: 截图 / GIF 放这里。四个最有说服力的演示:
-     1. 跨来源复制:SMB 上的目录直接压成本地 zip
-     2. 树式就地展开,压缩包像目录一样点开
-     3. 占用图(treemap)双指缩放
-     4. WiFi 共享后,从电脑上直接挂载成网络盘 -->
+<!-- 截图直接引用 fastlane/ 下的那份,不在这里再放一遍:F-Droid 要求它们位于那个
+     确切路径,复制一份等于把同样的 2 MB 在仓库里存两次。 -->
+
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="横屏双面板">
+</p>
+
+| 一棵树,所有来源 | restic 备份,设备上解密 | Jellyfin 媒体库当文件系统 | 占用图 |
+|---|---|---|---|
+| ![](fastlane/metadata/android/en-US/images/phoneScreenshots/01-one-tree.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/03-restic-repository.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/04-media-server.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/06-space-map.png) |
+
+<details>
+<summary><strong>更多</strong> —— 目录对比、WiFi 共享、内置终端</summary>
+
+| 目录对比 | WiFi 共享 | 内置终端 |
+|---|---|---|
+| ![](fastlane/metadata/android/en-US/images/phoneScreenshots/05-directory-compare.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/07-wifi-sharing.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/08-terminal.png) |
+
+</details>
 
 ---
 

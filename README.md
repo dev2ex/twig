@@ -15,11 +15,26 @@ restic are all implemented from scratch.
 **Version 1.8.2** (versionCode 287) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-<!-- TODO: screenshots / GIFs go here. Four that make the case:
-     1. cross-source copy: an SMB folder compressed straight into a local zip
-     2. in-place tree expansion, with an archive opening like a directory
-     3. the treemap disk-usage view, pinch to zoom
-     4. Wi-Fi sharing mounted as a network drive from a desktop file manager -->
+<!-- Screenshots are referenced out of fastlane/ rather than copied here: F-Droid
+     needs them at that exact path, and a second copy would put the same 2 MB in
+     the repository twice. -->
+
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="Dual pane in landscape">
+</p>
+
+| One tree, every source | restic, decrypted on device | A Jellyfin library as a filesystem | Disk-usage treemap |
+|---|---|---|---|
+| ![](fastlane/metadata/android/en-US/images/phoneScreenshots/01-one-tree.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/03-restic-repository.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/04-media-server.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/06-space-map.png) |
+
+<details>
+<summary><strong>More</strong> — directory compare, Wi-Fi sharing, terminal</summary>
+
+| Directory compare | Wi-Fi sharing | Built-in terminal |
+|---|---|---|
+| ![](fastlane/metadata/android/en-US/images/phoneScreenshots/05-directory-compare.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/07-wifi-sharing.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/08-terminal.png) |
+
+</details>
 
 ---
 
