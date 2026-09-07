@@ -11,7 +11,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.7.0** (versionCode 286) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.8.2** (versionCode 287) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- TODO: screenshots / GIFs go here. Four that make the case:
@@ -173,6 +173,11 @@ needs no special case.
 - **Twig works as a file picker**, both for other apps (`GET_CONTENT`) and for its
   own imports — which is how you can pick a file from inside an SMB share or an
   archive, something the system picker cannot do.
+- **Home-screen shortcuts** for both directories (reveal in the tree) and individual
+  files. A file shortcut also picks *how* it opens — automatic dispatch, as text, as
+  hex, or with one specific app chosen at pin time (a shortcut can't re-show a
+  resolver on every tap) — and its icon reuses an already-cached thumbnail when one
+  exists. Runs in its own task, so tapping one never routes through the main screen.
 
 ### Compare
 
@@ -284,7 +289,10 @@ Twig can find it and save it as a connection.
 - The master password is an **app lock checked at every entry point** — the main UI,
   "open with Twig", "copy to…", the file picker, the terminal shortcut and the remote
   command shortcuts. Miss one and the lock only guards the front door. **Lock** drops the
-  key from memory while music, terminals and sharing keep running.
+  key from memory while music, terminals and sharing keep running. A file's desktop
+  shortcut is the one deliberate exception: local and SAF files need no decrypted secret
+  to open, so those skip the prompt entirely — only a shortcut to a server file gates,
+  since reconnecting there does need the saved (encrypted) credentials.
 - **Fingerprint unlock** through the platform `BiometricPrompt` (not androidx.biometric —
   zero APK cost) exists alongside the master password, which stays the root key.
 - **Config backup** (`.twigbak`): connections and settings as JSON, optionally encrypted
@@ -490,5 +498,12 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   and S3 connections can open at a start path. GB18030 replaces GBK in the encoding
   candidates. Fixes worth naming: AVI audio reframing and B-frame order, 4K network playback
   exhausting the heap, and git worktrees over SSH.
+- **1.8** — Files can pin their own **home-screen shortcut**, not just directories: pick how
+  it opens — automatic dispatch, as text, as hex, or with one specific app chosen at pin time,
+  since a shortcut can't re-show a resolver on every tap — and the icon reuses an
+  already-cached thumbnail when one exists. The master-password gate only fires when the
+  target actually needs a decrypted secret (server files reconnect through the saved,
+  encrypted credentials; local and SAF files never do). Shortcuts run in their own task, so
+  opening one no longer routes through — or back-navigates into — the main screen.
 
 </details>
