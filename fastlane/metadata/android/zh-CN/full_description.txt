@@ -1,4 +1,4 @@
-Twig 是一个对标 X-plore 的 Android 双面板文件管理器,原生 Kotlin + XML View 写成,不引 Material 库,依赖尽量少。
+Twig 是一个把所有存储来源装进同一棵树的 Android 双面板文件管理器,原生 Kotlin + XML View 写成,不引 Material 库,依赖尽量少。
 
 <b>一棵树,所有来源</b>
 

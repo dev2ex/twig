@@ -6,7 +6,8 @@
 
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>
 
-A size-first, dual-pane file manager for Android — in the spirit of X-plore.
+A size-first, dual-pane file manager for Android: every storage source lives in
+one tree and expands in place, instead of each being its own screen to enter.
 Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
@@ -420,7 +421,7 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
 - **Phase 3 / 3.5 / 3.6** — FTP, then SMB via libsmb2, then SFTP via SSHJ and
   hand-written WebDAV; persistent multi-server connections.
 - **Phase 3.7** — restic repositories, read-only and decrypted, formats v1 and v2.
-- **0.8 / 0.9** — X-plore-style UX: in-place tree expansion, expand-to-connect,
+- **0.8 / 0.9** — The tree model settled: in-place expansion, expand-to-connect,
   single pane in portrait and dual pane in landscape, dark theme.
 - **0.12** — Favourites across all sources, connecting on demand.
 - **0.45** — Grid view decoupled from the thumbnail toggle (orthogonal switches).

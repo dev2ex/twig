@@ -16,7 +16,7 @@
 > content applies to humans just as well. Machine-specific settings (test device
 > address, release directory, …) live in `CLAUDE.local.md`, which is not committed.
 
-A size-first, dual-pane Android file manager (aimed at X-plore): plain Kotlin + XML
+A size-first, dual-pane Android file manager, one tree over every source: plain Kotlin + XML
 Views, no Material library, minimal dependencies.
 
 ## Build and verify

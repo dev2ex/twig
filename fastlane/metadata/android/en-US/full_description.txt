@@ -1,4 +1,4 @@
-Twig is a dual-pane file manager for Android in the spirit of X-plore, written in plain Kotlin and XML views, with no Material library and as few dependencies as possible.
+Twig is a dual-pane file manager for Android that puts every storage source in one tree, written in plain Kotlin and XML views, with no Material library and as few dependencies as possible.
 
 <b>One tree, every source</b>
 

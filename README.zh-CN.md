@@ -6,9 +6,9 @@
 
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-一个体积优先的双面板 Android 文件管理器,对标 X-plore。原生 Kotlin + XML View,
-不引入 Material 库,依赖压到最低。能手写就手写——WebDAV、S3 签名、git、restic
-全部从零实现。
+一个体积优先的双面板 Android 文件管理器:所有来源都在同一棵树里就地展开,而不是各自
+一个要「进去」的界面。原生 Kotlin + XML View,不引入 Material 库,依赖压到最低。
+能手写就手写——WebDAV、S3 签名、git、restic 全部从零实现。
 
 **版本 1.8.2**(versionCode 287)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
@@ -350,7 +350,7 @@ I have read the CLA (CLA.md) and I agree to its terms.
 - **Phase 3 / 3.5 / 3.6** —— FTP,然后是 libsmb2 的 SMB,然后是 SSHJ 的 SFTP 与
   手写 WebDAV;连接持久化与多服务器管理。
 - **Phase 3.7** —— restic 仓库只读解密浏览,支持格式 v1 与 v2。
-- **0.8 / 0.9** —— 对齐 X-plore 的 UX:树就地展开、展开即连接、竖屏单面板 +
+- **0.8 / 0.9** —— 树式模型定型:就地展开、展开即连接、竖屏单面板 +
   横屏双面板、深色主题。
 - **0.12** —— 收藏,覆盖全部来源,按需连接直达。
 - **0.45** —— 网格视图与缩略图开关解耦(正交)。
