@@ -1,0 +1,1 @@
+Fixed: checked files under a directory stayed checked after collapsing it and showing back up checked again when re-expanded.

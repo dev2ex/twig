@@ -50,8 +50,8 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 287
-        versionName = "1.8.2"
+        versionCode = 288
+        versionName = "1.8.3"
         vectorDrawables.useSupportLibrary = true
         // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
