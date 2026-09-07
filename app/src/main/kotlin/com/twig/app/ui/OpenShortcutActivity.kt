@@ -1,5 +1,6 @@
 package com.twig.app.ui
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -45,13 +46,18 @@ class OpenShortcutActivity : AppCompatActivity() {
         private const val EXTRA_NAME = "name"
         private const val EXTRA_SIZE = "size"
         private const val EXTRA_MODE = "mode"
+        private const val EXTRA_COMPONENT = "component"
 
         const val MODE_AUTO = "auto"
         const val MODE_TEXT = "text"
         const val MODE_HEX = "hex"
+        /** Always opens with the one app chosen when the shortcut was pinned (see
+         * [PaneFragment.pickAppForShortcut]) — a shortcut has no chance to show the system
+         * resolver on every tap, so that choice is made once, up front, not at open time. */
         const val MODE_EXTERNAL = "external"
 
-        fun intent(ctx: Context, file: XFile, mode: String): Intent =
+        /** [component] is required for [MODE_EXTERNAL] (the app chosen when pinning); unused otherwise. */
+        fun intent(ctx: Context, file: XFile, mode: String, component: ComponentName? = null): Intent =
             Intent(ctx, OpenShortcutActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
                 putExtra(EXTRA_SCHEME, file.scheme)
@@ -59,6 +65,7 @@ class OpenShortcutActivity : AppCompatActivity() {
                 putExtra(EXTRA_NAME, file.name)
                 putExtra(EXTRA_SIZE, file.size)
                 putExtra(EXTRA_MODE, mode)
+                component?.let { putExtra(EXTRA_COMPONENT, it.flattenToString()) }
             }
     }
 
@@ -74,15 +81,16 @@ class OpenShortcutActivity : AppCompatActivity() {
             displayName = intent.getStringExtra(EXTRA_NAME),
         )
         val mode = intent.getStringExtra(EXTRA_MODE) ?: MODE_AUTO
+        val component = intent.getStringExtra(EXTRA_COMPONENT)?.let { ComponentName.unflattenFromString(it) }
 
         if (scheme == "file" || scheme == "saf") {
-            proceed(file, mode)
+            proceed(file, mode, component)
         } else {
-            SecurityUi.gate(this) { proceed(file, mode) }
+            SecurityUi.gate(this) { proceed(file, mode, component) }
         }
     }
 
-    private fun proceed(file: XFile, mode: String) {
+    private fun proceed(file: XFile, mode: String, component: ComponentName?) {
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) { ensureSource(file.scheme) }
             if (!ok) {
@@ -91,7 +99,7 @@ class OpenShortcutActivity : AppCompatActivity() {
                 finish()
                 return@launch
             }
-            dispatch(file, mode)
+            dispatch(file, mode, component)
             finish()
         }
     }
@@ -107,12 +115,19 @@ class OpenShortcutActivity : AppCompatActivity() {
         return runCatching { Connections.ensure(this, conn) }.isSuccess
     }
 
-    private fun dispatch(file: XFile, mode: String) {
+    private fun dispatch(file: XFile, mode: String, component: ComponentName?) {
         when (mode) {
             MODE_TEXT -> TextViewerActivity.start(this, file, preview = false)
             MODE_HEX -> HexViewerActivity.start(this, file)
-            MODE_EXTERNAL -> if (!OpenFiles.openWith(this, file, forceChooser = true)) {
-                Toast.makeText(this, R.string.open_no_app, Toast.LENGTH_SHORT).show()
+            // component is always set when this shortcut was pinned through the picker; the
+            // chooser fallback only covers a shortcut somehow pinned without one.
+            MODE_EXTERNAL -> {
+                val opened = if (component != null) {
+                    OpenFiles.openWithComponent(this, file, component)
+                } else {
+                    OpenFiles.openWith(this, file, forceChooser = true)
+                }
+                if (!opened) Toast.makeText(this, R.string.open_no_app, Toast.LENGTH_SHORT).show()
             }
             else -> OpenDispatch.open(this, file)
         }

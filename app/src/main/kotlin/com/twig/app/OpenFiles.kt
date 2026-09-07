@@ -1,8 +1,11 @@
 package com.twig.app
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.webkit.MimeTypeMap
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -177,6 +180,35 @@ object OpenFiles {
                     Intent.createChooser(intent, context.getString(R.string.open_with_external))
                 } else intent,
             )
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
+        }
+    }
+
+    /**
+     * Candidate apps for viewing this file (excluding Twig itself) — used to let the user
+     * pick one **up front** when pinning a "with this app" desktop shortcut. A shortcut has
+     * no chance to show the system resolver's "just once / always" dialog on every tap the
+     * way [openWith] does, so the choice has to be made once, at creation time, and baked in.
+     */
+    fun resolveViewers(context: Context, file: XFile): List<ResolveInfo> {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
+        }
+        return context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .filter { it.activityInfo.packageName != context.packageName }
+    }
+
+    /** Open with one specific, already-chosen app (see [resolveViewers]) — no resolver, no "always" prompt, straight to that component. */
+    fun openWithComponent(context: Context, file: XFile, component: ComponentName): Boolean {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            setComponent(component)
+        }
+        return try {
+            context.startActivity(intent)
             true
         } catch (e: ActivityNotFoundException) {
             false

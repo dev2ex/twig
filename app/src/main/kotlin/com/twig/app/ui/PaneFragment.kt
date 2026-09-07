@@ -1,6 +1,8 @@
 package com.twig.app.ui
 
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -8,8 +10,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.pm.ShortcutInfoCompat
@@ -1708,9 +1713,10 @@ class PaneFragment : Fragment() {
 
     /**
      * Desktop shortcut for a single file: unlike [pinFileShortcut] (which just reveals a
-     * directory in the tree), tapping this one opens the file directly — so first ask how,
-     * reusing the same three overrides as the "Open with" menu ([chooseOpen]) plus the
-     * default automatic dispatch.
+     * directory in the tree), tapping this one opens the file directly — so first ask how:
+     * automatic dispatch (the default), as text, as hex, or with one specific app chosen
+     * right now ([pickAppForShortcut] — not the in-app "Open with" menu's resolver, which
+     * can re-ask on every tap; a shortcut can't do that, so the choice is made once here).
      */
     private fun pinFileOpenShortcut(file: XFile) {
         val ctx = requireContext()
@@ -1728,15 +1734,53 @@ class PaneFragment : Fragment() {
             pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_HEX)
         }
         actions.item(getString(R.string.open_with_app), R.drawable.ic_open_with) {
-            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_EXTERNAL)
+            pickAppForShortcut(file)
         }
         showActionMenu(ctx, getString(R.string.shortcut_open_mode_title), actions)
     }
 
+    /**
+     * "With this app" mode: a pinned shortcut has no chance to show the system resolver's
+     * "just once / always" dialog on every tap the way the in-app "Open with" menu does —
+     * the app has to be picked once, now, and baked into the shortcut ([OpenFiles.resolveViewers]
+     * / [OpenFiles.openWithComponent]). Skips straight to pinning when there's only one candidate.
+     */
+    private fun pickAppForShortcut(file: XFile) {
+        val ctx = requireContext()
+        val candidates = OpenFiles.resolveViewers(ctx, file)
+        if (candidates.isEmpty()) { toast(getString(R.string.open_no_app)); return }
+        if (candidates.size == 1) {
+            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_EXTERNAL, candidates[0].componentOf())
+            return
+        }
+        val pm = ctx.packageManager
+        val adapter = object : ArrayAdapter<ResolveInfo>(
+            ctx, R.layout.item_menu_action, R.id.label, candidates,
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = super.getView(position, convertView, parent)
+                val ri = getItem(position) ?: return v
+                v.findViewById<TextView>(R.id.label).text = ri.loadLabel(pm)
+                v.findViewById<ImageView>(R.id.icon).apply {
+                    imageTintList = null // real app icons, don't tint them like our own vectors
+                    setImageDrawable(ri.loadIcon(pm))
+                }
+                return v
+            }
+        }
+        AlertDialog.Builder(ctx)
+            .setTitle(getString(R.string.open_with_app))
+            .setAdapter(adapter) { _, w -> pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_EXTERNAL, candidates[w].componentOf()) }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .show()
+    }
+
+    private fun ResolveInfo.componentOf() = ComponentName(activityInfo.packageName, activityInfo.name)
+
     /** Icon: the row's thumbnail if thumbnails are on and one is already cached (no fresh
      * generation triggered — see [Thumbs.cached]), otherwise the same type icon the row itself
      * falls back to. */
-    private fun pinFileShortcutWithMode(file: XFile, mode: String) {
+    private fun pinFileShortcutWithMode(file: XFile, mode: String, component: ComponentName? = null) {
         val ctx = requireContext()
         val id = "shortcut_" + (file.scheme + ":" + file.path).hashCode()
         val thumb = if (Prefs.thumbs(ctx) && Thumbs.canThumb(file)) Thumbs.cached(file) else null
@@ -1744,7 +1788,7 @@ class PaneFragment : Fragment() {
         val shortcut = ShortcutInfoCompat.Builder(ctx, id)
             .setShortLabel(file.name.ifEmpty { file.path })
             .setIcon(icon)
-            .setIntent(OpenShortcutActivity.intent(ctx, file, mode))
+            .setIntent(OpenShortcutActivity.intent(ctx, file, mode, component))
             .build()
         ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null)
     }
