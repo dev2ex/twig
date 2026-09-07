@@ -16,12 +16,13 @@ This file inventories every third-party component Twig uses, as of
 
 ## 1. Third-party source included in this repository (vendored)
 
-Both are **unmodified upstream copies**, redistributed with this repository.
+All three are **unmodified upstream copies**, redistributed with this repository.
 
 | Component | Version | License | Location |
 |---|---|---|---|
 | **libsmb2** | 2.3.0 | **LGPL-2.1-or-later** | `fs-smb/src/main/cpp/libsmb2/` |
 | **Zstandard (zstd)** | 1.5.6 | **BSD-3-Clause** or GPL-2.0 (dual; Twig takes BSD-3-Clause) | `fs-zstd/src/main/cpp/zstd/` |
+| **Termux terminal JNI** (`termux.c`) | v0.118.0 | **GPL-3.0-only** | `app/src/main/cpp/termux/` |
 
 **libsmb2** — https://github.com/sahlberg/libsmb2
 Only the `lib/` and `include/` directories are vendored (LGPL-2.1-or-later); the
@@ -34,6 +35,16 @@ with the source: `fs-smb/src/main/cpp/libsmb2/COPYING` and
 Only the decompression side is vendored: `common/`, `decompress/` and the public
 headers (no compressor, no CLI). License text:
 `fs-zstd/src/main/cpp/zstd/LICENSE`.
+
+**Termux terminal JNI** — https://github.com/termux/termux-app
+A single file, `terminal-emulator/src/main/jni/termux.c` at tag `v0.118.0`,
+matching the `terminal-emulator` artifact in §2.1. It is compiled here rather
+than taken as the prebuilt `libtermux.so` inside that AAR, because every
+published Termux build links for 4 KB pages and Android 15 refuses to map such a
+library — the terminal would crash rather than degrade. Same source, same five
+exported symbols, relinked with `-Wl,-z,max-page-size=16384`. The Java side
+still comes from the AAR, so the two must be bumped together; see
+`app/src/main/cpp/termux/README.md`.
 
 ---
 

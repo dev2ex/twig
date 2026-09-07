@@ -142,6 +142,17 @@ android {
             "META-INF/DEPENDENCIES",
             "META-INF/INDEX.LIST",
         )
+        // ★ libtermux.so is built from vendored source (src/main/cpp/termux/),
+        // not taken from the terminal-emulator AAR. Every published Termux build
+        // is 4 KB-aligned, and Android 15 refuses to map such a library instead
+        // of just running it slower, so the terminal would crash on a 16 KB
+        // device. pickFirst rather than exclude: the pattern would otherwise
+        // match our own output too. Which copy actually shipped is checkable —
+        // ours links at 0x4000:
+        //   readelf -lW libtermux.so | grep LOAD
+        // Drop this, the cpp/termux directory and its CMake target together,
+        // once upstream ships an aligned build.
+        jniLibs.pickFirsts += "**/libtermux.so"
     }
 }
 

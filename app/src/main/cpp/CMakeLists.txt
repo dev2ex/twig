@@ -16,3 +16,15 @@ target_link_libraries(twigpty log)
 # Verify with: readelf -lW <lib>.so | grep LOAD   (Align must be >= 0x4000)
 target_link_options(twigpty PRIVATE "-Wl,-z,max-page-size=16384")
 
+# ── libtermux: Termux's terminal JNI, built from vendored source ────────────
+# ★ Not taken from the terminal-emulator AAR any more. Its prebuilt .so is
+# 4 KB-aligned in every published version, and Android 15 refuses to map such a
+# library rather than merely running it slower — so the terminal would crash on
+# a 16 KB device. Same source, same symbols, relinked for 16 KB.
+# See termux/README.md for provenance and for what to delete once upstream
+# ships an aligned build. The AAR's own .so is excluded in app/build.gradle.kts.
+add_library(termux SHARED termux/termux.c)
+
+target_compile_options(termux PRIVATE -O2)
+
+target_link_options(termux PRIVATE "-Wl,-z,max-page-size=16384")
