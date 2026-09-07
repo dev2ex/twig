@@ -4,7 +4,7 @@
 
 <h1 align="center">Twig</h1>
 
-<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">Simplified Chinese</a></p>
+<p align="center"><strong>English</strong> · <a href="README.zh-CN.md">中文</a></p>
 
 A size-first, dual-pane file manager for Android: every storage source lives in
 one tree and expands in place, instead of each being its own screen to enter.
