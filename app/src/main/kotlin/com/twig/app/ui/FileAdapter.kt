@@ -202,6 +202,22 @@ class FileAdapter(
         onSelectionChanged()
     }
 
+    /** Drop selected keys that no longer appear in the tree — collapsing a directory removes its (and its
+     *  expanded sub-directories') rows from the list without going through [toggleSelection], so without this
+     *  the checkbox state would survive a collapse and reappear checked when the directory is re-expanded. */
+    override fun onCurrentListChanged(
+        previousList: MutableList<PaneViewModel.Node>,
+        currentList: MutableList<PaneViewModel.Node>,
+    ) {
+        super.onCurrentListChanged(previousList, currentList)
+        if (selected.isEmpty()) return
+        val liveKeys = currentList.mapTo(HashSet()) { it.key }
+        if (selected.retainAll(liveKeys)) {
+            if (selected.isEmpty()) selectParent = null
+            onSelectionChanged()
+        }
+    }
+
     override fun getItemViewType(position: Int): Int {
         val n = getItem(position)
         return when {
