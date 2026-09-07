@@ -109,6 +109,9 @@ class TextViewerActivity : AppCompatActivity() {
     private var hlGen = 0 // invalidation marker for in-flight re-highlighting
     private var editMenuItem: MenuItem? = null
     private var saveMenuItem: MenuItem? = null
+    private var wrapMenuItem: MenuItem? = null
+    private var lineNumbersMenuItem: MenuItem? = null
+    private var themeMenuItem: MenuItem? = null
 
     /** Read-only state removes the keyListener (still selectable / copyable); edit state restores it — the original lives here. */
     private var savedKeyListener: KeyListener? = null
@@ -181,7 +184,7 @@ class TextViewerActivity : AppCompatActivity() {
             isVisible = false
             setOnMenuItemClickListener { save(); true }
         }
-        b.toolbar.menu.add(R.string.viewer_wrap).apply {
+        wrapMenuItem = b.toolbar.menu.add(R.string.viewer_wrap).apply {
             isCheckable = true
             isChecked = Prefs.viewerWrap(this@TextViewerActivity)
             setOnMenuItemClickListener {
@@ -192,7 +195,7 @@ class TextViewerActivity : AppCompatActivity() {
                 true
             }
         }
-        b.toolbar.menu.add(R.string.viewer_line_numbers).apply {
+        lineNumbersMenuItem = b.toolbar.menu.add(R.string.viewer_line_numbers).apply {
             isCheckable = true
             isChecked = Prefs.viewerLineNumbers(this@TextViewerActivity)
             setOnMenuItemClickListener {
@@ -205,7 +208,7 @@ class TextViewerActivity : AppCompatActivity() {
         }
         lang = CodeHighlighter.langFor(name)
         if (lang != null) {
-            b.toolbar.menu.add(R.string.viewer_theme).setOnMenuItemClickListener { pickTheme(); true }
+            themeMenuItem = b.toolbar.menu.add(R.string.viewer_theme).setOnMenuItemClickListener { pickTheme(); true }
         }
         val ext = name.substringAfterLast('.', "").lowercase()
         isHtml = ext == "html" || ext == "htm"
@@ -543,6 +546,11 @@ class TextViewerActivity : AppCompatActivity() {
         saveMenuItem?.isVisible = editMode
         // Search yields to editing: hit offsets get scrambled by edits
         searchMenuItem?.isVisible = !editMode
+        // Wrap/line numbers/theme act on the raw-text view (b.content); the rendered
+        // WebView has none of those, so they are noise while a markdown/HTML preview is showing.
+        wrapMenuItem?.isVisible = !previewMode
+        lineNumbersMenuItem?.isVisible = !previewMode
+        themeMenuItem?.isVisible = !previewMode
     }
 
     private fun updateTitle() {
