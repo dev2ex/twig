@@ -49,3 +49,11 @@ target_link_libraries(samba_jni
     smb2_static
     log          # Android __android_log_print
 )
+
+# ★ 16 KB page size (Android 15+). NDK r26 still links with a 4 KB max-page-size,
+# and on a device with 16 KB pages the loader rejects such a library outright —
+# the feature backed by it does not degrade, it fails to load. NDK r27 flipped
+# the default; until this project moves to it, the flag has to be explicit.
+# Verify with: readelf -lW <lib>.so | grep LOAD   (Align must be >= 0x4000)
+target_link_options(samba_jni PRIVATE "-Wl,-z,max-page-size=16384")
+
