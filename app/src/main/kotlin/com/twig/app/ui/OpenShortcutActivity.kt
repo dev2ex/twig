@@ -37,6 +37,12 @@ import kotlinx.coroutines.withContext
  * shortcuts without needing the target exported, and this intent carries an internal
  * scheme+path that can point at a private server — exporting it would let any app on the
  * device replay it.
+ *
+ * ★ Runs in **its own task** (a dedicated `taskAffinity` in the manifest + `FLAG_ACTIVITY_NEW_TASK`
+ * here): without that, if Twig's main task is already sitting in Recents, this Activity — and
+ * the viewer it starts — lands on top of *that* task instead of a fresh one. The symptom is
+ * exactly "opens the file browser first, then jumps to the file" (MainActivity flashes on
+ * screen underneath) and "back from the viewer goes to the file browser" instead of exiting.
  */
 class OpenShortcutActivity : AppCompatActivity() {
 
@@ -60,6 +66,9 @@ class OpenShortcutActivity : AppCompatActivity() {
         fun intent(ctx: Context, file: XFile, mode: String, component: ComponentName? = null): Intent =
             Intent(ctx, OpenShortcutActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
+                // The launcher runs as a different app/task; without this the taskAffinity
+                // declared in the manifest has nothing to act on (see the class doc).
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 putExtra(EXTRA_SCHEME, file.scheme)
                 putExtra(EXTRA_PATH, file.path)
                 putExtra(EXTRA_NAME, file.name)
@@ -95,7 +104,12 @@ class OpenShortcutActivity : AppCompatActivity() {
             val ok = withContext(Dispatchers.IO) { ensureSource(file.scheme) }
             if (!ok) {
                 Toast.makeText(this@OpenShortcutActivity, R.string.shortcut_source_unavailable, Toast.LENGTH_SHORT).show()
-                startActivity(Intent(this@OpenShortcutActivity, MainActivity::class.java))
+                // NEW_TASK here specifically routes to MainActivity's *own* (default-affinity)
+                // task rather than nesting a stray instance inside this Activity's isolated one.
+                startActivity(
+                    Intent(this@OpenShortcutActivity, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
                 finish()
                 return@launch
             }

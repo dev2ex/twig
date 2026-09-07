@@ -252,10 +252,17 @@
              dispatches straight to the chosen viewer, then finishes. Not exported — the
              system launches pinned shortcuts without needing that, and this intent carries
              an internal scheme+path that can point at a private server (same reasoning as
-             TerminalActivity above). -->
+             TerminalActivity above).
+             ★ Its own taskAffinity, distinct from MainActivity's (default = package name):
+             without one, launching this (with FLAG_ACTIVITY_NEW_TASK, see
+             OpenShortcutActivity.intent) lands on top of Twig's *existing* task if one is
+             already in Recents — MainActivity flashes on screen before the viewer covers it,
+             and pressing back in the viewer pops to MainActivity instead of exiting. A
+             separate affinity guarantees a fresh, isolated task every time. -->
         <activity
             android:name=".ui.OpenShortcutActivity"
             android:exported="false"
+            android:taskAffinity="com.twig.app.shortcut"
             android:label="@string/app_name"
             android:theme="@style/Theme.Twig.Translucent" />
 
