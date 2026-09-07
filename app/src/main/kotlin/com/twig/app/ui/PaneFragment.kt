@@ -1614,6 +1614,7 @@ class PaneFragment : Fragment() {
         } else {
             actions.item(getString(R.string.open_with_external), R.drawable.ic_open_with) { openExternal(file) }
             actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file) }
+            actions.item(getString(R.string.action_pin_shortcut), R.drawable.ic_shortcut) { pinFileOpenShortcut(file) }
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFile(file) }
         }
         if (includeFavorite) {
@@ -1701,6 +1702,49 @@ class PaneFragment : Fragment() {
             .setShortLabel(file.name.ifEmpty { revealPath })
             .setIcon(ShortcutIcons.of(ctx, iconRes))
             .setIntent(intent)
+            .build()
+        ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null)
+    }
+
+    /**
+     * Desktop shortcut for a single file: unlike [pinFileShortcut] (which just reveals a
+     * directory in the tree), tapping this one opens the file directly — so first ask how,
+     * reusing the same three overrides as the "Open with" menu ([chooseOpen]) plus the
+     * default automatic dispatch.
+     */
+    private fun pinFileOpenShortcut(file: XFile) {
+        val ctx = requireContext()
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(ctx)) {
+            toast(getString(R.string.pin_shortcut_unsupported)); return
+        }
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.shortcut_open_auto), R.drawable.ic_shortcut) {
+            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_AUTO)
+        }
+        actions.item(getString(R.string.open_text), R.drawable.ic_file_doc) {
+            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_TEXT)
+        }
+        actions.item(getString(R.string.open_hex), R.drawable.ic_file) {
+            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_HEX)
+        }
+        actions.item(getString(R.string.open_with_app), R.drawable.ic_open_with) {
+            pinFileShortcutWithMode(file, OpenShortcutActivity.MODE_EXTERNAL)
+        }
+        showActionMenu(ctx, getString(R.string.shortcut_open_mode_title), actions)
+    }
+
+    /** Icon: the row's thumbnail if thumbnails are on and one is already cached (no fresh
+     * generation triggered — see [Thumbs.cached]), otherwise the same type icon the row itself
+     * falls back to. */
+    private fun pinFileShortcutWithMode(file: XFile, mode: String) {
+        val ctx = requireContext()
+        val id = "shortcut_" + (file.scheme + ":" + file.path).hashCode()
+        val thumb = if (Prefs.thumbs(ctx) && Thumbs.canThumb(file)) Thumbs.cached(file) else null
+        val icon = if (thumb != null) ShortcutIcons.of(ctx, thumb) else ShortcutIcons.of(ctx, FileIcons.baseIconRes(file))
+        val shortcut = ShortcutInfoCompat.Builder(ctx, id)
+            .setShortLabel(file.name.ifEmpty { file.path })
+            .setIcon(icon)
+            .setIntent(OpenShortcutActivity.intent(ctx, file, mode))
             .build()
         ShortcutManagerCompat.requestPinShortcut(ctx, shortcut, null)
     }

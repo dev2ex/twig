@@ -38,4 +38,17 @@ object ShortcutIcons {
         d.draw(Canvas(bmp))
         return IconCompat.createWithBitmap(bmp)
     }
+
+    /**
+     * A real bitmap (a file's own thumbnail) rather than one of our tinted vectors — no tint
+     * to bake in, so this just center-crops to square and hands it straight to the launcher,
+     * which scales/masks it like any adaptive icon.
+     */
+    fun of(ctx: Context, bitmap: Bitmap): IconCompat {
+        val side = minOf(bitmap.width, bitmap.height)
+        val x = (bitmap.width - side) / 2
+        val y = (bitmap.height - side) / 2
+        val cropped = Bitmap.createBitmap(bitmap, x, y, side, side)
+        return IconCompat.createWithBitmap(cropped)
+    }
 }

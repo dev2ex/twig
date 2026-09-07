@@ -115,6 +115,9 @@
     <string name="title_selected_count">%1$d selected</string>
     <string name="action_pin_shortcut">Add shortcut to home screen</string>
     <string name="pin_shortcut_unsupported">Current launcher doesn\'t support pinning shortcuts</string>
+    <string name="shortcut_open_mode_title">Shortcut opens with</string>
+    <string name="shortcut_open_auto">Automatic (same as tapping it)</string>
+    <string name="shortcut_source_unavailable">Couldn\'t reach this file\'s source; opening Twig instead</string>
     <string name="confirm_remove_favorite">Remove %1$s from favorites?</string>
     <string name="action_rename">Rename</string>
     <string name="hint_name">Name</string>

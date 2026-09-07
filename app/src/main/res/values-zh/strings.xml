@@ -115,6 +115,9 @@
     <string name="title_selected_count">已选择 %1$d 项</string>
     <string name="action_pin_shortcut">添加快捷方式到桌面</string>
     <string name="pin_shortcut_unsupported">当前桌面不支持添加快捷方式</string>
+    <string name="shortcut_open_mode_title">快捷方式的打开方式</string>
+    <string name="shortcut_open_auto">自动识别(与点按一致)</string>
+    <string name="shortcut_source_unavailable">无法连接到该文件的来源,已改为打开 Twig</string>
     <string name="confirm_remove_favorite">从收藏移除 %1$s?</string>
     <string name="action_rename">重命名</string>
     <string name="hint_name">名称</string>

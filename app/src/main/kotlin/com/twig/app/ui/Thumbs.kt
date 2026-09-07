@@ -245,6 +245,11 @@ object Thumbs {
                 f.extension == "pdf" || hasCover(f)
         }
 
+    /** Whatever is already sitting in the in-memory cache for this file, with no generation
+     * triggered — used when pinning a desktop shortcut, which wants "reuse what the row is
+     * already showing", not "wait for one to be generated". */
+    fun cached(file: XFile): Bitmap? = mem.get(keyOf(file))
+
     /** Whether this entry's source can provide its own cover (Jellyfin / Emby poster). */
     /** Source has its own cover (media-server poster); whether a directory produces an image and whether a file uses the poster aspect ratio both depend on this. */
     fun hasCover(f: XFile): Boolean =

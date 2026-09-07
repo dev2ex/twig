@@ -247,6 +247,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Desktop shortcut for a single file (see PaneFragment.pinFileOpenShortcut /
+             OpenShortcutActivity): headless relay, reconnects the source if needed and
+             dispatches straight to the chosen viewer, then finishes. Not exported — the
+             system launches pinned shortcuts without needing that, and this intent carries
+             an internal scheme+path that can point at a private server (same reasoning as
+             TerminalActivity above). -->
+        <activity
+            android:name=".ui.OpenShortcutActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.Twig.Translucent" />
+
         <!-- Receives images/files shared from other apps ("Copy to Twig…"),
              pops the directory picker -->
         <activity
