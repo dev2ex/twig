@@ -64,3 +64,33 @@ no non-free section, so it would certainly be rejected**. So `:app` has two flav
   `rar5.c` could also be ported to Kotlin (BSD-2 explicitly allows it as long as the copyright
   notice is kept; zero size cost and memory safe).
 
+**(★ 2026-09-08, the first fdroiddata submission)** The flavor split is necessary but **not
+sufficient**: `fdroid build` runs a source scanner before it compiles anything, and that scanner
+reads the **whole tree**, not the flavor's classpath. So a green
+`libreReleaseRuntimeClasspath | grep junrar` does not get you past it — the submission failed with
+
+```
+ERROR: Found usual suspect 'libs.junrar: com.github.junrar:junrar' at fs-archive-rar/build.gradle.kts
+ERROR: Could not build app com.twig.app: Can't build due to 1 error while scanning
+```
+
+- **The fix is `rm`, not `scanignore`.** Both are common in fdroiddata (610 files use
+  `scanignore`), but they say different things: `scanignore` means "this hit is a false positive,
+  trust me", and junrar is genuinely non-free — it is not a false positive, it is simply unused.
+  `rm` deletes it, so the build F-Droid performs contains no non-free code at all, which is a
+  claim a reviewer can check rather than accept:
+  ```yaml
+  rm:
+    - fs-archive-rar
+  prebuild: sed -i '/fs-archive-rar/d' build.gradle.kts ../settings.gradle.kts
+  ```
+  Two references have to go with the module — `include(":fs-archive-rar")` in
+  `settings.gradle.kts` and `"fullImplementation"(project(":fs-archive-rar"))` in
+  `app/build.gradle.kts`. Gradle fails on a `project(...)` reference to a module that is not
+  included, even from a configuration this flavor never resolves. `rm` paths are relative to the
+  repository root; `prebuild` runs inside `subdir`, hence the `../` on one of them.
+- **Test the deletion locally before pushing it.** `rm -rf fs-archive-rar`, apply the same sed,
+  run `:app:assembleLibreRelease`, then `git checkout --` everything back. A CI round trip on
+  fdroiddata costs minutes and burns reviewer attention; this costs 46 seconds.
+- **`Categories` must be alphabetically ordered** or `fdroid rewritemeta` fails — it is a
+  formatting check, not a content one, and it prints the exact diff it wants.

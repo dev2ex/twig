@@ -413,8 +413,11 @@ add its symptom here.
   has no options at all", a root process left alive after an upgrade.
 - **[RAR and F-Droid](docs/lessons/rar-and-fdroid.md)** — `full` and `libre` differ in RAR
   **alone**; check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`; the
-  verification criterion is the dependency graph, not that it compiles. Also records every
-  rejected route (unrar-free, porting, clean-room) so they are not researched again.
+  verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads
+  the whole tree, so the split alone does not get a build through — the module has to be `rm`'d.
+  Also records every rejected route (unrar-free, porting, clean-room) so they are not researched
+  again.
+  *Explains*: "libre has no junrar on its classpath, so why did fdroid build stop on it".
 - **[Password encryption, config backup and the app lock](docs/lessons/security.md)** —
   toggling the master password or fingerprint rewrites no field ciphertext; on any crypto
   failure return the input unchanged; every exported Activity must call `SecurityUi.gate`;
