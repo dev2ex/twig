@@ -30,7 +30,9 @@ target_compile_options(smb2_static PRIVATE
     -Wno-unused-parameter -Wno-sign-compare
     -Wno-implicit-function-declaration
     -include time.h
-)
+
+    -ffile-prefix-map=${CMAKE_SOURCE_DIR}=.
+    -ffile-prefix-map=${CMAKE_BINARY_DIR}=.)
 
 # ── JNI shared library ──────────────────────────────────────────────────────
 add_library(samba_jni SHARED samba_jni.cpp)
@@ -43,7 +45,18 @@ target_include_directories(samba_jni PRIVATE
 
 target_compile_definitions(samba_jni PRIVATE HAVE_CONFIG_H _GNU_SOURCE)
 
-target_compile_options(samba_jni PRIVATE -O2 -fvisibility=hidden)
+
+# ★ Reproducible builds: without this the GNU build-id differs between machines.
+# The linker computes it before the .so is stripped, over an image that still
+# carries absolute source paths in its debug info — so /home/me/... and
+# /builds/ci/... hash differently, the strip then removes the paths but keeps the
+# id, and two byte-identical libraries end up with 20 differing bytes. Mapping
+# both prefixes to "." makes the id depend on content alone.
+# Verify: build the same commit at two different paths, then
+#   readelf -n <lib>.so | grep 'Build ID'   must match.
+target_compile_options(samba_jni PRIVATE -O2 -fvisibility=hidden
+    -ffile-prefix-map=${CMAKE_SOURCE_DIR}=.
+    -ffile-prefix-map=${CMAKE_BINARY_DIR}=.)
 
 target_link_libraries(samba_jni
     smb2_static
