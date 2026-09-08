@@ -50,8 +50,8 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 289
-        versionName = "1.8.4"
+        versionCode = 290
+        versionName = "1.8.5"
         vectorDrawables.useSupportLibrary = true
         // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -126,6 +126,19 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    // ★ AGP puts a "Dependency metadata" blob in the APK signing block by default —
+    // an encrypted-for-Google inventory of the libraries used, meant for Play Console
+    // vulnerability scanning. F-Droid's scanner rejects it outright ("found extra
+    // signing block 'Dependency metadata'"), which is right: nobody outside Google can
+    // read it, so it is opaque binary content nobody can review. It is 5.8 KB here and
+    // worth nothing to a build distributed anywhere but Play.
+    // Check with: unzip -p app.apk | ... or read the signing block IDs; 0x504b4453 is
+    // this one, and it should simply be absent.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     packaging {
