@@ -94,3 +94,37 @@ ERROR: Could not build app com.twig.app: Can't build due to 1 error while scanni
   fdroiddata costs minutes and burns reviewer attention; this costs 46 seconds.
 - **`Categories` must be alphabetically ordered** or `fdroid rewritemeta` fails — it is a
   formatting check, not a content one, and it prints the exact diff it wants.
+
+**(★ 2026-09-08, reproducible builds)** Enabling reproducible builds — F-Droid rebuilds the
+release and compares it byte for byte against the APK we publish, then ships **our** signature
+rather than theirs — took three releases to land, and the two things that blocked it were both
+invisible from a normal build.
+
+- **AGP embeds a "Dependency metadata" block in the APK signing block** and F-Droid rejects it
+  outright (`found extra signing block 'Dependency metadata'`). It is an inventory of the
+  libraries used, encrypted so only Google can read it, meant for Play Console's vulnerability
+  scanning — 5.8 KB of content nobody outside Google can review. Off with
+  `dependenciesInfo { includeInApk = false; includeInBundle = false }`. Check by reading the
+  signing block IDs directly: `0x504b4453` is this one and should be absent, leaving only the v2
+  signature and Google's padding.
+- **R8 8.5.35, the version AGP 8.5.2 bundles, is not deterministic across machines.** The whole
+  APK matched theirs except *four bytes*: the `pg-map-id` in the R8 marker string inside
+  `classes.dex`, which is a hash of the obfuscation mapping — so the mapping carries something
+  environment-dependent that never reaches the code. `baseline.prof` then differs too, because it
+  indexes into the dex; that is a symptom, not a second problem. Pinning a newer R8 in the root
+  `buildscript` (8.8.34; F-Droid's docs name 8.6.33 / 8.7.20 / 8.8+ as the fixed releases) fixes
+  it, with AGP left alone.
+  ★ **Four plausible causes were ruled out first, so do not re-test them**: the `rm
+  fs-archive-rar` in the F-Droid recipe (dex is identical with or without it), CPU count (their
+  docs name it, but 2-core and 16-core builds here agree), the build path, and instability on
+  this machine (repeated builds, clean and incremental, are stable). The lesson is that
+  "everything identical except the R8 marker" points at the R8 version and nothing else.
+- **Publishing has to include the `libre` APK.** The comparison is against the flavour F-Droid
+  builds, so a release carrying only `full` gives it nothing to compare. Both flavours ship per
+  release now, named `Twig-<version>-<flavour>.apk` so the `Binaries:` URL template stays valid.
+- **Release builds must come from a real git checkout of the tag.** AGP writes
+  `META-INF/version-control-info.textproto` with the revision; built from an exported tarball it
+  says `NO_VALID_GIT_FOUND` instead and the comparison fails on that file alone.
+- Two things that are *not* problems, having been measured: R8 with the same version is
+  deterministic (two builds with intermediates deleted are byte-identical), and JDK 17 and JDK 21
+  produce the same output.

@@ -416,8 +416,10 @@ add its symptom here.
   verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads
   the whole tree, so the split alone does not get a build through — the module has to be `rm`'d.
   Also records every rejected route (unrar-free, porting, clean-room) so they are not researched
-  again.
-  *Explains*: "libre has no junrar on its classpath, so why did fdroid build stop on it".
+  again, and what reproducible builds took: AGP's dependency-metadata block has to be turned off,
+  and AGP 8.5.2's bundled R8 is not deterministic across machines.
+  *Explains*: "libre has no junrar on its classpath, so why did fdroid build stop on it",
+  "F-Droid's build matches ours in every byte but four".
 - **[Password encryption, config backup and the app lock](docs/lessons/security.md)** —
   toggling the master password or fingerprint rewrites no field ciphertext; on any crypto
   failure return the input unchanged; every exported Activity must call `SecurityUi.gate`;
