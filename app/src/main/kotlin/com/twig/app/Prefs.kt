@@ -62,7 +62,6 @@ object Prefs {
     private const val KEY_REMEMBER = "remember_location"
     private const val KEY_FULLSCREEN = "fullscreen"
     private const val KEY_IMG_AUTOFIT = "img_autofit"
-    private const val KEY_VIDEO_SCALE = "video_scale_mode"
     private const val KEY_TERM_KEEP_AWAKE = "terminal_keep_awake"
 
     /** Keep screen on for the terminal page, default off (avoid pointless battery drain). */
@@ -163,14 +162,6 @@ object Prefs {
         sp(ctx).edit().putInt("term_resize_cap_$scheme", cap).apply()
     }
 
-
-    /** Rotate images to match screen orientation (landscape photo rotates in portrait), default on. */
-    /** Video display mode: 0=best fit 1=crop to fill 2=stretch to fill. */
-    fun videoScaleMode(ctx: Context): Int = sp(ctx).getInt(KEY_VIDEO_SCALE, 0)
-
-    fun setVideoScaleMode(ctx: Context, mode: Int) {
-        sp(ctx).edit().putInt(KEY_VIDEO_SCALE, mode).apply()
-    }
 
     /** Temporary speed-up multiplier when holding the screen, stored as percent (200 = 2×), default 2×. */
     fun longPressSpeed(ctx: Context): Float = sp(ctx).getInt("longpress_speed", 200) / 100f

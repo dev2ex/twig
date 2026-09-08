@@ -196,7 +196,6 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(name))
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        scaleMode = com.twig.app.Prefs.videoScaleMode(this)
         audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         b.btnPlay.setOnClickListener { toggle() }
         b.btnSubtitle.setOnClickListener { showSubtitleDialog() }
@@ -811,7 +810,6 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             .setTitle(R.string.player_scale_mode)
             .setSingleChoiceItems(names, scaleMode.coerceIn(0, 2)) { d, which ->
                 scaleMode = which
-                com.twig.app.Prefs.setVideoScaleMode(this, which)
                 resizeSurface()
                 b.pgsView.invalidate()
                 d.dismiss()
