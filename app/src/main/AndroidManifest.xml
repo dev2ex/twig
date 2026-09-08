@@ -78,6 +78,15 @@
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
 
+    <!-- ★ android:usesCleartextTraffic below is deliberate, and F-Droid's scanner reports it
+         as "Major - Cleartext Traffic Permitted" on every submission. FTP has no encrypted
+         mode at all, and the self-hosted servers this app exists to reach — MinIO,
+         Jellyfin/Emby, WebDAV on a NAS — are routinely plain HTTP on a LAN; Twig's own
+         Wi-Fi sharing server is HTTP as well. A network security config does not solve
+         this, it only moves it: that file whitelists by domain, and the host here is
+         whatever the user typed into a connection dialog, so the only rule it could express
+         is a base-config permitting cleartext — the same thing as this attribute, spelled
+         somewhere the scanner looks less closely. -->
     <application
         android:name=".TwigApp"
         android:allowBackup="true"
