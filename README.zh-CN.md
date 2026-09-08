@@ -10,7 +10,7 @@
 一个要「进去」的界面。原生 Kotlin + XML View,不引入 Material 库,依赖压到最低。
 能手写就手写——WebDAV、S3 签名、git、restic 全部从零实现。
 
-**版本 1.8.5**(versionCode 290)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**版本 1.8.6**(versionCode 291)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- 截图直接引用 fastlane/ 下的那份,不在这里再放一遍:F-Droid 要求它们位于那个
