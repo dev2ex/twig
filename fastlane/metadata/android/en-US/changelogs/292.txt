@@ -1,0 +1,5 @@
+A PDF stored inside an archive now opens, instead of asking which app to use and then failing in every one of them, Twig included.
+
+Expanding a tar inside a gz/xz/bz2/zst layer has to unpack it locally first. It now says so beforehand when the archive is large or its size cannot be read, rather than starting silently; abandoning the row stops the work instead of letting it run on unseen.
+
+Video opens with best fit every time — the aspect mode picked for one file no longer carries to the next.
