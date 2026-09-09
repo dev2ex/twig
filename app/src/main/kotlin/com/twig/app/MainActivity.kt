@@ -750,14 +750,22 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     // ---- Add / edit server (only save the config; connect on node expand) ----
 
-    /** Save (on edit, remove the old entry first and drop any cached connection). */
+    /**
+     * Save (on edit, drop any cached connection for the old entry).
+     *
+     * Editing goes through [ConnectionStore.replace] rather than remove + save so the
+     * server **keeps its position in the sidebar**: an edit may change the label (host,
+     * port, root directory are all part of it), and re-adding at the end would move a row
+     * the user only meant to rename.
+     */
     private fun saveServer(edit: SavedConnection?, conn: SavedConnection, group: String) {
         if (edit != null) {
-            ConnectionStore.remove(this, edit)
             paneAt(0)?.viewModel?.forgetServer(edit.label())
             paneAt(1)?.viewModel?.forgetServer(edit.label())
+            ConnectionStore.replace(this, edit, conn)
+        } else {
+            ConnectionStore.save(this, conn)
         }
-        ConnectionStore.save(this, conn)
         refreshTrees()
         activePane()?.viewModel?.expandGroup(group)
     }

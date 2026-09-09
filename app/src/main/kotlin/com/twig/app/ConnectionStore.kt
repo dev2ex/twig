@@ -174,9 +174,41 @@ object ConnectionStore {
         }.getOrDefault(emptyList())
     }
 
-    /** Save (dedup by label; the latter overwrites). */
+    /**
+     * Save (dedup by [SavedConnection.label]; the latter overwrites).
+     *
+     * ★ **An existing entry keeps its slot in the list** — the stored order is the order
+     * the sidebar shows servers in, and this method is also called from background writes
+     * the user never asked for (SFTP recording a host key, Jellyfin writing back a token
+     * on first connect). Appending instead of replacing in place made simply expanding a
+     * server jump it to the bottom of its group, which was most visible right after
+     * importing a backup — the backup strips `hostKey` / `token`, so the first expansion
+     * of every server rewrote it and reshuffled the whole list.
+     */
     fun save(ctx: Context, conn: SavedConnection) {
-        val list = all(ctx).filter { it.label() != conn.label() } + conn
+        val list = all(ctx).toMutableList()
+        val at = list.indexOfFirst { it.label() == conn.label() }
+        if (at >= 0) list[at] = conn else list += conn
+        persist(ctx, list)
+    }
+
+    /**
+     * Replace [old] with [conn] **in place** (used when editing a server): editing may
+     * change the label — host, port, root directory are all part of it — so this cannot go
+     * through [save], which matches on the new label and would append. Any other entry
+     * that collides with the new label is dropped, and when [old] is gone the connection
+     * is simply appended.
+     */
+    fun replace(ctx: Context, old: SavedConnection, conn: SavedConnection) {
+        val list = all(ctx).toMutableList()
+        val at = list.indexOfFirst { it.label() == old.label() }
+        if (at < 0) {
+            save(ctx, conn)
+            return
+        }
+        list[at] = conn
+        // A collision can only be with a *different* slot: the edited one now holds conn itself.
+        list.removeAll { it !== conn && it.label() == conn.label() }
         persist(ctx, list)
     }
 

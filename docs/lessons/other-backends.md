@@ -62,3 +62,17 @@
   restic/zstd when changing test hardware.
 - **Do not SSH into servers to read logs**: automatic mode blocks "remote shell reads against
   unauthorized hosts". If a remote diagnosis is needed, ask the user to run it.
+
+- **★ Saving a connection must not move it in the list** (2026-09-09, `ConnectionStore.save`):
+  the stored order **is** the order the sidebar lists servers in (`PaneViewModel.addGroup`
+  walks `ConnectionStore.all` as-is), and `save` used to be "drop the entry with this label,
+  append the new one" — so any write reordered the list. Most writes are not user actions at
+  all: `Connections.rememberHostKey` (SFTP TOFU) and `rememberAuth` (Jellyfin/Emby token) fire
+  on the **first successful connect**, i.e. the moment you expand the row. The report was
+  "import a backup, expand the first server, it jumps to the bottom" — the backup deliberately
+  exports `token` / `userId` / `hostKey` empty (`Backup.kt`), so after an import *every* server
+  rewrites itself once, which is why the reshuffle showed up there and nowhere else.
+  `save` now replaces in place and only appends a genuinely new label; editing a server goes
+  through `ConnectionStore.replace(old, conn)` instead of remove + save, because an edit can
+  change `label()` itself (host, port and the root directory are all part of it) and matching
+  on the new label would append. Pinned by `ConnectionStoreOrderTest`.

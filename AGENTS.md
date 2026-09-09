@@ -464,5 +464,8 @@ add its symptom here.
   shortcut icons must not rely on `android:tint` and dynamic shortcuts follow the app's
   language; libsmb2's context is not thread-safe, so never name a member function `run`;
   do not SSH into servers to read logs.
+  Saving a connection replaces it in place — the stored order is the sidebar's order, and
+  host keys / tokens are written back the moment a server is expanded.
   *Explains*: a white, invisible shortcut icon, an empty long-press menu, an SMB crash
-  while thumbnails load.
+  while thumbnails load, a server that jumps to the bottom of its group the first time you
+  expand it after importing a backup.
