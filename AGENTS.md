@@ -466,6 +466,8 @@ add its symptom here.
   do not SSH into servers to read logs.
   Saving a connection replaces it in place — the stored order is the sidebar's order, and
   host keys / tokens are written back the moment a server is expanded.
+  ★ A `ContentProvider` must use `requireNotNull(context)` — `requireContext()` is API 30
+  and nothing warns you below it.
   *Explains*: a white, invisible shortcut icon, an empty long-press menu, an SMB crash
   while thumbnails load, a server that jumps to the bottom of its group the first time you
-  expand it after importing a backup.
+  expand it after importing a backup, "track info closes the music page" on Android 9.

@@ -76,3 +76,22 @@
   through `ConnectionStore.replace(old, conn)` instead of remove + save, because an edit can
   change `label()` itself (host, port and the root directory are all part of it) and matching
   on the new label would append. Pinned by `ConnectionStoreOrderTest`.
+
+- **★ `ContentProvider.requireContext()` is API 30, and nothing warns you** (2026-09-09,
+  `StreamProvider`): minSdk is 24, the call compiles, R8 keeps it, and every device from
+  API 30 up runs it fine — so it shipped in 1.6.0 and was only reported at 1.9.0, from an
+  Android 9 phone. The idiom is borrowed from `Fragment`, where `requireContext()` has
+  always existed; on `ContentProvider` it was added much later. Below API 30 **every**
+  provider entry point dies with `NoSuchMethodError: No virtual method requireContext()`,
+  and it dies on **the caller's** thread — media3's `MetadataRetriever` / ExoPlayer's
+  loader calling `openFileDescriptor()` — which is outside every `runCatching` we own, so
+  the process is killed. The report read "tapping *track info* in the music page shows
+  nothing and closes the music page": `FileInfo` builds the media section through a
+  `content://` from `StreamProvider`, so the dialog never got a chance to appear.
+  A provider uses `requireNotNull(context)`; `StreamProvider.ctx()` is now the single
+  place that reads it. `ProviderRequireContextTest` pins the rule as a source check
+  (lint's `NewApi` cannot be enforced in `:app` — the module has a large backlog of
+  unrelated lint errors — and no API < 30 device is in the test matrix).
+  ★ The general lesson: an "obviously safe" framework call inherited from a *different*
+  base class needs its `since` checked against minSdk, because the compiler, R8 and every
+  modern test device all stay silent.

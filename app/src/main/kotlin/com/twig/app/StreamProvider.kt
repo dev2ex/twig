@@ -49,6 +49,18 @@ class StreamProvider : ContentProvider() {
 
     override fun onCreate(): Boolean = true
 
+    /**
+     * ★ Never call `requireContext()` here: `ContentProvider.requireContext()` only exists from
+     * **API 30**, and neither the Kotlin compiler nor a plain build complains — minSdk is 24, so
+     * on Android 9 every provider entry point dies with
+     * `NoSuchMethodError: No virtual method requireContext()` the first time another component
+     * opens a `content://` URI. The crash lands on whatever thread called
+     * `openFileDescriptor()` (media3's MetadataRetriever / ExoPlayer loader), which is outside
+     * any of our try/catch, so it kills the process — the symptom is "tapping track info closes
+     * the music page" on an API < 30 device (the 1.9.0 / LM-G710 incident).
+     */
+    private fun ctx(): Context = requireNotNull(context)
+
     override fun getType(uri: Uri): String =
         OpenFiles.mimeOf(uri.lastPathSegment ?: "")
 
@@ -59,7 +71,7 @@ class StreamProvider : ContentProvider() {
         selectionArgs: Array<String>?,
         sortOrder: String?,
     ): Cursor {
-        val f = decode(requireContext(), uri)
+        val f = decode(ctx(), uri)
         val cols = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(cols, 1).apply {
             addRow(cols.map {
@@ -73,7 +85,7 @@ class StreamProvider : ContentProvider() {
     }
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
-        val ctx = requireContext()
+        val ctx = ctx()
         if ("w" in mode) throw SecurityException(ctx.getString(R.string.stream_read_only))
         val f = decode(ctx, uri)
         if (f.scheme == "file") {
@@ -97,7 +109,7 @@ class StreamProvider : ContentProvider() {
                 val local = OpenFiles.materialize(ctx, f)
                 return ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
             }
-            val sm = requireNotNull(context).getSystemService(Context.STORAGE_SERVICE) as StorageManager
+            val sm = ctx.getSystemService(Context.STORAGE_SERVICE) as StorageManager
             val src = fs.openRandom(f)
             val size = if (f.size > 0) f.size else src.length()
             return sm.openProxyFileDescriptor(
