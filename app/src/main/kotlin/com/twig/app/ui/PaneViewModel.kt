@@ -333,7 +333,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * We don't cancel that coroutine: `listChildren` is blocking IO and cancel
      * can't interrupt it; meanwhile `runCatching` catches `CancellationException`
      * too and would surface it to the user as a "listing failed" error — the user
-     * gave up on it themselves, but they would get an error toast anyway.
+     * gave up on it themselves, but they would get an error toast anyway. (Since
+     * `mine` ends up false for an abandoned key, that failure branch never actually
+     * calls [emitFailure] regardless of what — or whether — it throws.)
+     *
+     * One case *can* stop early: materializing a nested archive to the local cache
+     * (see [localArchive]) is our own streaming copy loop, not one opaque blocking
+     * call, so it polls [abandoned] between chunks and aborts instead of downloading
+     * an abandoned huge archive to completion in the background after the row that
+     * asked for it has already collapsed or been superseded.
      */
     private var pendingExpand: String? = null
 
@@ -351,8 +359,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * back before the completion lands, just re-claim and put the spinner back —
      * **don't re-issue the request** (see the `-> Unit` branch inside `toggleFile`/
      * `toggleServer`).
+     *
+     * ★ Backed by a concurrent set (not a plain `HashSet`) even though it's written
+     * from the main thread: [localArchive]'s copy loop reads it from the IO thread to
+     * bail out of materializing an abandoned nested archive early (see there) — the
+     * one case where the in-flight work *can* cooperatively stop instead of running
+     * to completion in the background.
      */
-    private val abandoned = HashSet<String>()
+    private val abandoned: MutableSet<String> = ConcurrentHashMap.newKeySet()
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
     /** File key (fileKey) for which the properties card is open; the card content is cached and dropped when closed/folded. */
@@ -860,7 +874,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         expanded.add(key)
         rebuild()
         viewModelScope.launch {
-            val r = runCatching { withContext(io) { listChildren(archive) } }
+            val r = runCatching { withContext(io) { listChildren(archive, key) } }
             val mine = landExpand(key)
             r.fold(
                 {
@@ -1750,7 +1764,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             // empty cache — flashing the "registered at load"
                             // branch name for a frame before the new one lands.
                             if (freshGit) (FsRegistry.of(n.file) as? GitFileSystem)?.invalidate()
-                            listChildren(n.file)
+                            listChildren(n.file, key)
                         }
                     }
                     // Meanwhile the user opened something else; this expansion is
@@ -2192,8 +2206,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val mountRoots = ConcurrentHashMap<String, XFile>()
 
-    /** List children: directories are listed directly (also identifying restic repos / git repos); archives are mounted and the archive root is listed. IO thread. */
-    private fun listChildren(file: XFile): Listing =
+    /**
+     * List children: directories are listed directly (also identifying restic repos / git repos); archives are mounted and the archive root is listed. IO thread.
+     * [rowKey] is the tree row this listing was requested for, so a nested archive that needs local materialization ([localArchive]) can notice mid-copy that the
+     * row was abandoned (collapsed / superseded by a later tap) and stop instead of downloading to completion in the background; null for call sites that don't
+     * go through the claim/land/[abandoned] dance (session restore, favorites) and so have nothing meaningful to check.
+     */
+    private fun listChildren(file: XFile, rowKey: String? = null): Listing =
         if (file.isDir) {
             val kids = FsRegistry.of(file).list(file)
             Listing(
@@ -2206,7 +2225,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             // zip/7z parse streamingly over the seekable read channel (no full download for remote hosts). Materialize to cache first in two cases (see archiveTarget):
             // - rar: junrar only accepts local files
             // - nested archive (archive-in-archive) with the inner entry compressed: seeking through the outer decompression stream degenerates into repeated full decompressions. STORED (uncompressed, the normal case for zip-in-zip) can be sliced directly — no materialization, instant open.
-            val (afs, archive) = archiveTarget(file)
+            val (afs, archive) = archiveTarget(file, rowKey)
             // ★ rootOf must run **before** the encryption probe: non-local hosts (SMB/WebDAV/S3...) are only registered at mount time, before that needsPassword would try to open a remote path as a local file, read no bytes, and get silently swallowed by the internal runCatching into "no password needed" — remote encrypted archives would never prompt for a password again (see RemoteArchiveMountTest).
             val root = afs.rootOf(archive)
             unlockIfEncrypted(afs, archive, file)
@@ -2269,13 +2288,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * Archive file → (matching ArchiveFileSystem, the XFile that actually gets mounted).
      * Materialization rules match [listChildren] exactly — extracted because both places need them. IO thread.
      */
-    private fun archiveTarget(file: XFile): Pair<ArchiveFileSystem, XFile> {
+    private fun archiveTarget(file: XFile, rowKey: String? = null): Pair<ArchiveFileSystem, XFile> {
         val scheme = Archives.schemeFor(file) ?: throw FsException(str(R.string.err_unsupported_type))
         val afs = FsRegistry.of(scheme) as ArchiveFileSystem
         val hostFs = runCatching { FsRegistry.of(file) }.getOrNull()
         val needLocal = scheme == Archives.RAR_SCHEME ||
             (hostFs is ArchiveFileSystem && !hostFs.fastRandom(file))
-        return afs to if (needLocal) localArchive(file) else file
+        return afs to if (needLocal) localArchive(file, rowKey) else file
     }
 
     /** Re-expand this row after a successful unlock (the row that already exists in the tree, or the externally mounted row). */
@@ -2296,8 +2315,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * Materialize an archive into the cache directory (RAR and nested archives
      * require this), keyed by source + path + size + mtime so re-expanding the same
      * archive doesn't re-download / re-extract; local files are returned as-is.
+     *
+     * [rowKey], when given, is polled between chunks: if the row that asked for this
+     * has since been abandoned (collapsed, or superseded by a later tap — see
+     * [abandoned]), the copy aborts instead of downloading/decompressing a — possibly
+     * huge — nested archive to completion for a row nobody is waiting on anymore.
      */
-    private fun localArchive(file: XFile): XFile {
+    private fun localArchive(file: XFile, rowKey: String? = null): XFile {
         if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
         val dir = com.twig.app.CacheDirs.dir(getApplication(), com.twig.app.CacheDirs.ARCHIVES)
         val key = Integer.toHexString(
@@ -2312,9 +2336,20 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (!out.exists() || (file.size > 0 && out.length() != file.size)) {
             val tmp = java.io.File(dir, "$key.part")
             try {
-                // 1MB buffer (the default 8KB turns network round-trip latency into many small reads; see CopyEngine).
+                // 1MB buffer (the default 8KB turns network round-trip latency into many small reads; see CopyEngine);
+                // also our own read/write loop rather than InputStream.copyTo so there's a spot to poll abandonment.
                 FsRegistry.of(file).openInput(file).use { ins ->
-                    tmp.outputStream().use { ins.copyTo(it, 1 shl 20) }
+                    tmp.outputStream().use { outs ->
+                        val buf = ByteArray(1 shl 20)
+                        while (true) {
+                            if (rowKey != null && rowKey in abandoned) {
+                                throw java.io.IOException("archive materialization abandoned: $rowKey")
+                            }
+                            val n = ins.read(buf)
+                            if (n < 0) break
+                            outs.write(buf, 0, n)
+                        }
+                    }
                 }
                 out.delete()
                 if (!tmp.renameTo(out)) throw FsException(str(R.string.err_cache_archive_failed, file.name))
