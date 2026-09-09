@@ -19,17 +19,23 @@ import android.util.Base64
 import com.twig.core.FsRegistry
 import com.twig.core.RandomSource
 import com.twig.core.XFile
+import com.twig.fs.archive.ArchiveFileSystem
 import java.io.File
 
 /**
  * Streaming ContentProvider: exposes an [XFile] from any source (local /
  * SMB / archive / FTP / ...) as a `content://` URI to other apps ("Open
- * with..."), without caching the whole file first.
+ * with..."), without caching the whole file first — *when* the source can
+ * actually do positional reads cheaply.
  *
  * - Local files return a real fd directly;
  * - Virtual sources on API 26+ use openProxyFileDescriptor (a FUSE-backed
  *   seekable proxy fd: the external player's seek bar becomes a positional
- *   read via openRandom);
+ *   read via openRandom) **when the source reports true random access**
+ *   (`randomAccessEfficient()` / an archive entry's `fastRandom()`); a
+ *   compressed archive entry doesn't, so it's materialized to the cache once
+ *   instead — see the comment in [openFile] for why proxying it anyway is a
+ *   correctness bug, not just a slow path;
  * - On older systems this degrades to a one-way pipe (not seekable).
  *
  * The URI has the form
@@ -75,6 +81,22 @@ class StreamProvider : ContentProvider() {
         }
         val fs = FsRegistry.of(f)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // ★ A compressed archive entry (fastRandom() false — DEFLATE, not STORED) has no
+            // true positional read: FileSystem.openRandom's default "reopen and skip" redoes
+            // the whole decompression from byte 0 on every out-of-order seek. That is fine for
+            // a player that mostly reads forward, but a random-access reader (PdfRenderer
+            // parsing the trailer/xref at the file's tail, then jumping around the object
+            // table) turns into a blocking read that can take minutes and pins whatever thread
+            // called openFileDescriptor() for all of it — looking like "won't open" to the
+            // caller, and, with enough concurrent attempts, starving Dispatchers.IO for
+            // everything else that shares it (see docs/lessons/ for the incident this fixed).
+            // Materializing once first is O(size) and bounded, same trade [OpenFiles.materialize]
+            // already makes for RAR/nested archives in the tree.
+            val efficient = (fs as? ArchiveFileSystem)?.fastRandom(f) ?: fs.randomAccessEfficient()
+            if (!efficient) {
+                val local = OpenFiles.materialize(ctx, f)
+                return ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
             val sm = requireNotNull(context).getSystemService(Context.STORAGE_SERVICE) as StorageManager
             val src = fs.openRandom(f)
             val size = if (f.size > 0) f.size else src.length()

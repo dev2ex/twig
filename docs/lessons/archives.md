@@ -138,3 +138,62 @@
     zeroed local header, trailing descriptor) and reads them back byte for byte — a
     round-trip through our own writer would not have caught this, because our writer does
     not produce descriptors.
+
+- **"Open with another app" on a compressed archive entry: proxying it is a correctness
+  bug, not just a slow path (★ 2026-09-09, `StreamProvider`)**: opening a PDF that lives
+  inside a `.zip`/`.7z`/`.rar`/etc. via "Open with" — including picking Twig's own
+  `PdfViewerActivity` from the chooser — could fail to open at all, with **both** the
+  built-in viewer and every third-party app tried. Afterward the whole tree stopped
+  responding (couldn't open any file or directory), and the next copy attempt failed with
+  `open failed: ENOENT (No such file or directory)` but succeeded on a plain retry.
+  - **Why**: `StreamProvider.openFile` handed every non-local source to
+    `sm.openProxyFileDescriptor` backed by `fs.openRandom(f)`, regardless of whether that
+    source can actually do positional reads. For a compressed (DEFLATE) zip entry,
+    `fastRandom()` is false and `openRandom` falls back to `FileSystem`'s default
+    "reopen and skip" — **O(position)**, redoing the whole decompression from byte 0 on
+    every out-of-order seek. That is an acceptable cost for a player that mostly reads
+    forward, but `PdfRenderer`'s native constructor reads the trailer/xref at the file's
+    *tail* first and then jumps around the object table building its index — each such
+    jump on a several-MB PDF can mean decompressing the entire file again. The read blocks
+    whatever thread called `openFileDescriptor()` (a `Dispatchers.IO` thread, shared with
+    every other IO the app does, `PaneViewModel` included) for as long as that takes —
+    from the caller's side this just looks like "won't open", identically for Twig's own
+    viewer and any third-party one, since both go through the same proxy. Enough
+    concurrent stuck attempts (built-in, a third-party app, a retry) can pin enough
+    `Dispatchers.IO` threads that unrelated tree operations queued on the same dispatcher
+    stop making progress until one of the stuck reads finally gives up — which reads as
+    "the whole tree stopped working", and whatever was mid-flight when it unstuck (a
+    listing racing a copy) can transiently see a path that has since changed, hence the
+    ENOENT-then-succeeds-on-retry.
+  - **Fix**: before proxying, ask the same question the tree-expand path already asks
+    (`ArchiveFileSystem.fastRandom(file)` — see `PaneViewModel.archiveTarget`) or
+    `randomAccessEfficient()` for a non-archive source; when it says no, materialize the
+    file once (`OpenFiles.materialize`, the same bounded O(size) copy RAR/nested archives
+    already pay for in the tree) and hand back a real local fd instead of a proxy one. A
+    STORED zip entry, a tar entry (always contiguous, `TarFileSystem.fastRandom` is
+    unconditionally true) and SMB/WebDAV/FTP/SFTP (`randomAccessEfficient() == true`) are
+    unaffected and keep streaming without a local copy.
+  - **Not PDF-specific**: any random-access-hungry reader (or one that seeks late in the
+    file) hitting a compressed archive entry through "open with"/"share" had the same
+    exposure — a compressed video shared to an external player, for instance. The fix is
+    at the `StreamProvider` level, not in `PdfDoc`, so it covers all of them.
+
+  - **Follow-up the same day: the built-in viewer now takes in-archive PDFs itself.** The fix
+    above made the bytes reachable, but the user still had to pick an app for a file type Twig
+    renders — `OpenFiles.canViewPdf` only accepted `file`/SAF/`share`, so a PDF in a zip went to
+    the chooser, and picking Twig there meant Twig handing itself a `content://` for its own
+    provider and reading its own zip back through it. That round trip failed within 300 ms
+    (logcat: `PdfViewerActivity` started 12:24:06.021, gone by 12:24:06.336) and said nothing
+    about why, because `PdfDoc.open` swallowed every failure through three bare
+    `runCatching{}.getOrNull()`.
+    - `canViewPdf` is now "is it a .pdf", full stop. `PdfDoc.open` covers every source: a real
+      fd where one exists (local, SAF, another app's provider, or **our own StreamProvider** for
+      SMB/WebDAV-class sources, so a network PDF still renders without downloading), and one
+      bounded copy where it doesn't. Routing non-local sources through `StreamProvider` on
+      purpose keeps the proxy-vs-materialize policy in exactly one place.
+    - **Thumbnails deliberately did not change** (`Thumbs` stays local-only for PDF): a
+      thumbnail is speculative work nobody asked for, so downloading a document to draw one is a
+      bad trade — opening one the user just tapped is not.
+    - ★ **Never swallow the reason an open failed.** Every branch in `PdfDoc.open` now logs
+      (`twig-pdf`) with the throwable. Three silent `getOrNull()`s cost a whole diagnosis round
+      trip: the only thing recoverable after the fact was "the activity lived 300 ms".

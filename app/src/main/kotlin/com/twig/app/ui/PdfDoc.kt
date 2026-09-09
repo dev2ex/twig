@@ -11,10 +11,12 @@ import android.graphics.pdf.models.selection.SelectionBoundary
 import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import androidx.annotation.RequiresApi
 import com.twig.app.OpenFiles
 import com.twig.app.SafFileSystem
 import com.twig.app.ShareSourceFileSystem
+import com.twig.app.StreamProvider
 import com.twig.core.XFile
 import java.io.File
 import java.util.concurrent.Executors
@@ -359,43 +361,65 @@ class PdfDoc private constructor(
         val TEXT_SUPPORTED: Boolean
             get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
 
+        private const val TAG = "twig-pdf"
+
         /**
-         * Open [file] for rendering. **Blocking** — call from a worker thread. Returns null when
-         * the source cannot hand back a seekable fd, or the bytes are not a readable PDF.
+         * Open [file] for rendering, from **any** source. **Blocking** — call from a worker
+         * thread. Returns null only when the bytes turn out not to be a readable PDF, or the
+         * source could not be read at all.
+         *
+         * Two steps, in this order:
+         *  1. a seekable fd if one can be had ([fdOf]) — a local file, SAF, another app's
+         *     provider, or our own [StreamProvider] proxy fd for sources with real positional
+         *     reads (SMB/WebDAV/FTP/SFTP), which lets PdfRenderer seek without downloading;
+         *  2. otherwise one bounded copy into the cache ([OpenFiles.materialize]).
+         *
+         * ★ Step 2 is not a rare edge case, it is the whole reason in-archive PDFs work: an
+         * entry inside a *compressed* archive has no positional read at all (openRandom
+         * degrades to "reopen and decompress from byte 0"), and a PDF reader seeks constantly —
+         * the trailer first, then all over the object table. One copy beats an unbounded number
+         * of full decompressions; see docs/lessons/archives.md.
+         *
+         * ★ Every failure is logged rather than swallowed. This used to return null through
+         * three silent `runCatching`s, and a PDF that would not open told nobody why.
          */
         fun open(ctx: Context, file: XFile): PdfDoc? {
             fromFd(fdOf(ctx, file))?.let { return it }
-            // ★ A `content://` from another app is the one source whose fd may not be seekable:
-            // FileProvider / MediaStore / DocumentsProvider all hand back a real file, but a
-            // provider that only streams gives a pipe, and PdfRenderer rejects it. Rather than
-            // fail the open, copy it out once and render the local copy — the caller has already
-            // committed to reading this document, and it is the only way "open with Twig" works
-            // from every app instead of most of them.
-            if (file.scheme == ShareSourceFileSystem.SCHEME) {
-                val local = runCatching { OpenFiles.materialize(ctx, file) }.getOrNull() ?: return null
-                return fromFd(
-                    runCatching {
-                        ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
-                    }.getOrNull(),
-                )
-            }
-            return null
+            val local = runCatching { OpenFiles.materialize(ctx, file) }
+                .onFailure { Log.w(TAG, "materialize failed: ${file.scheme}:${file.path}", it) }
+                .getOrNull() ?: return null
+            return fromFd(
+                runCatching {
+                    ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
+                }.onFailure { Log.w(TAG, "cannot open the cached copy $local", it) }.getOrNull(),
+            )
         }
 
-        /** Read-only fd for the sources PdfRenderer can be pointed at; null for everything else. */
+        /**
+         * Read-only fd for [file]: local files open straight, another app's `content://` goes
+         * through its own provider, and anything else (archives, network, apps tree, …) goes
+         * through **our** [StreamProvider] — which already decides proxy-fd vs. materialize by
+         * whether the source has real positional reads, so that policy lives in one place.
+         * Null when no fd could be obtained; [open] then falls back to a plain copy.
+         */
         private fun fdOf(ctx: Context, file: XFile): ParcelFileDescriptor? = when (file.scheme) {
             "file" -> runCatching {
                 ParcelFileDescriptor.open(File(file.path), ParcelFileDescriptor.MODE_READ_ONLY)
-            }.getOrNull()
+            }.onFailure { Log.w(TAG, "cannot open local ${file.path}", it) }.getOrNull()
             SafFileSystem.SCHEME, ShareSourceFileSystem.SCHEME ->
-                runCatching { ctx.contentResolver.openFileDescriptor(Uri.parse(file.path), "r") }.getOrNull()
-            else -> null
+                runCatching { ctx.contentResolver.openFileDescriptor(Uri.parse(file.path), "r") }
+                    .onFailure { Log.w(TAG, "no fd from provider ${file.path}", it) }.getOrNull()
+            else ->
+                runCatching {
+                    ctx.contentResolver.openFileDescriptor(StreamProvider.uriFor(ctx, file), "r")
+                }.onFailure { Log.w(TAG, "no fd for ${file.scheme}:${file.path}", it) }.getOrNull()
         }
 
         /** Hand [pfd] to PdfRenderer, closing it again on any failure — the fd is ours from here on. */
         private fun fromFd(pfd: ParcelFileDescriptor?): PdfDoc? {
             if (pfd == null) return null
-            val renderer = runCatching { PdfRenderer(pfd) }.getOrNull()
+            val renderer = runCatching { PdfRenderer(pfd) }
+                .onFailure { Log.w(TAG, "PdfRenderer rejected the fd", it) }.getOrNull()
             if (renderer == null || renderer.pageCount <= 0) {
                 runCatching { renderer?.close() }
                 runCatching { pfd.close() }

@@ -56,23 +56,26 @@ object OpenFiles {
     fun isDoc(file: XFile): Boolean = !file.isDir && file.extension in DOC_EXT
 
     /**
-     * Openable by the built-in [com.twig.app.ui.PdfViewerActivity].
+     * Openable by the built-in [com.twig.app.ui.PdfViewerActivity] — **every** source is
+     * (★ 2026-09-09; it used to be `file`/SAF/`share` only).
      *
-     * ★ Not simply "is it a .pdf": PdfRenderer has no streaming interface and needs a seekable
-     * fd, so only `file`, SAF and `content://` entries qualify — the same wall
-     * [com.twig.app.ui.Thumbs] hits generating PDF thumbnails. A PDF on SMB or inside a zip
-     * still goes to an external app; routing it to our viewer would just show an error dialog
-     * instead of opening.
+     * PdfRenderer has no streaming interface and needs a seekable fd, which is why this was
+     * once restricted to the sources that can hand one back; a PDF on SMB or inside a zip was
+     * sent to an external app instead. That turned out to be the worse half of the trade: the
+     * external app gets the very same bytes through [StreamProvider], so it hit the same wall
+     * — except a third-party reader seeking around a compressed archive entry has no
+     * materialize fallback, and just never opens (see docs/lessons/archives.md). Meanwhile the
+     * user had to pick an app for a file type we render ourselves.
+     * [com.twig.app.ui.PdfDoc.open] now covers the gap for every source: a seekable fd when one
+     * exists (local, SAF, another app's provider, or our own proxy fd for SMB/WebDAV-class
+     * sources with real positional reads), and one bounded copy to the cache when it doesn't.
      *
-     * `share` is in the list because that is how another app's ACTION_VIEW arrives
-     * ([com.twig.app.ui.ViewIntentActivity]) — most providers hand back a real fd, and
-     * [com.twig.app.ui.PdfDoc.open] materialises the few that cannot. It never shows up in the
-     * file tree, so allowing it here costs the pane nothing.
+     * ★ This is deliberately *not* the same rule [com.twig.app.ui.Thumbs] uses for PDF
+     * thumbnails, which stays local-only: a thumbnail is speculative work the user never asked
+     * for, so downloading a whole document to draw one is a bad trade — opening one they just
+     * tapped is not.
      */
-    fun canViewPdf(file: XFile): Boolean =
-        !file.isDir && file.extension == "pdf" &&
-            (file.scheme == "file" || file.scheme == SafFileSystem.SCHEME ||
-                file.scheme == ShareSourceFileSystem.SCHEME)
+    fun canViewPdf(file: XFile): Boolean = !file.isDir && file.extension == "pdf"
 
     fun isApk(file: XFile): Boolean = !file.isDir && file.extension == "apk"
 

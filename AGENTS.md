@@ -381,10 +381,14 @@ add its symptom here.
   (rewriting means decompressing and recompressing everything); encryption detection must
   come *after* `rootOf()`; encrypted archives are read-only; expanding an archive selects
   its root as the paste target; never read a zip with `ZipInputStream` — a STORED entry
-  with a data descriptor has no readable length outside the central directory.
+  with a data descriptor has no readable length outside the central directory; "open with
+  another app" on a compressed entry must materialize first, never proxy it (`fastRandom`
+  false means "reopen and skip", not "somewhat slower").
   *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
   asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
-  install with "only DEFLATED entries can have EXT descriptor".
+  install with "only DEFLATED entries can have EXT descriptor", a PDF inside an archive
+  that no app (built-in or third-party) can open, followed by the whole tree freezing up
+  and a copy failing with ENOENT until retried.
 - **[WiFi sharing](docs/lessons/wifi-sharing.md)** — read-only by default through one
   `requireWrite` funnel, `..` always rejected, `DAV: 2` + LOCK or Finder mounts read-only;
   addressing uses `path` and links are built from `rawPath`. A new mode needs tests *for
