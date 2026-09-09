@@ -242,6 +242,8 @@
     <string name="archive_save_pw">Save password</string>
     <string name="archive_wrong_pw">Wrong password</string>
     <string name="archive_locked">%1$s is encrypted</string>
+    <string name="archive_confirm_materialize">%1$s must be downloaded and decompressed locally (about %2$s) before it can be browsed. Continue?</string>
+    <string name="archive_confirm_materialize_unknown">%1$s must be downloaded and decompressed locally before it can be browsed; its size can\'t be determined in advance and it may be large. Continue?</string>
     <string name="conflict_title">A file with the same name exists</string>
     <string name="conflict_overwrite">Overwrite</string>
     <string name="conflict_skip">Skip</string>

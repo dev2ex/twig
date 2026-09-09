@@ -239,6 +239,8 @@
     <string name="archive_save_pw">保存密码</string>
     <string name="archive_wrong_pw">密码错误</string>
     <string name="archive_locked">%1$s 已加密</string>
+    <string name="archive_confirm_materialize">打开 %1$s 需要先下载并解压约 %2$s 到本地,是否继续?</string>
+    <string name="archive_confirm_materialize_unknown">打开 %1$s 需要先下载并解压到本地,大小未知,可能很大,是否继续?</string>
     <string name="conflict_title">已存在同名文件</string>
     <string name="conflict_overwrite">覆盖</string>
     <string name="conflict_skip">跳过</string>

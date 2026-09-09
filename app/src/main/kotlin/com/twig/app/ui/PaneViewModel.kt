@@ -231,6 +231,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
          */
         val passwordFor: XFile? = null,
         /**
+         * Expanding this row would materialize a nested/RAR archive to local cache first
+         * (see [archiveTarget]'s needLocal test) and it's either large enough or of
+         * unknown size to be worth asking about (see [materializeConfirmNeeded]) — the UI
+         * shows a "this needs downloading, continue?" dialog instead of silently
+         * expanding. One-shot, same as [passwordFor].
+         */
+        val confirmMaterialize: XFile? = null,
+        /**
          * In the middle of restoring the last position (progressively expanding, the
          * row count keeps changing). The UI uses it to tell "this version of the rows
          * is not the final one", repeatedly anchoring the scroll to the target row
@@ -369,6 +377,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val abandoned: MutableSet<String> = ConcurrentHashMap.newKeySet()
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
+    /** Row keys the user already said "yes, download it" to (see [State.confirmMaterialize]) — don't ask again for the same row this session. */
+    private val confirmedMaterialize = HashSet<String>()
     /** File key (fileKey) for which the properties card is open; the card content is cached and dropped when closed/folded. */
     private val infoOpen = LinkedHashSet<String>()
     private val infoCache = HashMap<String, com.twig.app.FileInfo.Details>()
@@ -1753,6 +1763,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             // reinstated — sending another request is just a duplicate. Same
             // pattern as the connecting branch in toggleServer.
             loadingKeys.contains(key) -> rebuild()
+            materializeConfirmNeeded(n.file, key) != null -> {
+                _state.value = _state.value.copy(confirmMaterialize = n.file)
+            }
             else -> {
                 loadingKeys.add(key); rebuild() // Show the spinner first.
                 viewModelScope.launch {
@@ -2291,10 +2304,59 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun archiveTarget(file: XFile, rowKey: String? = null): Pair<ArchiveFileSystem, XFile> {
         val scheme = Archives.schemeFor(file) ?: throw FsException(str(R.string.err_unsupported_type))
         val afs = FsRegistry.of(scheme) as ArchiveFileSystem
-        val hostFs = runCatching { FsRegistry.of(file) }.getOrNull()
-        val needLocal = scheme == Archives.RAR_SCHEME ||
-            (hostFs is ArchiveFileSystem && !hostFs.fastRandom(file))
+        val needLocal = needsLocalMaterialization(file, scheme)
         return afs to if (needLocal) localArchive(file, rowKey) else file
+    }
+
+    /** Whether mounting [file] (of archive-format [scheme]) needs [localArchive] first — RAR always does (junrar only accepts local files), everything else only when the host can't slice it directly. Cheap, no IO: used both to actually mount and, before that, to decide whether [materializeConfirmNeeded] should ask first. */
+    private fun needsLocalMaterialization(file: XFile, scheme: String): Boolean {
+        val hostFs = runCatching { FsRegistry.of(file) }.getOrNull()
+        return scheme == Archives.RAR_SCHEME || (hostFs is ArchiveFileSystem && !hostFs.fastRandom(file))
+    }
+
+    /** Threshold above (or at unknown size) which expanding a row that needs [localArchive] first asks for confirmation instead of silently downloading/decompressing — see [State.confirmMaterialize]. */
+    private val materializeConfirmBytes = 200L * 1024 * 1024
+
+    /**
+     * Whether tapping [file] (tree row [rowKey]) should show the "this needs downloading,
+     * continue?" dialog instead of expanding straight away: it must actually need
+     * [localArchive] at all, not already be cached locally (a cache hit expands
+     * instantly — nothing to warn about), not already have been confirmed once this
+     * session, and be large enough — or of unknown size, which [localArchive]'s own
+     * "size 0 means unknown, not empty" handling means we genuinely can't rule out being
+     * huge — to be worth asking about. Cheap, no IO (a single cache-directory file stat).
+     */
+    private fun materializeConfirmNeeded(file: XFile, rowKey: String): XFile? {
+        if (rowKey in confirmedMaterialize) return null
+        val scheme = Archives.schemeFor(file) ?: return null
+        if (!needsLocalMaterialization(file, scheme)) return null
+        if (file.size in 1 until materializeConfirmBytes) return null
+        val out = archiveCacheFile(file)
+        val cached = out.exists() && (file.size <= 0 || out.length() == file.size)
+        return if (cached) null else file
+    }
+
+    /** Where [localArchive] would place (or has already placed) the local copy of [file] — extracted so [materializeConfirmNeeded] can check for a cache hit without downloading anything. */
+    private fun archiveCacheFile(file: XFile): java.io.File {
+        val dir = com.twig.app.CacheDirs.dir(getApplication(), com.twig.app.CacheDirs.ARCHIVES)
+        val key = Integer.toHexString(
+            "${file.scheme}:${file.path}:${file.size}:${file.lastModified}".hashCode(),
+        )
+        return java.io.File(dir, "${key}_${file.name}")
+    }
+
+    /**
+     * The user answered the "this needs downloading, continue?" dialog (see
+     * [State.confirmMaterialize]). [proceed] false just dismisses it — the row stays
+     * collapsed, nothing else happens; true remembers the row as confirmed (so
+     * re-entering [materializeConfirmNeeded] this session lets it straight through) and
+     * re-runs the tap that was held back.
+     */
+    fun answerMaterializeConfirm(file: XFile, proceed: Boolean) {
+        _state.value = _state.value.copy(confirmMaterialize = null)
+        if (!proceed) return
+        confirmedMaterialize.add(fileKey(file))
+        expandFileNode(file)
     }
 
     /** Re-expand this row after a successful unlock (the row that already exists in the tree, or the externally mounted row). */
@@ -2324,17 +2386,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun localArchive(file: XFile, rowKey: String? = null): XFile {
         if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
         val dir = com.twig.app.CacheDirs.dir(getApplication(), com.twig.app.CacheDirs.ARCHIVES)
-        val key = Integer.toHexString(
-            "${file.scheme}:${file.path}:${file.size}:${file.lastModified}".hashCode(),
-        )
-        val out = java.io.File(dir, "${key}_${file.name}")
+        val out = archiveCacheFile(file)
         // ★ A size of 0 must not be used as the validity check: bz2 cannot report its
         // uncompressed size (the format has no such field), so a tar inside one is a host
         // of "unknown size" — comparing against 0 would re-inflate the whole thing on
         // every expand. Dropping that check is safe because the cache key already covers
         // source + path + size + mtime: a different host is a different key.
         if (!out.exists() || (file.size > 0 && out.length() != file.size)) {
-            val tmp = java.io.File(dir, "$key.part")
+            val tmp = java.io.File(dir, "${out.name}.part")
             try {
                 // 1MB buffer (the default 8KB turns network round-trip latency into many small reads; see CopyEngine);
                 // also our own read/write loop rather than InputStream.copyTo so there's a spot to poll abandonment.
@@ -2420,7 +2479,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 if (currentKey == "search:$k") currentKey = null // The highlight used to point at it; if the row is gone, don't leave it dangling.
             }
         }
-        _state.value = State(rows, currentDir, currentKey, null, null, restoring, scrollKey)
+        _state.value = State(rows, currentDir, currentKey, null, null, null, restoring, scrollKey)
     }
 
     private fun addFile(

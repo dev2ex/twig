@@ -307,6 +307,7 @@ class PaneFragment : Fragment() {
         host?.onClipTargetChanged() // Paste target = currentDir, refresh that line on the bar to follow.
         s.error?.let { toast(it) }
         s.passwordFor?.let { askArchivePassword(it) }
+        s.confirmMaterialize?.let { askMaterializeConfirm(it) }
         syncObservers(s.rows)
     }
 
@@ -1412,6 +1413,32 @@ class PaneFragment : Fragment() {
                 }
             }
             .setOnDismissListener { pwDialogFor = null }
+            .show()
+    }
+
+    /**
+     * "This needs downloading, continue?" dialog. Triggered by [PaneViewModel.State.confirmMaterialize]
+     * when a tap would materialize a large (or unknown-size) nested/RAR archive to local
+     * cache before it can be browsed (see [PaneViewModel.materializeConfirmNeeded]).
+     */
+    private var materializeDialogFor: String? = null
+
+    private fun askMaterializeConfirm(file: XFile) {
+        val key = "${file.scheme}:${file.path}"
+        if (materializeDialogFor == key) return
+        val ctx = context ?: return
+        materializeDialogFor = key
+        val msg = if (file.size > 0) {
+            getString(R.string.archive_confirm_materialize, file.name, Format.size(file.size))
+        } else {
+            getString(R.string.archive_confirm_materialize_unknown, file.name)
+        }
+        AlertDialog.Builder(ctx)
+            .setMessage(msg)
+            .setNegativeButton(R.string.dialog_cancel) { _, _ -> viewModel.answerMaterializeConfirm(file, false) }
+            .setPositiveButton(R.string.dialog_ok) { _, _ -> viewModel.answerMaterializeConfirm(file, true) }
+            .setOnCancelListener { viewModel.answerMaterializeConfirm(file, false) }
+            .setOnDismissListener { materializeDialogFor = null }
             .show()
     }
 
