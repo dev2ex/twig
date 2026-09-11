@@ -12,9 +12,9 @@ object Prefs {
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    /** Row height density: 0=compact (default) 1=normal 2=roomy. Only affects row
+    /** Row height density: 0=compact 1=normal (default) 2=roomy. Only affects row
      * height / icon size; font size is controlled by [textSize]. */
-    fun density(ctx: Context): Int = sp(ctx).getInt(KEY_DENSITY, 0)
+    fun density(ctx: Context): Int = sp(ctx).getInt(KEY_DENSITY, 1)
 
     /**
      * ★ Before changing row height, **pin [textSize] to its current value**: when it
@@ -30,7 +30,7 @@ object Prefs {
     }
 
     /**
-     * List font size: 0=small 1=medium 2=large.
+     * List font size: 0=small 1=medium (the default, inherited from [density]) 2=large.
      *
      * ★ When it was never set it **tracks [density]** — they used to be the same
      * setting (changing row height changed both), and giving font size a hardcoded

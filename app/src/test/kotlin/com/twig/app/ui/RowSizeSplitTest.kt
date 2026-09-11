@@ -94,12 +94,12 @@ class RowSizeSplitTest {
      */
     @Test
     fun `adjusting row height does not change text size`() {
-        Prefs.setDensity(app, 0) // text size was never set, so right now it = 0 (small)
+        Prefs.setDensity(app, 0) // text size was never set, so it stays pinned at the default 1 (medium)
         val (_, before) = render(Prefs.density(app), Prefs.textSize(app))
 
         Prefs.setDensity(app, 2) // adjust row height only
 
-        assertEquals("text size should stay put after adjusting row height", 0, Prefs.textSize(app))
+        assertEquals("text size should stay put after adjusting row height", 1, Prefs.textSize(app))
         val (h, after) = render(Prefs.density(app), Prefs.textSize(app))
         assertEquals("row height should follow it to become 54dp", (54 * dpi).toInt(), h)
         assertEquals("font size should not move by even one pixel", before, after, 0.01f)
