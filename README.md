@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.9.0** (versionCode 292) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.9.3** (versionCode 293) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <!-- Screenshots are referenced out of fastlane/ rather than copied here: F-Droid

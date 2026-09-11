@@ -1,0 +1,5 @@
+Fixes a crash on Android 9 and 10: opening track info in the music page, or anything reading a file through a content:// URI, killed the app. The provider used a method that only exists from Android 11.
+
+Servers keep their place in the sidebar. Saving a connection moved it to the bottom of its group, and the host key and Jellyfin token are written on first connect, so expanding a server reordered the list.
+
+A fresh install starts at normal row height and text size, not the smallest.
