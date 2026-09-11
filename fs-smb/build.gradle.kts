@@ -14,7 +14,7 @@ android {
 
         ndk {
             // Size-first: only 64-bit mainstream ABIs; add armeabi-v7a/x86 if broader coverage is needed
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
         }
         externalNativeBuild {
             cmake {

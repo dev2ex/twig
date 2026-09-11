@@ -10,7 +10,7 @@ that library is **not** free software, and §2.2 applies to `full` only. Rows
 below are otherwise common to both.
 
 This file inventories every third-party component Twig uses, as of
-**1.9.3 (versionCode 293)**. Keep it in sync when dependencies change.
+**1.9.4 (versionCode 294)**. Keep it in sync when dependencies change.
 
 ---
 

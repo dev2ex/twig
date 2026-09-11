@@ -40,6 +40,12 @@ val debugSign = (
         }
     )?.toBoolean() == true
 
+// Default assembleFullRelease keeps producing the one fat APK with arm64-v8a +
+// x86_64 (documented in CLAUDE.md). Pass -PabiSplit=true to instead get three
+// separate per-ABI APKs (armeabi-v7a too) for size/compatibility comparison —
+// see splits { abi {} } below.
+val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
+
 android {
     namespace = "com.twig.app"
     compileSdk = 36
@@ -50,11 +56,16 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 293
-        versionName = "1.9.3"
+        versionCode = 294
+        versionName = "1.9.4"
         vectorDrawables.useSupportLibrary = true
-        // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // AGP rejects having both `ndk.abiFilters` and `splits.abi` set at once, so
+        // this only applies for the normal (non-split) build; -PabiSplit=true picks its
+        // ABIs from `splits { abi {} }` below instead.
+        if (!abiSplit) {
+            // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        }
         // libtwigpty: PTY allocation inside the privileged process (see cpp/twigpty.c top comment)
         externalNativeBuild { cmake { arguments("-DANDROID_STL=none") } }
     }
@@ -99,6 +110,19 @@ android {
         abi { enableSplit = true }
         density { enableSplit = true }
         language { enableSplit = true }
+    }
+
+    // Per-ABI APK splits, opt-in via -PabiSplit=true (2026-09-11, evaluation build):
+    // emits one APK per ABI (armeabi-v7a included) instead of the default fat APK, so
+    // the variants can be installed/compared side by side. isUniversalApk stays false —
+    // there is no fourth "everything" APK, only the three per-ABI ones.
+    splits {
+        abi {
+            isEnable = abiSplit
+            reset()
+            if (abiSplit) include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     externalNativeBuild {

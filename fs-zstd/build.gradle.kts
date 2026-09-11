@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         minSdk = 24
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
