@@ -38,6 +38,31 @@ restic are all implemented from scratch.
 
 ---
 
+## Download
+
+Signed APKs are attached to every [GitHub release](https://github.com/dev2ex/twig/releases/latest):
+
+| File | Take it if |
+|---|---|
+| `Twig-<version>-full.apk` | **You are not sure.** arm64-v8a + x86_64, with read-only RAR |
+| `Twig-<version>-libre.apk` | You want free software throughout — no RAR, because `junrar` is not free software |
+| `Twig-<version>-full-arm64-v8a.apk` / `-x86_64.apk` | You want a smaller download for one architecture |
+| `Twig-<version>-full-armeabi-v7a.apk` | You have a 32-bit ARM device — experimental, untested on hardware |
+
+All of them are signed with the same key, so any one installs over any other. The
+certificate's SHA-256 is `196f633e942bf4f32f875b98c8ff181138256ba329a63364e3a39f154c1a5e62`.
+
+**Automatic updates** without a store: add `https://github.com/dev2ex/twig` to
+[Obtainium](https://github.com/ImranR98/Obtainium). A release carries several APKs, so
+set *Filter APKs by Regular Expression* to pick one, or Obtainium will ask every time and
+cannot update in the background — `-full\.apk$` for the default build, `-libre\.apk$` for
+the free one.
+
+An F-Droid listing (the `libre` build, reproducible and signed with the same key) is in
+review.
+
+---
+
 ## Why Twig
 
 **One tree, every source.** Local storage, archives, FTP, SFTP, SMB, WebDAV, S3,

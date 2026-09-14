@@ -35,6 +35,29 @@
 
 ---
 
+## 下载
+
+每个 [GitHub Release](https://github.com/dev2ex/twig/releases/latest) 都附有签名 APK:
+
+| 文件 | 适合 |
+|---|---|
+| `Twig-<版本>-full.apk` | **拿不准就选它。** arm64-v8a + x86_64,带只读 RAR |
+| `Twig-<版本>-libre.apk` | 想要彻底的自由软件——不含 RAR,因为 `junrar` 不是自由软件 |
+| `Twig-<版本>-full-arm64-v8a.apk` / `-x86_64.apk` | 只要单一架构、下载更小 |
+| `Twig-<版本>-full-armeabi-v7a.apk` | 32 位 ARM 设备——实验性,未在真机上测试 |
+
+全部用同一把密钥签名,可以互相覆盖安装。证书 SHA-256 为
+`196f633e942bf4f32f875b98c8ff181138256ba329a63364e3a39f154c1a5e62`。
+
+**不经应用商店自动更新**:把 `https://github.com/dev2ex/twig` 加进
+[Obtainium](https://github.com/ImranR98/Obtainium)。一个 Release 里有多个 APK,需要在
+*Filter APKs by Regular Expression* 里指定一个,否则 Obtainium 每次都会让你手选、也没法后台更新——
+默认版填 `-full\.apk$`,自由软件版填 `-libre\.apk$`。
+
+F-Droid 上架(`libre` 版,可复现构建,与上面同一签名)正在审核中。
+
+---
+
 ## 为什么是 Twig
 
 **一棵树,所有来源。** 本地存储、压缩包、FTP、SFTP、SMB、WebDAV、S3、restic 仓库、
