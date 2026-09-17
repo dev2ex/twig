@@ -30,7 +30,7 @@ class ViewIntentActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         TwigApp.registerBaseFs(this) // on cold start FsRegistry is still empty (main screen never came up)
-        val uri = intent?.data
+        val uri = intent?.data?.takeIf { IncomingUri.allowed(this, it) }
         val file = uri?.let { runCatching { toXFile(it) }.getOrNull() }
         if (file == null) {
             Toast.makeText(this, R.string.err_unsupported_type, Toast.LENGTH_SHORT).show()

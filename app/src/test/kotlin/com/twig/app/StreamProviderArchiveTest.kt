@@ -10,6 +10,7 @@ import com.twig.fs.archive.ZipFileSystem
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -105,5 +106,37 @@ class StreamProviderArchiveTest {
             "a STORED entry is sliceable in place and must keep streaming, no copy",
             zipFs.fastRandom(entry("stored.pdf")),
         )
+    }
+
+    // ---- signature (2026-09-17 review) ----
+
+    /**
+     * ★ Anyone can build the token part of a stream URI; only this install can sign it.
+     * Without the check, a forged URI handed to Twig's exported share target made Twig read
+     * whatever path it named on whatever server was connected.
+     */
+    @Test
+    fun `a URI with a forged or missing signature is refused`() {
+        val good = StreamProvider.uriFor(app, entry("stored.pdf"))
+        val segs = good.pathSegments
+        val forged = good.buildUpon().path("/${segs[0]}/AAAAAAAAAAAAAAAAAAAAAA/${segs[2]}").build()
+        val unsigned = good.buildUpon().path("/${segs[0]}/${segs[2]}").build()
+        for (u in listOf(forged, unsigned)) {
+            val e = runCatching { provider.openFile(u, "r") }.exceptionOrNull()
+            assertTrue("$u must be refused, got $e", e is SecurityException)
+            assertTrue(runCatching { provider.query(u, null, null, null, null) }.exceptionOrNull() is SecurityException)
+        }
+    }
+
+    @Test
+    fun `a URI this install signed still resolves`() {
+        val uri = StreamProvider.uriFor(app, entry("stored.pdf"))
+        provider.query(uri, null, null, null, null).use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("stored.pdf", c.getString(0))
+        }
+        assertEquals("stored.pdf", uri.lastPathSegment)
+        // Minting twice gives the same URI: the key is stable, not per call
+        assertEquals(uri, StreamProvider.uriFor(app, entry("stored.pdf")))
     }
 }

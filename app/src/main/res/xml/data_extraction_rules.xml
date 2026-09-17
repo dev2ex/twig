@@ -10,10 +10,14 @@
         <exclude domain="sharedpref" path="twig_connections.xml" />
         <exclude domain="sharedpref" path="twig_restic_pw.xml" />
         <exclude domain="file" path="keys/" />
+        <exclude domain="file" path=".ssh/" />
+        <exclude domain="sharedpref" path="twig_stream.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="twig_connections.xml" />
         <exclude domain="sharedpref" path="twig_restic_pw.xml" />
         <exclude domain="file" path="keys/" />
+        <exclude domain="file" path=".ssh/" />
+        <exclude domain="sharedpref" path="twig_stream.xml" />
     </device-transfer>
 </data-extraction-rules>

@@ -39,9 +39,16 @@ import java.io.File
  * - On older systems this degrades to a one-way pipe (not seekable).
  *
  * The URI has the form
- * `content://<pkg>.stream/<base64(scheme,size,name,path)>/<file name>`, and is
- * self-contained — after the process is killed, the external app can still
- * reopen the file using the URI alone.
+ * `content://<pkg>.stream/<base64(scheme,size,name,path)>/<signature>/<file name>`, and
+ * is self-contained — after the process is killed, the external app can still reopen the
+ * file using the URI alone.
+ *
+ * ★ **The signature is what makes "self-contained" safe** (2026-09-17 review). Without it
+ * anyone could write such a URI for any path on any connected server — and although the
+ * provider is not exported, Twig reads its own provider freely, so handing a forged URI to
+ * the exported `ShareTargetActivity` / `ViewIntentActivity` made Twig fetch the file and copy
+ * it wherever the user tapped. Only URIs this install minted ([uriFor]) carry a valid
+ * HMAC; the key is random per install and never leaves the device's app data.
  */
 class StreamProvider : ContentProvider() {
 
@@ -168,17 +175,54 @@ class StreamProvider : ContentProvider() {
     companion object {
         private const val B64 = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
 
+        private const val KEY_FILE = "twig_stream"
+        private const val KEY_NAME = "hmac"
+
+        @Volatile private var key: ByteArray? = null
+
+        /** Per-install HMAC key, created on first use. Not in any backup: a restored install mints its own. */
+        private fun key(ctx: Context): ByteArray {
+            key?.let { return it }
+            synchronized(this) {
+                key?.let { return it }
+                val sp = ctx.applicationContext.getSharedPreferences(KEY_FILE, Context.MODE_PRIVATE)
+                val stored = sp.getString(KEY_NAME, null)?.let { runCatching { Base64.decode(it, B64) }.getOrNull() }
+                val k = stored?.takeIf { it.size == 32 } ?: ByteArray(32).also {
+                    java.security.SecureRandom().nextBytes(it)
+                    // commit, not apply: a URI handed out right now must still verify after a crash
+                    sp.edit().putString(KEY_NAME, Base64.encodeToString(it, B64)).commit()
+                }
+                key = k
+                return k
+            }
+        }
+
+        private fun sign(ctx: Context, token: String): String {
+            val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+            mac.init(javax.crypto.spec.SecretKeySpec(key(ctx), "HmacSHA256"))
+            return Base64.encodeToString(mac.doFinal(token.toByteArray()).copyOf(16), B64)
+        }
+
         fun uriFor(context: Context, f: XFile): Uri {
             val token = Base64.encodeToString(
                 "${f.scheme}\n${f.size}\n${f.name}\n${f.path}".toByteArray(), B64,
             )
+            val sig = sign(context, token)
             return Uri.parse(
-                "content://${context.packageName}.stream/$token/${Uri.encode(f.name)}",
+                "content://${context.packageName}.stream/$token/$sig/${Uri.encode(f.name)}",
             )
         }
 
         private fun decode(ctx: Context, uri: Uri): XFile {
-            val token = uri.pathSegments.firstOrNull() ?: throw SecurityException(ctx.getString(R.string.stream_bad_uri))
+            val segs = uri.pathSegments
+            if (segs.size < 3) throw SecurityException(ctx.getString(R.string.stream_bad_uri))
+            val token = segs[0]
+            // Constant-time: the signature is the only thing standing between a caller and
+            // any file on any connected server.
+            val expected = sign(ctx, token).toByteArray()
+            if (!java.security.MessageDigest.isEqual(expected, segs[1].toByteArray())) {
+                throw SecurityException(ctx.getString(R.string.stream_bad_token))
+            }
             val parts = String(Base64.decode(token, B64)).split("\n", limit = 4)
             require(parts.size == 4) { ctx.getString(R.string.stream_bad_token) }
             return XFile(

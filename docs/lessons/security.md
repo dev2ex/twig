@@ -262,3 +262,18 @@ option.**
   taking a suspend block — the latter is far too easy to write as "the whole block on
   Dispatchers.Main", which does not error, it just freezes the UI for half a second.
 
+- **★ Exported entry points open URIs with Twig's identity — so they must not open Twig's own
+  data, and Twig's own stream URIs must be unforgeable** (2026-09-17 review).
+  `ShareTargetActivity` / `ViewIntentActivity` used to accept `file:///data/data/com.twig.app/…`
+  (imported keys, the local shell's `.ssh`) and `content://com.twig.app.stream/<token>/…`. The
+  provider is not exported, but a process reads its own provider freely, and the token was
+  plain base64 of `scheme, size, name, path` — any app could name any file on any connected
+  server, and Twig would fetch it and copy it wherever the user tapped.
+  - `IncomingUri.allowed` refuses `file://` whose canonical path is under `dataDir` /
+    `deviceProtectedDataDir`. Other `file://` stays: pre-24 apps still send it, and it only
+    reaches what Twig itself can already read.
+  - Stream URIs are now `/<token>/<hmac>/<name>`, HMAC-SHA256 truncated to 128 bits with a
+    per-install key (`twig_stream` prefs, excluded from backup), compared in constant time.
+    Rejecting our own authority outright was **not** an option: Twig's share / open-with
+    choosers do not exclude Twig, so picking Twig there is a legitimate round trip.
+  - The name stays the last segment — `getType` and receiving apps read it from there.

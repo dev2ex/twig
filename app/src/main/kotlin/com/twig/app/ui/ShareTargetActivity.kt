@@ -202,7 +202,8 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
             Intent.ACTION_SEND_MULTIPLE -> extraStreamMultiple(intent) ?: emptyList()
             else -> emptyList()
         }
-        return uris.mapNotNull { queryMeta(it) }
+        // Opened with Twig's identity — never let a sender point it at our own data (IncomingUri)
+        return uris.filter { IncomingUri.allowed(this, it) }.mapNotNull { queryMeta(it) }
     }
 
     private fun extraStreamSingle(intent: Intent): Uri? =

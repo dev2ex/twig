@@ -19,4 +19,8 @@
     <exclude domain="sharedpref" path="twig_restic_pw.xml" />
     <!-- Imported SFTP private keys (MainActivity's key picker copies them here) -->
     <exclude domain="file" path="keys/" />
+    <!-- The local shell's ssh home: ssh-keygen writes unencrypted private keys here -->
+    <exclude domain="file" path=".ssh/" />
+    <!-- StreamProvider's HMAC key: per install by design -->
+    <exclude domain="sharedpref" path="twig_stream.xml" />
 </full-backup-content>
