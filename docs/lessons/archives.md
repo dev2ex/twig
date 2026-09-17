@@ -197,3 +197,14 @@
     - ★ **Never swallow the reason an open failed.** Every branch in `PdfDoc.open` now logs
       (`twig-pdf`) with the throwable. Three silent `getOrNull()`s cost a whole diagnosis round
       trip: the only thing recoverable after the fact was "the activity lived 300 ms".
+- **★ Zip slip: an entry name with a `..` segment is dropped from the tree, and `CopyEngine`
+  refuses unsafe names** (2026-09-17 review, reproduced on the JVM). `a/../../x` used to list
+  as a directory literally named `..`; extracting it walked the destination path upwards and
+  wrote outside the chosen directory — from `/sdcard` that reaches the app's own `files/`
+  (the local shell's `.mkshrc`, the command shims), and with elevation on, anywhere.
+  `ArchiveFileSystem.normalize` returns null for such entries (dropped, not renamed:
+  subclasses look entries up by their raw name). `.` segments stay — tar's `./a.txt` relies
+  on them and they do not escape. The second layer is `CopyEngine.requireSafeName` (empty,
+  `..`, a separator or NUL), because a hostile WebDAV/FTP server can list the same names.
+  Tests: `entriesClimbingOutWithDotDotAreHiddenAndCannotEscape`, `CopyEngineTest`'s
+  "Unsafe names" section.

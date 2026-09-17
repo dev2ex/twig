@@ -126,7 +126,11 @@ each write `= null`.
   The hex table itself is `HexPane` (one RecyclerView + one `HexSource` + the row rendering),
   shared by the viewer and `HexCompareActivity`; highlights come from a single `hits` hook, so
   search hits and byte differences take the same rendering path.
-- File compare: `CompareActivity` (directory tree) dispatches a pair to `ImageCompareActivity`
+- File compare: ★ **a listing that fails is unknown, never empty** — `scanCompare` marks such a
+  directory `PairState.ERROR` (no children, sync skips it), and `statSides` / `lookupChild`
+  report failure separately from "not found". Reading a failed listing as empty turned the
+  other side's contents into "extras" that mirror sync deleted (2026-09-17 review).
+  `CompareActivity` (directory tree) dispatches a pair to `ImageCompareActivity`
   (images) or `DiffActivity` (two-column text). ★ `DiffActivity` **hands binaries and oversized
   pairs on to `HexCompareActivity`** rather than dead-ending on `diff_binary` — whether a file is
   binary is only knowable after reading it, so that routing cannot happen back on the compare page.
@@ -383,7 +387,8 @@ add its symptom here.
   its root as the paste target; never read a zip with `ZipInputStream` — a STORED entry
   with a data descriptor has no readable length outside the central directory; "open with
   another app" on a compressed entry must materialize first, never proxy it (`fastRandom`
-  false means "reopen and skip", not "somewhat slower").
+  false means "reopen and skip", not "somewhat slower"); an entry with a `..` segment is
+  dropped from the tree (zip slip).
   *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
   asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
   install with "only DEFLATED entries can have EXT descriptor", a PDF inside an archive
@@ -392,7 +397,8 @@ add its symptom here.
 - **[WiFi sharing](docs/lessons/wifi-sharing.md)** — read-only by default through one
   `requireWrite` funnel, `..` always rejected, `DAV: 2` + LOCK or Finder mounts read-only;
   addressing uses `path` and links are built from `rawPath`. A new mode needs tests *for
-  that mode*.
+  that mode*. Requests run without the root/Shizuku fallback, and the app's data directory
+  is never served.
   *Explains*: a corrupt download (multipart boundary), "I copied it and the source
   vanished", a non-ASCII directory that will not open, buttons squeezed to 1 px.
 - **[Jellyfin / Emby](docs/lessons/jellyfin-emby.md)** — the biggest file, and the one to
@@ -413,8 +419,10 @@ add its symptom here.
   is a fallback inside `LocalFileSystem`, not a new scheme; the stderr drain must not
   share the exec lock; the extracted `.so` must never be writable even for an instant; the
   privileged terminal is its own menu item and never falls back silently.
+  One-shot `cat` streams must check the exit status — EOF is not success.
   *Explains*: a command that hangs until timeout, `/sdcard` listing as empty, "the dialog
-  has no options at all", a root process left alive after an upgrade.
+  has no options at all", a root process left alive after an upgrade, a file that vanished
+  when moved into a place even root could not write.
 - **[RAR and F-Droid](docs/lessons/rar-and-fdroid.md)** — `full` and `libre` differ in RAR
   **alone**; check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`; the
   verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads
