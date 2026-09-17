@@ -95,3 +95,13 @@
   ★ The general lesson: an "obviously safe" framework call inherited from a *different*
   base class needs its `since` checked against minSdk, because the compiler, R8 and every
   modern test device all stay silent.
+- **SMB refuses `append = true`** rather than silently truncating (2026-09-17 review): the
+  native open always truncates, and nothing asks for append today — a future resumable copy
+  would otherwise wipe what it meant to extend. WebDAV already refused the same way.
+- **Server XML goes through `SafeXml`** (WebDAV multistatus, S3 listings): DOCTYPE and external
+  entities off, each feature set on its own because Android's factory throws on unknown ones.
+  On the JVM the old code really did expand `<!ENTITY x SYSTEM "file:…">` into a file name
+  (`WebDavFileSystemTest.externalEntitiesAreNotResolved` fails on it); Android's parser does
+  not today, which is an implementation detail, not a guarantee.
+- **restic base64 reports a bad character as corrupt key data** — it used to crash with
+  ArrayIndexOutOfBounds on anything non-ASCII.

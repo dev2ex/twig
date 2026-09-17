@@ -322,11 +322,25 @@ class GitRepo(
     }
 
     /** Computes a worktree file's SHA-1 by git blob rule ("blob <len>\0" + content). */
+    /**
+     * The blob id git would give this worktree file. Streamed in chunks: status reaches here
+     * for every file whose stat data no longer matches the index, and reading the whole file
+     * first meant a single large changed file (a video, a disk image) was an OOM.
+     */
     private fun blobSha(path: String, size: Long): String {
         val md = MessageDigest.getInstance("SHA-1")
         md.update("blob $size".toByteArray(Charsets.US_ASCII))
         md.update(0)
-        md.update(workFs.readBytes(path) ?: ByteArray(0))
+        workFs.openRandom(path)?.use { src ->
+            val buf = ByteArray(64 * 1024)
+            var pos = 0L
+            while (true) {
+                val n = src.read(pos, buf, 0, buf.size)
+                if (n <= 0) break
+                md.update(buf, 0, n)
+                pos += n
+            }
+        }
         return ObjectStore.bytesToHex(md.digest())
     }
 

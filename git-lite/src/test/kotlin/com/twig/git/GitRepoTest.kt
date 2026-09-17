@@ -125,4 +125,30 @@ class GitRepoTest {
             assertTrue(s.staged.isEmpty() && s.unstaged.isEmpty() && s.untracked.isEmpty())
         }
     }
+
+    /**
+     * A file bigger than one hashing chunk whose stat data changed but whose content did
+     * not must still hash equal to the index — and a one-byte change near the end must not.
+     * (blobSha streams in 64 KiB chunks since 2026-09-17; it used to read the whole file.)
+     */
+    @Test
+    fun `a touched but unchanged large file is clean, a changed one is modified`() {
+        val big = File(root, "big.bin")
+        val data = ByteArray(300_000) { (it * 7 % 251).toByte() }
+        big.writeBytes(data)
+        git("add", "big.bin")
+        git("commit", "-m", "big")
+
+        big.setLastModified(big.lastModified() + 60_000) // stat no longer matches the index
+        GitRepo.open(root)!!.use { repo ->
+            assertTrue(repo.status().unstaged.isEmpty())
+        }
+
+        data[data.size - 3] = 1
+        big.writeBytes(data)
+        big.setLastModified(big.lastModified() + 120_000)
+        GitRepo.open(root)!!.use { repo ->
+            assertEquals(listOf("big.bin"), repo.status().unstaged.map { it.path })
+        }
+    }
 }

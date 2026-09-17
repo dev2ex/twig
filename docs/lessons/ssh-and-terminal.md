@@ -60,3 +60,13 @@
   buttons must be `isFocusable = false`, otherwise they steal focus from the terminal and
   key routing goes wrong.
 
+- **SFTP retries: a server's answer is final, and a write is only repeated if it did not land**
+  (2026-09-17 review, `SftpFileSystem.retry` / `mutate`). The old `retry` treated *every*
+  exception as a dropped connection: "no such file" tore the session down and asked again,
+  and a mkdir/rm/rename whose reply was lost was repeated on the new connection and reported
+  "already exists" / "no such file" for an operation that had succeeded.
+  ★ **`SFTPException` alone does not mean "the server said no"**: SSHJ wraps a broken
+  transport in it too (status `UNKNOWN`, cause `TransportException`). The discriminator is
+  the status code (`isServerAnswer`). Writes go through `mutate`, which after reconnecting
+  first checks whether the end state is already there. The test drops the session from a
+  MINA `SftpEventListener.created` callback — the only reliable way to lose exactly the reply.

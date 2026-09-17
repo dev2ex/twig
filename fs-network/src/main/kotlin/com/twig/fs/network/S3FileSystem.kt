@@ -19,7 +19,6 @@ import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Configuration for an S3 endpoint.
@@ -571,8 +570,7 @@ class S3FileSystem(
             // namespace-unaware: S3 uses the default namespace and the various
             // compatible implementations do not all agree on the URI; matching
             // by local tag name is simplest and most robust.
-            DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                .parse(bytes.inputStream()).documentElement
+            SafeXml.parse(bytes.inputStream(), namespaceAware = false).documentElement
         } catch (e: Exception) {
             throw FsException("$what returned malformed XML: ${e.message}", e)
         }

@@ -5,24 +5,34 @@ import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory
+import org.apache.sshd.common.session.Session
+import org.apache.sshd.common.session.SessionListener
 import org.apache.sshd.server.SshServer
 import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider
+import org.apache.sshd.server.session.ServerSession
+import org.apache.sshd.sftp.server.SftpEventListener
 import org.apache.sshd.sftp.server.SftpSubsystemFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.io.File
+import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 class SftpFileSystemTest {
 
     private lateinit var server: SshServer
     private lateinit var home: File
     private lateinit var fs: SftpFileSystem
+
+    @Volatile private var dropAfterCreate = false
+    private val sessions = AtomicInteger()
 
     @Before
     fun setup() {
@@ -34,7 +44,22 @@ class SftpFileSystemTest {
                 File.createTempFile("hostkey", ".ser").toPath(),
             )
             passwordAuthenticator = PasswordAuthenticator { u, p, _ -> u == "u" && p == "p" }
-            subsystemFactories = listOf(SftpSubsystemFactory())
+            subsystemFactories = listOf(
+                SftpSubsystemFactory().apply {
+                    addSftpEventListener(object : SftpEventListener {
+                        override fun created(session: ServerSession, path: Path, attrs: MutableMap<String, *>, thrown: Throwable?) {
+                            // Simulates "the request landed, the reply never made it back"
+                            if (thrown == null && dropAfterCreate) {
+                                dropAfterCreate = false
+                                session.close(true)
+                            }
+                        }
+                    })
+                },
+            )
+            addSessionListener(object : SessionListener {
+                override fun sessionCreated(session: Session) { sessions.incrementAndGet() }
+            })
             fileSystemFactory = VirtualFileSystemFactory(home.toPath())
         }
         server.start()
@@ -145,5 +170,32 @@ class SftpFileSystemTest {
 
         fs.delete(XFile("sftp", "/d", true))
         assertFalse(File(home, "d").exists())
+    }
+
+    // ---- retries (2026-09-17 review) ----
+
+    /** A server's "no such file" is an answer, not a dropped connection: no reconnect, no second try. */
+    @Test
+    fun aServerErrorIsNotRetried() {
+        fs.list(fs.root())
+        val before = sessions.get()
+        assertThrows(Exception::class.java) { fs.delete(XFile("sftp", "/missing.txt", false)) }
+        assertEquals("no new session was opened", before, sessions.get())
+    }
+
+    /**
+     * ★ The connection drops after mkdir was carried out but before the reply arrived. The
+     * old retry repeated the mkdir on a new connection and reported "already exists" for an
+     * operation that had succeeded.
+     */
+    @Test
+    fun aWriteThatLandedBeforeTheDropIsNotRepeated() {
+        fs.list(fs.root())
+        dropAfterCreate = true
+        fs.mkdir(fs.root(), "made") // must not throw
+        assertTrue(File(home, "made").isDirectory)
+        assertFalse("the drop really happened", dropAfterCreate)
+        // and the file system is usable afterwards
+        assertEquals(listOf("made"), fs.list(fs.root()).map { it.name })
     }
 }

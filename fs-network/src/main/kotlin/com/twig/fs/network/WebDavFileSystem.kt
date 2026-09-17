@@ -21,7 +21,6 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
-import javax.xml.parsers.DocumentBuilderFactory
 
 /** Configuration for a WebDAV endpoint; [baseUrl] is shaped like https://host/dav/subdir. */
 data class DavConfig(
@@ -210,8 +209,7 @@ class WebDavFileSystem(
 
     /** Parses multistatus; [requestUrlPath] is used to filter out the entry representing the directory itself. */
     private fun parseMultistatus(input: InputStream, dirPath: String, requestUrlPath: String): List<XFile> {
-        val dbf = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-        val doc = dbf.newDocumentBuilder().parse(input)
+        val doc = SafeXml.parse(input, namespaceAware = true)
         val selfNorm = requestUrlPath.trimEnd('/')
 
         val out = ArrayList<XFile>()

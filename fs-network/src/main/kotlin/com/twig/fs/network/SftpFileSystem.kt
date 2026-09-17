@@ -5,8 +5,11 @@ import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.XFile
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.Response
 import net.schmizz.sshj.sftp.SFTPClient
+import net.schmizz.sshj.sftp.SFTPException
 import java.io.FilterInputStream
 import java.io.FilterOutputStream
 import java.io.InputStream
@@ -227,12 +230,47 @@ class SftpFileSystem(
         return s.newSFTPClient().also { client = it }
     }
 
-    /** Auto-reconnect and retry once after a disconnect (screen-off / network sleep can drop the persistent connection). */
+    /**
+     * Auto-reconnect and retry once after a disconnect (screen-off / network sleep can drop
+     * the persistent connection). For reads only — see [mutate] for writes.
+     *
+     * ★ A server's answer ([SFTPException]: no such file, permission denied, …) is final and
+     * is rethrown as is. Treating it like a dropped connection tore the session down and
+     * asked again, doubling the latency of every failure for the same answer.
+     */
     private fun <T> retry(op: (SFTPClient) -> T): T = try {
         op(cli())
     } catch (e: Exception) {
+        if (e.isServerAnswer()) throw e
         disconnect()
         op(cli())
+    }
+
+    /**
+     * Whether this is the server's reply rather than a failed connection. SSHJ wraps a dropped
+     * transport in [SFTPException] too (status UNKNOWN, cause TransportException), so the
+     * type alone does not tell them apart — the status code does.
+     */
+    private fun Exception.isServerAnswer(): Boolean =
+        this is SFTPException && statusCode !in CONNECTION_STATUSES
+
+    /**
+     * A write (mkdir / rm / rename) with the same reconnect as [retry], plus one question
+     * before repeating it: did the first attempt land after all? A connection that drops
+     * after the request went out but before the reply came back leaves exactly that state,
+     * and blindly repeating turns a success into "already exists" / "no such file"
+     * (2026-09-17 review). [landed] checks the intended end state on the new connection.
+     */
+    private fun mutate(op: (SFTPClient) -> Unit, landed: (SFTPClient) -> Boolean) {
+        try {
+            op(cli())
+        } catch (e: Exception) {
+            if (e.isServerAnswer()) throw e
+            disconnect()
+            val c = cli()
+            if (runCatching { landed(c) }.getOrDefault(false)) return
+            op(c)
+        }
     }
 
     /**
@@ -509,22 +547,27 @@ class SftpFileSystem(
 
     override fun mkdir(parent: XFile, name: String): XFile {
         val path = join(parent.path, name)
-        retry { it.mkdir(serverPath(path)) }
+        val sp = serverPath(path)
+        mutate({ it.mkdir(sp) }, { it.statExistence(sp)?.type == FileMode.Type.DIRECTORY })
         return XFile(scheme, path, isDir = true)
     }
 
     override fun delete(file: XFile) {
         if (file.isDir) {
             for (child in list(file)) delete(child)
-            retry { it.rmdir(serverPath(file.path)) }
+            val sp = serverPath(file.path)
+            mutate({ it.rmdir(sp) }, { it.statExistence(sp) == null })
         } else {
-            retry { it.rm(serverPath(file.path)) }
+            val sp = serverPath(file.path)
+            mutate({ it.rm(sp) }, { it.statExistence(sp) == null })
         }
     }
 
     override fun rename(file: XFile, newName: String): XFile {
         val to = join(file.parentPath, newName)
-        retry { it.rename(serverPath(file.path), serverPath(to)) }
+        val from = serverPath(file.path)
+        val dest = serverPath(to)
+        mutate({ it.rename(from, dest) }, { it.statExistence(from) == null && it.statExistence(dest) != null })
         return file.copy(path = to)
     }
 
@@ -552,6 +595,13 @@ class SftpFileSystem(
 
     companion object {
         const val SCHEME = "sftp"
+
+        /** SFTP statuses that describe the connection, not the file ([isServerAnswer]). */
+        private val CONNECTION_STATUSES = setOf(
+            Response.StatusCode.UNKNOWN,
+            Response.StatusCode.NO_CONNECTION,
+            Response.StatusCode.CONNECITON_LOST,
+        )
 
         /** Conservative chunk size when the negotiated value is unavailable (OpenSSH's channel packet limit is 32 KB). */
         private const val FALLBACK_WRITE_CHUNK = 32 * 1024 - 1024

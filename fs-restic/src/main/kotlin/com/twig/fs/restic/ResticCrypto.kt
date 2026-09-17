@@ -1,5 +1,6 @@
 package com.twig.fs.restic
 
+import com.twig.core.FsException
 import org.bouncycastle.crypto.generators.SCrypt
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
@@ -32,18 +33,25 @@ internal object ResticCrypto {
         d.size >= 4 && d[0] == 0x28.toByte() && d[1] == 0xB5.toByte() &&
             d[2] == 0x2F.toByte() && d[3] == 0xFD.toByte()
 
-    /** Standard Base64 decoding (handwritten to avoid java.util.Base64's API 26 requirement). */
+    private val B64_TABLE = IntArray(128) { -1 }.also { t ->
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".forEachIndexed { i, c -> t[c.code] = i }
+    }
+
+    /**
+     * Standard Base64 decoding (handwritten to avoid java.util.Base64's API 26 requirement).
+     *
+     * A character outside the alphabet means a damaged key file, and says so: it used to be
+     * skipped when ASCII and an ArrayIndexOutOfBounds crash when not (the 128-entry table
+     * indexed by `c.code`), instead of "this repository's key is corrupt".
+     */
     fun base64(s: String): ByteArray {
-        val table = IntArray(128) { -1 }
-        val alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        for (i in alpha.indices) table[alpha[i].code] = i
         val out = java.io.ByteArrayOutputStream()
         var buf = 0
         var bits = 0
         for (c in s) {
-            if (c == '=' || c == '\n' || c == '\r') continue
-            val v = table[c.code]
-            if (v < 0) continue
+            if (c == '=' || c.isWhitespace()) continue
+            val v = if (c.code < 128) B64_TABLE[c.code] else -1
+            if (v < 0) throw FsException("Corrupt restic key data (invalid base64)")
             buf = (buf shl 6) or v
             bits += 6
             if (bits >= 8) {

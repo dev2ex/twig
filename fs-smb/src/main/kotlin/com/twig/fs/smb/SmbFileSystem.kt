@@ -103,8 +103,15 @@ class SmbFileSystem(
 
     override fun openInput(file: XFile): InputStream = at(file) { c, p -> c.openInput(p) }
 
-    override fun openOutput(file: XFile, append: Boolean): OutputStream =
-        at(file) { c, p -> c.openOutput(p) } // append is not supported; treat as overwrite
+    /**
+     * Append is not implemented (the native open always truncates). Refused rather than
+     * silently treated as an overwrite: a caller that asks to append — resumable copies,
+     * say — would otherwise wipe what it meant to extend.
+     */
+    override fun openOutput(file: XFile, append: Boolean): OutputStream {
+        if (append) throw FsException("SMB does not support appending to a file")
+        return at(file) { c, p -> c.openOutput(p) }
+    }
 
     override fun mkdir(parent: XFile, name: String): XFile {
         val path = join(parent.path, name)

@@ -112,4 +112,33 @@ class WebDavFileSystemTest {
         assertEquals("/dav/old.txt", req.path)
         assertTrue(req.getHeader("Destination")!!.endsWith("/dav/new.txt"))
     }
+
+    /**
+     * XXE: a hostile server's DOCTYPE must not make the client read local files into the
+     * listing (2026-09-17 review). Parsing may fail outright — that is fine; what must never
+     * happen is the secret showing up as a file name.
+     */
+    @Test
+    fun externalEntitiesAreNotResolved() {
+        val secret = java.io.File.createTempFile("twig-xxe", ".txt").apply { writeText("TOPSECRET") }
+        server.enqueue(
+            MockResponse().setResponseCode(207).setBody(
+                """
+                <?xml version="1.0"?>
+                <!DOCTYPE d:multistatus [<!ENTITY leak SYSTEM "${secret.toURI()}">]>
+                <d:multistatus xmlns:d="DAV:">
+                  <d:response><d:href>/dav/</d:href>
+                    <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat>
+                  </d:response>
+                  <d:response><d:href>/dav/x&leak;.txt</d:href>
+                    <d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat>
+                  </d:response>
+                </d:multistatus>
+                """.trimIndent(),
+            ),
+        )
+        val names = runCatching { fs.list(fs.root()).map { it.name } }.getOrDefault(emptyList())
+        assertTrue("leaked: $names", names.none { "TOPSECRET" in it })
+        secret.delete()
+    }
 }

@@ -80,3 +80,6 @@
     `SshGitWorktreeTest` covers the remote-exec side: the porcelain output is fixed text,
     what is asserted is the mapping through a rooted connection.
 
+- **`blobSha` streams** (2026-09-17 review): status hashes every file whose stat data no longer
+  matches the index, and it used to `readBytes` the whole file first — one large changed file
+  in the worktree was an OOM. It now reads through `GitFs.openRandom` in 64 KiB chunks.
