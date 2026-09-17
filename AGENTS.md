@@ -436,7 +436,9 @@ add its symptom here.
   toggling the master password or fingerprint rewrites no field ciphertext; on any crypto
   failure return the input unchanged; every exported Activity must call `SecurityUi.gate`;
   views and `lateinit` fields are created in `onCreate` and only data reads go in the gate
-  callback; unlocking must happen before pane initialisation.
+  callback; unlocking must happen before pane initialisation. Only a *permanently* lost
+  Keystore key may regenerate the DEK; exported entries never read the app's own data, and
+  stream URIs are HMAC-signed.
   *Explains*: a crash right after entering the master password, "after unlocking, WebDAV
   login fails until I re-save the connection", a password field rendered in plain text.
 - **[SAF](docs/lessons/saf.md)** — a SAF path is a whole document URI, so nothing may

@@ -277,3 +277,18 @@ option.**
     Rejecting our own authority outright was **not** an option: Twig's share / open-with
     choosers do not exclude Twig, so picking Twig there is a legitimate round trip.
   - The name stays the last segment — `getType` and receiving apps read it from there.
+- **★ A Keystore failure is not a lost key** (2026-09-17 review, `Secrets.key` /
+  `Wrapper.unwrap`). Every unwrap failure used to count as "the key is gone": a new DEK was
+  generated and **overwrote `dek_ks`**, the only wrapped copy of the old one — one transient
+  keystore hiccup (daemon restart, early boot, a vendor `System error`) and every stored
+  password was unreadable for good, even after the keystore recovered.
+  `unwrap` now returns null **only** when the alias does not exist, the key is
+  `KeyPermanentlyInvalidated`, or the blob fails its GCM tag; anything else throws, and
+  `key()` then goes without a key for that call and writes nothing. It also never *creates*
+  the key while unwrapping (a new key cannot open the old blob and would bury the old one).
+  A real regeneration moves the old blob to `dek_ks_old` instead of destroying it; enabling
+  the master password deletes that too, since anything Keystore can open bypasses the
+  master password.
+  Known limit: a failure that is permanent but not one of those three shapes is treated as
+  transient forever — Twig then behaves as on a device without Keystore (`enc` stores
+  plaintext). Losing nothing was the priority.

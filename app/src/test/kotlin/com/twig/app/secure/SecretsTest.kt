@@ -32,11 +32,18 @@ class SecretsTest {
     /** A fake Keystore: the DEK sits in memory as plaintext. On a real device this step happens inside a TEE, and the key material can never be extracted. */
     private object MemoryWrapper : Secrets.Wrapper {
         var key: ByteArray? = null
+
+        /** Simulates a keystore that is briefly unavailable (daemon restarting, vendor "System error"). */
+        var transient = false
+        private var n = 0
         override fun wrap(dek: ByteArray): String {
             key = dek.copyOf()
-            return "mem"
+            return "mem${n++}"
         }
-        override fun unwrap(blob: String): ByteArray? = key?.copyOf()
+        override fun unwrap(blob: String): ByteArray? {
+            if (transient) throw java.security.KeyStoreException("System error")
+            return key?.copyOf()
+        }
         override fun available() = true
     }
 
@@ -90,6 +97,7 @@ class SecretsTest {
     @Before
     fun setUp() {
         MemoryWrapper.key = null
+        MemoryWrapper.transient = false
         MemoryBio.key = null
         MemoryBio.invalidated = false
         Secrets.wrapper = MemoryWrapper
@@ -200,6 +208,54 @@ class SecretsTest {
         val c = ConnectionStore.all(ctx).single()
         assertEquals("the address and similar fields are unaffected", "10.0.0.1", c.host)
         assertNotEquals("the password cannot be read (it stays as ciphertext), but must not crash", "mypassword", c.password)
+    }
+
+    // ---- Keystore failures (2026-09-17 review) ----
+
+    private val secureSp get() = ctx.getSharedPreferences("twig_secure", android.content.Context.MODE_PRIVATE)
+
+    /**
+     * ★ A keystore that fails *once* must not cost the DEK. Treating every unwrap failure as
+     * "the key is gone" regenerated the DEK and overwrote the only wrapped copy, so every
+     * stored password became unreadable for good even after the keystore recovered.
+     */
+    @Test
+    fun `a transient keystore failure leaves the wrapped DEK alone`() {
+        ConnectionStore.save(ctx, conn("mypassword"))
+        val blob = secureSp.getString("dek_ks", null)
+        Secrets.lock() // a fresh process: the DEK has to be unwrapped again
+
+        MemoryWrapper.transient = true
+        assertNotEquals("unreadable while the keystore is down", "mypassword", ConnectionStore.all(ctx).single().password)
+        assertEquals("the wrapped DEK was not replaced", blob, secureSp.getString("dek_ks", null))
+        assertFalse(secureSp.contains("dek_ks_old"))
+
+        MemoryWrapper.transient = false
+        assertEquals("readable again once the keystore is back", "mypassword", ConnectionStore.all(ctx).single().password)
+    }
+
+    /** A key that is really gone still gets a new DEK — and the old wrapping is kept aside, not destroyed. */
+    @Test
+    fun `a permanently lost key regenerates the DEK but keeps the old wrapping`() {
+        ConnectionStore.save(ctx, conn("mypassword"))
+        val blob = secureSp.getString("dek_ks", null)
+        Secrets.lock()
+        MemoryWrapper.key = null // the keystore entry no longer exists
+
+        Secrets.enc(ctx, "new-password") // needs a key: this regenerates
+        assertNotEquals(blob, secureSp.getString("dek_ks", null))
+        assertEquals(blob, secureSp.getString("dek_ks_old", null))
+    }
+
+    @Test
+    fun `enabling the master password also drops a kept-aside wrapping`() {
+        ConnectionStore.save(ctx, conn("mypassword"))
+        Secrets.lock()
+        MemoryWrapper.key = null
+        Secrets.enc(ctx, "x")
+        assertTrue(secureSp.contains("dek_ks_old"))
+        Secrets.enableMasterPassword(ctx, "master-pw".toCharArray())
+        assertFalse(secureSp.contains("dek_ks_old"))
     }
 
     // ---- Fingerprint unlock: a second key that **coexists** with the master password ----

@@ -79,6 +79,13 @@ object Secrets {
     /** Keystore-wrapped DEK (the default state). */
     private const val K_DEK_KS = "dek_ks"
 
+    /**
+     * The previous [K_DEK_KS] blob, kept when a DEK had to be regenerated. Nothing reads it;
+     * it exists so that a wrong "permanently gone" verdict is still recoverable by hand
+     * instead of destroying the only wrapped copy.
+     */
+    private const val K_DEK_KS_OLD = "dek_ks_old"
+
     /** Master-password-wrapped DEK (after the master password is turned on). Mutually exclusive with [K_DEK_KS] — if both exist, last toggle did not complete. */
     private const val K_DEK_PW = "dek_pw"
 
@@ -117,6 +124,13 @@ object Secrets {
         /** Wrap the DEK; return null = this device cannot use it (extremely rare, see [available]). */
         fun wrap(dek: ByteArray): String?
 
+        /**
+         * null = the wrapping key is **permanently** gone (deleted, invalidated, or the blob
+         * does not verify against it) — only then may a new DEK replace this one.
+         * A transient failure (a busy or restarting keystore daemon, a vendor "System error")
+         * must **throw** instead: treating it as "gone" once overwrote the only copy of the
+         * DEK and lost every stored password for good (2026-09-17 review).
+         */
         fun unwrap(blob: String): ByteArray?
 
         /** Whether this device can use it. If not, the whole thing falls back to plaintext storage (functionality does not break, but it is not encrypted). */
@@ -248,7 +262,8 @@ object Secrets {
         // between can leave at most two wraps (on next start pw wins), never
         // zero
         sp(ctx).edit().putString(K_DEK_PW, blob).apply()
-        sp(ctx).edit().remove(K_DEK_KS).apply()
+        // The kept-aside old wrapping goes too: anything Keystore can open would bypass the master password
+        sp(ctx).edit().remove(K_DEK_KS).remove(K_DEK_KS_OLD).apply()
         return true
     }
 
@@ -374,7 +389,7 @@ object Secrets {
      */
     fun reset(ctx: Context) {
         lock()
-        sp(ctx).edit().remove(K_DEK_PW).remove(K_DEK_KS).remove(K_DEK_BIO).apply()
+        sp(ctx).edit().remove(K_DEK_PW).remove(K_DEK_KS).remove(K_DEK_KS_OLD).remove(K_DEK_BIO).apply()
         bio.dropKey()
         runCatching {
             KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(AndroidKeystore.ALIAS)
@@ -392,21 +407,30 @@ object Secrets {
             if (s.contains(K_DEK_PW)) return null // master password is required; wait for unlock()
             val wrapped = s.getString(K_DEK_KS, null)
             if (wrapped != null) {
-                val opened = wrapper.unwrap(wrapped)
+                val opened = try {
+                    wrapper.unwrap(wrapped)
+                } catch (e: Exception) {
+                    // ★ Transient: this call goes without a key, and **nothing is written** —
+                    // the next call tries again with the same, still valid, blob.
+                    Log.w(TAG, "keystore unavailable, not touching the DEK: ${e.message}")
+                    return null
+                }
                 if (opened != null) {
                     dek = opened
                     return opened
                 }
-                // The Keystore key is gone (factory reset / a lockscreen
-                // change invalidated it). The old ciphertext is already
-                // undecryptable; generating a new one at least lets the
-                // passwords the user re-enters from now on be saved.
-                Log.w(TAG, "DEK unwrap failed, regenerating")
+                // The Keystore key is permanently gone (factory reset / a lockscreen change
+                // invalidated it). The old ciphertext is already undecryptable; a new DEK at
+                // least lets the passwords the user re-enters from now on be saved.
+                Log.w(TAG, "DEK wrapping key is gone, regenerating")
             }
             if (!wrapper.available()) return null
             val fresh = ByteArray(KEY_LEN).also { rng.nextBytes(it) }
             val blob = wrapper.wrap(fresh) ?: return null
-            s.edit().putString(K_DEK_KS, blob).apply()
+            s.edit().apply {
+                if (wrapped != null) putString(K_DEK_KS_OLD, wrapped)
+                putString(K_DEK_KS, blob)
+            }.commit()
             dek = fresh
             return fresh
         }
@@ -467,14 +491,27 @@ object Secrets {
             null
         }
 
-        override fun unwrap(blob: String): ByteArray? = runCatching {
-            val raw = Base64.decode(blob, Base64.NO_WRAP)
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(GCM_TAG_BITS, raw.copyOf(GCM_IV)))
-            c.doFinal(raw, GCM_IV, raw.size - GCM_IV)
-        }.getOrElse {
-            Log.w(TAG, "keystore unwrap failed: ${it.message}")
-            null
+        override fun unwrap(blob: String): ByteArray? {
+            val raw = runCatching { Base64.decode(blob, Base64.NO_WRAP) }.getOrNull()
+                ?.takeIf { it.size > GCM_IV } ?: return null // a corrupt blob will never open
+            // Only a *missing* key is permanent here; any failure to even look is transient.
+            // Never create the key on this path: a new key cannot open the old blob anyway,
+            // and creating it would destroy the chance that the old one comes back.
+            val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            if (!ks.containsAlias(ALIAS)) return null
+            val key = (ks.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+                ?: throw java.security.KeyStoreException("keystore entry unreadable")
+            return try {
+                val c = Cipher.getInstance("AES/GCM/NoPadding")
+                c.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, raw.copyOf(GCM_IV)))
+                c.doFinal(raw, GCM_IV, raw.size - GCM_IV)
+            } catch (e: android.security.keystore.KeyPermanentlyInvalidatedException) {
+                Log.w(TAG, "keystore key invalidated: ${e.message}")
+                null
+            } catch (e: javax.crypto.AEADBadTagException) {
+                Log.w(TAG, "DEK blob does not verify under the keystore key")
+                null
+            }
         }
 
         private fun secretKey(): javax.crypto.SecretKey {
