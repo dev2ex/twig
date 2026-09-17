@@ -593,8 +593,11 @@ class CompareActivity : AppCompatActivity() {
         val dstRoot = (if (to == 0) leftRoot else rightRoot) ?: return
         val copies = ArrayList<SyncItem>()
         val deletes = ArrayList<SyncItem>()
+        val unreadable = ArrayList<String>()
+        if (root.state == PairState.ERROR) unreadable += root.key
         fun walk(n: Node) {
             for (c in n.children) {
+                if (c.state == PairState.ERROR) unreadable += c.key
                 val src = c.sideFile(from)
                 val dst = c.sideFile(to)
                 when (syncActionFor(c.state, c.isDir, from)) {
@@ -608,9 +611,14 @@ class CompareActivity : AppCompatActivity() {
             }
         }
         walk(root)
-        val plan = SyncPlan(copies, deletes)
+        val plan = SyncPlan(copies, deletes, unreadable)
         if (plan.copies.isEmpty() && plan.deletes.isEmpty()) {
-            return toast(getString(R.string.compare_nothing_to_sync))
+            return toast(
+                getString(
+                    if (unreadable.isEmpty()) R.string.compare_nothing_to_sync
+                    else R.string.compare_sync_unreadable_only,
+                ),
+            )
         }
         confirmSync(
             this, lifecycleScope, dstRoot, to, plan, options,
@@ -758,12 +766,18 @@ class CompareActivity : AppCompatActivity() {
                 if (parent.children.any { it.name == name }) continue // already in the tree
                 val key = fullKey(parentKey, name)
                 // Metadata must come from list(); rationale is the same as statSides
-                val l = withContext(Dispatchers.IO) { lookupChild(leftRoot, parentKey, name) }
-                val r = withContext(Dispatchers.IO) { lookupChild(rightRoot, parentKey, name) }
+                val lr = withContext(Dispatchers.IO) { lookupChild(leftRoot, parentKey, name) }
+                val rr = withContext(Dispatchers.IO) { lookupChild(rightRoot, parentKey, name) }
+                val l = lr.getOrNull()
+                val r = rr.getOrNull()
                 val rep = l ?: r ?: continue
+                // A side whose listing failed is unknown, not absent — calling the entry
+                // "only on the other side" would make the next mirror sync delete it.
+                val failed = lr.isFailure || rr.isFailure
                 val node = Node(
                     key, name, parent.depth + 1, rep.isDir, l, r,
                     when {
+                        failed -> PairState.ERROR
                         l == null -> PairState.RIGHT_ONLY
                         r == null -> PairState.LEFT_ONLY
                         rep.isDir -> PairState.SCANNING
@@ -775,7 +789,7 @@ class CompareActivity : AppCompatActivity() {
                 // Directory: the subtree was pruned before and never scanned; rescan now.
                 // Single-side-only directories take the same path (scanCompare accepts empty
                 // on either side, naturally classifying everything as "only on the other side").
-                if (node.isDir) runScan(node)
+                if (node.isDir && !failed) runScan(node)
                 recomputeAncestors(parentKey)
             }
             setScanning(false)
@@ -784,9 +798,13 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
-    /** Find an entry by name within a directory, with metadata taken from `list()`. **Hits the network, so call from a background thread**. */
-    private fun lookupChild(rootFile: XFile?, parentKey: String, name: String): XFile? {
-        val base = rootFile ?: return null
+    /**
+     * Find an entry by name within a directory, with metadata taken from `list()`.
+     * Success(null) = the entry is not there; failure = the listing failed and the answer
+     * is unknown. **Hits the network, so call from a background thread**.
+     */
+    private fun lookupChild(rootFile: XFile?, parentKey: String, name: String): Result<XFile?> {
+        val base = rootFile ?: return Result.success(null)
         val dirPath = if (parentKey.isEmpty()) base.path else "${base.path.trimEnd('/')}/$parentKey"
         return runCatching {
             FsRegistry.of(base.scheme)
@@ -794,7 +812,7 @@ class CompareActivity : AppCompatActivity() {
                 .firstOrNull {
                     if (options.ignoreCase) it.name.equals(name, ignoreCase = true) else it.name == name
                 }
-        }.getOrNull()
+        }
     }
 
     // ---- Partial revalidation after operations ----
@@ -821,11 +839,13 @@ class CompareActivity : AppCompatActivity() {
                     val lm = statSides(files, leftRoot)
                     val rm = statSides(files, rightRoot)
                     files.map { n ->
-                        val l = lm[n.key]
-                        val r = rm[n.key]
+                        val l = lm.found[n.key]
+                        val r = rm.found[n.key]
                         Triple(
                             n, l to r,
                             when {
+                                // Unknown is not gone: keep the row, flagged, until a rescan
+                                n.key in lm.failed || n.key in rm.failed -> PairState.ERROR
                                 l == null && r == null -> null // both sides are gone
                                 l == null -> PairState.RIGHT_ONLY
                                 r == null -> PairState.LEFT_ONLY
@@ -838,8 +858,10 @@ class CompareActivity : AppCompatActivity() {
                     if (st == null) {
                         detachNode(n)
                     } else {
-                        n.left = sides.first
-                        n.right = sides.second
+                        if (st != PairState.ERROR) {
+                            n.left = sides.first
+                            n.right = sides.second
+                        }
                         n.state = st
                         recomputeAncestors(n.key.substringBeforeLast('/', ""))
                     }
@@ -852,8 +874,15 @@ class CompareActivity : AppCompatActivity() {
                 if (nodeByKey[d.key] !== d) continue // may have been removed by the detach above
                 // The directory itself may have just been copied across or deleted; re-locate
                 // it on each side first
-                val l = dirL[d.key]
-                val r = dirR[d.key]
+                if (d.key in dirL.failed || d.key in dirR.failed) {
+                    d.children.forEach { dropIndex(it) }
+                    d.children.clear()
+                    d.state = PairState.ERROR
+                    recomputeAncestors(d.key.substringBeforeLast('/', ""))
+                    continue
+                }
+                val l = dirL.found[d.key]
+                val r = dirR.found[d.key]
                 d.left = l
                 d.right = r
                 when {
@@ -872,6 +901,9 @@ class CompareActivity : AppCompatActivity() {
         }
     }
 
+    /** [statSides]' answer: entries found per node key, and node keys whose parent listing failed. */
+    private class Sides(val found: Map<String, XFile>, val failed: Set<String>)
+
     /**
      * Refetch the latest metadata of these nodes on one side (entries that no longer exist are not present in the result).
      *
@@ -882,22 +914,31 @@ class CompareActivity : AppCompatActivity() {
      * cause "after copying, the file shows as 0 B". Group by parent directory so each
      * directory is only listed once.
      *
+     * ★ Nodes whose parent could not be listed go into [Sides.failed], **not** simply
+     * missing from [Sides.found]: "missing" means the entry is gone, and a node reclassified
+     * as "only on the other side" is deleted by the next mirror sync.
+     *
      * **Hits the network, so call from a background thread**.
      */
-    private fun statSides(nodes: List<Node>, rootFile: XFile?): Map<String, XFile> {
-        val base = rootFile ?: return emptyMap()
-        val fs = runCatching { FsRegistry.of(base.scheme) }.getOrNull() ?: return emptyMap()
+    private fun statSides(nodes: List<Node>, rootFile: XFile?): Sides {
+        val base = rootFile ?: return Sides(emptyMap(), emptySet())
+        val fs = runCatching { FsRegistry.of(base.scheme) }.getOrNull()
+            ?: return Sides(emptyMap(), nodes.mapTo(HashSet()) { it.key })
         val out = HashMap<String, XFile>()
+        val failed = HashSet<String>()
         for ((parentKey, group) in nodes.groupBy { it.key.substringBeforeLast('/', "") }) {
             val dirPath =
                 if (parentKey.isEmpty()) base.path else "${base.path.trimEnd('/')}/$parentKey"
-            val listed = runCatching { fs.list(XFile(base.scheme, dirPath, isDir = true)) }
-                .getOrDefault(emptyList())
+            val listed = runCatching { fs.list(XFile(base.scheme, dirPath, isDir = true)) }.getOrNull()
+            if (listed == null) {
+                group.mapTo(failed) { it.key }
+                continue
+            }
             val byName = HashMap<String, XFile>()
             for (f in listed) byName[nameKey(f.name, f.isDir)] = f
             for (n in group) byName[nameKey(n.name, n.isDir)]?.let { out[n.key] = it }
         }
-        return out
+        return Sides(out, failed)
     }
 
     /** Pairing key shared with [pairEntries]: case per options; a directory and a file with the same name are not the same key. */
@@ -1304,10 +1345,11 @@ class CompareActivity : AppCompatActivity() {
         PairState.LEFT_ONLY -> "◀"
         PairState.RIGHT_ONLY -> "▶"
         PairState.SCANNING -> "…"
+        PairState.ERROR -> "!"
     }
 
     private fun nameColor(n: Node) = when (n.state) {
-        PairState.DIFF -> ContextCompat.getColor(this, R.color.cmp_diff)
+        PairState.DIFF, PairState.ERROR -> ContextCompat.getColor(this, R.color.cmp_diff)
         PairState.LEFT_ONLY, PairState.RIGHT_ONLY -> ContextCompat.getColor(this, R.color.cmp_only)
         else -> ContextCompat.getColor(this, R.color.text_primary)
     }
@@ -1317,7 +1359,8 @@ class CompareActivity : AppCompatActivity() {
         // be obvious at a glance
         selected -> ContextCompat.getColor(this, R.color.selected)
         !present -> ContextCompat.getColor(this, R.color.cmp_missing_bg)
-        n.state == PairState.DIFF -> ContextCompat.getColor(this, R.color.cmp_diff_bg)
+        n.state == PairState.DIFF || n.state == PairState.ERROR ->
+            ContextCompat.getColor(this, R.color.cmp_diff_bg)
         n.state == PairState.LEFT_ONLY || n.state == PairState.RIGHT_ONLY ->
             ContextCompat.getColor(this, R.color.cmp_only_bg)
         else -> ContextCompat.getColor(this, R.color.surface)

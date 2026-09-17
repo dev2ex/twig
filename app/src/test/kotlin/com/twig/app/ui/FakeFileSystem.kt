@@ -32,6 +32,8 @@ class FakeFileSystem(
     private val times: Map<String, Long> = emptyMap(),
     /** Whether the whole source is writable. Read-only by default -- most test cases only use it as "a server that can list directories". */
     private val writable: Boolean = false,
+    /** Directories whose listing fails (timeout / permission), to test that a failure is never read as "empty". */
+    private val failing: Set<String> = emptySet(),
 ) : FileSystem {
 
     override val displayName: String = "Fake($scheme)"
@@ -56,6 +58,7 @@ class FakeFileSystem(
 
     override fun list(dir: XFile): List<XFile> {
         listed += dir.path
+        if (dir.path in failing) throw FsException("listing failed: ${dir.path}")
         val kids = dirs[dir.path] ?: throw FsException("no such directory: ${dir.path}")
         val prefix = if (dir.path.endsWith("/")) dir.path else "${dir.path}/"
         return kids.map { resolve("$prefix$it") }

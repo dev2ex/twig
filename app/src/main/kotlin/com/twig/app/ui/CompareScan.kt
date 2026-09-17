@@ -30,6 +30,15 @@ enum class PairState {
 
     /** Directory: subtree not yet scanned, aggregate state unknown. */
     SCANNING,
+
+    /**
+     * Directory present on both sides whose listing failed on at least one of them
+     * (timeout, permission, dropped connection). Its contents are **unknown**, not empty:
+     * no children are recorded under it, and sync neither copies into it nor deletes from
+     * it — before this state existed, a failed listing read as an empty directory, and
+     * mirror sync deleted everything on the other side.
+     */
+    ERROR,
 }
 
 /**
@@ -306,9 +315,10 @@ fun scanCompare(
     var diffs = 0
     var truncated = false
 
-    suspend fun list(f: XFile?): List<XFile> =
+    /** null = the listing failed; an absent side (f == null) is a genuine empty list. */
+    fun list(f: XFile?): List<XFile>? =
         if (f == null) emptyList()
-        else runCatching { FsRegistry.of(f).list(f) }.getOrDefault(emptyList())
+        else runCatching { FsRegistry.of(f).list(f) }.getOrNull()
 
     /** Returns the aggregate state of this directory's subtree. */
     suspend fun walk(
@@ -324,11 +334,24 @@ fun scanCompare(
 
         // Both sides' list calls run in parallel: with different backends it is real
         // parallelism; with the same backend the layer below serializes itself — harmless.
-        val (ls, rs) = coroutineScope {
+        val (lsOrNull, rsOrNull) = coroutineScope {
             val a = async { list(left) }
             val b = async { list(right) }
             a.await() to b.await()
         }
+        if (lsOrNull == null || rsOrNull == null) {
+            coroutineContext.ensureActive()
+            // A directory that exists on one side only keeps that verdict — sync takes it
+            // whole, and CopyEngine / delete will list it again and fail loudly if it is
+            // still unreadable. Only a both-sides directory becomes ERROR: there the
+            // listing is what decides what gets deleted.
+            val self = forced ?: PairState.ERROR
+            emit(CompareEvent.Children(dirKey, emptyList()))
+            emit(CompareEvent.DirDone(dirKey, self))
+            return self
+        }
+        val ls: List<XFile> = lsOrNull
+        val rs: List<XFile> = rsOrNull
 
         val rows = ArrayList<CompareEntry>()
         val subDirs = ArrayList<Triple<CompareEntry, String, PairState?>>()

@@ -47,7 +47,7 @@ enum class SyncAct {
     /** Directory: descend to inspect children. */
     DESCEND,
 
-    /** Files identical on both sides: do nothing. */
+    /** Files identical on both sides, or a directory that could not be read ([PairState.ERROR]): do nothing. */
     SKIP,
 }
 
@@ -61,6 +61,9 @@ fun syncActionFor(state: PairState, isDir: Boolean, from: Int): SyncAct {
     val srcOnly = if (from == 0) PairState.LEFT_ONLY else PairState.RIGHT_ONLY
     val dstOnly = if (from == 0) PairState.RIGHT_ONLY else PairState.LEFT_ONLY
     return when {
+        // ★ Before DESCEND: an unreadable directory has no known contents, so there is
+        // nothing to push into it and — above all — nothing to call "extra" and delete.
+        state == PairState.ERROR -> SyncAct.SKIP
         state == srcOnly -> SyncAct.COPY
         state == dstOnly -> SyncAct.DELETE
         isDir -> SyncAct.DESCEND // DIFF/SCANNING/SAME directories all descend; judgement is left to the children
@@ -85,8 +88,17 @@ fun targetIsNewer(src: XFile, dst: XFile, o: CompareOptions): Boolean =
  */
 class SyncItem(val key: String, val file: XFile, val targetNewer: Boolean = false)
 
-/** What one sync needs to do. The incremental / overwrite toggles are only filtered **at execution time**; the plan itself is complete. */
-class SyncPlan(val copies: List<SyncItem>, val deletes: List<SyncItem>) {
+/**
+ * What one sync needs to do. The incremental / overwrite toggles are only filtered **at
+ * execution time**; the plan itself is complete — except under [unreadable], the keys of
+ * directories whose listing failed, which the plan leaves alone and the confirmation
+ * dialog names.
+ */
+class SyncPlan(
+    val copies: List<SyncItem>,
+    val deletes: List<SyncItem>,
+    val unreadable: List<String> = emptyList(),
+) {
     /** Items where the target-side copy is newer (not overwritten by default; see the confirmation dialog). */
     val newer: List<SyncItem> = copies.filter { it.targetNewer }
 
@@ -125,10 +137,12 @@ suspend fun buildSyncPlan(
 ): SyncPlan {
     val copies = ArrayList<SyncItem>()
     val deletes = ArrayList<SyncItem>()
+    val unreadable = ArrayList<String>()
     val closed = ArrayList<String>()
     scanCompare(left, right, options, io).collect { ev ->
         when (ev) {
             is CompareEvent.Progress -> onProgress(ev)
+            is CompareEvent.DirDone -> if (ev.state == PairState.ERROR) unreadable += ev.dirKey
             is CompareEvent.Children -> {
                 if (closed.any { under(ev.dirKey, it) }) return@collect
                 for (e in ev.rows) {
@@ -155,7 +169,7 @@ suspend fun buildSyncPlan(
             else -> Unit
         }
     }
-    return SyncPlan(copies, deletes)
+    return SyncPlan(copies, deletes, unreadable)
 }
 
 /**
@@ -229,6 +243,15 @@ fun confirmSync(
             R.string.compare_sync_confirm, plan.copiesFor(overwriteNewer).size, toName,
         )
     }
+    val unreadable = TextView(ctx).apply {
+        visibility = if (plan.unreadable.isEmpty()) View.GONE else View.VISIBLE
+        if (plan.unreadable.isNotEmpty()) {
+            val first = plan.unreadable.first().ifEmpty { "/" }
+            text = ctx.getString(R.string.compare_sync_unreadable, plan.unreadable.size, first)
+            setTextColor(androidx.core.content.ContextCompat.getColor(ctx, R.color.cmp_diff))
+            setPadding(0, px(8), 0, 0)
+        }
+    }
     val cbIncremental = CheckBox(ctx).apply {
         text = ctx.getString(R.string.compare_sync_incremental, toName, plan.deletes.size)
         isChecked = options.incrementalSync
@@ -245,6 +268,7 @@ fun confirmSync(
         orientation = LinearLayout.VERTICAL
         setPadding(px(20), px(8), px(20), px(8))
         addView(summary)
+        addView(unreadable)
         addView(cbIncremental)
         addView(cbOverwrite)
     }
@@ -388,7 +412,9 @@ fun syncFromSaved(
         }
         box.dismiss()
         if (plan.copies.isEmpty() && plan.deletes.isEmpty()) {
-            return@launch toastOn(ctx, ctx.getString(R.string.compare_nothing_to_sync))
+            val msg = if (plan.unreadable.isEmpty()) R.string.compare_nothing_to_sync
+            else R.string.compare_sync_unreadable_only
+            return@launch toastOn(ctx, ctx.getString(msg))
         }
         confirmSync(ctx, scope, if (to == 0) l else r, to, plan, session.options, onOptions) { onStarted() }
     }

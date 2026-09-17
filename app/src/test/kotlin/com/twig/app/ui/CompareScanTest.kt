@@ -29,8 +29,9 @@ class CompareScanTest {
         dirs: Map<String, List<String>>,
         files: Map<String, String> = emptyMap(),
         times: Map<String, Long> = emptyMap(),
+        failing: Set<String> = emptySet(),
     ): FakeFileSystem {
-        val fs = FakeFileSystem(scheme, dirs, files, times)
+        val fs = FakeFileSystem(scheme, dirs, files, times, failing = failing)
         FsRegistry.register(fs)
         registered += scheme
         return fs
@@ -137,6 +138,53 @@ class CompareScanTest {
         val done = events.filterIsInstance<CompareEvent.DirDone>().associate { it.dirKey to it.state }
         assertEquals("a subtree that is entirely the same rolls up to SAME", PairState.SAME, done["sub"])
         assertEquals("the root has a difference, so it rolls up to DIFF", PairState.DIFF, done[""])
+    }
+
+    /**
+     * A listing that fails is unknown, not empty. Before ERROR existed the right side's
+     * `keep.txt` came out as RIGHT_ONLY here — and mirror sync deleted it.
+     */
+    @Test
+    fun `a directory that fails to list on one side is ERROR and has no children`() = runTest {
+        fakeFs(
+            "cl",
+            dirs = mapOf("/" to listOf("sub", "ok.txt"), "/sub" to listOf("k.txt")),
+            files = mapOf("/sub/k.txt" to "aaa", "/ok.txt" to "o"),
+            failing = setOf("/sub"),
+        )
+        fakeFs(
+            "cr",
+            dirs = mapOf("/" to listOf("sub", "ok.txt"), "/sub" to listOf("k.txt", "keep.txt")),
+            files = mapOf("/sub/k.txt" to "aaa", "/sub/keep.txt" to "k", "/ok.txt" to "o"),
+        )
+
+        val events = scanCompare(
+            XFile("cl", "/", isDir = true),
+            XFile("cr", "/", isDir = true),
+            CompareOptions(),
+            io = UnconfinedTestDispatcher(testScheduler),
+        ).toList()
+
+        val sub = events.filterIsInstance<CompareEvent.Children>().first { it.dirKey == "sub" }
+        assertTrue("nothing under an unreadable directory may be classified", sub.rows.isEmpty())
+        val done = events.filterIsInstance<CompareEvent.DirDone>().associate { it.dirKey to it.state }
+        assertEquals(PairState.ERROR, done["sub"])
+        assertEquals("an error below is still a difference above", PairState.DIFF, done[""])
+    }
+
+    /** A one-sided directory keeps its verdict even when unreadable: sync takes it whole and fails loudly there. */
+    @Test
+    fun `an unreadable one-sided directory keeps its side label`() = runTest {
+        fakeFs("cl", dirs = mapOf("/" to listOf("gone"), "/gone" to listOf()), failing = setOf("/gone"))
+        fakeFs("cr", dirs = mapOf("/" to listOf()))
+
+        val done = scanCompare(
+            XFile("cl", "/", isDir = true),
+            XFile("cr", "/", isDir = true),
+            CompareOptions(),
+            io = UnconfinedTestDispatcher(testScheduler),
+        ).toList().filterIsInstance<CompareEvent.DirDone>().associate { it.dirKey to it.state }
+        assertEquals(PairState.LEFT_ONLY, done["gone"])
     }
 
     @Test

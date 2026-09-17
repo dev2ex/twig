@@ -330,6 +330,8 @@
     <string name="compare_sync_overwrite_newer">Overwrite %2$d newer item(s) on the %1$s side</string>
     <string name="compare_sync_scanning">Scanning… %1$d compared · %2$d differing</string>
     <string name="compare_sync_delete_failed">%1$d item(s) could not be deleted</string>
+    <string name="compare_sync_unreadable">%1$d folder(s) could not be read and will be left untouched (e.g. %2$s). Rescan to try again.</string>
+    <string name="compare_sync_unreadable_only">Some folders could not be read, so there is nothing safe to sync. Rescan to try again.</string>
     <string name="compare_sync_wait_scan">Still scanning — wait for it to finish before syncing</string>
     <string name="compare_delete_confirm">Delete %1$d item(s) from the %2$s side? This cannot be undone.</string>
     <string name="compare_exclude_this">Exclude this item</string>

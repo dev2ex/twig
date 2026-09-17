@@ -118,7 +118,64 @@ class CompareSyncTest {
         assertFalse("an older destination obviously does not count", targetIsNewer(src, src.copy(lastModified = 990_000L), o))
     }
 
+    @Test
+    fun `an unreadable directory is neither descended into nor synced`() {
+        assertEquals(SyncAct.SKIP, syncActionFor(PairState.ERROR, isDir = true, from = 0))
+        assertEquals(SyncAct.SKIP, syncActionFor(PairState.ERROR, isDir = true, from = 1))
+    }
+
     // ---- plan ----
+
+    /**
+     * ★ The mirror-sync data loss (2026-09-17 review): a directory that failed to list on
+     * the source side read as empty, so everything inside it on the destination side became
+     * "extra" and was deleted.
+     */
+    @Test
+    fun `a source directory that fails to list does not turn the destination's contents into deletes`() = runTest(io) {
+        val flaky = FakeFileSystem(
+            "syncflaky",
+            dirs = mapOf("/" to listOf("both"), "/both" to listOf("inner.txt")),
+            files = mapOf("/both/inner.txt" to "same"),
+            failing = setOf("/both"),
+        )
+        val full = FakeFileSystem(
+            "syncfull",
+            dirs = mapOf("/" to listOf("both"), "/both" to listOf("inner.txt", "keep.txt")),
+            files = mapOf("/both/inner.txt" to "same", "/both/keep.txt" to "k"),
+        )
+        FsRegistry.register(flaky)
+        FsRegistry.register(full)
+        try {
+            val plan = buildSyncPlan(rootOf(flaky), rootOf(full), CompareOptions(), from = 0, io = io)
+            assertEquals(emptyList<String>(), plan.deletes.map { it.key })
+            assertEquals(emptyList<String>(), plan.copies.map { it.key })
+            assertEquals(listOf("both"), plan.unreadable)
+
+            // The other direction: the unreadable side is now the destination — pushing
+            // into a directory whose contents are unknown is skipped just the same.
+            val back = buildSyncPlan(rootOf(flaky), rootOf(full), CompareOptions(), from = 1, io = io)
+            assertEquals(emptyList<String>(), back.copies.map { it.key })
+            assertEquals(emptyList<String>(), back.deletes.map { it.key })
+            assertEquals(listOf("both"), back.unreadable)
+        } finally {
+            FsRegistry.unregister(flaky.scheme)
+            FsRegistry.unregister(full.scheme)
+        }
+    }
+
+    @Test
+    fun `an unreadable root yields an empty plan that says so`() = runTest(io) {
+        val dead = FakeFileSystem("syncdead", dirs = mapOf("/" to emptyList()), failing = setOf("/"))
+        FsRegistry.register(dead)
+        try {
+            val plan = buildSyncPlan(rootOf(dead), rootOf(right), CompareOptions(), from = 0, io = io)
+            assertTrue(plan.copies.isEmpty() && plan.deletes.isEmpty())
+            assertEquals(listOf(""), plan.unreadable)
+        } finally {
+            FsRegistry.unregister(dead.scheme)
+        }
+    }
 
     @Test
     fun `left pushes to right - diffs and left-only items go into copies, right-only items go into deletes`() = runTest(io) {
