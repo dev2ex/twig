@@ -74,3 +74,14 @@
     **"source and destination are the same path" 403 check must come before the delete that
     overwrites an existing destination**, or that delete removes the source itself.
 
+- **★ A LAN visitor never gets the root/Shizuku fallback, and never the app's own data
+  directory** (2026-09-17 review). Elevation lives inside `LocalFileSystem`, so with it on,
+  "All sources → Root directory" answered `/data/...` through the root shell: every app's
+  private data, and with writes enabled, root writes anywhere — possibly with no password.
+  `ShareHandler.handle` now runs each request inside `LocalFileSystem.withoutElevation`
+  (a thread-local switch, because the work fans out through `FsRegistry` and `CopyEngine`
+  by scheme and a second instance would simply be bypassed). `ShareRoot` additionally
+  refuses anything whose canonical path is under `dataDir` / `deviceProtectedDataDir`
+  (defence in depth; `/data` is not listable without root anyway). Tests:
+  `withoutElevation keeps the fallback out for the current thread only`,
+  `the app's private directory is neither listed nor served nor writable`.

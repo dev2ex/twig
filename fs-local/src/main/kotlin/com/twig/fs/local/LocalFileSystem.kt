@@ -28,10 +28,14 @@ class LocalFileSystem(
 
     override fun root(): XFile = toXFile(rootDir)
 
+    /** The privileged fallback for this call: [elevation], unless the current thread opted out ([withoutElevation]). */
+    private val fallback: PrivilegedFs?
+        get() = if (noElevation.get() == true) null else elevation
+
     override fun resolve(path: String): XFile {
         val f = File(path)
         if (!f.exists()) {
-            if (maybeHidden(f)) elevation?.stat(path)?.let { return it }
+            if (maybeHidden(f)) fallback?.stat(path)?.let { return it }
             throw FsException("No such path: $path")
         }
         return toXFile(f)
@@ -56,11 +60,11 @@ class LocalFileSystem(
     private fun sorted(items: List<XFile>): List<XFile> = items
         .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
 
-    private fun elevated(path: String): List<XFile>? = elevation?.list(path)
+    private fun elevated(path: String): List<XFile>? = fallback?.list(path)
 
     override fun openInput(file: XFile): InputStream =
         runCatching { File(file.path).inputStream() }.getOrElse { e ->
-            elevation?.openInput(file.path) ?: throw e
+            fallback?.openInput(file.path) ?: throw e
         }
 
     /**
@@ -75,11 +79,11 @@ class LocalFileSystem(
         val f = File(file.path)
         f.parentFile?.let { if (!it.exists()) it.mkdirs() }
         val out = runCatching { java.io.FileOutputStream(f, append) as OutputStream }.getOrElse { e ->
-            val priv = elevation ?: throw e
+            val privFs = fallback ?: throw e
             // The unprivileged mkdirs above may also have been the thing that failed;
             // redo it with privileges before opening, or the write hits a missing parent.
-            f.parent?.let { priv.shell.exec("mkdir -p ${PrivilegedShell.quote(it)}") }
-            priv.openOutput(file.path, append)
+            f.parent?.let { privFs.shell.exec("mkdir -p ${PrivilegedShell.quote(it)}") }
+            privFs.openOutput(file.path, append)
         }
         val hook = changed ?: return out
         return object : java.io.FilterOutputStream(out) {
@@ -95,7 +99,7 @@ class LocalFileSystem(
     override fun mkdir(parent: XFile, name: String): XFile {
         val dir = File(parent.path, name)
         if (!dir.exists() && !dir.mkdirs()) {
-            if (elevation?.mkdir(dir.path) != true) {
+            if (fallback?.mkdir(dir.path) != true) {
                 throw FsException("Could not create directory: ${dir.path}")
             }
             return XFile(SCHEME, dir.path, isDir = true)
@@ -105,7 +109,7 @@ class LocalFileSystem(
 
     override fun delete(file: XFile) {
         val f = File(file.path)
-        if (!deleteRecursively(f) && elevation?.delete(file.path) != true) {
+        if (!deleteRecursively(f) && fallback?.delete(file.path) != true) {
             throw FsException("Delete failed: ${file.path}")
         }
         changed?.invoke(f.absolutePath)
@@ -120,11 +124,11 @@ class LocalFileSystem(
         // silently eats b.txt.
         if (dst.exists()) throw FsException("Target already exists: $newName")
         if (!src.renameTo(dst)) {
-            val priv = elevation ?: throw FsException("Rename failed: ${file.path}")
+            val privFs = fallback ?: throw FsException("Rename failed: ${file.path}")
             // dst.exists() above can be a false negative on a path we cannot stat,
             // so the privileged path re-checks before moving — never silently replace.
-            if (priv.exists(dst.path)) throw FsException("Target already exists: $newName")
-            if (!priv.rename(src.path, dst.path)) throw FsException("Rename failed: ${file.path}")
+            if (privFs.exists(dst.path)) throw FsException("Target already exists: $newName")
+            if (!privFs.rename(src.path, dst.path)) throw FsException("Rename failed: ${file.path}")
             changed?.invoke(src.absolutePath)
             changed?.invoke(dst.absolutePath)
             return XFile(SCHEME, dst.path, isDir = file.isDir)
@@ -138,7 +142,7 @@ class LocalFileSystem(
         val f = File(file.path)
         if (f.exists()) return true
         if (!maybeHidden(f)) return false
-        return elevation?.exists(file.path) == true
+        return fallback?.exists(file.path) == true
     }
 
     /**
@@ -153,13 +157,13 @@ class LocalFileSystem(
      * again. `canRead` is a single access(2); it doesn't fork a process.
      */
     private fun maybeHidden(f: File): Boolean {
-        if (elevation == null) return false
+        if (fallback == null) return false
         val parent = f.parentFile ?: return true
         return !parent.canRead()
     }
 
     override fun setModifiedTime(file: XFile, time: Long): Boolean =
-        File(file.path).setLastModified(time) || elevation?.setModifiedTime(file.path, time) == true
+        File(file.path).setLastModified(time) || fallback?.setModifiedTime(file.path, time) == true
 
     override fun moveWithin(src: XFile, destDir: XFile, newName: String): Boolean {
         // Same-volume rename is the O(1) optimal move; cross-volume renameTo fails,
@@ -275,5 +279,32 @@ class LocalFileSystem(
         @Volatile
         @JvmStatic
         var elevation: PrivilegedFs? = null
+
+        private val noElevation = ThreadLocal<Boolean>()
+
+        /**
+         * Runs [block] with the privileged fallback switched off **for this thread**.
+         *
+         * ★ For work done on someone else's behalf — the WiFi share serves LAN clients
+         * through this same file system, and with elevation on, a request for
+         * `/data/...` was answered by the root shell: every app's private data, and with
+         * writes enabled, root writes anywhere. Elevation is the *user's* tool; a
+         * visitor gets exactly what the app itself can reach.
+         *
+         * A thread-local rather than a second instance, because the work fans out through
+         * `FsRegistry` (and `CopyEngine`) by scheme, which would find the elevated instance
+         * again. Streams opened inside [block] keep working after it returns; they were
+         * opened unprivileged.
+         */
+        @JvmStatic
+        fun <T> withoutElevation(block: () -> T): T {
+            val outer = noElevation.get()
+            noElevation.set(true)
+            try {
+                return block()
+            } finally {
+                if (outer == null) noElevation.remove() else noElevation.set(outer)
+            }
+        }
     }
 }

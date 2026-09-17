@@ -136,6 +136,32 @@ class LocalFileSystemElevationTest {
         assertTrue(runCatching { fs.list(XFile("file", "/proc/1/fd", isDir = true)) }.isFailure)
     }
 
+    /**
+     * The WiFi share runs its requests under [LocalFileSystem.withoutElevation]: a LAN
+     * visitor must not be served through the root shell. Observed through spawns — a
+     * fallback write starts a one-shot `cat` — so a write the app cannot do itself must fail
+     * without spawning inside the block, while other threads and later calls still fall back.
+     */
+    @Test
+    fun `withoutElevation keeps the fallback out for the current thread only`() {
+        val spawns = installElevation()
+        val target = XFile("file", "/proc/1/twig-no-such-dir/x.txt", isDir = false)
+        fun tryWrite() = runCatching { fs.openOutput(target, append = false).use { it.write(1) } }
+
+        LocalFileSystem.withoutElevation {
+            assertTrue(tryWrite().isFailure)
+            assertEquals("nothing reached the shell inside the block", 0, spawns.get())
+
+            // Another thread is unaffected while this one has opted out.
+            Thread { tryWrite() }.apply { start(); join() }
+            assertTrue("the other thread still used the fallback", spawns.get() > 0)
+        }
+
+        spawns.set(0)
+        tryWrite()
+        assertTrue("outside the block the fallback is back", spawns.get() > 0)
+    }
+
     /** Guards the fun-interface wiring: a launcher may be a plain lambda. */
     @Test
     fun `launcher can be supplied as a lambda`() {

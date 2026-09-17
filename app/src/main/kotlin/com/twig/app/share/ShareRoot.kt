@@ -8,44 +8,60 @@ import com.twig.app.R
 import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import java.io.File
 
 /**
- * URL 路径 ↔ [XFile] 的映射,是 HTTP/WebDAV 层唯一认识"文件"的地方。
+ * URL path ↔ [XFile] mapping — the only place in the HTTP/WebDAV layer that knows about
+ * "files".
  *
- * 两种范围([ShareScope])在这里被抹平成同一棵树:
- *  - 单目录:`/a/b` 就是那个目录下的 `a/b`;
- *  - 所有源:`/` 是个**虚拟根**(没有对应的 XFile),子项是 [sources] 给出的各个来源,
- *    `/<来源段>/a/b` 再往下走。
+ * The two scopes ([ShareScope]) are flattened into one tree here:
+ *  - single directory: `/a/b` is `a/b` under that directory;
+ *  - all sources: `/` is a **virtual root** (no XFile behind it), its children are the
+ *    sources from [sources], and `/<source segment>/a/b` walks down from there.
  *
- * ## 为什么是"逐级按名字下钻"而不是"路径拼接"(★ 2026-08-10 重写)
+ * ## Why "drill down by name, level by level" rather than "join the path" (★ rewritten 2026-08-10)
  *
- * 第一版假设"URL 路径段拼起来 = `XFile.path`"。这个假设对本地/SMB/FTP 成立,对
- * **路径不透明**的来源完全不成立:
- *  - 「应用」(`AppsFileSystem`)的 path 是包名 `/user/com.tencent.mm`,而 [XFile.name]
- *    给的是 `微信 8.0.x.apk`——URL 里只可能出现后者,拼回去 resolve 直接抛"找不到该应用";
- *  - SAF 的 path 是一整条 document URI,更没有"父路径 + 名字"这回事。
+ * The first version assumed "URL segments joined together = `XFile.path`". That holds for
+ * local/SMB/FTP and not at all for sources whose **paths are opaque**:
+ *  - "Apps" (`AppsFileSystem`) uses the package name as path (`/user/com.tencent.mm`) while
+ *    [XFile.name] is `WeChat 8.0.x.apk` — only the latter can appear in a URL, and joining
+ *    it back fails with "no such app";
+ *  - a SAF path is an entire document URI; "parent path + name" does not exist there.
  *
- * 现在改成:从来源根出发,每一级列目录、按 [XFile.name] 找子项,拿到的就是它**真正的**
- * XFile(不透明 path 原样带着)。代价是深链要逐级列一遍,由 [DirCache] 兜住——浏览本来
- * 就是一级级点下去的,祖先目录全在缓存里。
+ * Now: start from the source root, list each level and pick the child by [XFile.name]; what
+ * comes back is its **real** XFile (opaque path carried as is). The cost is that a deep link
+ * lists every level once, which [DirCache] absorbs — browsing goes level by level anyway, so
+ * the ancestors are all cached.
  */
 class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
 
     /**
-     * "所有来源"虚拟根下的一项。
+     * One entry under the "all sources" virtual root.
      *
-     * [segment] 是 URL 里那一段,**必须稳定**——WebDAV 客户端会把它当挂载点存下来。
-     * 用固定字面量(`storage`/`root`/`apps`)或 scheme(服务器,由连接标签确定性算出),
-     * 都不会因为用户新展开了一台服务器就整体挪位。[label] 只用来显示。
+     * [segment] is that URL segment and **must be stable** — WebDAV clients save it as a
+     * mount point. Fixed literals (`storage`/`root`/`apps`) or the scheme (servers; derived
+     * deterministically from the connection label) never shift because the user expanded
+     * another server. [label] is display only.
      */
     class Source(val segment: String, val label: String, val scheme: String, val basePath: String)
 
     /**
-     * 服务起来时把该连的连上:scope 指向某台服务器上的目录、而进程刚冷启动(FsRegistry
-     * 里还没有它)时,靠存下来的连接标签自己重连一次。阻塞 IO,必须在工作线程调用。
+     * The app's own private directories, canonicalised once. Never served, whatever the
+     * scope — see [isPrivate].
+     */
+    private val privateDirs: List<String> = listOfNotNull(
+        ctx.dataDir,
+        ctx.applicationInfo.deviceProtectedDataDir?.let { File(it) },
+    ).mapNotNull { runCatching { it.canonicalPath }.getOrNull() }.distinct()
+
+    /**
+     * Connect whatever needs connecting when the service starts: if the scope points into a
+     * server and the process just cold-started (not in FsRegistry yet), reconnect using the
+     * stored connection label. Blocking IO; call on a worker thread.
      *
-     * 失败不抛异常——失败会在第一次请求时以"打不开 + 错误原因"表现出来(见
-     * [WebUi.renderDir] 的错误条),比服务直接起不来更好排查。
+     * Failures are not thrown — they surface on the first request as "cannot open + reason"
+     * (see the error bar in [WebUi.renderDir]), which is easier to diagnose than a service
+     * that refuses to start.
      */
     fun ensureReady() {
         val s = scope as? ShareScope.Dir ?: return
@@ -56,23 +72,24 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
         }
     }
 
-    /** "所有来源"模式的虚拟根:除它以外每个 URL 路径都对应一个真实 [XFile]。 */
+    /** The virtual root of "all sources" mode: every other URL path maps to a real [XFile]. */
     fun isVirtualRoot(path: String): Boolean =
         scope is ShareScope.AllSources && segments(path)?.isEmpty() == true
 
     /**
-     * 虚拟根的子项;单目录模式下为空。
+     * Children of the virtual root; empty in single-directory mode.
      *
-     * **只列真能浏览的来源**。`FsRegistry.all()` 里混着一批不是"根"的东西:
-     * zip/7z/rar 是挂在某个宿主文件上的容器(`root()` 直接抛
-     * "Archive must be mounted via rootOf(archive)"),SAF 要先选目录树才有根,
-     * `share` 是接住别的应用 content:// 的中转。第一版把它们原样摊出来,于是页面上
-     * 多了 `Archive`/`7z archive`/`RAR archive`/`Share` 四个点进去必然报错的条目。
-     * 判据就一条:[FileSystem.root] 能不能正常返回。
+     * **Only sources that can actually be browsed.** `FsRegistry.all()` also holds things
+     * that are not roots: zip/7z/rar are containers mounted on a host file (`root()` throws
+     * "Archive must be mounted via rootOf(archive)"), SAF needs a tree picked first, and
+     * `share` relays other apps' content:// URIs. The first version listed them all, so the
+     * page grew `Archive`/`7z archive`/`RAR archive`/`Share` entries that always failed when
+     * opened. The criterion is just: does [FileSystem.root] return normally.
      *
-     * 本地存储另拆成「内部存储」和「根目录」两项——`LocalFileSystem` 的根是 `/`,
-     * 直接摊出来用户看到的是 `acct`/`apex`/`vendor` 这堆系统目录,而九成场景要的是
-     * `/sdcard`。这也跟应用内树上的两个顶级节点对上了。
+     * Local storage is split into "Internal storage" and "Root directory" — the root of
+     * `LocalFileSystem` is `/`, which shows the user `acct`/`apex`/`vendor` and friends,
+     * while nine times out of ten `/sdcard` is what they want. This matches the two
+     * top-level nodes in the app's own tree.
      */
     fun sources(): List<Source> {
         if (scope !is ShareScope.AllSources) return emptyList()
@@ -88,7 +105,7 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
                 out += Source("root", ctx.getString(R.string.group_root), LOCAL, "/")
                 continue
             }
-            // root() 抛异常 = 这个来源不是一棵可独立浏览的树,跳过
+            // root() throws = this source is not an independently browsable tree; skip it
             val root = runCatching { fs.root() }.getOrNull() ?: continue
             out += Source(
                 segment = fs.scheme,
@@ -101,9 +118,11 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
     }
 
     /**
-     * 解析 URL 路径成 [XFile]。路径非法(含 `..`)、来源不存在、某一级找不到时返回 null。
+     * Resolve a URL path to an [XFile]. Returns null when the path is illegal (contains
+     * `..`), the source does not exist, some level cannot be found, or the result is one of
+     * the app's private directories.
      *
-     * 逐级下钻,理由见类注释。
+     * Drills down level by level; see the class comment for why.
      */
     fun resolve(path: String): XFile? {
         val segs = segments(path) ?: return null
@@ -115,29 +134,57 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
                 ?.firstOrNull { it.name == name } ?: return null
             cur = child
         }
+        if (isPrivate(cur)) return null
         return cur
     }
 
-    /** 列目录;[file] 必须是 [resolve] 出来的目录。异常照抛,由调用方显示原因。 */
-    fun list(file: XFile): List<XFile> = cache.list(FsRegistry.of(file), file)
+    /** List a directory; [file] must be a directory from [resolve]. Exceptions propagate so the caller can show the reason. */
+    fun list(file: XFile): List<XFile> {
+        val all = cache.list(FsRegistry.of(file), file)
+        // Only hide rows when a private directory sits directly in this one: anything that
+        // gets there another way (a symlink) is still refused by [resolve], and canonicalising
+        // every row of a large directory is not free.
+        if (!holdsPrivate(file)) return all
+        return all.filterNot { isPrivate(it) }
+    }
 
-    /** 该来源整体是否支持写(restic/7z/RAR/应用/git 视图这类只读来源靠它拦住)。 */
+    /** Whether the whole source can be written (read-only sources — restic/7z/RAR/apps/git view — are stopped here). */
     fun writable(file: XFile): Boolean =
         runCatching { FsRegistry.of(file).writable() }.getOrDefault(false)
 
-    /** 写操作改动了某个目录后丢掉缓存,免得浏览器刷新看到的还是旧清单。 */
+    /** Drop the cache after a write changed a directory, so a browser refresh does not see the old listing. */
     fun invalidate(dirPath: String) = cache.drop(dirPath)
 
-    /** 整棵缓存作废(改动可能波及多处时用,比如 MOVE 的两端)。 */
+    /** Drop the whole cache (for changes that may touch several places, e.g. both ends of a MOVE). */
     fun invalidateAll() = cache.clear()
 
-    // ---- 内部 ----
+    // ---- internals ----
 
-    /** 把 URL 路径段拆成 (文件系统, 起点路径, 还要往下走的段)。 */
+    /**
+     * ★ Whether [f] is (inside) one of the app's own private directories. Those hold the
+     * wrapped key material, imported SSH keys, the local shell's rc files — none of it is
+     * the user's content, and writing there is how a visitor would plant code the app runs
+     * later. Unreachable without root in practice, since `/data` cannot be listed, but the
+     * share must not depend on that: the check is on the canonical path so `/data/data/…`
+     * and `/data/user/0/…` are the same thing.
+     */
+    private fun isPrivate(f: XFile): Boolean {
+        if (f.scheme != LOCAL || privateDirs.isEmpty()) return false
+        val p = runCatching { File(f.path).canonicalPath }.getOrElse { return true }
+        return privateDirs.any { p == it || p.startsWith("$it/") }
+    }
+
+    private fun holdsPrivate(dir: XFile): Boolean {
+        if (dir.scheme != LOCAL || privateDirs.isEmpty()) return false
+        val p = runCatching { File(dir.path).canonicalPath }.getOrElse { return true }
+        return privateDirs.any { it.substringBeforeLast('/').ifEmpty { "/" } == p }
+    }
+
+    /** Split URL segments into (file system, starting path, segments still to walk). */
     private fun entry(segs: List<String>): Triple<FileSystem, String, List<String>>? {
         when (val sc = scope) {
             is ShareScope.AllSources -> {
-                if (segs.isEmpty()) return null // 虚拟根没有 XFile,调用方先问 isVirtualRoot
+                if (segs.isEmpty()) return null // the virtual root has no XFile; callers ask isVirtualRoot first
                 val src = sources().firstOrNull { it.segment == segs[0] } ?: return null
                 val fs = runCatching { FsRegistry.of(src.scheme) }.getOrNull() ?: return null
                 return Triple(fs, src.basePath, segs.drop(1))
@@ -150,11 +197,13 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
     }
 
     /**
-     * 目录清单的小 LRU。
+     * A small LRU of directory listings.
      *
-     * 逐级下钻会把祖先目录反复列一遍(一次深链请求 N 级、一个目录页里 N 个文件各走一遍),
-     * 网络来源上那就是成倍的往返。缓存 [MAX] 条、[TTL_MS] 过期:一次浏览会话里祖先全命中,
-     * 又不至于让别的客户端刚上传完就看到过期清单(写操作还会主动 [drop])。
+     * Level-by-level drilling lists the ancestors over and over (a deep link walks N levels;
+     * a directory page with N files walks them N times), which on network sources multiplies
+     * round trips. [MAX] entries with a [TTL_MS] expiry: within a browsing session the
+     * ancestors all hit, yet another client does not see a stale listing right after an
+     * upload (writes also [drop] explicitly).
      */
     private class DirCache {
         private class Entry(val files: List<XFile>, val at: Long)
@@ -164,18 +213,18 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
         }
 
         fun list(fs: FileSystem, dir: XFile): List<XFile> {
-            val key = "${fs.scheme} ${dir.path}"
+            val key = "${fs.scheme} ${dir.path}"
             val now = android.os.SystemClock.elapsedRealtime()
             synchronized(map) {
                 map[key]?.let { if (now - it.at < TTL_MS) return it.files }
             }
-            val fresh = fs.list(dir) // 网络 IO 放在锁外
+            val fresh = fs.list(dir) // network IO stays outside the lock
             synchronized(map) { map[key] = Entry(fresh, now) }
             return fresh
         }
 
         fun drop(dirPath: String) = synchronized(map) {
-            map.keys.removeAll { it.substringAfter(' ') == dirPath }
+            map.keys.removeAll { it.substringAfter(' ') == dirPath }
         }
 
         fun clear() = synchronized(map) { map.clear() }
@@ -192,8 +241,9 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
         private const val LOCAL = "file"
 
         /**
-         * 拆 URL 路径成段。**`..` 一律拒绝**(返回 null):这是把设备文件摊到网上的服务,
-         * 路径穿越就是把共享目录之外的东西也送出去了。`.` 与空段直接丢掉。
+         * Split a URL path into segments. **`..` is always rejected** (returns null): this
+         * service puts the device's files on the network, and path traversal would hand out
+         * things outside the shared scope. `.` and empty segments are dropped.
          */
         fun segments(path: String): List<String>? {
             val out = ArrayList<String>()

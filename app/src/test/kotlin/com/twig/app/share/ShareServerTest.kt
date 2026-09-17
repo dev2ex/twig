@@ -61,10 +61,10 @@ class ShareServerTest {
     }
 
     /** Starts the server; [readOnly] decides whether write methods pass or get 403. */
-    private fun start(readOnly: Boolean = true, password: String = "") {
+    private fun start(readOnly: Boolean = true, password: String = "", scopeDir: File = dir) {
         port = ServerSocket(0).use { it.localPort } // borrow a free port number
         val cfg = ShareConfig(
-            scope = ShareScope.Dir("file", dir.path, "share"),
+            scope = ShareScope.Dir("file", scopeDir.path, "share"),
             readOnly = readOnly,
             port = port,
             password = password,
@@ -167,6 +167,28 @@ class ShareServerTest {
         start()
         assertEquals(404, request("GET", "/../outside.txt").status)
         assertEquals(404, request("GET", "/sub/../../outside.txt").status)
+    }
+
+    /**
+     * ★ The app's own data directory is never served, whatever the scope — it holds key
+     * material and the local shell's rc files, and a visitor writing there could plant code
+     * the app runs later (2026-09-17 review).
+     */
+    @Test
+    fun `the app's private directory is neither listed nor served nor writable`() {
+        val data = app.dataDir
+        val secret = File(data, "files/secret.txt").apply { parentFile!!.mkdirs(); writeText("key") }
+        val parent = data.canonicalFile.parentFile!!
+        start(readOnly = false, scopeDir = parent)
+        val name = HttpServer.encodeSegment(data.canonicalFile.name)
+
+        assertFalse(request("PROPFIND", "/", listOf("Depth: 1")).text.contains("<D:displayname>${data.canonicalFile.name}<"))
+        assertEquals(404, request("GET", "/$name/files/secret.txt").status)
+        assertEquals(404, request("GET", "/$name/").status)
+        assertEquals(409, request("PUT", "/$name/files/planted.txt", body = "x".toByteArray()).status)
+        assertFalse(File(data, "files/planted.txt").exists())
+        assertEquals(404, request("DELETE", "/$name/files/secret.txt").status)
+        assertTrue(secret.exists())
     }
 
     @Test

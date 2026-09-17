@@ -4,6 +4,7 @@ import android.content.Context
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.fs.local.LocalFileSystem
 import java.io.OutputStream
 
 /**
@@ -25,7 +26,16 @@ class ShareHandler(
 
     private val ui = WebUi(ctx, cfg, root)
 
-    override fun handle(req: HttpRequest, res: HttpResponder) {
+    /**
+     * ★ Every request runs with the root/Shizuku fallback off: elevation is the user's own
+     * tool, and a LAN visitor must get exactly what the app itself can reach — not every
+     * app's private data, and not root writes (2026-09-17 review). See
+     * [LocalFileSystem.withoutElevation].
+     */
+    override fun handle(req: HttpRequest, res: HttpResponder) =
+        LocalFileSystem.withoutElevation { dispatch(req, res) }
+
+    private fun dispatch(req: HttpRequest, res: HttpResponder) {
         when (req.method) {
             "OPTIONS" -> options(res)
             "GET", "HEAD" -> get(req, res)
