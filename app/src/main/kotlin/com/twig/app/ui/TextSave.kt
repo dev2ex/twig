@@ -5,6 +5,7 @@ import com.twig.app.R
 import com.twig.app.TextCodec
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
+import com.twig.core.SafeWrite
 import com.twig.core.XFile
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
@@ -70,58 +71,25 @@ internal fun strictUtf8(bytes: ByteArray): String? = runCatching {
 }.getOrNull()
 
 /**
- * Save back to the source. Default path is "write a same-directory temp file → delete
- * the original → rename the temp into place":
- * [com.twig.core.FileSystem.openOutput] truncates the original and writes into it in
- * most implementations, so a half-finished write over the network leaves a fragment
- * and the original is gone forever. Sources that advertise
- * [com.twig.core.FileSystem.atomicOverwrite] (zip: rewrite the whole archive to
- * .twigtmp and replace) just write directly, saving two extra whole-archive rewrites.
+ * Save back to the source through [SafeWrite.replace]: a same-directory temp file, then
+ * delete the original, then rename the temp into place —
+ * [com.twig.core.FileSystem.openOutput] truncates the original in most implementations, so
+ * a half-finished write over the network would otherwise leave a fragment and the original
+ * would be gone for good. The details (the zip / S3 direct path, the fallback for shares
+ * that allow modifying a file but not creating one next to it) live there.
+ *
+ * ★ When the final rename fails, the temp file is the only complete copy and is kept;
+ * the message names it so the user can rescue it.
  */
 internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
     val fs = FsRegistry.of(file)
-    if (fs.atomicOverwrite()) {
-        fs.openOutput(file).use { it.write(bytes) }
-        return
-    }
+    val existing = file.takeIf { runCatching { fs.exists(it) }.getOrDefault(true) }
     val parent = fs.resolve(file.parentPath)
-    val tmp = fs.createFile(parent, "${file.name}.twigtmp")
-    runCatching { if (fs.exists(tmp)) fs.delete(tmp) } // clean up leftover from a previous failed attempt
-
-    // ★ "Can modify this file" and "can create a new file in this directory" are two
-    // independent permissions (SMB/NTFS's FILE_WRITE_DATA vs the directory's
-    // FILE_ADD_FILE). In practice some shares only grant the former — creating a temp
-    // file comes back as STATUS_ACCESS_DENIED. The user clearly has permission to
-    // modify this file, so we shouldn't fail to save just because we picked this
-    // implementation, so we fall back to directly overwriting the original (no atomic
-    // guarantee, but it does save).
-    // The fallback only fires for "open failed": a failure mid-write is a network/disk
-    // issue, the fallback would still fail, and would truncate the original file —
-    // at that point the original is still intact, so failing more honestly is safer.
-    val out = runCatching { fs.openOutput(tmp) }.getOrNull()
-    if (out == null) {
-        runCatching { if (fs.exists(tmp)) fs.delete(tmp) }
-        fs.openOutput(file).use { it.write(bytes) }
-        return
-    }
     try {
-        out.use { it.write(bytes) }
-    } catch (e: Throwable) {
-        runCatching { if (fs.exists(tmp)) fs.delete(tmp) }
-        throw e
-    }
-
-    // ★ Past this line, tmp is the only complete copy of the content, and the
-    // original file is about to be deleted — whatever fails later we must **not**
-    // delete tmp again (an earlier version cleaned up here too, which meant wiping
-    // out what the user had just written). Just surface tmp's name so the user
-    // can rescue it.
-    if (fs.exists(file)) fs.delete(file)
-    try {
-        fs.rename(tmp, file.name)
-    } catch (e: Throwable) {
+        SafeWrite.replace(fs, parent, file.name, existing) { it.write(bytes) }
+    } catch (e: SafeWrite.RenameFailed) {
         throw FsException(
-            getString(R.string.err_saved_but_rename_failed, tmp.name, file.name, e.message ?: ""),
+            getString(R.string.err_saved_but_rename_failed, e.tmpName, e.targetName, e.cause?.message ?: ""),
             e,
         )
     }

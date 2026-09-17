@@ -205,7 +205,9 @@ class Multipart(private val src: InputStream, boundary: String) {
         }
     }
 
-    /** A part's body stream: returns EOF as soon as the separator is hit. */
+    private fun truncated() = java.io.EOFException("Multipart body ended before its boundary")
+
+    /** A part's body stream: returns EOF as soon as the separator is hit; throws if the body is cut off first. */
     private inner class PartStream : InputStream() {
         private var done = false
         private val one = ByteArray(1)
@@ -219,14 +221,9 @@ class Multipart(private val src: InputStream, boundary: String) {
             if (done) return -1
             // The portion of the buffer that is "definitely not part of a
             // separator" can be emitted directly
-            if (!ensure(delim.size + 2)) {
-                val avail = end - start
-                if (avail <= 0) { done = true; return -1 }
-                val n = minOf(len, avail)
-                System.arraycopy(buf, start, b, off, n)
-                start += n
-                return n
-            }
+            // ★ Fewer bytes left than a closing boundary needs: the upload was cut off.
+            // Handing out the rest and then -1 used to save the fragment as the file.
+            if (!ensure(delim.size + 2)) throw truncated()
             var i = start
             val limit = end - delim.size - 2
             while (i <= limit) {
@@ -250,8 +247,8 @@ class Multipart(private val src: InputStream, boundary: String) {
         /** The handler stopped reading early: push the rest forward to the separator so the next part is aligned. */
         fun finish() {
             if (done) return
-            scanTo(null)
             done = true
+            if (!scanTo(null)) throw truncated()
         }
     }
 }

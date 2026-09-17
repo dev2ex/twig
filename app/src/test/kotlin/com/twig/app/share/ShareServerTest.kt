@@ -424,6 +424,93 @@ class ShareServerTest {
         )
     }
 
+    /** `MOVE /sub/x → /sub` used to delete the existing `/sub` — the source's own parent — first. */
+    @Test
+    fun `MOVE onto its own parent is refused and touches nothing`() {
+        start(readOnly = false)
+        val r = request("MOVE", "/sub/nested.bin", listOf("Destination: http://127.0.0.1:$port/sub"))
+        assertEquals(409, r.status)
+        assertEquals(1000L, File(dir, "sub/nested.bin").length())
+    }
+
+    @Test
+    fun `COPY into its own subtree is refused`() {
+        start(readOnly = false)
+        val r = request("COPY", "/sub/", listOf("Destination: http://127.0.0.1:$port/sub/inner/"))
+        assertEquals(409, r.status)
+        assertFalse(File(dir, "sub/inner").exists())
+    }
+
+    /** Overwriting sets the old destination aside and drops it only after success — nothing left over. */
+    @Test
+    fun `MOVE over an existing file replaces it and leaves no set-aside copy`() {
+        File(dir, "target.txt").writeText("old")
+        start(readOnly = false)
+        val r = request("MOVE", "/hello.txt", listOf("Destination: http://127.0.0.1:$port/target.txt"))
+        assertEquals(204, r.status)
+        assertEquals("hello world", File(dir, "target.txt").readText())
+        assertFalse(File(dir, "hello.txt").exists())
+        assertEquals(setOf("sub", "target.txt"), dir.list()!!.toSet())
+    }
+
+    @Test
+    fun `COPY over an existing directory replaces it`() {
+        File(dir, "sub2").mkdirs()
+        File(dir, "sub2/stale.txt").writeText("stale")
+        start(readOnly = false)
+        val r = request("COPY", "/sub/", listOf("Destination: http://127.0.0.1:$port/sub2/"))
+        assertEquals(204, r.status)
+        assertTrue(File(dir, "sub2/nested.bin").exists())
+        assertFalse(File(dir, "sub2/stale.txt").exists())
+        assertFalse(dir.list()!!.any { it.endsWith(".twigold") })
+    }
+
+    /**
+     * ★ A client that drops mid-upload must not cost the file it was replacing: the body
+     * used to end "normally" at the disconnect, and PUT saved the fragment over the original
+     * (2026-09-17 review). Both body framings are covered.
+     */
+    @Test
+    fun `a PUT cut off mid-body leaves the existing file intact`() {
+        start(readOnly = false)
+        sendAndHangUp("PUT /hello.txt", "Content-Length: 100000", "partial".toByteArray())
+        assertEquals("hello world", File(dir, "hello.txt").readText())
+        assertFalse(dir.list()!!.any { it.endsWith(".twigpart") })
+    }
+
+    @Test
+    fun `a chunked PUT cut off mid-chunk leaves the existing file intact`() {
+        start(readOnly = false)
+        sendAndHangUp("PUT /hello.txt", "Transfer-Encoding: chunked", "400\r\nonly a little".toByteArray())
+        assertEquals("hello world", File(dir, "hello.txt").readText())
+        assertFalse(dir.list()!!.any { it.endsWith(".twigpart") })
+    }
+
+    @Test
+    fun `a browser upload cut off mid-file leaves the existing file intact`() {
+        start(readOnly = false)
+        val b = "----twigCut"
+        val part = "--$b\r\nContent-Disposition: form-data; name=\"f\"; filename=\"hello.txt\"\r\n\r\nnew content that never finishes"
+        sendAndHangUp("POST /?op=upload", "Content-Type: multipart/form-data; boundary=$b\r\nContent-Length: 100000", part.toByteArray())
+        assertEquals("hello world", File(dir, "hello.txt").readText())
+        assertFalse(dir.list()!!.any { it.endsWith(".twigpart") })
+    }
+
+    /** Sends a request whose body stops short, closes the sending side, and waits until the server has hung up. */
+    private fun sendAndHangUp(requestLine: String, header: String, partialBody: ByteArray) {
+        Socket("127.0.0.1", port).use { sock ->
+            sock.soTimeout = 5000
+            val out = sock.getOutputStream()
+            out.write("$requestLine HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n$header\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
+            out.write(partialBody)
+            out.flush()
+            sock.shutdownOutput()
+            // The server closes the connection once the handler has given up; reading to EOF
+            // is the "it is done" signal (it answers nothing, or at most an error).
+            runCatching { sock.getInputStream().readBytes() }
+        }
+    }
+
     /** Source and destination are the same path: must not muddle a "copy" into deleting the source. */
     @Test
     fun `COPY to itself is rejected`() {

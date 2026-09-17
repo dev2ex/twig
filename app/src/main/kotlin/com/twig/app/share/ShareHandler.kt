@@ -3,6 +3,7 @@ package com.twig.app.share
 import android.content.Context
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
+import com.twig.core.SafeWrite
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import java.io.OutputStream
@@ -278,18 +279,17 @@ class ShareHandler(
         if (!root.writable(parent)) { res.sendText(403, "Source is read-only"); return }
 
         val fs = FsRegistry.of(parent)
-        val existed = root.resolve(req.path) != null
-        val dest = fs.createFile(parent, segs.last())
-        fs.openOutput(dest, append = false).use { out ->
-            val buf = ByteArray(BUF)
-            while (true) {
-                val n = req.body.read(buf)
-                if (n < 0) break
-                out.write(buf, 0, n)
-            }
+        val existing = root.resolve(req.path)
+        if (existing?.isDir == true) { res.sendText(405, "A collection exists at this path"); return }
+        // ★ Through SafeWrite: the body goes to a temp sibling and only replaces the old file
+        // once it arrived whole. The body stream throws when the client drops mid-upload, so
+        // a cut-off PUT no longer truncates the file it was meant to replace.
+        try {
+            SafeWrite.replace(fs, parent, segs.last(), existing) { out -> req.body.pump(out) }
+        } finally {
+            root.invalidate(parent.path)
         }
-        root.invalidate(parent.path)
-        res.send(if (existed) 204 else 201)
+        res.send(if (existing != null) 204 else 201)
     }
 
     private fun mkcol(req: HttpRequest, res: HttpResponder) {
@@ -330,13 +330,27 @@ class ShareHandler(
      */
     private fun moveOrCopy(req: HttpRequest, res: HttpResponder, move: Boolean) {
         val src = target(req, res) ?: return
-        if (ShareRoot.segments(req.path).isNullOrEmpty()) {
+        val srcSegs = ShareRoot.segments(req.path).orEmpty()
+        if (srcSegs.isEmpty()) {
             res.sendText(403, "Cannot move the share root")
             return
         }
         val destPath = destinationPath(req) ?: run { res.sendText(400, "Bad Destination"); return }
         val destSegs = ShareRoot.segments(destPath)
         if (destSegs.isNullOrEmpty()) { res.sendText(403, "Bad Destination"); return }
+
+        // ★ The self-check must come **before** anything touches an existing destination:
+        // with source == destination, clearing the destination would clear the source
+        // (this is how `ShareServerTest.COPY to self is rejected` came to be written).
+        if (destSegs == srcSegs) {
+            res.sendText(403, "Source and destination are the same"); return
+        }
+        // ★ Nor may one contain the other (2026-09-17 review): `MOVE /a/b → /a` used to
+        // delete the existing `/a` — the source's own parent — before moving, and
+        // `COPY /a → /a/b` copies a directory into itself while listing it.
+        if (destSegs.startsWith(srcSegs) || srcSegs.startsWith(destSegs)) {
+            res.sendText(409, "Source and destination overlap"); return
+        }
 
         val destParent = root.resolve("/" + destSegs.dropLast(1).joinToString("/"))
         if (destParent == null || !destParent.isDir) { res.sendText(409, "Destination parent not found"); return }
@@ -347,36 +361,40 @@ class ShareHandler(
         val newName = destSegs.last()
         val sameParent = src.scheme == destParent.scheme && src.parentPath == destParent.path
 
-        // ★ The self-check must come **before** "overwrite the existing
-        // destination": when the source and destination are the same path,
-        // the delete below to clear the existing target would actually
-        // delete the source file, and the 403 would arrive too late (this
-        // is how the 2026-08-10 `ShareServerTest.COPY to self is rejected`
-        // test came to be written).
-        if (sameParent && newName == src.name) {
-            res.sendText(403, "Source and destination are the same"); return
-        }
-
         val existing = root.resolve(destPath)
-        if (existing != null) {
-            // WebDAV defaults to Overwrite: T; explicit F means the
-            // destination already exists, so we must answer 412 rather than
-            // overwrite
-            if (req.header("overwrite")?.trim()?.uppercase() == "F") {
-                res.sendText(412, "Destination exists"); return
-            }
-            runCatching { FsRegistry.of(existing).delete(existing) }
+        if (existing != null && req.header("overwrite")?.trim()?.uppercase() == "F") {
+            // WebDAV defaults to Overwrite: T; explicit F means the destination already
+            // exists, so we must answer 412 rather than overwrite
+            res.sendText(412, "Destination exists"); return
         }
 
-        when {
-            move && sameParent -> FsRegistry.of(src).rename(src, newName)
-            move && src.scheme == destParent.scheme &&
-                FsRegistry.of(src).moveWithin(src, destParent, newName) -> Unit
-            else -> transferAs(src, destParent, newName, move)
+        // ★ An existing destination is **set aside**, not deleted, until the move/copy has
+        // succeeded — deleting it first lost it whenever the transfer then failed.
+        val aside = existing?.let { setAside(it) }
+        try {
+            when {
+                move && sameParent -> FsRegistry.of(src).rename(src, newName)
+                move && src.scheme == destParent.scheme &&
+                    FsRegistry.of(src).moveWithin(src, destParent, newName) -> Unit
+                else -> transferAs(src, destParent, newName, move)
+            }
+        } catch (t: Throwable) {
+            if (aside != null && existing != null) {
+                runCatching { FsRegistry.of(aside).rename(aside, existing.name) }
+            }
+            root.invalidateAll()
+            throw t
         }
+        aside?.let { a -> runCatching { FsRegistry.of(a).delete(a) } }
         root.invalidateAll() // either side's directory may have changed; dropping the whole cache is easier than invalidating per-entry
         res.send(if (existing != null) 204 else 201)
     }
+
+    /** Renames [f] out of the way (`name.twigold`) so its slot is free; throws — touching nothing — if it cannot. */
+    private fun setAside(f: XFile): XFile = FsRegistry.of(f).rename(f, f.name + ASIDE_SUFFIX)
+
+    private fun List<String>.startsWith(prefix: List<String>): Boolean =
+        size >= prefix.size && subList(0, prefix.size) == prefix
 
     /**
      * Move [src] to `destParent/newName` — the key thing is that the
@@ -403,9 +421,7 @@ class ShareHandler(
         if (!src.isDir) {
             val dest = destFs.createFile(destParent, newName)
             srcFs.openInput(src).use { input ->
-                destFs.openOutput(dest, false).use { out ->
-                    CopyEngine.pipe(input, out, { false })
-                }
+                SafeWrite.writeOrDelete(destFs, dest) { out -> CopyEngine.pipe(input, out, { false }) }
             }
             if (move) srcFs.delete(src)
             return
@@ -482,6 +498,7 @@ class ShareHandler(
 
     companion object {
         private const val BUF = 64 * 1024
+        private const val ASIDE_SUFFIX = ".twigold"
         private const val ALLOW =
             "OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, MOVE, COPY, LOCK, UNLOCK"
 

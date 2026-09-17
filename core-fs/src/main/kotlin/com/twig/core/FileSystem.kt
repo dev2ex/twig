@@ -179,7 +179,7 @@ interface FileSystem {
 }
 
 /** Unified type for file system operation exceptions. */
-class FsException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+open class FsException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
 /** Source supporting positional reads (used by the media player for random seek). */
 interface RandomSource : java.io.Closeable {

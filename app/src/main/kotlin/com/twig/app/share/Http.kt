@@ -473,26 +473,42 @@ class HttpServer(
     }
 }
 
-/** A body stream bounded by Content-Length: once the limit is reached it reports EOF, so it cannot bleed into the next keep-alive request. */
+/**
+ * A body stream bounded by Content-Length: once the limit is reached it reports EOF, so it
+ * cannot bleed into the next keep-alive request.
+ *
+ * ★ The connection ending **before** the limit is an error, not an EOF: a client that went
+ * away mid-upload used to look exactly like a finished one, and the handler saved the
+ * fragment as the file (2026-09-17 review).
+ */
 private class LimitedInputStream(private val src: InputStream, private var left: Long) : InputStream() {
     override fun read(): Int {
         if (left <= 0) return -1
         val c = src.read()
-        if (c >= 0) left--
+        if (c < 0) throw truncated()
+        left--
         return c
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         if (left <= 0) return -1
+        if (len == 0) return 0
         val n = src.read(b, off, minOf(len.toLong(), left).toInt())
-        if (n > 0) left -= n
+        if (n < 0) throw truncated()
+        left -= n
         return n
     }
+
+    private fun truncated() = java.io.EOFException("Request body ended $left bytes early")
 
     override fun available(): Int = minOf(src.available().toLong(), left).toInt()
 }
 
-/** The `Transfer-Encoding: chunked` body stream (commonly used by WebDAV clients uploading large files). */
+/**
+ * The `Transfer-Encoding: chunked` body stream (commonly used by WebDAV clients uploading
+ * large files). Only the zero-size chunk ends the body; the connection ending anywhere else,
+ * or a chunk header that does not parse, is an error — see [LimitedInputStream].
+ */
 private class ChunkedInputStream(private val src: InputStream) : InputStream() {
     private var left = 0L
     private var done = false
@@ -504,10 +520,14 @@ private class ChunkedInputStream(private val src: InputStream) : InputStream() {
     private fun nextChunk(): Boolean {
         if (done) return false
         if (left > 0) return true
-        if (pendingCrlf) { HttpServer.readLine(src); pendingCrlf = false }
-        val line = HttpServer.readLine(src) ?: run { done = true; return false }
+        if (pendingCrlf) {
+            HttpServer.readLine(src) ?: throw java.io.EOFException("Chunked body ended mid-stream")
+            pendingCrlf = false
+        }
+        val line = HttpServer.readLine(src) ?: throw java.io.EOFException("Chunked body ended mid-stream")
         // Chunk size is hex, possibly followed by ";extension params"
-        val size = line.substringBefore(';').trim().toLongOrNull(16) ?: run { done = true; return false }
+        val size = line.substringBefore(';').trim().toLongOrNull(16)
+            ?.takeIf { it >= 0 } ?: throw IOException("Bad chunk size: ${line.take(40)}")
         if (size == 0L) {
             // Trailer headers may follow the last chunk; read until the empty line
             while (true) {
@@ -529,14 +549,17 @@ private class ChunkedInputStream(private val src: InputStream) : InputStream() {
     override fun read(): Int {
         if (!nextChunk()) return -1
         val c = src.read()
-        if (c >= 0) consumed(1)
+        if (c < 0) throw java.io.EOFException("Chunked body ended mid-chunk")
+        consumed(1)
         return c
     }
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (len == 0) return 0
         if (!nextChunk()) return -1
         val n = src.read(b, off, minOf(len.toLong(), left).toInt())
-        if (n > 0) consumed(n)
+        if (n < 0) throw java.io.EOFException("Chunked body ended mid-chunk")
+        consumed(n)
         return n
     }
 }

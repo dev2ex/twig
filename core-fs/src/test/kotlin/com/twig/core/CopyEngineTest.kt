@@ -371,9 +371,14 @@ class CopyEngineTest {
         assertFalse("the destination must not keep a half-finished file after cancelling", dst.files.containsKey("/a.txt"))
     }
 
-    /** Cancelling in overwrite mode: the original file has already been truncated by openOutput, and it must not be left corrupt either. */
+    /**
+     * Cancelling in overwrite mode keeps the original: the new content goes to a temp
+     * sibling first (SafeWrite), so a cancel costs nothing that was already there. (Before
+     * that, openOutput had truncated the original on open and the best we could do was
+     * delete the fragment.)
+     */
     @Test
-    fun cancelRemovesTargetEvenWhenOverwriting() {
+    fun cancelDuringOverwriteKeepsTheOriginal() {
         src.put("/a.txt", "hello")
         dst.put("/a.txt", "old")
         var started = false
@@ -385,7 +390,51 @@ class CopyEngineTest {
             cancelled = { started },
             resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
         )
-        assertFalse("cancelling during overwrite must not leave a half-finished file either", dst.files.containsKey("/a.txt"))
+        assertEquals("old", dst.text("/a.txt"))
+        assertEquals("no temp file left behind", listOf("/a.txt"), dst.files.keys.toList())
+    }
+
+    /** A read that dies while overwriting leaves the old file as it was. */
+    @Test
+    fun failedOverwriteKeepsTheOriginal() {
+        src.put("/a.txt", "hello world")
+        dst.put("/a.txt", "old")
+        src.failAfter = 5
+        assertThrows(Exception::class.java) {
+            CopyEngine.transfer(
+                listOf(srcFile("/a.txt")), dstRoot(), move = false,
+                resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
+            )
+        }
+        assertEquals("old", dst.text("/a.txt"))
+        assertEquals(listOf("/a.txt"), dst.files.keys.toList())
+    }
+
+    @Test
+    fun overwriteReplacesContent() {
+        src.put("/a.txt", "new")
+        dst.put("/a.txt", "old")
+        CopyEngine.transfer(
+            listOf(srcFile("/a.txt")), dstRoot(), move = false,
+            resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
+        )
+        assertEquals("new", dst.text("/a.txt"))
+        assertEquals(listOf("/a.txt"), dst.files.keys.toList())
+    }
+
+    /** Replacing ends with a recursive delete of the old entry — a folder must never be that entry. */
+    @Test
+    fun aFileNeverOverwritesAFolder() {
+        src.put("/a", "file")
+        dst.put("/a/keep.txt", "k")
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(
+                listOf(srcFile("/a")), dstRoot(), move = true,
+                resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
+            )
+        }
+        assertEquals("k", dst.text("/a/keep.txt"))
+        assertEquals("file", src.text("/a"))
     }
 
     // ---- Counting and progress ----

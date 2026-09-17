@@ -136,4 +136,35 @@ class MultipartTest {
         val raw = "--$boundary--\r\n".toByteArray()
         assertTrue(parse(raw).isEmpty())
     }
+
+    /**
+     * ★ A body cut off before its closing boundary is an error, not a short file: the
+     * parser used to hand out the remaining bytes and then EOF, and the upload handler saved
+     * that fragment as the file (2026-09-17 review).
+     */
+    @Test
+    fun `a body cut off mid-part throws instead of ending the part`() {
+        val full = body("""Content-Disposition: form-data; name="f"; filename="a.bin"""" to ByteArray(200_000) { 7 })
+        val cut = full.copyOf(100_000)
+        val e = runCatching { parse(cut) }.exceptionOrNull()
+        assertTrue("expected EOFException, got $e", e is java.io.EOFException)
+    }
+
+    @Test
+    fun `a body cut off inside the closing boundary throws too`() {
+        val full = body("""Content-Disposition: form-data; name="f"; filename="a.bin"""" to "data".toByteArray())
+        val cut = full.copyOf(full.size - "--$boundary--\r\n".length + 3)
+        assertTrue(runCatching { parse(cut) }.exceptionOrNull() is java.io.EOFException)
+    }
+
+    /** A part the handler skipped must still reach its boundary — or the form was cut off. */
+    @Test
+    fun `skipping a part of a truncated body throws`() {
+        val full = body("""Content-Disposition: form-data; name="f"; filename="a.bin"""" to ByteArray(200_000))
+        val cut = full.copyOf(150_000)
+        val e = runCatching {
+            Multipart(ByteArrayInputStream(cut), boundary).forEachPart { _, _, _ -> }
+        }.exceptionOrNull()
+        assertTrue(e is java.io.EOFException)
+    }
 }

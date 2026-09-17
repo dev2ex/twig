@@ -162,44 +162,35 @@ object CopyEngine {
         }
 
         task.listener?.onFile(src)
-        val target = destFs.createFile(destDir, name).also { siblings[name] = it }
-        var aborted = false
-        var copied = 0L
-        try {
+        // RENAME picked a free name, so only OVERWRITE still has something to protect.
+        val replacing = existing?.takeIf { name == src.name }
+        // Replacing ends with delete(existing), which is recursive — a file must never
+        // "overwrite" a folder of the same name that way.
+        if (replacing?.isDir == true) throw FsException("A folder named ${src.name} is in the way")
+        val target = try {
             srcFs.openInput(src).use { input ->
-                destFs.openOutput(target, append = false).use { output ->
-                    copied = pump(input, output, task, src.size)
-                    if (copied < 0) aborted = true
+                SafeWrite.replace(destFs, destDir, name, replacing) { output ->
+                    val copied = pump(input, output, task, src.size)
+                    if (copied < 0) throw CopyCancelled()
+                    // ★ A move deletes the source next, so "the stream ended" is not good
+                    // enough proof that the copy is whole: a backend that reports a failed
+                    // read as EOF (the privileged `cat` did, see PrivilegedShell.openInput)
+                    // would hand us a short file and we would delete the only complete
+                    // copy. Checked inside the write so a short copy never replaces an
+                    // existing file either. Plain copies are not held to this — some
+                    // sources (third-party content providers) report sizes that are simply
+                    // wrong, and there the source survives anyway.
+                    if (task.move && src.size > 0 && copied < src.size) {
+                        throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
+                    }
                 }
             }
-        } catch (t: Throwable) {
-            // A failed write leaves a fragment that looks like a real file — and a later
-            // retry that picks "skip" would keep it. Same cleanup as a cancel.
-            runCatching { destFs.delete(target) }
-            siblings.remove(name)
-            throw t
-        }
-        // ★ A move deletes the source next, so "the stream ended" is not good enough proof
-        // that the copy is whole: a backend that reports a failed read as EOF (the
-        // privileged `cat` did, see PrivilegedShell.openInput) would hand us a short file
-        // and we would delete the only complete copy. Plain copies are not held to this —
-        // some sources (third-party content providers) report sizes that are simply wrong,
-        // and there the source survives anyway.
-        if (!aborted && task.move && src.size > 0 && copied < src.size) {
-            runCatching { destFs.delete(target) }
-            siblings.remove(name)
-            throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
-        }
-        if (aborted) {
-            // Cancelled: the destination is only half-written, leaving it is just a
-            // corrupt file — and in overwrite mode the original has already been
-            // truncated by openOutput's TRUNC, so leaving it is even more pointless.
-            // Delete outside the two `use` blocks: deleting while the streams are
-            // still open isn't always honoured by SFTP / SMB.
-            runCatching { destFs.delete(target) }
-            siblings.remove(name)
+        } catch (c: CopyCancelled) {
+            // SafeWrite already removed the partial file (or the temp, leaving the original
+            // untouched on OVERWRITE).
             return false
         }
+        siblings[target.name] = target
         // Best-effort: write the source's modification time back to the destination.
         // This step is not part of "did the copy succeed" — write failure /
         // unsupported both leave the copy valid; the destination simply keeps the
@@ -208,6 +199,9 @@ object CopyEngine {
         task.listener?.onItemDone(isDir = false)
         return true
     }
+
+    /** Unwinds a cancelled copy through [SafeWrite.replace], which then cleans up its partial file. */
+    private class CopyCancelled : RuntimeException()
 
     /** @return bytes written, or -1 when cancelled. */
     private fun pump(

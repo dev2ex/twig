@@ -4,6 +4,7 @@ import android.content.Context
 import com.twig.app.Format
 import com.twig.app.R
 import com.twig.core.FsRegistry
+import com.twig.core.SafeWrite
 import com.twig.core.XFile
 import java.io.InputStream
 import java.text.SimpleDateFormat
@@ -126,7 +127,7 @@ class WebUi(
     ): String {
         val cat = if (isDir) Cat.FOLDER else Cat.of(name)
         val sizeText = if (isDir) "—" else Format.size(maxOf(0L, size))
-        val timeText = if (mtime > 0) DATE_FMT.format(java.util.Date(mtime)) else "—"
+        val timeText = if (mtime > 0) DATE_FMT.get()!!.format(java.util.Date(mtime)) else "—"
         // Image / audio / video file names preview inline; everything else
         // just downloads or drills into the directory
         val prev = if (isDir) null else previewKind(name)
@@ -341,14 +342,21 @@ class WebUi(
         when (req.query["op"]) {
             "upload" -> {
                 var count = 0
-                Multipart(req.body, boundary).forEachPart { _, filename, body ->
-                    if (filename.isNullOrEmpty()) { body.drain(); return@forEachPart }
-                    val safe = safeName(filename) ?: run { body.drain(); return@forEachPart }
-                    val dest = fs.createFile(dir, safe)
-                    fs.openOutput(dest, append = false).use { out -> body.pump(out) }
-                    count++
+                try {
+                    Multipart(req.body, boundary).forEachPart { _, filename, body ->
+                        if (filename.isNullOrEmpty()) { body.drain(); return@forEachPart }
+                        val safe = safeName(filename) ?: run { body.drain(); return@forEachPart }
+                        val existing = root.list(dir).firstOrNull { it.name == safe }
+                        if (existing?.isDir == true) { body.drain(); return@forEachPart }
+                        // Temp file first (SafeWrite): the part stream throws if the browser
+                        // drops mid-upload, and the file being replaced stays as it was.
+                        SafeWrite.replace(fs, dir, safe, existing) { out -> body.pump(out) }
+                        root.invalidate(dir.path)
+                        count++
+                    }
+                } finally {
+                    root.invalidate(dir.path)
                 }
-                root.invalidate(dir.path)
                 res.sendText(200, "ok:$count")
             }
             "mkdir" -> {
@@ -499,7 +507,11 @@ class WebUi(
         }
 
     companion object {
-        private val DATE_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+        // Per thread: pages are rendered on the HTTP worker threads concurrently, and
+        // SimpleDateFormat is not thread-safe (dates came out garbled under parallel requests).
+        private val DATE_FMT = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+        }
 
         // The formats browsers can actually be relied on to play (see previewKind)
         private val PREVIEW_IMAGE = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "svg", "ico")
