@@ -190,3 +190,18 @@
   fails on exactly the same paths, and no difference can be constructed. That half can only be
   verified on a rooted device or with real Shizuku.
 
+- **★ A one-shot stream's EOF is not proof of success — check the exit status**
+  (2026-09-17 review, `PrivilegedShell.openInput` / `openOutput`). Both used to ignore it:
+  - `cat > path` that cannot open its target (read-only mount, missing parent, SELinux) exits
+    at once, but a payload smaller than the pipe buffer (~64 KB) has already been "written"
+    without error, and `close()` swallowed the status — **a failed write reported success**.
+  - `cat path` that cannot read gives an empty stdout, which is indistinguishable from an
+    empty file.
+  Either way `CopyEngine` saw a complete copy, and a **move deleted the source**. Now
+  `close()` throws on a non-zero exit, and the input stream checks the status at EOF (not on
+  `close()`: abandoning a read early kills `cat`, and that status means nothing). Each
+  one-shot process keeps its own stderr tail for the message — never the session's, and never
+  under `errLock` (see the stderr bullet above). `CopyEngine` additionally refuses a move whose
+  byte count falls short of the source size, as a net for any backend with the same habit.
+  Regression tests: `a write that cannot land fails on close`,
+  `a read that cannot happen fails instead of looking empty` (both fail on the old code).

@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -215,6 +216,43 @@ class PrivilegedShellTest {
 
         val readBack = fs.openInput(f.absolutePath).use { it.readBytes() }
         assertArrayEqualsMsg(payload, readBack)
+    }
+
+    /**
+     * A small write whose `cat >` cannot open the target used to "succeed": the bytes
+     * fit in the pipe buffer, close() ignored the exit status, and a move then deleted
+     * the source. close() must fail.
+     */
+    @Test
+    fun `a write that cannot land fails on close`() {
+        val f = File(tmp.root, "no/such/dir/x.txt")
+        val e = assertThrows(java.io.IOException::class.java) {
+            fs.openOutput(f.absolutePath, append = false).use { it.write("tiny".toByteArray()) }
+        }
+        assertTrue(e.message!!, e.message!!.contains("exit"))
+        assertFalse(f.exists())
+    }
+
+    /** A `cat` that cannot read gives an empty stdout — that must not pass for an empty file. */
+    @Test
+    fun `a read that cannot happen fails instead of looking empty`() {
+        val missing = File(tmp.root, "missing.bin").absolutePath
+        assertThrows(java.io.IOException::class.java) {
+            fs.openInput(missing).use { it.readBytes() }
+        }
+    }
+
+    @Test
+    fun `an empty file still reads as empty`() {
+        val f = File(tmp.root, "empty.bin").apply { writeBytes(ByteArray(0)) }
+        assertEquals(0, fs.openInput(f.absolutePath).use { it.readBytes() }.size)
+    }
+
+    /** Abandoning a read early kills `cat`; that status is not an error. */
+    @Test
+    fun `closing a read early is not an error`() {
+        val f = File(tmp.root, "big.bin").apply { writeBytes(ByteArray(1 shl 20)) }
+        fs.openInput(f.absolutePath).use { it.read(ByteArray(16)) }
     }
 
     /** Binary content must survive verbatim — it is never decoded as text. */

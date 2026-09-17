@@ -4,6 +4,7 @@ import java.io.BufferedReader
 import java.io.Closeable
 import java.io.FilterInputStream
 import java.io.FilterOutputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -211,8 +212,30 @@ class PrivilegedShell(
      */
     fun openInput(cmd: String): InputStream {
         val p = launcher.start(cmd)
-        drainStderr(p, collect = false)
+        val err = OneShotErr(p)
         return object : FilterInputStream(p.stdout) {
+            private var checked = false
+
+            override fun read(): Int = super.read().also { if (it < 0) checkExit() }
+
+            override fun read(b: ByteArray, off: Int, len: Int): Int =
+                super.read(b, off, len).also { if (it < 0) checkExit() }
+
+            /**
+             * ★ EOF alone does not mean "end of file": a `cat` that could not open or
+             * read its input exits non-zero with an empty stdout, which looks exactly
+             * like an empty file. Copying that and then deleting the source (a move)
+             * is how a file used to vanish, so the exit status is checked at EOF.
+             * Not in [close]: abandoning a stream early kills the process, and that
+             * status means nothing.
+             */
+            private fun checkExit() {
+                if (checked) return
+                checked = true
+                val code = p.waitFor()
+                if (code != 0) throw IOException(err.message("read", code))
+            }
+
             override fun close() {
                 runCatching { super.close() }
                 p.destroy()
@@ -227,16 +250,43 @@ class PrivilegedShell(
      */
     fun openOutput(cmd: String): OutputStream {
         val p = launcher.start(cmd)
-        drainStderr(p, collect = false)
+        val err = OneShotErr(p)
         return object : FilterOutputStream(p.stdin) {
+            private var closed = false
+
             // FilterOutputStream forwards this byte-by-byte by default; copying a
             // large file through that is unusably slow.
             override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
+
+            /**
+             * ★ The exit status is the only proof the data landed. `cat > path` that
+             * cannot open its target exits at once, but anything smaller than the pipe
+             * buffer (~64 KB) has already been "written" successfully by then — so
+             * without this check a failed write reported success, and a move went on
+             * to delete the source.
+             */
             override fun close() {
+                if (closed) return
+                closed = true
                 runCatching { super.close() }
-                runCatching { p.waitFor() }
+                val code = runCatching { p.waitFor() }.getOrDefault(-1)
                 p.destroy()
+                if (code != 0) throw IOException(err.message("write", code))
             }
+        }
+    }
+
+    /** stderr of one one-shot process, kept to explain a non-zero exit. */
+    private inner class OneShotErr(p: PrivilegedProcess) {
+        private val tail = ArrayDeque<String>()
+        private val reader = drainStderr(p, tail)
+
+        fun message(op: String, code: Int): String {
+            // The process has exited, so stderr is at EOF or about to be; give the
+            // drain a moment to catch up rather than report an empty reason.
+            runCatching { reader.join(500) }
+            val why = synchronized(tail) { tail.joinToString("; ") }
+            return "Privileged $op failed (exit $code)" + if (why.isEmpty()) "" else ": $why"
         }
     }
 
@@ -245,18 +295,21 @@ class PrivilegedShell(
      * and a command that fills it while nobody reads blocks forever — which for the
      * session would look exactly like a hung shell.
      *
-     * [collect] is false for one-shot processes: their stderr still has to be read
-     * for the reason above, but folding it into the session's tail would attribute
-     * a `cat`'s complaint to whatever command runs next.
+     * [tail] is where the lines go: null means the session's own tail. A one-shot
+     * process gets its own ([OneShotErr]) — its stderr still has to be read for the
+     * reason above, but folding it into the session's tail would attribute a `cat`'s
+     * complaint to whatever command runs next.
      */
-    private fun drainStderr(p: PrivilegedProcess, collect: Boolean = true) {
+    private fun drainStderr(p: PrivilegedProcess, tail: ArrayDeque<String>? = null): Thread {
         val t = Thread {
             runCatching {
                 BufferedReader(InputStreamReader(p.stderr)).forEachLine { line ->
-                    if (!collect) return@forEachLine
-                    synchronized(errLock) {
-                        errTail.addLast(line)
-                        while (errTail.size > ERR_KEEP) errTail.removeFirst()
+                    // Never errLock for a one-shot tail — see the lessons file on why the
+                    // drain must not contend with exec.
+                    val (buf, lock) = if (tail == null) errTail to errLock else tail to tail
+                    synchronized(lock) {
+                        buf.addLast(line)
+                        while (buf.size > ERR_KEEP) buf.removeFirst()
                     }
                 }
             }
@@ -264,6 +317,7 @@ class PrivilegedShell(
         t.isDaemon = true
         t.name = "twig-priv-err"
         t.start()
+        return t
     }
 
     private fun errText(): String = synchronized(errLock) { errTail.joinToString("\n") }
