@@ -73,6 +73,7 @@ object CopyEngine {
         val cancelled: Cancelled,
         val resolver: ConflictResolver,
         val total: Long,
+        val move: Boolean,
     ) {
         var bytes = 0L
         var aborted = false // user picked "Cancel" in the conflict dialog
@@ -103,10 +104,11 @@ object CopyEngine {
         resolver: ConflictResolver = ConflictResolver { _, _ -> Decision.OVERWRITE },
         plannedBytes: Long = -1, // when the caller has already called plan(), pass it in to avoid a second recursive scan
     ) {
-        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(items))
+        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(items), move)
         val destFs = FsRegistry.of(destDir)
         for (item in items) {
             if (task.cancelled.isCancelled() || task.aborted) break
+            requireSafeName(item.name)
             // Same file system and no same-name conflict at the destination: prefer
             // in-place move, saving a full copy.
             if (move && item.scheme == destDir.scheme &&
@@ -125,6 +127,7 @@ object CopyEngine {
     /** @return whether the copy completed cleanly (no skips / cancels); `move` uses this to decide whether to delete the source. */
     private fun copyRecursive(src: XFile, destDir: XFile, task: Task): Boolean {
         if (task.cancelled.isCancelled() || task.aborted) return false
+        requireSafeName(src.name)
         val srcFs = FsRegistry.of(src)
         val destFs = FsRegistry.of(destDir)
         val siblings = childrenOf(task, destFs, destDir)
@@ -161,10 +164,31 @@ object CopyEngine {
         task.listener?.onFile(src)
         val target = destFs.createFile(destDir, name).also { siblings[name] = it }
         var aborted = false
-        srcFs.openInput(src).use { input ->
-            destFs.openOutput(target, append = false).use { output ->
-                if (!pump(input, output, task, src.size)) aborted = true
+        var copied = 0L
+        try {
+            srcFs.openInput(src).use { input ->
+                destFs.openOutput(target, append = false).use { output ->
+                    copied = pump(input, output, task, src.size)
+                    if (copied < 0) aborted = true
+                }
             }
+        } catch (t: Throwable) {
+            // A failed write leaves a fragment that looks like a real file — and a later
+            // retry that picks "skip" would keep it. Same cleanup as a cancel.
+            runCatching { destFs.delete(target) }
+            siblings.remove(name)
+            throw t
+        }
+        // ★ A move deletes the source next, so "the stream ended" is not good enough proof
+        // that the copy is whole: a backend that reports a failed read as EOF (the
+        // privileged `cat` did, see PrivilegedShell.openInput) would hand us a short file
+        // and we would delete the only complete copy. Plain copies are not held to this —
+        // some sources (third-party content providers) report sizes that are simply wrong,
+        // and there the source survives anyway.
+        if (!aborted && task.move && src.size > 0 && copied < src.size) {
+            runCatching { destFs.delete(target) }
+            siblings.remove(name)
+            throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
         }
         if (aborted) {
             // Cancelled: the destination is only half-written, leaving it is just a
@@ -185,18 +209,38 @@ object CopyEngine {
         return true
     }
 
+    /** @return bytes written, or -1 when cancelled. */
     private fun pump(
         input: java.io.InputStream,
         output: java.io.OutputStream,
         task: Task,
         srcSize: Long,
-    ): Boolean {
+    ): Long {
         var fileCopied = 0L
-        return pipe(input, output, { task.cancelled.isCancelled() || task.aborted }) { n ->
+        val done = pipe(input, output, { task.cancelled.isCancelled() || task.aborted }) { n ->
             fileCopied += n
             task.bytes += n
             task.listener?.onFileBytes(fileCopied, srcSize)
             task.listener?.onBytes(task.bytes, task.total)
+        }
+        return if (done) fileCopied else -1
+    }
+
+    /**
+     * Refuses a name that would not stay inside the destination directory.
+     *
+     * Every backend joins `parent + "/" + name`, so a `..` (or a name carrying a
+     * separator) walks out of the directory the user chose — archive entries are the
+     * classic case (zip slip), but a hostile WebDAV / FTP server can list such names just
+     * as well. This is the one place every copy passes through, so the check lives here
+     * rather than in each backend. `.` is allowed: it resolves to the directory itself
+     * and tar's `./a.txt` layout depends on it. So is a bare `/` — [XFile.name] of a
+     * source root — which joins onto the destination as the destination itself.
+     */
+    internal fun requireSafeName(name: String) {
+        if (name == "/") return
+        if (name.isEmpty() || name == ".." || '/' in name || '\u0000' in name) {
+            throw FsException("Refusing unsafe file name: \"$name\"")
         }
     }
 

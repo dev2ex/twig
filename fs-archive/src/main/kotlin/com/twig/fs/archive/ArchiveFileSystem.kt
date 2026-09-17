@@ -128,7 +128,7 @@ abstract class ArchiveFileSystem : FileSystem {
         val archive = archiveOf(path)
         val inner = innerOf(path)
         if (inner.isEmpty()) return dirXFile(archive, "")
-        val match = entries(archive).firstOrNull { normalize(it).trimEnd('/') == inner }
+        val match = entries(archive).firstOrNull { normalize(it)?.trimEnd('/') == inner }
         return if (match != null && !match.isDir) {
             fileXFile(archive, inner, match)
         } else {
@@ -145,7 +145,7 @@ abstract class ArchiveFileSystem : FileSystem {
         val files = LinkedHashMap<String, ArchiveEntry>()
 
         for (e in entries(archive)) {
-            val name = normalize(e)
+            val name = normalize(e) ?: continue
             if (!name.startsWith(prefix) || name == prefix) continue
             val remainder = name.substring(prefix.length)
             if (remainder.isEmpty()) continue
@@ -177,7 +177,7 @@ abstract class ArchiveFileSystem : FileSystem {
             else runCatching { FsRegistry.of(host).exists(host) }.getOrDefault(false)
         }
         return entries(archive).any {
-            val n = normalize(it).trimEnd('/')
+            val n = normalize(it)?.trimEnd('/') ?: return@any false
             n == inner || n.startsWith("$inner/")
         }
     }
@@ -229,9 +229,20 @@ abstract class ArchiveFileSystem : FileSystem {
         canWrite = writable(archive),
     )
 
-    /** Normalize entry names: unify '/'; drop leading '/'; directories end with '/'. */
-    private fun normalize(e: ArchiveEntry): String {
+    /**
+     * Normalize entry names: unify '/'; drop leading '/'; directories end with '/'.
+     *
+     * ★ Returns null — the entry is left out of the tree entirely — when any segment is
+     * `..`. Such a name is never a real file layout, only a zip-slip attempt: listed as
+     * is, `a/../../x` shows up as a directory literally named `..`, and extracting it
+     * walks the destination path upwards and writes outside the chosen directory
+     * (the 2026-09-17 review reproduced exactly that). The entry is dropped rather than
+     * renamed because subclasses look entries up by their raw name.
+     * `.` segments stay: they do not escape, and tar's common `./a.txt` relies on them.
+     */
+    private fun normalize(e: ArchiveEntry): String? {
         var n = e.name.replace('\\', '/').removePrefix("/")
+        if (n.split('/').any { it == ".." }) return null
         if (e.isDir && !n.endsWith("/")) n += "/"
         return n
     }

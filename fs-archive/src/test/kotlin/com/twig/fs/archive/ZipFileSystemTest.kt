@@ -138,4 +138,29 @@ class ZipFileSystemTest {
         assertTrue("renamed.txt" in names)
         assertTrue("hello.txt" !in names)
     }
+
+    /**
+     * Zip slip: an entry whose name climbs out with `..` must not appear in the tree, and
+     * extracting the archive must not write anything outside the destination (before
+     * the 2026-09-17 fix this wrote `out/escaped.txt` while extracting into `out/dest`).
+     */
+    @Test
+    fun entriesClimbingOutWithDotDotAreHiddenAndCannotEscape() {
+        val evil = File(tmp, "evil.zip")
+        ZipOutputStream(evil.outputStream()).use { z ->
+            z.put("a/../../escaped.txt", "pwn")
+            z.put("../top.txt", "pwn")
+            z.put("ok/inner.txt", "fine")
+        }
+        val root = zfs.rootOf(XFile(scheme = "file", path = evil.absolutePath, isDir = false))
+        // `a` only existed as the first segment of the dropped entry, so it goes too
+        assertEquals(listOf("ok"), zfs.list(root).map { it.name })
+
+        val dest = File(tmp, "out/dest").apply { mkdirs() }
+        CopyEngine.transfer(zfs.list(root), XFile("file", dest.absolutePath, isDir = true), move = false)
+
+        assertEquals("fine", File(dest, "ok/inner.txt").readText())
+        assertTrue(File(tmp, "out").list()!!.toList() == listOf("dest"))
+        assertTrue(!File(tmp, "top.txt").exists())
+    }
 }

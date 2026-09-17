@@ -3,6 +3,7 @@ package com.twig.core
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -40,6 +41,15 @@ class CopyEngineTest {
         var moveWithinSupported = false
         var moveWithinCalls = 0
 
+        /**
+         * Simulates a backend that reports a failed read as a clean EOF (the privileged
+         * `cat` used to): the stream ends after this many bytes. null = read everything.
+         */
+        var readLimit: Int? = null
+
+        /** Simulates a read that dies partway (network drop): throws after this many bytes. */
+        var failAfter: Int? = null
+
         /** Simulates "this filesystem does not support setting timestamps" (e.g. WebDAV/SMB), to verify CopyEngine does not error out because of it. */
         var setModifiedTimeSupported = true
         var setModifiedTimeCalls = 0
@@ -66,8 +76,18 @@ class CopyEngineTest {
                 .map { resolve(it) }
         }
 
-        override fun openInput(file: XFile): InputStream =
-            ByteArrayInputStream(files[file.path] ?: throw FsException("does not exist: ${file.path}"))
+        override fun openInput(file: XFile): InputStream {
+            val data = files[file.path] ?: throw FsException("does not exist: ${file.path}")
+            readLimit?.let { return ByteArrayInputStream(data.copyOf(minOf(it, data.size))) }
+            val fail = failAfter ?: return ByteArrayInputStream(data)
+            return object : InputStream() {
+                private var pos = 0
+                override fun read(): Int {
+                    if (pos >= fail) throw java.io.IOException("connection reset")
+                    return if (pos < data.size) data[pos++].toInt() and 0xFF else -1
+                }
+            }
+        }
 
         override fun openOutput(file: XFile, append: Boolean): OutputStream =
             object : ByteArrayOutputStream() {
@@ -409,5 +429,70 @@ class CopyEngineTest {
 
         val out2 = ByteArrayOutputStream()
         assertFalse(CopyEngine.pipe(ByteArrayInputStream(data), out2, { true }))
+    }
+
+    // ---- Unsafe names (zip slip) ----
+
+    /** A source entry named `..` must not be joined onto the destination — that walks out of the chosen directory. */
+    @Test
+    fun entryNamedDotDotIsRefusedAndNothingIsWritten() {
+        src.put("/evil", "pwn")
+        val evil = XFile("cpsrc", "/evil", isDir = false, size = 3, displayName = "..")
+        val dest = dst.mkdir(dstRoot(), "out")
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(evil), dest, move = true)
+        }
+        assertTrue(dst.files.isEmpty())
+        assertEquals("pwn", src.text("/evil")) // move failed, the source stays
+    }
+
+    /** Same, one level down: a directory whose child carries a separator in its name. */
+    @Test
+    fun childNameWithSeparatorIsRefused() {
+        val fs = object : FileSystem by src {
+            override fun list(dir: XFile): List<XFile> =
+                listOf(XFile("cpsrc", "/d/x", isDir = false, size = 1, displayName = "../../x"))
+        }
+        FsRegistry.register(fs)
+        try {
+            assertThrows(FsException::class.java) {
+                CopyEngine.transfer(listOf(XFile("cpsrc", "/d", isDir = true)), dstRoot(), move = false)
+            }
+            assertTrue(dst.files.isEmpty())
+        } finally {
+            FsRegistry.register(src)
+        }
+    }
+
+    @Test
+    fun dotAndRootNamesStillCopy() {
+        CopyEngine.requireSafeName(".")
+        CopyEngine.requireSafeName("/")
+        CopyEngine.requireSafeName("a..b")
+    }
+
+    // ---- Short / failed reads ----
+
+    /** A read that ends early without an error must not let a move delete the only complete copy. */
+    @Test
+    fun shortReadDuringMoveKeepsSourceAndDropsPartial() {
+        src.put("/a.txt", "hello world")
+        src.readLimit = 4
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = true)
+        }
+        assertEquals("hello world", src.text("/a.txt"))
+        assertEquals(null, dst.text("/a.txt"))
+    }
+
+    @Test
+    fun readFailureMidCopyRemovesThePartialFile() {
+        src.put("/a.txt", "hello world")
+        src.failAfter = 5
+        assertThrows(Exception::class.java) {
+            CopyEngine.transfer(listOf(srcFile("/a.txt")), dstRoot(), move = true)
+        }
+        assertEquals("hello world", src.text("/a.txt"))
+        assertEquals(null, dst.text("/a.txt"))
     }
 }
