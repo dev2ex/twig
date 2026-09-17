@@ -85,3 +85,26 @@
   (defence in depth; `/data` is not listable without root anyway). Tests:
   `withoutElevation keeps the fallback out for the current thread only`,
   `the app's private directory is neither listed nor served nor writable`.
+- **★ The network boundary is explicit** (2026-09-17 review, `LanPolicy`). The server binds the
+  wildcard address, which includes mobile data and global IPv6 — some carriers do no inbound
+  filtering, so the share was reachable from the internet. Now:
+  - **peers**: loopback, RFC 1918, link-local, IPv6 ULA and **100.64.0.0/10** only. The last one
+    is carrier NAT *and Tailscale* — reaching one's own phone over Tailscale is a real use, so
+    do not "tighten" it away. Discovery replies obey the same rule.
+  - **`Host:`**: IP literals, single-label names and local-only suffixes (`.local`, `.lan`,
+    `.home.arpa`, `.ts.net`, …). Anything else is a DNS-rebinding attempt: a page the user
+    visits re-points its own name at the device and reads the share same-origin. Checked
+    before auth.
+  - **POST needs `X-Twig: 1`**: a multipart POST is a CORS "simple request", so any page could
+    upload/delete/rename with the browser's cached Basic credentials. A custom header forces a
+    preflight this server never approves. WebDAV write methods are not simple requests and
+    need nothing. **Any new page script that POSTs must send the header.**
+  - **Served files** get `X-Content-Type-Options: nosniff`, and HTML/SVG/XML/JS a
+    `Content-Security-Policy: sandbox` (decided by extension as well as MIME — the system MIME
+    table is not complete, and is empty under Robolectric). Not for everything: Chrome refuses
+    to render a PDF inline under a sandbox CSP.
+- **Uploads never truncate the file they replace** (same review): the body streams throw
+  `EOFException` when the client drops (they used to report a normal end), and PUT / browser
+  upload go through `SafeWrite` (temp sibling, then swap). WebDAV MOVE/COPY refuse overlapping
+  paths (`MOVE /a/b → /a` deleted `/a` first) and set an existing destination aside
+  (`.twigold`) until the operation succeeded.

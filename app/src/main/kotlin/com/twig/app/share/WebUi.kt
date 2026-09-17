@@ -274,7 +274,7 @@ class WebUi(
         var drop=${'$'}('#drop'),upBox=${'$'}('#up'),fill=${'$'}('#fill'),upName=${'$'}('#upname'),
             input=${'$'}('#files'),delsel=${'$'}('#delsel');
         function post(op,body){var x=new XMLHttpRequest();
-          x.open('POST',location.pathname+'?op='+op);
+          x.open('POST',location.pathname+'?op='+op);x.setRequestHeader('${ShareHandler.CSRF_HEADER}','1');
           if(x.upload){x.upload.onprogress=function(e){if(e.lengthComputable){
             upBox.style.display='block';fill.style.width=(e.loaded/e.total*100)+'%';}};}
           x.onload=function(){upBox.style.display='none';fill.style.width='0';

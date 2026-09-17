@@ -244,9 +244,11 @@ class HttpServer(
             } catch (e: IOException) {
                 if (running) continue else break
             }
+            // ★ LAN peers only: the wildcard bind also listens on mobile data and global
+            // IPv6, where some carriers do no inbound filtering (see LanPolicy).
             // Connection-count cap: a malicious / runaway client must not be
             // able to blow up the thread pool
-            if (connections.get() >= MAX_CONNECTIONS) {
+            if (!LanPolicy.allowedPeer(sock.inetAddress) || connections.get() >= MAX_CONNECTIONS) {
                 runCatching { sock.close() }
                 continue
             }
@@ -287,7 +289,10 @@ class HttpServer(
             markActive(true)
             try {
                 res.headOnly = req.method == "HEAD"
-                if (auth != null && !auth.accepts(req.header("authorization"))) {
+                if (!LanPolicy.allowedHost(req.header("host"))) {
+                    // Before auth: a DNS-rebound page must not even get to try credentials.
+                    res.sendText(403, "Host not allowed; open this share by its IP address")
+                } else if (auth != null && !auth.accepts(req.header("authorization"))) {
                     res.send(
                         401, "text/plain; charset=utf-8", "Unauthorized".toByteArray(),
                         listOf("WWW-Authenticate: Basic realm=\"Twig\", charset=\"UTF-8\""),
@@ -346,6 +351,8 @@ class HttpServer(
             if (h.isEmpty()) break
             val i = h.indexOf(':')
             if (i <= 0) continue
+            // Bounded before auth: an unauthenticated client must not grow this without end.
+            if (headers.size >= MAX_HEADERS) return MALFORMED
             headers[h.substring(0, i).trim().lowercase()] = h.substring(i + 1).trim()
         }
 
@@ -388,6 +395,7 @@ class HttpServer(
         private const val IDLE_TIMEOUT_MS = 30_000
         private const val MAX_CONNECTIONS = 48
         private const val MAX_DRAIN = 1L shl 20
+        private const val MAX_HEADERS = 100
 
         /** Sentinel for parse failures, so we don't need a whole new exception type. */
         private val MALFORMED = HttpRequest(

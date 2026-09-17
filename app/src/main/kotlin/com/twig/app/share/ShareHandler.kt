@@ -41,7 +41,7 @@ class ShareHandler(
             "OPTIONS" -> options(res)
             "GET", "HEAD" -> get(req, res)
             "PROPFIND" -> propfind(req, res)
-            "POST" -> requireWrite(res) { ui.post(req, res) }
+            "POST" -> requireWrite(res) { if (sameSiteScript(req, res)) ui.post(req, res) }
             "PUT" -> requireWrite(res) { put(req, res) }
             "MKCOL" -> requireWrite(res) { mkcol(req, res) }
             "DELETE" -> requireWrite(res) { delete(req, res) }
@@ -56,6 +56,20 @@ class ShareHandler(
             "PROPPATCH" -> requireWrite(res) { proppatch(req, res) }
             else -> res.send(405, extra = listOf("Allow: $ALLOW"))
         }
+    }
+
+    /**
+     * ★ CSRF guard for the browser UI (2026-09-17 review). A multipart POST is a "simple"
+     * request, so any web page could submit one to the share — uploads, deletes, renames,
+     * with the browser supplying cached Basic credentials. Our own page sends [CSRF_HEADER];
+     * a cross-site page cannot add a custom header without a CORS preflight, which this
+     * server never approves. The WebDAV write methods need no such check: they are not
+     * simple requests in the first place.
+     */
+    private fun sameSiteScript(req: HttpRequest, res: HttpResponder): Boolean {
+        if (req.header(CSRF_HEADER) == "1") return true
+        res.sendText(403, "Missing $CSRF_HEADER header")
+        return false
     }
 
     private inline fun requireWrite(res: HttpResponder, body: () -> Unit) {
@@ -116,6 +130,14 @@ class ShareHandler(
         // When the file name contains non-ASCII, use RFC 5987's filename* so
         // the browser does not save the Chinese name as mojibake
         extra += "Content-Disposition: inline; filename*=UTF-8''" + HttpServer.encodeSegment(file.name)
+        // ★ Served files are the shared *content*, not this page: a `.html` / `.svg` from some
+        // server, opened inline, would otherwise run script in the share's own origin and
+        // could read every file it can see (2026-09-17 review). nosniff keeps a text file
+        // from being promoted to HTML; the sandbox strips script from the types that can
+        // carry it. Not applied across the board — Chrome will not render a PDF inline
+        // under a sandbox CSP.
+        extra += "X-Content-Type-Options: nosniff"
+        if (scriptable(type, file.name)) extra += "Content-Security-Policy: sandbox"
 
         val range = parseRange(req.header("range"), size)
         if (range == null) {
@@ -155,6 +177,15 @@ class ShareHandler(
                 }
             }
         }
+    }
+
+    /** By type and by extension: the system MIME table is not guaranteed to know every one of these. */
+    private fun scriptable(type: String, name: String): Boolean {
+        if (name.substringAfterLast('.', "").lowercase() in SCRIPTABLE_EXT) return true
+        val t = type.substringBefore(';').trim().lowercase()
+        return t == "text/html" || t == "application/xhtml+xml" || t == "image/svg+xml" ||
+            t.endsWith("/xml") || t.endsWith("+xml") || t == "text/javascript" ||
+            t == "application/javascript"
     }
 
     private fun copy(input: java.io.InputStream, out: OutputStream, limit: Long) {
@@ -498,6 +529,8 @@ class ShareHandler(
 
     companion object {
         private const val BUF = 64 * 1024
+        const val CSRF_HEADER = "X-Twig"
+        private val SCRIPTABLE_EXT = setOf("html", "htm", "shtml", "xhtml", "xht", "svg", "svgz", "xml", "xsl", "xslt", "js", "mjs")
         private const val ASIDE_SUFFIX = ".twigold"
         private const val ALLOW =
             "OPTIONS, GET, HEAD, POST, PUT, DELETE, PROPFIND, PROPPATCH, MKCOL, MOVE, COPY, LOCK, UNLOCK"

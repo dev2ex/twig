@@ -83,6 +83,8 @@ object Discovery {
                 } catch (e: Exception) {
                     if (running) continue else break
                 }
+                // Same boundary as the HTTP server: never answer (or reflect traffic to) the internet
+                if (!LanPolicy.allowedPeer(p.address)) continue
                 val msg = String(p.data, p.offset, p.length, Charsets.UTF_8).trim()
                 if (!msg.startsWith(PROBE)) continue
                 val reply = card().toByteArray(Charsets.UTF_8)

@@ -74,6 +74,8 @@ class ShareServerTest {
         server = HttpServer(port, auth, ShareHandler(app, cfg, root)).also { it.start() }
     }
 
+    private val CSRF = "${ShareHandler.CSRF_HEADER}: 1"
+
     private class Reply(val status: Int, val headers: Map<String, String>, val body: ByteArray) {
         val text: String get() = String(body, Charsets.UTF_8)
     }
@@ -89,7 +91,8 @@ class ShareServerTest {
             sock.soTimeout = 5000
             val out = sock.getOutputStream()
             val head = StringBuilder()
-            head.append("$method $path HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n")
+            head.append("$method $path HTTP/1.1\r\n")
+            if (headers.none { it.startsWith("Host:", ignoreCase = true) }) head.append("Host: 127.0.0.1:$port\r\n")
             headers.forEach { head.append(it).append("\r\n") }
             head.append("Content-Length: ${body?.size ?: 0}\r\n")
             head.append("Connection: close\r\n\r\n")
@@ -491,7 +494,7 @@ class ShareServerTest {
         start(readOnly = false)
         val b = "----twigCut"
         val part = "--$b\r\nContent-Disposition: form-data; name=\"f\"; filename=\"hello.txt\"\r\n\r\nnew content that never finishes"
-        sendAndHangUp("POST /?op=upload", "Content-Type: multipart/form-data; boundary=$b\r\nContent-Length: 100000", part.toByteArray())
+        sendAndHangUp("POST /?op=upload", "Content-Type: multipart/form-data; boundary=$b\r\n$CSRF\r\nContent-Length: 100000", part.toByteArray())
         assertEquals("hello world", File(dir, "hello.txt").readText())
         assertFalse(dir.list()!!.any { it.endsWith(".twigpart") })
     }
@@ -535,11 +538,41 @@ class ShareServerTest {
         }.toByteArray()
         val r = request(
             "POST", "/?op=upload",
-            listOf("Content-Type: multipart/form-data; boundary=$b"),
+            listOf("Content-Type: multipart/form-data; boundary=$b", CSRF),
             body,
         )
         assertEquals(200, r.status)
         assertTrue(File(dir, "up.bin").readBytes().contentEquals(payload))
+    }
+
+    /** A cross-site page can send a multipart POST but not a custom header — so the header is required. */
+    @Test
+    fun `a POST without the page's header is refused`() {
+        start(readOnly = false)
+        val b = "----twigtest"
+        val body = "--$b\r\nContent-Disposition: form-data; name=\"f\"; filename=\"x.txt\"\r\n\r\nx\r\n--$b--\r\n"
+        val r = request("POST", "/?op=upload", listOf("Content-Type: multipart/form-data; boundary=$b"), body.toByteArray())
+        assertEquals(403, r.status)
+        assertFalse(File(dir, "x.txt").exists())
+    }
+
+    /** DNS rebinding: a page on a public name pointed at the device must be turned away. */
+    @Test
+    fun `a request for a public host name is refused`() {
+        start()
+        assertEquals(403, request("GET", "/hello.txt", listOf("Host: evil.example.com")).status)
+    }
+
+    @Test
+    fun `served files carry nosniff, and scriptable ones a sandbox`() {
+        File(dir, "page.html").writeText("<script>alert(1)</script>")
+        start()
+        val html = request("GET", "/page.html")
+        assertEquals("nosniff", html.headers["x-content-type-options"])
+        assertEquals("sandbox", html.headers["content-security-policy"])
+        val txt = request("GET", "/hello.txt")
+        assertEquals("nosniff", txt.headers["x-content-type-options"])
+        assertEquals(null, txt.headers["content-security-policy"])
     }
 
     @Test
@@ -555,7 +588,7 @@ class ShareServerTest {
             write("pwned".toByteArray())
             write("\r\n--$b--\r\n".toByteArray())
         }.toByteArray()
-        request("POST", "/?op=upload", listOf("Content-Type: multipart/form-data; boundary=$b"), body)
+        request("POST", "/?op=upload", listOf("Content-Type: multipart/form-data; boundary=$b", CSRF), body)
         assertFalse("must not be able to write outside the shared directory", File(dir.parentFile, "escaped.txt").exists())
         assertEquals("pwned", File(dir, "escaped.txt").readText())
     }
