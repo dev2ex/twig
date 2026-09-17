@@ -176,16 +176,35 @@ object Secrets {
     // ---- Public: field-level encrypt / decrypt ----
 
     /**
+     * There is a wrapped DEK, but no key right now: the master password is on and the app
+     * is locked, or the keystore is momentarily unavailable. Writers must keep whatever
+     * ciphertext is already stored rather than put plaintext in its place.
+     */
+    class KeyUnavailable : IllegalStateException("encryption key unavailable (locked?)")
+
+    /**
      * Encrypt one field. Empty string is returned as-is (an empty password is
      * "no password set"; encrypting it would just stick a ciphertext-looking
-     * blob into storage for no reason); if the DEK cannot be obtained, the
-     * plaintext is returned unchanged as well — **storing plaintext is
-     * preferable to storing ciphertext that cannot be decrypted**, because
-     * the latter is the same as the user's password vanishing.
+     * blob into storage for no reason).
+     *
+     * When no key can be had there are two very different cases:
+     * - **no DEK was ever wrapped** (a device whose Keystore does not work): the plaintext
+     *   is returned — storing plaintext is preferable to storing ciphertext that can never
+     *   be decrypted, which is the same as the password vanishing;
+     * - **a DEK exists but is out of reach** (locked, or the keystore is down for a moment):
+     *   throws [KeyUnavailable]. ★ This used to return plaintext too, so a background write
+     *   while locked (a token refresh, a host key being recorded) put the password on disk in
+     *   the clear under the very master password meant to protect it (2026-09-17 review).
+     *   A value that is already ciphertext — what readers get back while locked — passes
+     *   through unchanged, so round-tripping a locked store stays harmless.
      */
     fun enc(ctx: Context, plain: String): String {
         if (plain.isEmpty()) return plain
-        val key = key(ctx) ?: return plain
+        val key = key(ctx) ?: run {
+            if (!hasWrappedDek(ctx)) return plain
+            if (plain.startsWith(PREFIX)) return plain
+            throw KeyUnavailable()
+        }
         return runCatching {
             val iv = ByteArray(GCM_IV).also { rng.nextBytes(it) }
             val c = Cipher.getInstance("AES/GCM/NoPadding")
@@ -193,10 +212,12 @@ object Secrets {
             val ct = c.doFinal(plain.toByteArray())
             PREFIX + Base64.encodeToString(iv + ct, Base64.NO_WRAP)
         }.getOrElse {
-            Log.w(TAG, "encrypt failed, storing plaintext: ${it.message}")
-            plain
+            Log.w(TAG, "encrypt failed: ${it.message}")
+            throw KeyUnavailable()
         }
     }
+
+    private fun hasWrappedDek(ctx: Context): Boolean = sp(ctx).let { it.contains(K_DEK_KS) || it.contains(K_DEK_PW) }
 
     /**
      * Decrypt one field. **No prefix = legacy plaintext, return as-is**

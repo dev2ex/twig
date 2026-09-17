@@ -178,6 +178,52 @@ class BackupTest {
         }
     }
 
+    /**
+     * ★ The KDF runs before the tag can be checked, so an absurd cost in a crafted file must
+     * be refused before scrypt starts. BouncyCastle rejects an N that overflows by itself,
+     * but not a large p within its own bound (p < 2^31 / (128·r·8), ~209k at r = 8): time grows
+     * linearly with p, and p = 196608 at our N is hours of CPU
+     * spent on a file that was never going to open. (Verified: the old code hangs here.)
+     */
+    @Test
+    fun `an absurd scrypt cost in the header is refused up front`() {
+        val raw = export("export-pw".toCharArray())
+        raw[8] = 0x40; raw[9] = 0; raw[10] = 0; raw[11] = 0 // N = 2^30
+        freshDevice()
+        val started = System.nanoTime()
+        try {
+            Backup.import(ctx, raw, "export-pw".toCharArray())
+            throw AssertionError("should have been refused")
+        } catch (e: Backup.BadFormat) {
+            assertTrue("refused before any real work", System.nanoTime() - started < 2_000_000_000L)
+        }
+        // p = 196608 with the file's normal N and r: legal for scrypt, and ruinous
+        val raw2 = export("export-pw".toCharArray())
+        raw2[16] = 0; raw2[17] = 0x03; raw2[18] = 0; raw2[19] = 0
+        val started2 = System.nanoTime()
+        try {
+            Backup.import(ctx, raw2, "export-pw".toCharArray())
+            throw AssertionError("should have been refused")
+        } catch (e: Backup.BadFormat) {
+            // The old code "failed" here too, but only after allocating p × 1 KiB and dying of
+            // OOM (5 s on the test JVM); refusing up front takes no time at all.
+            assertTrue(System.nanoTime() - started2 < 2_000_000_000L)
+        }
+    }
+
+    @Test
+    fun `scrypt parameter bounds`() {
+        assertTrue(Backup.scryptParamsOk(Secrets.SCRYPT_N, Secrets.SCRYPT_R, Secrets.SCRYPT_P))
+        assertTrue(Backup.scryptParamsOk(1 shl 20, 16, 4))
+        for ((n, r, p) in listOf(
+            Triple(1 shl 21, 8, 1), Triple(30000, 8, 1), Triple(1, 8, 1), Triple(0, 8, 1),
+            Triple(32768, 0, 1), Triple(32768, 17, 1), Triple(32768, 8, 0), Triple(32768, 8, 5),
+            Triple(Int.MIN_VALUE, 8, 1),
+        )) {
+            assertFalse("$n/$r/$p", Backup.scryptParamsOk(n, r, p))
+        }
+    }
+
     /** Changing even a single byte of the ciphertext body makes it undecryptable - that is exactly what GCM's tag guards against. */
     @Test
     fun `tampering with the ciphertext makes the file undecryptable`() {

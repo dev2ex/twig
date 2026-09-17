@@ -77,6 +77,9 @@ object Backup {
 
     private const val VERSION = 1
 
+    /** 2^20 × 8 × 128 bytes ≈ 1 GiB would already be too much for a phone; 2^20 caps it with room above our 2^15. */
+    private const val MAX_SCRYPT_N = 1 shl 20
+
     /**
      * The prefs files that go through the generic dump.
      *
@@ -220,6 +223,10 @@ object Backup {
         val p = b.int
         val salt = ByteArray(SALT).also { b.get(it) }
         val iv = ByteArray(IV).also { b.get(it) }
+        // ★ The parameters come from the file and the tag is only checked after the KDF has
+        // run, so a crafted file with N = 2^30 would eat gigabytes before failing. Bound them
+        // well above what we write (2^15 / 8 / 1) and refuse anything else up front.
+        if (!scryptParamsOk(n, r, p)) throw BadFormat()
         // Parameters are taken from the file rather than from the current
         // constants: if the defaults are tuned later, old backups still decrypt
         val kek = runCatching {
@@ -239,6 +246,10 @@ object Backup {
             throw BadPassword()
         }
     }
+
+    /** Bounds for the header's scrypt parameters; see [decrypt]. */
+    internal fun scryptParamsOk(n: Int, r: Int, p: Int): Boolean =
+        n in 2..MAX_SCRYPT_N && n and (n - 1) == 0 && r in 1..16 && p in 1..4
 
     private fun apply(ctx: Context, o: JSONObject): Result {
         // Land private keys first: the connections' keyPath needs to be

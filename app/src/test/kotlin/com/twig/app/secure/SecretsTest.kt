@@ -258,6 +258,66 @@ class SecretsTest {
         assertFalse(secureSp.contains("dek_ks_old"))
     }
 
+    // ---- No plaintext while the key is out of reach (2026-09-17 review) ----
+
+    private fun storedRaw(): String =
+        ctx.getSharedPreferences(ConnectionStore.FILE, android.content.Context.MODE_PRIVATE).getString("list", "")!!
+
+    /**
+     * ★ While locked, `enc` used to hand the plaintext back — so a background write of a
+     * connection held in memory (token refresh, host key record) put the password on disk
+     * in the clear, under the master password meant to protect it.
+     */
+    @Test
+    fun `saving while locked never writes plaintext, and keeps the stored ciphertext`() {
+        ConnectionStore.save(ctx, conn("mypassword"))
+        Secrets.enableMasterPassword(ctx, "master-pw".toCharArray())
+        val inMemory = ConnectionStore.all(ctx).single() // read while unlocked: plaintext
+        Secrets.lock()
+
+        ConnectionStore.save(ctx, inMemory.copy(hostKey = "SHA256:abc")) // a background write
+        assertFalse(storedRaw().contains("mypassword"))
+        assertTrue(storedRaw().contains("SHA256:abc"))
+
+        assertTrue(Secrets.unlock(ctx, "master-pw".toCharArray()))
+        assertEquals("the stored ciphertext survived", "mypassword", ConnectionStore.all(ctx).single().password)
+    }
+
+    @Test
+    fun `a new secret saved while locked is dropped, not stored in the clear`() {
+        Secrets.enableMasterPassword(ctx, "master-pw".toCharArray())
+        Secrets.lock()
+        ConnectionStore.save(ctx, conn("brand-new"))
+        assertFalse(storedRaw().contains("brand-new"))
+        Secrets.unlock(ctx, "master-pw".toCharArray())
+        assertEquals("", ConnectionStore.all(ctx).single().password)
+    }
+
+    @Test
+    fun `a keystore outage does not write plaintext either`() {
+        ConnectionStore.save(ctx, conn("mypassword"))
+        val inMemory = ConnectionStore.all(ctx).single()
+        Secrets.lock()
+        MemoryWrapper.transient = true
+        ConnectionStore.save(ctx, inMemory.copy(name = "renamed"))
+        assertFalse(storedRaw().contains("mypassword"))
+        MemoryWrapper.transient = false
+        assertEquals("mypassword", ConnectionStore.all(ctx).single().password)
+    }
+
+    /** The documented fallback stays: with no working Keystore and no DEK ever made, plaintext is the only option. */
+    @Test
+    fun `a device without a keystore still stores plaintext`() {
+        val none = object : Secrets.Wrapper {
+            override fun wrap(dek: ByteArray): String? = null
+            override fun unwrap(blob: String): ByteArray? = null
+            override fun available() = false
+        }
+        Secrets.wrapper = none
+        Secrets.reset(ctx)
+        assertEquals("pw", Secrets.enc(ctx, "pw"))
+    }
+
     // ---- Fingerprint unlock: a second key that **coexists** with the master password ----
 
     /**

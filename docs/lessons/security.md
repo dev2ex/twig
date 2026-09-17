@@ -290,5 +290,19 @@ option.**
   the master password deletes that too, since anything Keystore can open bypasses the
   master password.
   Known limit: a failure that is permanent but not one of those three shapes is treated as
-  transient forever — Twig then behaves as on a device without Keystore (`enc` stores
-  plaintext). Losing nothing was the priority.
+  transient forever — the stored passwords stay unreadable and new ones cannot be saved
+  (see the next item) until the keystore answers again. Losing nothing was the priority.
+- **★ No key, no write — never plaintext in its place** (same review). `Secrets.enc` used to
+  return the plaintext whenever it had no key. That was meant for devices without a working
+  Keystore, but it also fired while **locked** (master password on) and during a keystore
+  outage: a background write of a connection held in memory — a Jellyfin token refresh, an
+  SFTP host key being recorded — put the password on disk in the clear. Now `enc` throws
+  `KeyUnavailable` whenever a wrapped DEK exists but is out of reach (a value that is already
+  ciphertext passes through, so a locked round trip stays harmless), and only a device that
+  never managed to wrap a DEK falls back to plaintext. Writers keep what is stored:
+  `ConnectionStore` reuses the stored field for that label (or drops a brand-new one),
+  restic/archive passwords are simply not written, the share password keeps its old value.
+- **Backup import bounds the scrypt header** (`N ≤ 2^20`, power of two, `r ≤ 16`, `p ≤ 4`):
+  the KDF runs before the GCM tag can reject the file. BouncyCastle refuses an overflowing N
+  by itself but accepts p up to ~209k, which on the old code meant allocating p × 1 KiB and
+  dying of OOM (or hours of CPU where the memory is there).

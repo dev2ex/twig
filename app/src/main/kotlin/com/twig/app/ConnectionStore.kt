@@ -152,12 +152,34 @@ object ConnectionStore {
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    /** For persisting: replace sensitive fields with ciphertext. */
-    private fun SavedConnection.sealed(ctx: Context) = copy(
-        password = Secrets.enc(ctx, password),
-        apiKey = Secrets.enc(ctx, apiKey),
-        token = Secrets.enc(ctx, token),
+    /**
+     * For persisting: replace sensitive fields with ciphertext. When no key is available
+     * ([Secrets.KeyUnavailable] — locked, or the keystore is down) a field keeps what is
+     * already on disk for this connection ([stored]); a value with nothing stored is not
+     * saved at all rather than saved in the clear.
+     */
+    private fun SavedConnection.sealed(ctx: Context, stored: SavedConnection?) = copy(
+        password = seal(ctx, password, stored?.password),
+        apiKey = seal(ctx, apiKey, stored?.apiKey),
+        token = seal(ctx, token, stored?.token),
     )
+
+    private fun seal(ctx: Context, plain: String, stored: String?): String =
+        try {
+            Secrets.enc(ctx, plain)
+        } catch (e: Secrets.KeyUnavailable) {
+            stored.orEmpty()
+        }
+
+    /** The table exactly as stored (sensitive fields still sealed), keyed by label. */
+    private fun storedByLabel(ctx: Context): Map<String, SavedConnection> {
+        val raw = sp(ctx).getString(KEY, null) ?: return emptyMap()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { SavedConnection.fromJson(arr.getJSONObject(it)) }
+                .associateBy { it.label() }
+        }.getOrDefault(emptyMap())
+    }
 
     /** For reading back: restore sensitive fields to plaintext (old plaintext without the `enc1:` prefix passes through unchanged). */
     private fun SavedConnection.opened(ctx: Context) = copy(
@@ -221,7 +243,8 @@ object ConnectionStore {
 
     private fun persist(ctx: Context, list: List<SavedConnection>) {
         val arr = JSONArray()
-        list.forEach { arr.put(it.sealed(ctx).toJson()) }
+        val stored = storedByLabel(ctx)
+        list.forEach { arr.put(it.sealed(ctx, stored[it.label()]).toJson()) }
         sp(ctx).edit().putString(KEY, arr.toString()).apply()
     }
 }

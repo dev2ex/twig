@@ -121,7 +121,13 @@ object ShareStore {
             }
         }
         o.put("ro", cfg.readOnly); o.put("port", cfg.port)
-        o.put("user", cfg.user); o.put("pass", com.twig.app.secure.Secrets.enc(ctx, cfg.password))
+        val pass = try {
+            com.twig.app.secure.Secrets.enc(ctx, cfg.password)
+        } catch (e: com.twig.app.secure.Secrets.KeyUnavailable) {
+            // No key right now: keep the stored ciphertext rather than write the clear text
+            runCatching { JSONObject(sp(ctx).getString(KEY, null) ?: "{}").optString("pass") }.getOrDefault("")
+        }
+        o.put("user", cfg.user); o.put("pass", pass)
         o.put("name", cfg.deviceName)
         sp(ctx).edit().putString(KEY, o.toString()).apply()
     }

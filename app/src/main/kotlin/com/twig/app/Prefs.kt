@@ -230,13 +230,21 @@ object Prefs {
 
     fun setResticPassword(ctx: Context, repoPath: String, pw: String?) {
         resticSp(ctx).edit().apply {
-            if (pw == null) remove(repoPath) else putString(repoPath, com.twig.app.secure.Secrets.enc(ctx, pw))
+            if (pw == null) remove(repoPath) else sealOrSkip(ctx, pw)?.let { putString(repoPath, it) }
         }.apply()
     }
 
     /** All restic passwords (plaintext), for backup export. */
     fun resticPasswords(ctx: Context): Map<String, String> =
         resticSp(ctx).all.keys.mapNotNull { k -> resticPassword(ctx, k)?.let { k to it } }.toMap()
+
+    /** Ciphertext for [pw], or null when no key is available — then nothing is stored (never plaintext). */
+    private fun sealOrSkip(ctx: Context, pw: String): String? =
+        try {
+            com.twig.app.secure.Secrets.enc(ctx, pw)
+        } catch (e: com.twig.app.secure.Secrets.KeyUnavailable) {
+            null
+        }
 
     // Encrypted archive passwords (keyed by archive path, user optional; same trade-off as the restic ones).
     const val FILE_ARCHIVE_PW = "twig_archive_pw"
@@ -247,7 +255,7 @@ object Prefs {
 
     fun setArchivePassword(ctx: Context, archivePath: String, pw: String?) {
         archiveSp(ctx).edit().apply {
-            if (pw == null) remove(archivePath) else putString(archivePath, com.twig.app.secure.Secrets.enc(ctx, pw))
+            if (pw == null) remove(archivePath) else sealOrSkip(ctx, pw)?.let { putString(archivePath, it) }
         }.apply()
     }
 
