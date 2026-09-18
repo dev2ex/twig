@@ -217,3 +217,32 @@ interface EpisodeSeries {
      */
     fun episodesOf(file: XFile): List<XFile>?
 }
+
+/**
+ * The source cannot report a byte count in its listing, but can find one out for a single
+ * entry if asked.
+ *
+ * Media servers are the case this exists for: a Jellyfin/Emby `Photo` has no
+ * `MediaSources`, and `Size` is not even in the `ItemFields` enum, so **every photo lists
+ * as 0 bytes** and the only way to a real number is a one-byte `Range` probe.
+ *
+ * ★ Probing is per entry and **driven by the UI**, not by [FileSystem.list]: the first
+ * implementation probed the whole listing, which meant a directory of photos turned into
+ * hundreds of requests — so it gave up entirely above a threshold, and a real album (well
+ * over that) showed no sizes at all. Rows are asked for as they are bound, so only what is
+ * on screen costs anything and album size stops mattering.
+ */
+interface SizeProbe {
+    /**
+     * The size already known for [file] — from the listing itself or from an earlier probe —
+     * or 0 when it would have to be asked for. **Must not do IO**: this is called while
+     * binding a row.
+     */
+    fun knownSize(file: XFile): Long
+
+    /**
+     * Ask the source for [file]'s size, caching it for [knownSize]. Returns 0 when it cannot
+     * be determined (downloads forbidden, entry gone). Blocking IO.
+     */
+    fun probeSize(file: XFile): Long
+}

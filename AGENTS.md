@@ -91,9 +91,11 @@ Multiple servers of the same kind each get a unique scheme.
 floor that "every backend must answer"; capabilities that only make sense for a few
 backends get their own interface, implementations opt in with `: PlaybackProgress`, and
 callers always do `FsRegistry.of(file) as? XXX` and fall back to the old path when they
-get null. There are currently six, most of them added for media servers:
+get null. There are currently seven, most of them added for media servers:
 `PlaybackProgress` (the backend owns playback position), `CoverSource` (the backend has
-posters), `MediaInfoSource`, `LyricsSource`, `SearchSource`, `EpisodeSeries`.
+posters), `MediaInfoSource`, `LyricsSource`, `SearchSource`, `EpisodeSeries`, `SizeProbe` (the listing
+has no byte count; a row can ask for its own — `:app`'s `SizeProbes` drives it per bound row,
+never per listing).
 Before adding a capability, decide whether *every* backend should be able to answer it —
 if yes it belongs in `FileSystem`, otherwise it goes here; don't make 20 implementations
 each write `= null`.

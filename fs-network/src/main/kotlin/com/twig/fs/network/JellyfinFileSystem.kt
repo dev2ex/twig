@@ -12,6 +12,7 @@ import com.twig.core.PlayState
 import com.twig.core.PlaybackProgress
 import com.twig.core.RandomSource
 import com.twig.core.SearchSource
+import com.twig.core.SizeProbe
 import com.twig.core.TextDecoding
 import com.twig.core.XFile
 import okhttp3.HttpUrl
@@ -130,7 +131,7 @@ class JellyfinFileSystem(
     private val config: JellyfinConfig,
     override val scheme: String = SCHEME,
 ) : FileSystem, PlaybackProgress, CoverSource, MediaInfoSource, LyricsSource, SearchSource,
-    EpisodeSeries {
+    EpisodeSeries, SizeProbe {
 
     override val displayName: String =
         (if (config.emby) "Emby" else "Jellyfin") + " (${config.baseUrl})"
@@ -382,7 +383,7 @@ class JellyfinFileSystem(
             rememberCover(it, id, path)
             out += toXFile(it, path, used)
         }
-        return withSizes(out)
+        return out
     }
 
     /**
@@ -391,58 +392,37 @@ class JellyfinFileSystem(
      */
     private val probedSizes = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    private val probePool by lazy {
-        java.util.concurrent.Executors.newFixedThreadPool(PROBE_CONCURRENCY) { r ->
-            Thread(r, "twig-jf-size").apply { isDaemon = true }
-        }
+    /**
+     * Fills in the byte size the server omits — **photos are the case**: a `Photo` entry has
+     * no `MediaSources`, and the `ItemFields` enum has no `Size` either (confirmed against
+     * `/api-docs/openapi.json`; `Fields=Size` is silently ignored). Both servers behave the
+     * same way, so every photo lists as 0 bytes.
+     *
+     * The only way to ask is `Range: bytes=0-0`, whose `Content-Range: bytes 0-0/27836`
+     * names the total in its denominator — one byte transferred. (`HEAD` does not work:
+     * both servers answer 405.)
+     *
+     * ★ One entry per call, asked for by the UI as rows are bound ([SizeProbe]). This used
+     * to run over the whole listing inside [list], which needed gates to stay sane — above
+     * 80 sizeless entries it skipped the batch entirely, so a real photo album (hundreds of
+     * files) showed no sizes whatsoever, which is exactly the case the feature was for
+     * (2026-09-18).
+     */
+    override fun knownSize(file: XFile): Long {
+        if (file.size > 0) return file.size
+        // No IO and no throwing: this runs while a row is being bound, and [idOf] rejects
+        // paths that are not items (the virtual directories) with an exception.
+        val id = runCatching { idOf(file) }.getOrNull() ?: return 0L
+        return probedSizes[id] ?: 0L
     }
 
-    /**
-     * Fills in the byte size the server omits — **photos fall into this case**
-     * (2026-08-18):
-     * `Photo` entries **have no `MediaSources`**, and the `ItemFields` enum
-     * **has no `Size`** either (confirmed by checking `/api-docs/openapi.json`;
-     * `Fields=Size` is silently ignored by the server). Both servers behave the
-     * same way, so every photo in a library shows as 0 B.
-     *
-     * The only workaround is to ask once: `Range: bytes=0-0` returns a
-     * `Content-Range: bytes 0-0/27836` header, where the divisor is the total
-     * length — only one byte is transferred. (`HEAD` does not work; both
-     * servers reply 405 in practice.)
-     *
-     * A few limits, so listing one directory does not balloon into hundreds of
-     * requests: if there are more than [PROBE_MAX] entries without size we skip
-     * the whole batch (a library of thousands of photos is not worth that);
-     * [PROBE_CONCURRENCY] in parallel; the whole batch waits at most
-     * [PROBE_BUDGET_MS] — those that time out stay at 0 and do not stall the
-     * directory from opening.
-     */
-    private fun withSizes(files: List<XFile>): List<XFile> {
-        val missing = files.filter { !it.isDir && it.size <= 0L }
-        if (missing.isEmpty() || missing.size > PROBE_MAX) return files
-        val found = HashMap<String, Long>()
-        val pending = ArrayList<Pair<String, java.util.concurrent.Future<*>>>()
-        for (f in missing) {
-            val id = f.path.substringAfterLast('/')
-            val known = probedSizes[id]
-            if (known != null) {
-                found[id] = known
-                continue
-            }
-            pending += id to probePool.submit {
-                val n = runCatching { probeSize(id) }.getOrDefault(0L)
-                if (n > 0) probedSizes[id] = n
-            }
-        }
-        val deadline = System.currentTimeMillis() + PROBE_BUDGET_MS
-        for ((id, task) in pending) {
-            val left = deadline - System.currentTimeMillis()
-            if (left <= 0) break // budget exhausted: leave the rest at 0 rather than freezing the directory
-            runCatching { task.get(left, TimeUnit.MILLISECONDS) }
-            probedSizes[id]?.let { found[id] = it }
-        }
-        if (found.isEmpty()) return files
-        return files.map { f -> found[f.path.substringAfterLast('/')]?.let { f.copy(size = it) } ?: f }
+    override fun probeSize(file: XFile): Long {
+        if (file.isDir) return 0L
+        knownSize(file).takeIf { it > 0 }?.let { return it }
+        val id = runCatching { idOf(file) }.getOrNull() ?: return 0L
+        val n = runCatching { probeSize(id) }.getOrDefault(0L)
+        if (n > 0) probedSizes[id] = n
+        return n
     }
 
     /** @return the entry's total byte count; 0 when it cannot be determined. */
@@ -1013,7 +993,7 @@ class JellyfinFileSystem(
         }
         val ticks = src?.optLong("RunTimeTicks", 0L)?.takeIf { it > 0 } ?: item.optLong("RunTimeTicks", 0L)
         val video = out.firstOrNull { it.kind == MediaStream.Kind.VIDEO }
-        // During listing we deliberately skip sending dozens of requests, so an unknown size stays at 0 (see withSizes); the properties card only involves one entry, so it is worth a dedicated query
+        // A listing never probes (rows ask for their own size as they are bound, see SizeProbe), so an unknown size is still 0 here; the properties card concerns one entry and is worth its own query
         val bytes = (src?.optLong("Size", 0L) ?: 0L).takeIf { it > 0 }
             ?: probedSizes[id] ?: runCatching { probeSize(id) }.getOrDefault(0L).also {
                 if (it > 0) probedSizes[id] = it
@@ -1091,7 +1071,7 @@ class JellyfinFileSystem(
             rememberCover(it, id, path)
             out += toXFile(it, path, used)
         }
-        return withSizes(out)
+        return out
     }
 
     // ---- Episode queue ----
@@ -1627,11 +1607,8 @@ class JellyfinFileSystem(
         private const val SEARCH_LIMIT = 300
 
         /** If more than this many entries have unknown sizes, skip the batch (a library of thousands of photos is not worth thousands of requests). */
-        private const val PROBE_MAX = 80
-        private const val PROBE_CONCURRENCY = 6
 
         /** Time budget for the whole batch of probes; entries that time out stay "size unknown" and do not stall the directory from opening. */
-        private const val PROBE_BUDGET_MS = 2500L
 
         /**
          * Fields the server must fill in during listing.

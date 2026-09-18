@@ -3,4 +3,7 @@
     <!-- Extra tag on the ImageView: how wide this cell allows the thumbnail to grow (px, 0 = no growth).
          The default tag is already used by Thumbs for async backfill staleness checks, so a separate id is needed. -->
     <item name="thumb_grow" type="id" />
+    <!-- Tag on a row's meta TextView: which entry the pending size probe belongs to, so a
+         recycled row never gets another row's number written into it (SizeProbes). -->
+    <item name="size_probe" type="id" />
 </resources>

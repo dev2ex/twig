@@ -312,11 +312,18 @@ flag is only used to get the display name right. Settled decisions:
   album showing 0 B. The workaround is a `Range: bytes=0-0` probe whose
   `Content-Range: bytes 0-0/27836` response header carries the total length in the denominator,
   transferring a single byte. ★ `HEAD` **does not work**: both servers answer **405**.
-  Several gates keep "listing a directory" from turning into hundreds of requests: if more than
-  `PROBE_MAX` (80) items lack a size, drop the whole batch; concurrency 6; a 2.5 s budget for
-  the batch (timeouts leave 0 rather than blocking the directory); results cached forever (file
-  sizes do not change). Items that already have a size (movies have `MediaSources.Size`) send no
-  request at all.
+  ★★ **Probing is per row, asked for by the UI** (`SizeProbe` + `:app`'s `SizeProbes`, rewritten
+  2026-09-18). The first version probed the whole listing inside `list()`, which needed gates to
+  stay sane — above 80 sizeless entries it dropped the batch — and **a real photo album is well
+  over 80, so it showed no sizes at all**, which is precisely the case the feature existed for
+  (reported from a device). Now `list()` never probes; `FileAdapter` asks for the row it is
+  binding, so only what is on screen costs anything and album size stops mattering. The queue is
+  LIFO and capped at 64 (during a fast scroll the oldest entries are the ones already gone),
+  3 threads, a 60 s cooldown after a failure, and results stay cached in the backend forever
+  (file sizes do not change). Entries that already have a size (movies carry
+  `MediaSources.Size`) and directories are never asked. Collapsing a directory drops its pending
+  probes, next to the `Thumbs.cancelPending` call that does the same for thumbnails.
+  Verified against both containers (`JellyfinLiveTest`: listed as 0, probed to a real number).
   - **The info card queries once for a single item** (`MediaDetails.size`): probing every item
     while listing a screen is too expensive, but opening properties concerns one item and is
     worth it. So **the list may show 0 while properties shows the real value** — that is not an

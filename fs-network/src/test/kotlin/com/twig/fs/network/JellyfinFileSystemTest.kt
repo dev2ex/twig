@@ -567,13 +567,16 @@ class JellyfinFileSystemTest {
     }
 
     @Test
-    fun `an item without a size gets probed once via Range`() {
-        // ★ Photos are exactly this case: a Photo item has no MediaSources, and Size is
-        // not even in the ItemFields enum (confirmed against the openapi spec — writing
-        // Fields=Size gets silently ignored), the same on both servers — so every image in
-        // an album showed 0 B. The denominator of the Content-Range from a Range:
-        // bytes=0-0 request is the total length, so only 1 byte is transferred.
+    fun `listing never probes, and a row asks for its own size via Range`() {
+        // ★ Photos are exactly this case: a Photo item has no MediaSources, and Size is not
+        // even in the ItemFields enum (confirmed against the openapi spec — writing
+        // Fields=Size gets silently ignored), the same on both servers — so every image in an
+        // album lists as 0 bytes. The denominator of the Content-Range from a
+        // Range: bytes=0-0 request is the total length, so one byte is transferred.
         // (HEAD does not work — both servers answered 405 in testing.)
+        // ★★ The probe is per row and driven by the UI (SizeProbe): listing a whole album
+        // used to probe the batch, which above 80 sizeless entries gave up completely — so a
+        // real album showed no sizes at all (2026-09-18).
         routes["/Users/u1/Items"] = {
             json(
                 """{"Items":[{"Id":"p1","Name":"pic1","Type":"Photo","MediaType":"Photo",
@@ -585,29 +588,52 @@ class JellyfinFileSystemTest {
             MockResponse().setResponseCode(206)
                 .setHeader("Content-Range", "bytes 0-0/27836").setBody("x")
         }
-        val rows = fs().list(dir("/folders/lib1/album1"))
-        assertEquals(27836L, rows.single().size)
-        assertEquals("pic1.jpg", rows.single().name)
+        val fs = fs()
+        val row = fs.list(dir("/folders/lib1/album1")).single()
+        assertEquals("pic1.jpg", row.name)
+        assertEquals("listing must not probe", 0L, row.size)
+        assertTrue(seen.none { it.requestUrl!!.encodedPath.endsWith("/Download") })
+
+        assertEquals(0L, fs.knownSize(row))
+        assertEquals(27836L, fs.probeSize(row))
+        // cached from then on: known without asking, and no second request
+        assertEquals(27836L, fs.knownSize(row))
+        assertEquals(27836L, fs.probeSize(row))
+        assertEquals(1, seen.count { it.requestUrl!!.encodedPath.endsWith("/Download") })
     }
 
     @Test
-    fun `a failed probe does not break the directory listing`() {
-        // when downloads are disabled or the network hiccups, the size should just stay
-        // unknown — it must not take down the whole directory
+    fun `a failed probe leaves the size unknown and does not throw`() {
+        // downloads disabled, or a network hiccup: the size stays unknown, the row stays
         routes["/Users/u1/Items"] = {
             json("""{"Items":[{"Id":"p1","Name":"pic1","Type":"Photo","Container":"jpg"}]}""")
         }
         routes["/Items/p1/Download"] = { MockResponse().setResponseCode(403) }
-        val rows = fs().list(dir("/folders/lib1/album1"))
-        assertEquals(1, rows.size)
-        assertEquals(0L, rows.single().size)
+        val fs = fs()
+        val row = fs.list(dir("/folders/lib1/album1")).single()
+        assertEquals(0L, row.size)
+        assertEquals(0L, fs.probeSize(row))
+        assertEquals(0L, fs.knownSize(row))
     }
 
     @Test
-    fun `an item that already has a size is never probed`() {
+    fun `an entry that already has a size is never probed`() {
         // a movie has MediaSources.Size — an extra round trip would be pure waste
         routes["/Users/u1/Items"] = { json("""{"Items":[$movie]}""") }
-        fs().list(dir("/folders/lib1"))
+        val fs = fs()
+        val row = fs.list(dir("/folders/lib1")).single()
+        assertTrue(row.size > 0)
+        assertEquals(row.size, fs.knownSize(row))
+        assertEquals(row.size, fs.probeSize(row))
+        assertTrue(seen.none { it.requestUrl!!.encodedPath.endsWith("/Download") })
+    }
+
+    /** Directories have no byte count to ask about. */
+    @Test
+    fun `a directory is never probed`() {
+        val fs = fs()
+        assertEquals(0L, fs.probeSize(dir("/folders/lib1/album1")))
+        assertEquals(0L, fs.knownSize(dir("/folders/lib1/album1")))
         assertTrue(seen.none { it.requestUrl!!.encodedPath.endsWith("/Download") })
     }
 

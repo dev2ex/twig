@@ -638,6 +638,11 @@ class FileAdapter(
                     else -> fileMeta(file)
                 },
             )
+            // A source that cannot report a size in its listing (media server photos) is asked
+            // for this row's, in the background; the answer rewrites this row's meta line only.
+            if (node.capacity == null) {
+                SizeProbes.request(b.meta, file) { bytes -> setMeta(fileMeta(file, bytes)) }
+            }
             // ★★ Do **not touch `imageTintList` here** (bitten on 2026-08-19):
             // `ImageView.setImageTintList(null)` does not mean "no tint" — it actively applies
             // null as a tint to the drawable, setting `mHasDrawableTint = true`, so
@@ -808,9 +813,10 @@ class FileAdapter(
          *
          * Returns null when the entry has neither (virtual git entries etc.), which hides the line.
          */
-        private fun fileMeta(file: XFile): CharSequence? {
+        private fun fileMeta(file: XFile, bytes: Long = SizeProbes.known(file)): CharSequence? {
             // When size is unknown (media servers don't give byte counts for photos) don't show the whole segment, don't write "0 B"
-            val size = Format.sizeOrNull(file)?.takeIf { file.size > 0 || file.lastModified > 0 }
+            val known = if (bytes > 0) file.copy(size = bytes) else file
+            val size = Format.sizeOrNull(known)?.takeIf { known.size > 0 || known.lastModified > 0 }
             val time = Format.time(file.lastModified).takeIf { file.lastModified > 0 }
             if (size == null) return time
             val sb = SpannableStringBuilder(size)

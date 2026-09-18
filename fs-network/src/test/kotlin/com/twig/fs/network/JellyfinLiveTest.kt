@@ -106,6 +106,32 @@ class JellyfinLiveTest {
         assertTrue("size is 0: ${file.name}", file.size > 0)
     }
 
+    /**
+     * ★ A photo's byte count is not in any listing (no `MediaSources`, no `Size` field) and
+     * only a `Range: bytes=0-0` probe can produce it — verified on both servers. Listing must
+     * not probe at all (a real album is hundreds of files); the row asks for itself.
+     */
+    @Test
+    fun `a photo has no size when listed and a real one after probing`() {
+        fun photos(f: XFile, depth: Int): List<XFile> {
+            if (depth > 3) return emptyList()
+            val rows = runCatching { fs.list(f) }.getOrElse { return emptyList() }
+            rows.filter { !it.isDir && it.name.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "heic") }
+                .takeIf { it.isNotEmpty() }?.let { return it }
+            for (d in rows.filter { it.isDir }) photos(d, depth + 1).takeIf { it.isNotEmpty() }?.let { return it }
+            return emptyList()
+        }
+        val found = fs.list(dir("/folders")).asSequence().map { photos(it, 1) }.firstOrNull { it.isNotEmpty() }
+        assumeFalse("this server has no photo library, skipping", found.isNullOrEmpty())
+
+        val photo = found!!.first()
+        assertEquals("a listing must not probe", 0L, photo.size)
+        assertEquals(0L, fs.knownSize(photo))
+        val probed = fs.probeSize(photo)
+        assertTrue("probe returned $probed for ${photo.name}", probed > 0)
+        assertEquals("cached afterwards", probed, fs.knownSize(photo))
+    }
+
     @Test
     fun `media bytes can be read, and Range-based random access works`() {
         val rows = anyItems("/movies", "/shows", "/music", "/resume")

@@ -1273,6 +1273,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             key.startsWith("s:") -> {
                 expanded.remove(key)
                 Thumbs.cancelPending(descendantFilesByKey(key))
+                SizeProbes.cancelPending(descendantFilesByKey(key))
                 val conn = serverScheme[key]?.let { schemeToConn[it] }
                 currentKey = conn?.let { "g:${groupIdFor(it)}" }
                 currentDir = null
@@ -1731,6 +1732,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         when {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFiles(n.file))
+                SizeProbes.cancelPending(descendantFiles(n.file))
                 // When collapsing this directory, also remove the search virtual
                 // directory hanging under it (it doesn't naturally disappear from
                 // rows — its render ignores exp, see addFile — so it would sit
@@ -1813,6 +1815,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         when {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFilesByKey(key))
+                SizeProbes.cancelPending(descendantFilesByKey(key))
                 // When collapsing a server, also drop any search results hanging under
                 // it (attached-row rendering ignores expansion state — see
                 // addServer/addAttachments), same as toggleFile for a regular
@@ -1959,6 +1962,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         claimExpand(node.key)
         if (expanded.remove(node.key)) {
             Thumbs.cancelPending(descendantFilesByKey(node.key))
+            SizeProbes.cancelPending(descendantFilesByKey(node.key))
             rebuild()
         } else {
             accordionExpand(node.key); rebuild()
