@@ -130,6 +130,7 @@
     <string name="confirm_delete">确定删除选中的 %1$d 项?</string>
     <string name="msg_no_selection">未选择任何项</string>
     <string name="msg_done">完成</string>
+    <string name="msg_done_refused">完成,跳过 %1$d 项:名称无法写入(例如 “..”)</string>
     <string name="msg_copying">处理中…</string>
     <string name="action_connect_ftp">连接 FTP</string>
     <string name="action_pick_saf">SAF 选择文件夹</string>

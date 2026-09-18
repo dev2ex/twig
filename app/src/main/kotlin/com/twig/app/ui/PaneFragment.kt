@@ -1200,7 +1200,15 @@ class PaneFragment : Fragment() {
         val r = s.finished ?: return
         r.fold(
             onSuccess = {
-                toast(getString(if (s.cancelled.get()) R.string.dialog_cancel else R.string.msg_done))
+                toast(
+                    when {
+                        s.cancelled.get() -> getString(R.string.dialog_cancel)
+                        // Entries whose own name cannot be written into a directory (an archive's
+                        // "..") are skipped rather than failing the batch — say how many
+                        s.refused > 0 -> getString(R.string.msg_done_refused, s.refused)
+                        else -> getString(R.string.msg_done)
+                    },
+                )
             },
             onFailure = {
                 toast(

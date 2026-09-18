@@ -160,27 +160,57 @@ class ZipFileSystemTest {
     }
 
     /**
-     * Zip slip: an entry whose name climbs out with `..` must not appear in the tree, and
-     * extracting the archive must not write anything outside the destination (before
-     * the 2026-09-17 fix this wrote `out/escaped.txt` while extracting into `out/dest`).
+     * Zip slip, the settled shape (2026-09-18): such an archive is **shown and browsable** —
+     * the `..` directory is right there and the files under it open — but extracting must not
+     * write anything outside the destination, and the entry whose own name is `..` is skipped
+     * rather than failing the whole extraction.
      */
     @Test
-    fun entriesClimbingOutWithDotDotAreHiddenAndCannotEscape() {
+    fun entriesClimbingOutAreVisibleButCannotEscapeWhenExtracted() {
         val evil = File(tmp, "evil.zip")
         ZipOutputStream(evil.outputStream()).use { z ->
             z.put("a/../../escaped.txt", "pwn")
-            z.put("../top.txt", "pwn")
             z.put("ok/inner.txt", "fine")
         }
         val root = zfs.rootOf(XFile(scheme = "file", path = evil.absolutePath, isDir = false))
-        // `a` only existed as the first segment of the dropped entry, so it goes too
-        assertEquals(listOf("ok"), zfs.list(root).map { it.name })
+        // visible: `a`, then `..`, then `..`, then the file itself
+        assertEquals(listOf("a", "ok"), zfs.list(root).map { it.name })
+        val a = zfs.list(root).first { it.name == "a" }
+        assertEquals(listOf(".."), zfs.list(a).map { it.name })
+        val up2 = zfs.list(zfs.list(a).single()).single()
+        val escaped = zfs.list(up2).single()
+        assertEquals("escaped.txt", escaped.name)
+        // …and openable, which is read-only and therefore harmless
+        assertEquals("pwn", zfs.openInput(escaped).bufferedReader().use { it.readText() })
 
         val dest = File(tmp, "out/dest").apply { mkdirs() }
-        CopyEngine.transfer(zfs.list(root), XFile("file", dest.absolutePath, isDir = true), move = false)
-
+        var refused = 0
+        CopyEngine.transfer(
+            zfs.list(root), XFile("file", dest.absolutePath, isDir = true), move = false,
+            listener = object : CopyEngine.ProgressListener {
+                override fun onRefused(file: XFile) { refused++ }
+            },
+        )
+        assertEquals("the `..` entry must be refused", 1, refused)
         assertEquals("fine", File(dest, "ok/inner.txt").readText())
-        assertTrue(File(tmp, "out").list()!!.toList() == listOf("dest"))
-        assertTrue(!File(tmp, "top.txt").exists())
+        assertEquals("nothing may be written outside the destination", listOf("dest"), File(tmp, "out").list()!!.toList())
+        assertTrue(!File(tmp, "escaped.txt").exists())
+    }
+
+    /** ★ The user's own case: after expanding the `..`, an ordinary file inside it copies out normally. */
+    @Test
+    fun anOrdinaryFileUnderADotDotPathStillCopiesOut() {
+        val evil = File(tmp, "evil2.zip")
+        ZipOutputStream(evil.outputStream()).use { z -> z.put("a/../../escaped.txt", "payload") }
+        val root = zfs.rootOf(XFile(scheme = "file", path = evil.absolutePath, isDir = false))
+        val a = zfs.list(root).single()
+        val file = zfs.list(zfs.list(zfs.list(a).single()).single()).single()
+
+        val dest = File(tmp, "out2/dest").apply { mkdirs() }
+        CopyEngine.transfer(listOf(file), XFile("file", dest.absolutePath, isDir = true), move = false)
+
+        // lands under its own name, in the directory the user picked
+        assertEquals("payload", File(dest, "escaped.txt").readText())
+        assertEquals(listOf("dest"), File(tmp, "out2").list()!!.toList())
     }
 }

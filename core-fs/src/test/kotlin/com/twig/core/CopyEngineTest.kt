@@ -482,42 +482,63 @@ class CopyEngineTest {
 
     // ---- Unsafe names (zip slip) ----
 
-    /** A source entry named `..` must not be joined onto the destination — that walks out of the chosen directory. */
+    /**
+     * An entry whose **own name** cannot be written into a directory is skipped — the rest of
+     * the batch still copies, and a move does not delete it. (It is the name being written
+     * that matters, never where the entry came from: see [CopyEngine.isSafeName].)
+     */
     @Test
-    fun entryNamedDotDotIsRefusedAndNothingIsWritten() {
+    fun anEntryNamedDotDotIsRefusedAndTheRestStillCopies() {
         src.put("/evil", "pwn")
+        src.put("/good.txt", "fine")
         val evil = XFile("cpsrc", "/evil", isDir = false, size = 3, displayName = "..")
+        val refused = ArrayList<String>()
         val dest = dst.mkdir(dstRoot(), "out")
-        assertThrows(FsException::class.java) {
-            CopyEngine.transfer(listOf(evil), dest, move = true)
-        }
-        assertTrue(dst.files.isEmpty())
-        assertEquals("pwn", src.text("/evil")) // move failed, the source stays
+        CopyEngine.transfer(
+            listOf(evil, srcFile("/good.txt")), dest, move = true,
+            listener = object : CopyEngine.ProgressListener {
+                override fun onRefused(file: XFile) { refused += file.name }
+            },
+        )
+        assertEquals(listOf(".."), refused)
+        assertEquals("fine", dst.text("/out/good.txt"))
+        assertEquals("the refused entry stays put even on a move", "pwn", src.text("/evil"))
+        assertEquals(listOf("/out/good.txt"), dst.files.keys.toList())
     }
 
-    /** Same, one level down: a directory whose child carries a separator in its name. */
+    /** Inside a directory the same rule applies per child, and the directory counts as incomplete. */
     @Test
-    fun childNameWithSeparatorIsRefused() {
+    fun anUnsafeChildIsSkippedWhileItsSiblingsCopy() {
         val fs = object : FileSystem by src {
-            override fun list(dir: XFile): List<XFile> =
-                listOf(XFile("cpsrc", "/d/x", isDir = false, size = 1, displayName = "../../x"))
+            override fun list(dir: XFile): List<XFile> = when (dir.path) {
+                "/d" -> listOf(
+                    XFile("cpsrc", "/d/x", isDir = false, size = 1, displayName = "../../x"),
+                    XFile("cpsrc", "/d/ok.txt", isDir = false, size = 2),
+                )
+                else -> src.list(dir)
+            }
         }
+        src.put("/d/x", "1")
+        src.put("/d/ok.txt", "ok")
         FsRegistry.register(fs)
         try {
-            assertThrows(FsException::class.java) {
-                CopyEngine.transfer(listOf(XFile("cpsrc", "/d", isDir = true)), dstRoot(), move = false)
-            }
-            assertTrue(dst.files.isEmpty())
+            CopyEngine.transfer(listOf(XFile("cpsrc", "/d", isDir = true)), dstRoot(), move = true)
+            assertEquals("ok", dst.text("/d/ok.txt"))
+            assertEquals(listOf("/d/ok.txt"), dst.files.keys.toList())
+            assertEquals("an incomplete directory is not deleted by a move", "1", src.text("/d/x"))
         } finally {
             FsRegistry.register(src)
         }
     }
 
     @Test
-    fun dotAndRootNamesStillCopy() {
-        CopyEngine.requireSafeName(".")
-        CopyEngine.requireSafeName("/")
-        CopyEngine.requireSafeName("a..b")
+    fun dotAndRootNamesAreStillWritten() {
+        assertTrue(CopyEngine.isSafeName("."))
+        assertTrue(CopyEngine.isSafeName("/"))
+        assertTrue(CopyEngine.isSafeName("a..b"))
+        assertFalse(CopyEngine.isSafeName(".."))
+        assertFalse(CopyEngine.isSafeName(""))
+        assertFalse(CopyEngine.isSafeName("a/b"))
     }
 
     // ---- Short / failed reads ----

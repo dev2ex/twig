@@ -42,6 +42,8 @@ object CopyEngine {
         fun onBytes(copiedTotal: Long, totalBytes: Long) {}
         /** Finished (or skipped) one file / finished one directory; used for the remaining-count. */
         fun onItemDone(isDir: Boolean) {}
+        /** This entry was refused because its name cannot be written into a directory (see [isSafeName]). */
+        fun onRefused(file: XFile) {}
         /** Whole task finished. */
         fun onDone() {}
     }
@@ -108,7 +110,8 @@ object CopyEngine {
         val destFs = FsRegistry.of(destDir)
         for (item in items) {
             if (task.cancelled.isCancelled() || task.aborted) break
-            requireSafeName(item.name)
+            // Refused, not fatal: the rest of the batch still copies (see [isSafeName])
+            if (!isSafeName(item.name)) { listener?.onRefused(item); continue }
             // Same file system and no same-name conflict at the destination: prefer
             // in-place move, saving a full copy.
             if (move && item.scheme == destDir.scheme &&
@@ -127,7 +130,11 @@ object CopyEngine {
     /** @return whether the copy completed cleanly (no skips / cancels); `move` uses this to decide whether to delete the source. */
     private fun copyRecursive(src: XFile, destDir: XFile, task: Task): Boolean {
         if (task.cancelled.isCancelled() || task.aborted) return false
-        requireSafeName(src.name)
+        if (!isSafeName(src.name)) {
+            // Skipped, and the directory holding it counts as incomplete — so a move keeps it
+            task.listener?.onRefused(src)
+            return false
+        }
         val srcFs = FsRegistry.of(src)
         val destFs = FsRegistry.of(destDir)
         val siblings = childrenOf(task, destFs, destDir)
@@ -221,22 +228,27 @@ object CopyEngine {
     }
 
     /**
-     * Refuses a name that would not stay inside the destination directory.
+     * Whether [name] can be written into a destination directory at all.
      *
-     * Every backend joins `parent + "/" + name`, so a `..` (or a name carrying a
-     * separator) walks out of the directory the user chose — archive entries are the
-     * classic case (zip slip), but a hostile WebDAV / FTP server can list such names just
-     * as well. This is the one place every copy passes through, so the check lives here
-     * rather than in each backend. `.` is allowed: it resolves to the directory itself
-     * and tar's `./a.txt` layout depends on it. So is a bare `/` — [XFile.name] of a
-     * source root — which joins onto the destination as the destination itself.
+     * Every backend joins `parent + "/" + name`, so a `..` (or a name carrying a separator)
+     * walks out of the directory the user chose — archive entries are the classic case (zip
+     * slip), but a hostile WebDAV / FTP server can list such names just as well. This is the
+     * one place every copy passes through, so the check lives here rather than in each
+     * backend.
+     *
+     * ★ Only the **name being written** is judged, never where the entry came from: an entry
+     * that merely *lives* under a `..` path in an archive has a perfectly ordinary name of
+     * its own and copies out normally — into the directory the user picked, as they expect.
+     * A refused entry is **skipped, not fatal**: the rest of the batch still copies, the
+     * containing directory counts as incomplete so a move keeps it, and the UI reports how
+     * many were refused.
+     *
+     * `.` is allowed: it resolves to the directory itself and tar's `./a.txt` layout depends
+     * on it. So is a bare `/` — [XFile.name] of a source root — which joins onto the
+     * destination as the destination itself.
      */
-    internal fun requireSafeName(name: String) {
-        if (name == "/") return
-        if (name.isEmpty() || name == ".." || '/' in name || '\u0000' in name) {
-            throw FsException("Refusing unsafe file name: \"$name\"")
-        }
-    }
+    internal fun isSafeName(name: String): Boolean =
+        name == "/" || (name.isNotEmpty() && name != ".." && '/' !in name && '\u0000' !in name)
 
     /**
      * Read / write pipeline: a background thread continuously reads from the

@@ -398,8 +398,8 @@ add its symptom here.
   its root as the paste target; never read a zip with `ZipInputStream` — a STORED entry
   with a data descriptor has no readable length outside the central directory; "open with
   another app" on a compressed entry must materialize first, never proxy it (`fastRandom`
-  false means "reopen and skip", not "somewhat slower"); an entry with a `..` segment is
-  dropped from the tree (zip slip).
+  false means "reopen and skip", not "somewhat slower"); an entry with a `..` segment stays
+  visible and openable — the **copy** is what refuses it (zip slip).
   *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
   asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
   install with "only DEFLATED entries can have EXT descriptor", a PDF inside an archive

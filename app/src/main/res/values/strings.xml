@@ -130,6 +130,7 @@
     <string name="confirm_delete">Delete the selected %1$d item(s)?</string>
     <string name="msg_no_selection">Nothing selected</string>
     <string name="msg_done">Done</string>
+    <string name="msg_done_refused">Done — skipped %1$d entry(ies) whose name cannot be written (e.g. "..")</string>
     <string name="msg_copying">Working…</string>
     <string name="action_connect_ftp">Connect FTP</string>
     <string name="action_pick_saf">Pick folder via SAF</string>

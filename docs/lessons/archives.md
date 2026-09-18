@@ -197,14 +197,22 @@
     - ★ **Never swallow the reason an open failed.** Every branch in `PdfDoc.open` now logs
       (`twig-pdf`) with the throwable. Three silent `getOrNull()`s cost a whole diagnosis round
       trip: the only thing recoverable after the fact was "the activity lived 300 ms".
-- **★ Zip slip: an entry name with a `..` segment is dropped from the tree, and `CopyEngine`
-  refuses unsafe names** (2026-09-17 review, reproduced on the JVM). `a/../../x` used to list
-  as a directory literally named `..`; extracting it walked the destination path upwards and
-  wrote outside the chosen directory — from `/sdcard` that reaches the app's own `files/`
-  (the local shell's `.mkshrc`, the command shims), and with elevation on, anywhere.
-  `ArchiveFileSystem.normalize` returns null for such entries (dropped, not renamed:
-  subclasses look entries up by their raw name). `.` segments stay — tar's `./a.txt` relies
-  on them and they do not escape. The second layer is `CopyEngine.requireSafeName` (empty,
-  `..`, a separator or NUL), because a hostile WebDAV/FTP server can list the same names.
-  Tests: `entriesClimbingOutWithDotDotAreHiddenAndCannotEscape`, `CopyEngineTest`'s
-  "Unsafe names" section.
+- **★ Zip slip: such an archive stays browsable; it is the **write** that is refused**
+  (2026-09-17 review, reproduced on the JVM; shape settled 2026-09-18 on the user's call).
+  `a/../../x` used to extract by walking the destination path upwards and writing outside the
+  chosen directory — from `/sdcard` that reaches the app's own `files/` (the local shell's
+  `.mkshrc`, the command shims), and with elevation on, anywhere. (Another file manager on the
+  same device still does this today; the malicious zip is worth keeping around.)
+  - **Dropping those entries from the listing was the first fix and was wrong**: the archive is
+    still what it is, and hiding entries hides files the user may legitimately want. They are
+    listed, browsable, and openable — all of that is read-only and harmless.
+  - The refusal belongs where the name is **written into a directory**:
+    `CopyEngine.isSafeName` rejects `""`, `..`, a separator or NUL. Only the name being written
+    is judged, never where the entry came from — so **an ordinary file that merely lives under a
+    `..` path copies out normally**, into the directory the user picked.
+  - A refused entry is **skipped, not fatal**: the rest of the batch copies, its containing
+    directory counts as incomplete so a move keeps it, and `Transfers` counts them for the
+    closing toast (`msg_done_refused`).
+  - `.` stays legal (tar's `./a.txt`), and so does a bare `/` ([XFile.name] of a source root).
+  Tests: `entriesClimbingOutAreVisibleButCannotEscapeWhenExtracted`,
+  `anOrdinaryFileUnderADotDotPathStillCopiesOut`, and `CopyEngineTest`'s "Unsafe names" section.

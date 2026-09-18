@@ -128,6 +128,9 @@ object Transfers {
 
         val cancelled = AtomicBoolean(false)
 
+        /** Entries skipped because their name cannot be written into a directory (zip slip attempts); reported when the transfer ends. */
+        @Volatile var refused = 0
+
         /** "Apply to all" remembered choice (only when the conflict dialog's checkbox is ticked). */
         @Volatile var applyAll: CopyEngine.Decision? = null
 
@@ -217,6 +220,11 @@ object Transfers {
                 lastUi = now; lastT = now; lastBytes = copiedTotal
                 s.totalProgress = if (totalBytes > 0) ((copiedTotal * 1000) / totalBytes).toInt() else 0
                 s.etaSeconds = if (s.speed > 1) (totalBytes - copiedTotal) / s.speed else -1.0
+                post(s)
+            }
+
+            override fun onRefused(file: XFile) {
+                s.refused++
                 post(s)
             }
 
