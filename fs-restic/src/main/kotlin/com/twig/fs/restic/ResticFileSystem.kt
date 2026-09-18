@@ -79,7 +79,19 @@ class ResticFileSystem(
         return repo.openFile(node)
     }
 
-    override fun exists(file: XFile): Boolean = true
+    /**
+     * Really looks: the snapshot list, then the tree. It used to answer `true` for every
+     * path, which made it useless as the existence check callers are told to trust
+     * ([FileSystem.exists]); the trees are cached in [ResticRepo], so the cost is a map
+     * lookup once a directory has been browsed.
+     */
+    override fun exists(file: XFile): Boolean = runCatching {
+        val segs = file.path.trim('/').split('/').filter { it.isNotEmpty() }
+        if (segs.isEmpty()) return true
+        val snap = repo.snapshotByShort(segs.first()) ?: return false
+        if (segs.size == 1) return true
+        repo.resolveNode(snap, segs.drop(1)) != null
+    }.getOrDefault(false)
 
     // ---- read-only ----
     override fun openOutput(file: XFile, append: Boolean): OutputStream =

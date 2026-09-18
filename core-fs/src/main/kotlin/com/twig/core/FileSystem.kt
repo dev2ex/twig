@@ -28,10 +28,35 @@ interface FileSystem {
     /** The root entry of this file system. */
     fun root(): XFile
 
-    /** Resolve a path to its entry (used for navigation / validation); throws [FsException] if missing. */
+    /**
+     * Resolve a path to its entry, **for navigation**.
+     *
+     * ★ Do not use this to test existence or to read metadata. The contract used to say
+     * "throws if missing", and most implementations do not honour it: SFTP and SMB return a
+     * non-statting stub (`isDir = true`, `size = 0`), FTP constructs a directory
+     * optimistically, an archive hands back a directory for any path that matches no entry,
+     * SAF drops the display name. Building a file to write from it produced a directory
+     * (`SecurityUi.freeName`), and trusting its size made network audio stop on the first
+     * read (`MusicEngine`); both now build the XFile themselves or list the parent.
+     *
+     * What to use instead:
+     * - "is it there?" → [exists], which every implementation answers honestly;
+     * - "what are its size / time / display name?" → [list] the parent and match by name,
+     *   which is where the rows in the tree come from in the first place.
+     *
+     * An implementation that can answer precisely (local, archives) may still throw
+     * [FsException] for a missing path, and callers must be ready for that.
+     */
     fun resolve(path: String): XFile
 
-    /** List entries under a directory; [dir] must be isDir. */
+    /**
+     * List entries under a directory; [dir] must be isDir.
+     *
+     * Implementations return **directories first, then by name case-insensitively** (media
+     * servers are the exception: the server's own order is the point there). The UI re-sorts
+     * to the user's choice anyway, but this is the order every non-UI caller gets — compare,
+     * playlists, episode queues — so it is part of the contract rather than a nicety.
+     */
     fun list(dir: XFile): List<XFile>
 
     /** Open a read stream; caller is responsible for closing it. */
@@ -75,7 +100,11 @@ interface FileSystem {
      */
     fun rename(file: XFile, newName: String): XFile
 
-    /** Whether the entry exists. */
+    /**
+     * Whether the entry exists. **This is the existence check** — see [resolve] for why it is
+     * not that one. Implementations answer it honestly, cheaply where the backend allows
+     * (a stat) and by listing the parent where it does not.
+     */
     fun exists(file: XFile): Boolean
 
     /**

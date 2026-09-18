@@ -91,7 +91,7 @@ Multiple servers of the same kind each get a unique scheme.
 floor that "every backend must answer"; capabilities that only make sense for a few
 backends get their own interface, implementations opt in with `: PlaybackProgress`, and
 callers always do `FsRegistry.of(file) as? XXX` and fall back to the old path when they
-get null. There are currently five, most of them added for media servers:
+get null. There are currently six, most of them added for media servers:
 `PlaybackProgress` (the backend owns playback position), `CoverSource` (the backend has
 posters), `MediaInfoSource`, `LyricsSource`, `SearchSource`, `EpisodeSeries`.
 Before adding a capability, decide whether *every* backend should be able to answer it —
@@ -290,6 +290,12 @@ each write `= null`.
 
 ## Conventions
 
+- **`resolve()` is for navigation, `exists()` is the existence check, `list()` is the metadata
+  source** (restated after the 2026-09-17 review): six backends return an optimistic stub from
+  `resolve` (SFTP/SMB never stat, FTP and restic assume a directory, an archive invents one,
+  SAF drops the display name), and three places in `:app` already carry a comment saying so.
+  Building a file to write from `resolve` produced a directory; trusting its size stopped
+  network audio on the first read. `FileSystem`'s KDoc now says this outright.
 - **Size first**: no heavyweight dependencies; if it can be hand-written, hand-write it
   (WebDAV without an SDK, git reimplemented, restic decrypted ourselves). Before adding a
   dependency, measure the APK delta.

@@ -4,6 +4,7 @@ import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -72,6 +73,23 @@ class ResticRepoTest {
         assertTrue("hello.txt:false" in names)
         assertTrue("big.txt:false" in names)
         assertTrue("sub:true" in names)
+    }
+
+    /** `exists` is the existence check callers are told to trust; it used to answer true for anything. */
+    @Test
+    fun existsAnswersForRealPaths() {
+        val repo = open("test123")
+        val rfs = ResticFileSystem(repo, "restic")
+        val snap = rfs.list(rfs.root()).first { it.path != "/latest" }.path
+
+        assertTrue(rfs.exists(XFile("restic", "/", true)))
+        assertTrue(rfs.exists(XFile("restic", snap, true)))
+        assertTrue(rfs.exists(XFile("restic", "$snap/tmp/twig_rsrc/hello.txt", false)))
+        assertTrue(rfs.exists(XFile("restic", "$snap/tmp/twig_rsrc/sub", true)))
+
+        assertFalse(rfs.exists(XFile("restic", "/nosuchsnapshot", true)))
+        assertFalse(rfs.exists(XFile("restic", "$snap/tmp/twig_rsrc/nope.txt", false)))
+        assertFalse(rfs.exists(XFile("restic", "$snap/nothing/here", true)))
     }
 
     @Test
