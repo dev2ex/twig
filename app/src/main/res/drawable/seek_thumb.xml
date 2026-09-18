@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Video player seek bar thumb.
+     ★ Both states must be the SAME size. While dragging, AbsSeekBar.setThumbPos takes the
+     width from the drawable's current intrinsic width but keeps the height of the bounds it
+     already had, so a thumb that grows on press is drawn 18 wide by 14 tall — an egg, not a
+     circle. Press feedback is a colour change instead.
+     The radius also has to stay under the seek bar's side padding, or the circle is clipped
+     into a half-moon at 0% and 100%; android:thumbOffset there is what puts its centre on the
+     end of the track. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="@color/white" />
+            <size android:width="12dp" android:height="12dp" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/accent" />
+            <size android:width="12dp" android:height="12dp" />
+        </shape>
+    </item>
+</selector>

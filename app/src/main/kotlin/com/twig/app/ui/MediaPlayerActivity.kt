@@ -232,6 +232,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             if (remote != null) fetchRemoteResume() else resumeFrom = PlaybackStore.positionFor(this, file)
             b.surface.holder.addCallback(this)
             watchRootSize()
+            b.controls.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> syncSubtitleInset() }
             scanSubtitles()
         } else {
             b.audioInfo.visibility = View.VISIBLE
@@ -1008,6 +1009,20 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val v = if (show) View.VISIBLE else View.GONE
         b.toolbar.visibility = v
         b.controls.visibility = v
+        syncSubtitleInset() // a hidden bar gets no layout pass, so the restore has to happen here
+    }
+
+    /**
+     * Lift the subtitles clear of the control bar while it is up. The bar is three rows tall,
+     * so the margin is read from its measured height instead of being a second hard-coded number
+     * that would drift the moment a row is added.
+     */
+    private fun syncSubtitleInset() {
+        val lp = b.tvSubtitle.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return
+        val d = resources.displayMetrics.density
+        val want = if (b.controls.visibility == View.VISIBLE) b.controls.height + (8 * d).toInt()
+        else (56 * d).toInt()
+        if (lp.bottomMargin != want) { lp.bottomMargin = want; b.tvSubtitle.layoutParams = lp }
     }
 
     /**

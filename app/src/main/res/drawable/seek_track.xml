@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Video player seek bar track: thicker than the platform's 2dp hairline so it can
+     actually be hit, rounded so the ends meet the thumb cleanly. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="2dp" />
+            <solid android:color="#59FFFFFF" />
+            <size android:height="4dp" />
+        </shape>
+    </item>
+
+    <item android:id="@android:id/secondaryProgress">
+        <scale android:scaleWidth="100%">
+            <shape android:shape="rectangle">
+                <corners android:radius="2dp" />
+                <solid android:color="#8CFFFFFF" />
+                <size android:height="4dp" />
+            </shape>
+        </scale>
+    </item>
+
+    <item android:id="@android:id/progress">
+        <scale android:scaleWidth="100%">
+            <shape android:shape="rectangle">
+                <corners android:radius="2dp" />
+                <solid android:color="@color/accent" />
+                <size android:height="4dp" />
+            </shape>
+        </scale>
+    </item>
+</layer-list>

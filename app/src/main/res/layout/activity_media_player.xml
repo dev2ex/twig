@@ -112,104 +112,168 @@
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_up" />
 
+    <!-- Three stacked rows: elapsed/total, the seek bar on a line of its own (a full-width
+         track is far easier to hit than one squeezed between four widgets), then the buttons.
+         Playback controls sit on the left, track/display controls on the right, so the row
+         doesn't shift when the episode buttons appear or disappear. -->
     <LinearLayout
         android:id="@+id/controls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
+        android:orientation="vertical"
+        android:clipToPadding="false"
+        android:clipChildren="false"
         android:background="#88000000"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="2dp">
 
-        <!-- Previous / next episode: only shown when a playlist queue is computed (a single
-             video leaves no slot), see MediaPlayerActivity.syncQueueButtons -->
-        <ImageButton
-            android:id="@+id/btn_prev"
-            android:layout_width="40dp"
-            android:layout_height="48dp"
-            android:visibility="gone"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_skip_prev"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_prev_episode" />
-
-        <ImageButton
-            android:id="@+id/btn_play"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_pause"
-            android:tint="@color/white"
-            android:contentDescription="@string/slideshow" />
-
-        <ImageButton
-            android:id="@+id/btn_next"
-            android:layout_width="40dp"
-            android:layout_height="48dp"
-            android:visibility="gone"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_skip_next"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_next_episode" />
-
-        <TextView
-            android:id="@+id/tv_pos"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="00:00"
-            android:textColor="@color/white"
-            android:textSize="12sp" />
+            android:orientation="horizontal">
 
+            <TextView
+                android:id="@+id/tv_pos"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/tv_dur"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:00"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- ★ thumbOffset MUST be 0. The platform default hangs the thumb half off each end of
+             the track (its centre on the end point), which puts half the circle inside this
+             view's own padding — and the control bar, like any ViewGroup, clips its children to
+             its padding, so the circle came out sliced flat at 0% and 100%. With no offset the
+             thumb travels strictly between the track ends: whole circle, and its edge lines up
+             with the timestamps and the buttons. The negative margin gives the padding back to
+             the track, and the vertical padding is the touch target, not decoration. -->
         <SeekBar
             android:id="@+id/seek"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1" />
+            android:layout_marginStart="-8dp"
+            android:layout_marginEnd="-8dp"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
+            android:progressDrawable="@drawable/seek_track"
+            android:thumb="@drawable/seek_thumb"
+            android:thumbOffset="0dp"
+            android:splitTrack="false"
+            android:minHeight="4dp"
+            android:maxHeight="4dp" />
 
-        <TextView
-            android:id="@+id/tv_dur"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="00:00"
-            android:textColor="@color/white"
-            android:textSize="12sp" />
+            android:orientation="horizontal"
+            android:layout_marginStart="-10dp"
+            android:layout_marginEnd="-10dp"
+            android:gravity="center_vertical">
 
-        <ImageButton
-            android:id="@+id/btn_subtitle"
-            android:layout_width="42dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_subtitle"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_subtitle" />
+            <!-- Previous / next episode: only shown when a playlist queue is computed (a single
+                 video leaves no slot), see MediaPlayerActivity.syncQueueButtons -->
+            <ImageButton
+                android:id="@+id/btn_prev"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:visibility="gone"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_prev"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_prev_episode" />
 
-        <ImageButton
-            android:id="@+id/btn_audio_track"
-            android:layout_width="42dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_audio_track"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_audio_track" />
+            <ImageButton
+                android:id="@+id/btn_play"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_pause"
+                android:tint="@color/white"
+                android:contentDescription="@string/slideshow" />
 
-        <ImageButton
-            android:id="@+id/btn_scale"
-            android:layout_width="42dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_scale"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_scale_mode" />
+            <ImageButton
+                android:id="@+id/btn_next"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:visibility="gone"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_skip_next"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_next_episode" />
 
-        <ImageButton
-            android:id="@+id/btn_orientation"
-            android:layout_width="42dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_rotate_unlock"
-            android:tint="@color/white"
-            android:contentDescription="@string/player_orientation" />
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <ImageButton
+                android:id="@+id/btn_subtitle"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_subtitle"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_subtitle" />
+
+            <ImageButton
+                android:id="@+id/btn_audio_track"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_audio_track"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_audio_track" />
+
+            <ImageButton
+                android:id="@+id/btn_scale"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_scale"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_scale_mode" />
+
+            <ImageButton
+                android:id="@+id/btn_orientation"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:padding="10dp"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_rotate_unlock"
+                android:tint="@color/white"
+                android:contentDescription="@string/player_orientation" />
+        </LinearLayout>
     </LinearLayout>
 </FrameLayout>
