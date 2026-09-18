@@ -56,6 +56,11 @@ import com.twig.app.FileInfo
 import com.twig.app.OpenFiles
 import com.twig.app.PlaybackStore
 import com.twig.app.R
+import com.twig.app.SubMemo
+import com.twig.app.TrackDesc
+import com.twig.app.TrackMatch
+import com.twig.app.TrackMemo
+import com.twig.app.TrackPrefStore
 import com.twig.app.databinding.ActivityMediaPlayerBinding
 import com.twig.core.FsRegistry
 import com.twig.core.RandomSource
@@ -138,6 +143,22 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var subUserChosen = false // once the user has manually picked subtitles, no longer auto-enable embedded tracks
 
     /**
+     * The remembered audio / subtitle choice that applies to this playback (see [TrackPrefStore]),
+     * and the bookkeeping for applying it exactly once.
+     *
+     * [seriesKey] is what makes the next episode inherit the choice. It is derived from the file
+     * name up front, which covers every backend whose names *are* file names; a media server hands
+     * out titles instead, so there it stays null until the episode queue arrives — see
+     * [adoptSeriesKey].
+     */
+    private var memo = TrackMemo()
+    private var seriesKey: String? = null
+    private var audioRestored = false // the audio memory has had its one chance on this file
+    private var subMemoApplied = false // ditto for OFF / embedded subtitle memories
+    private var extScanned = false // scanSubtitles has finished and decided about external subtitles
+    private var audioUserChosen = false // the user picked an audio track during this sitting
+
+    /**
      * Pause dimming: the window holds FLAG_KEEP_SCREEN_ON for the whole session, so a video left
      * paused used to sit at full brightness forever. Once playback is paused it goes in two steps:
      * after the system's own screen-off timeout the window drops to [DIM_BRIGHTNESS] (still awake,
@@ -190,6 +211,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // also loses its extension (container recognition degrades to sniff order)
         file = XFile(scheme, path, isDir = false, size = size, displayName = name)
         isVideo = OpenFiles.isVideo(file)
+        loadMemo()
 
         b.toolbar.title = name
         b.toolbar.setNavigationOnClickListener { finish() }
@@ -451,18 +473,12 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 // blocks applying an unplayable track.
                 audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
                 textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+                restoreAudio()
+                // A remembered subtitle choice takes precedence over both the container's
+                // default flags and the "enable the first track" rule below.
+                if (restoreSub()) return
                 if (cues.isNotEmpty()) return // external subtitles take priority
-                // ExoPlayer may auto-select a text track by its default/forced flag; sync that to subChoice (so the radio lines up)
-                val sel = textGroups.indexOfFirst { it.isSelected }
-                when {
-                    sel >= 0 -> { subChoice = subFiles.size + 1 + sel; subEnabled = true }
-                    // No auto-selection and the user hasn't manually chosen (after tapping "off" it must not auto-enable) → enable the first embedded track
-                    !subUserChosen && subChoice == 0 && textGroups.isNotEmpty() -> {
-                        selectTextTrack(0)
-                        subChoice = subFiles.size + 1
-                        subEnabled = true
-                    }
-                }
+                autoSelectSub()
             }
         })
 
@@ -749,11 +765,25 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                         .sortedByDescending { it.name.substringBeforeLast('.').lowercase() == base }
                 }
                 val subs = remote + sidecars
-                runOnUiThread { subFiles = subs }
                 // Auto-attach: take the first one given by the source (usually the default track),
                 // otherwise take the same-named file
-                (remote.firstOrNull() ?: sidecars.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base })
-                    ?.let { loadSubtitleFile(it) }
+                val fallback = remote.firstOrNull()
+                    ?: sidecars.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base }
+                runOnUiThread {
+                    subFiles = subs
+                    // A remembered sidecar wins; when this episode doesn't have its counterpart we
+                    // fall back to the usual pick, and with neither, hand back to the embedded-track
+                    // rule — which by now has already run and been held off by [restoreSub].
+                    val remembered = rememberedExternalSub(subs)
+                    if (remembered != null) subMemoApplied = true
+                    extScanned = true
+                    // Without a memory the old default applies; a remembered sidecar that this
+                    // episode lacks still prefers a subtitle *file* over jumping to an embedded
+                    // track. An OFF or embedded memory must never have a sidecar attached on top.
+                    val pick = remembered
+                        ?: fallback.takeIf { memo.sub == null || memo.sub?.kind == SubMemo.EXTERNAL }
+                    if (pick != null) loadSubtitleFile(pick) else if (!subMemoApplied) autoSelectSub()
+                }
             }
         }.apply { isDaemon = true }.start()
     }
@@ -856,6 +886,211 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         return listOfNotNull(codec.takeIf { it.isNotEmpty() }, ch).joinToString(" ")
     }
 
+    // ---- Remembered track choices ----
+
+    /**
+     * Load the audio / subtitle choice remembered for [file] and reset the per-file bookkeeping.
+     * Called once in `onCreate` and again on every episode change.
+     *
+     * The series key is `scheme|prefix` from [Episodes] — the same grouping the episode queue
+     * uses, so "the next episode" means the same thing to both.
+     */
+    private fun loadMemo() {
+        seriesKey = seriesKeyFor(file)
+        memo = TrackPrefStore.memoFor(this, TrackPrefStore.fileKey(file), seriesKey?.let { TrackPrefStore.seriesKey(it) })
+        audioRestored = false
+        subMemoApplied = false
+        extScanned = false
+        audioUserChosen = false
+        // ★ A new episode starts with a clean slate **only when the memory can take over**: the
+        // manual choice has been recorded, so "subtitles off" carries over as a memory instead of
+        // as a leftover flag. With the feature switched off, a manual choice keeps sticking for
+        // the rest of the sitting, which is what those users already expect.
+        if (com.twig.app.Prefs.rememberTracks(this)) subUserChosen = false
+    }
+
+    /**
+     * The key that makes the next episode inherit a choice: the show's name-based prefix when the
+     * name is a file name, otherwise the queue's first episode.
+     *
+     * ★ The queue half is not only for the first play. On an episode change [loadMemo] runs again,
+     * and for a media server the name is still a title that [Episodes] cannot parse — without
+     * falling back to the queue the series key would be lost the moment the user pressed "next",
+     * which is precisely the case the whole feature exists for.
+     */
+    private fun seriesKeyFor(f: XFile): String? =
+        com.twig.app.Episodes.parse(f.name)?.let { "${f.scheme}|${it.prefix}" }
+            ?: queue.firstOrNull()?.let { "${it.scheme}|${it.path}" }
+
+    private fun memoKeys() = TrackPrefStore.fileKey(file) to seriesKey?.let { TrackPrefStore.seriesKey(it) }
+
+    /** Project a track group into the plain description the memory is keyed on (see [TrackDesc]). */
+    private fun descOf(g: Tracks.Group, index: Int): TrackDesc {
+        val f = g.getTrackFormat(0)
+        return TrackDesc(
+            lang = f.language,
+            label = f.label,
+            mime = f.sampleMimeType,
+            channels = if (g.type == C.TRACK_TYPE_AUDIO) f.channelCount.coerceAtLeast(0) else 0,
+            forced = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
+            isDefault = f.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0,
+            index = index,
+        )
+    }
+
+    /**
+     * Apply the remembered audio track, at most once per file.
+     *
+     * Three deliberate refusals: a file with a single audio track has nothing to choose (and
+     * "remembering" it would only mean re-applying a no-op), a track the device cannot decode is
+     * never forced on the user, and [TrackMatch] returning -1 means this episode has no
+     * counterpart to the remembered one — in which case the player's own choice stands.
+     */
+    private fun restoreAudio() {
+        if (audioRestored || audioUserChosen) return
+        val want = memo.audio ?: return
+        if (audioGroups.size < 2) return
+        audioRestored = true
+        val idx = TrackMatch.pick(want, audioGroups.mapIndexed { i, g -> descOf(g, i) })
+        val g = audioGroups.getOrNull(idx) ?: return
+        if (!g.isTrackSupported(0) || g.isSelected) return
+        val p = player ?: return
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, 0))
+            .build()
+    }
+
+    /**
+     * Apply the remembered subtitle choice. Returns true when the memory has taken charge, so the
+     * caller leaves [autoSelectSub] alone.
+     *
+     * ★ An **external** memory returns true while [scanSubtitles] is still running: the file list
+     * arrives later than the tracks callback, and without this the "enable the first embedded
+     * track" rule fires in the meantime — the remembered sidecar would then load on top of
+     * subtitles that are already on.
+     */
+    private fun restoreSub(): Boolean {
+        if (subMemoApplied || subUserChosen) return false
+        val want = memo.sub ?: return false
+        when (want.kind) {
+            SubMemo.OFF -> {
+                subMemoApplied = true
+                subChoice = 0
+                subEnabled = false
+                cues = emptyList()
+                b.tvSubtitle.visibility = View.GONE
+                b.pgsView.setCues(emptyList())
+                val p = player ?: return true
+                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+                return true
+            }
+            SubMemo.EXTERNAL -> return !extScanned
+            else -> {
+                val track = want.track ?: return false
+                if (textGroups.isEmpty()) return false
+                subMemoApplied = true
+                val idx = TrackMatch.pick(track, textGroups.mapIndexed { i, g -> descOf(g, i) })
+                if (idx < 0) return false // no counterpart here — let the default behaviour run
+                selectTextTrack(idx)
+                subChoice = subFiles.size + 1 + idx
+                subEnabled = true
+                return true
+            }
+        }
+    }
+
+    /**
+     * The external subtitle this episode should get from an [SubMemo.EXTERNAL] memory, or null
+     * when the memory doesn't apply or nothing matches ([TrackMatch.pickExternal] explains how a
+     * per-episode file name is matched by its tail).
+     */
+    private fun rememberedExternalSub(subs: List<XFile>): XFile? {
+        if (subUserChosen || subMemoApplied) return null
+        val want = memo.sub?.takeIf { it.kind == SubMemo.EXTERNAL } ?: return null
+        val idx = TrackMatch.pickExternal(file.name, subs.map { it.name }, want.suffix.orEmpty())
+        return subs.getOrNull(idx)
+    }
+
+    /** Record an audio choice the **user** made (never one the player made for them). */
+    private fun saveAudioMemo(index: Int) {
+        audioUserChosen = true
+        // One audio track is not a choice; storing it would put a record in the way of the
+        // series-level one without ever changing what gets played.
+        if (audioGroups.size < 2) return
+        val g = audioGroups.getOrNull(index) ?: return
+        val desc = descOf(g, index)
+        memo = memo.copy(audio = desc)
+        val (fk, sk) = memoKeys()
+        TrackPrefStore.putAudio(this, fk, sk, desc)
+    }
+
+    /** Record a subtitle choice the user made; [which] is the index in the subtitle dialog. */
+    private fun saveSubMemo(which: Int) {
+        val sub = when {
+            which == 0 -> SubMemo(SubMemo.OFF)
+            which <= subFiles.size -> subFiles.getOrNull(which - 1)?.let {
+                SubMemo(SubMemo.EXTERNAL, suffix = TrackMatch.subSuffix(file.name, it.name))
+            }
+            else -> {
+                val i = which - subFiles.size - 1
+                textGroups.getOrNull(i)?.let { SubMemo(SubMemo.EMBEDDED, track = descOf(it, i)) }
+            }
+        } ?: return
+        memo = memo.copy(sub = sub)
+        val (fk, sk) = memoKeys()
+        TrackPrefStore.putSub(this, fk, sk, sub)
+    }
+
+    /**
+     * Adopt a series key from the episode queue, for sources whose names are titles rather than
+     * file names (media servers): **the queue's first episode identifies the show**, and it is the
+     * same entry no matter which episode is playing.
+     *
+     * The queue costs a network round-trip, so this can land after playback has already started —
+     * hence the late restore, which only touches what the user hasn't decided in the meantime.
+     */
+    private fun adoptSeriesKey(q: List<XFile>) {
+        if (seriesKey != null || q.isEmpty()) return
+        seriesKey = seriesKeyFor(file) ?: return
+        val (fk, sk) = memoKeys()
+        val fresh = TrackPrefStore.memoFor(this, fk, sk)
+        if (fresh.isEmpty) return
+        memo = fresh
+        if (!audioUserChosen) { audioRestored = false; restoreAudio() }
+        if (memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
+            rememberedExternalSub(subFiles)?.let { subMemoApplied = true; loadSubtitleFile(it) }
+        } else {
+            restoreSub()
+        }
+    }
+
+    /**
+     * The player's own subtitle behaviour, used whenever no memory applies: follow the track
+     * ExoPlayer auto-selected from the default/forced flags, otherwise enable the first embedded
+     * track. Extracted from `onTracksChanged` because [scanSubtitles] has to be able to fall back
+     * into it — a remembered sidecar that this episode doesn't have must still end up with
+     * subtitles, and by then the tracks callback has long passed.
+     */
+    private fun autoSelectSub() {
+        // ExoPlayer may auto-select a text track by its default/forced flag; sync that to subChoice (so the radio lines up)
+        val sel = textGroups.indexOfFirst { it.isSelected }
+        when {
+            sel >= 0 -> { subChoice = subFiles.size + 1 + sel; subEnabled = true }
+            // No auto-selection and the user hasn't manually chosen (after tapping "off" it must not
+            // auto-enable) → enable the first embedded track.
+            // ★ A remembered "off" blocks this too, and has to be checked separately: applying it
+            // disables the text renderer, which fires `onTracksChanged` again — arriving here with
+            // nothing selected and `subChoice == 0`, i.e. looking exactly like a fresh file, and
+            // the memory would be undone one callback after being applied.
+            !subUserChosen && subChoice == 0 && textGroups.isNotEmpty() && memo.sub?.kind != SubMemo.OFF -> {
+                selectTextTrack(0)
+                subChoice = subFiles.size + 1
+                subEnabled = true
+            }
+        }
+    }
+
     private fun showSubtitleDialog() {
         val names = ArrayList<String>()
         names.add(getString(R.string.player_subtitle_close))
@@ -872,6 +1107,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     private fun applySubChoice(which: Int) {
         subUserChosen = true
+        saveSubMemo(which)
         subChoice = which
         cues = emptyList()
         b.tvSubtitle.visibility = View.GONE
@@ -924,6 +1160,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, 0))
                         .build()
+                    saveAudioMemo(which)
                 }
                 d.dismiss()
             }
@@ -1138,6 +1375,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
                 queue = q
                 queueIndex = idx
                 syncQueueButtons()
+                adoptSeriesKey(q)
             }
         }.apply { isDaemon = true; name = "twig-queue" }.start()
     }
@@ -1187,6 +1425,16 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         b.toolbar.title = file.name
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(file.name))
         syncQueueButtons()
+        // The previous episode's subtitles must not survive into this one: stale `cues` keep
+        // being rendered until the new file is parsed, and they also make `onTracksChanged`
+        // believe an external subtitle is already in charge.
+        cues = emptyList()
+        subFiles = emptyList()
+        subChoice = 0
+        subEnabled = true
+        b.tvSubtitle.visibility = View.GONE
+        b.pgsView.setCues(emptyList())
+        loadMemo()
         scanSubtitles()
 
         // ★ The surface is already created, no surfaceCreated callback coming — manually hand

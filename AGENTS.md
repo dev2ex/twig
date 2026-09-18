@@ -130,6 +130,16 @@ each write `= null`.
   preferences in `Prefs` — all SharedPreferences.
 - Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
   `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
+  **Audio track / subtitle memory** (`TrackPrefStore` + `TrackMatch`): a choice the user makes
+  by hand is applied again on the next episode and the next time the file is opened. Two rules
+  carry it: the record is the track's **identity** (language / label / codec), never its index —
+  episodes order their tracks differently, so an index is a wrong answer waiting to happen —
+  and a match below `TrackMatch.MIN_SCORE` selects **nothing**, because playing an episode in a
+  language nobody asked for is worse than one tap in the dialog. An external subtitle is stored
+  as the tail of its name relative to the video's stem (`.chs.srt`), the only part that is the
+  same for every episode. Scope is per file, falling back per series (`Episodes` prefix, or the
+  queue's first episode for a media server, whose names are titles); only deliberate choices are
+  written, never what the player auto-selected, or one wrong default would be frozen forever.
   The hex table itself is `HexPane` (one RecyclerView + one `HexSource` + the row rendering),
   shared by the viewer and `HexCompareActivity`; highlights come from a single `hits` hook, so
   search hits and byte differences take the same rendering path.

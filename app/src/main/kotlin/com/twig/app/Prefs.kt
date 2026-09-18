@@ -177,6 +177,20 @@ object Prefs {
         sp(ctx).edit().putBoolean("resume_playback", on).apply()
     }
 
+    /**
+     * Remember the audio track / subtitle the user picks and apply it to the next episode
+     * and the next time this file is opened, default on (records see [TrackPrefStore]).
+     *
+     * Deliberately **its own switch**, not a sub-option of [resumePlayback]: "where I was"
+     * and "which language I watch in" are independent wishes, and bolting one onto the
+     * other is exactly the coupling the settings page keeps getting cleaned of.
+     */
+    fun rememberTracks(ctx: Context): Boolean = sp(ctx).getBoolean("remember_tracks", true)
+
+    fun setRememberTracks(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("remember_tracks", on).apply()
+    }
+
     fun imageAutoFit(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_IMG_AUTOFIT, true)
 
     fun setImageAutoFit(ctx: Context, on: Boolean) {

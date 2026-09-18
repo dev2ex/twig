@@ -27,6 +27,7 @@ import com.twig.app.PlaybackStore
 import com.twig.app.Prefs
 import com.twig.app.Privileged
 import com.twig.app.R
+import com.twig.app.TrackPrefStore
 import rikka.shizuku.Shizuku
 
 /**
@@ -382,6 +383,20 @@ class SettingsActivity : AppCompatActivity() {
             getString(R.string.settings_playback_count, PlaybackStore.all(this).size),
         ) { subtitle ->
             PlaybackStore.clear(this)
+            subtitle.text = getString(R.string.settings_playback_count, 0)
+            Toast.makeText(this, R.string.msg_cache_cleared, Toast.LENGTH_SHORT).show()
+        }
+        switchRow(
+            getString(R.string.settings_remember_tracks),
+            getString(R.string.settings_remember_tracks_desc, TrackPrefStore.MAX),
+            get = { Prefs.rememberTracks(this) },
+            set = { Prefs.setRememberTracks(this, it) },
+        )
+        actionRow(
+            getString(R.string.settings_clear_tracks),
+            getString(R.string.settings_playback_count, TrackPrefStore.count(this)),
+        ) { subtitle ->
+            TrackPrefStore.clear(this)
             subtitle.text = getString(R.string.settings_playback_count, 0)
             Toast.makeText(this, R.string.msg_cache_cleared, Toast.LENGTH_SHORT).show()
         }
