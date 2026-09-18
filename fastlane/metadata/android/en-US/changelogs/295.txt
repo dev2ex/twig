@@ -1,0 +1,3 @@
+The video player's bottom bar is rebuilt as three rows — times, a full-width seek bar, then the buttons — so the track gets a line of its own. The scale icon cycles the modes instead of a dialog, video turns with the phone even while the rotation lock is on, and anything past an hour reads h:mm:ss.
+
+A security round: WiFi sharing answers LAN clients only and never through root, archive entries cannot write outside the folder you extract into, and a cut-off copy leaves the original alone.
