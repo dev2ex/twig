@@ -140,6 +140,26 @@ class ZipFileSystemTest {
     }
 
     /**
+     * stat answers from the entry table: exact for a file, the implicit directory for a path
+     * that only appears as a prefix, and — unlike [ZipFileSystem.resolve] — null for a path
+     * that matches nothing at all.
+     */
+    @Test
+    fun statAnswersExactlyWhereResolveGuesses() {
+        val root = zfs.rootOf(archiveX())
+        val base = root.path
+
+        val file = zfs.stat("$base/dir/a.txt")!!
+        assertEquals(3L, file.size)
+        assertTrue(!file.isDir)
+        assertTrue(zfs.stat("$base/dir")!!.isDir) // implicit directory, no entry of its own
+        assertEquals(null, zfs.stat("$base/dir/nope.txt"))
+        assertEquals(null, zfs.stat("$base/nosuchdir"))
+        // resolve, by contrast, invents a directory for it
+        assertTrue(zfs.resolve("$base/nosuchdir").isDir)
+    }
+
+    /**
      * Zip slip: an entry whose name climbs out with `..` must not appear in the tree, and
      * extracting the archive must not write anything outside the destination (before
      * the 2026-09-17 fix this wrote `out/escaped.txt` while extracting into `out/dest`).

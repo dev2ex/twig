@@ -290,12 +290,15 @@ each write `= null`.
 
 ## Conventions
 
-- **`resolve()` is for navigation, `exists()` is the existence check, `list()` is the metadata
-  source** (restated after the 2026-09-17 review): six backends return an optimistic stub from
-  `resolve` (SFTP/SMB never stat, FTP and restic assume a directory, an archive invents one,
-  SAF drops the display name), and three places in `:app` already carry a comment saying so.
-  Building a file to write from `resolve` produced a directory; trusting its size stopped
-  network audio on the first read. `FileSystem`'s KDoc now says this outright.
+- **`resolve()` is for navigation; `stat()` is for metadata; `exists()` answers existence**
+  (settled 2026-09-18). Six backends return an optimistic stub from `resolve` (SFTP/SMB never
+  stat, FTP and restic assume a directory, an archive invents one, SAF drops the display name),
+  which is why building a file to write from it produced a directory and trusting its size
+  stopped network audio on the first read. `stat(path): XFile?` is the honest one — real type,
+  size, time, display name, or null. Its default lists the parent and matches **by path**
+  (a media server's name is a title, a SAF path is a URI), and local / archives / restic /
+  SFTP / WebDAV / SAF override it with a real stat. ★ For many entries of one directory, list
+  that directory once instead (`MusicEngine` and `CompareActivity.statSides` batch on purpose).
 - **Size first**: no heavyweight dependencies; if it can be hand-written, hand-write it
   (WebDAV without an SDK, git reimplemented, restic decrypted ourselves). Before adding a
   dependency, measure the APK delta.

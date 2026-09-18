@@ -103,7 +103,7 @@ class WebDavFileSystem(
                     e,
                 )
             }
-            return parseMultistatus(bytes.inputStream(), dir.path, URI(url).path)
+            return parseMultistatus(bytes.inputStream(), dir.path, selfPath = URI(url).path)
         }
     }
 
@@ -208,9 +208,30 @@ class WebDavFileSystem(
     }
 
     /** Parses multistatus; [requestUrlPath] is used to filter out the entry representing the directory itself. */
-    private fun parseMultistatus(input: InputStream, dirPath: String, requestUrlPath: String): List<XFile> {
+    /**
+     * One `Depth: 0` PROPFIND — the same props the listing parses, for a single entry. The
+     * response describes the entry itself, so nothing is filtered out of it.
+     */
+    override fun stat(path: String): XFile? = runCatching {
+        val url = urlOf(path)
+        val req = request(url)
+            .method("PROPFIND", PROPFIND_BODY.toRequestBody("text/xml; charset=utf-8".toMediaType()))
+            .header("Depth", "0")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            if (resp.code != 207) return null
+            val bytes = resp.body?.bytes() ?: return null
+            parseMultistatus(bytes.inputStream(), path.substringBeforeLast('/', "").ifEmpty { "/" }, selfPath = null)
+                .firstOrNull()
+                // The href names the entry itself; keep the path the caller asked about
+                ?.copy(path = path)
+        }
+    }.getOrNull()
+
+    /** [selfPath] is the request's own URL path, whose entry is dropped (a listing must not contain the directory itself); null keeps everything. */
+    private fun parseMultistatus(input: InputStream, dirPath: String, selfPath: String?): List<XFile> {
         val doc = SafeXml.parse(input, namespaceAware = true)
-        val selfNorm = requestUrlPath.trimEnd('/')
+        val selfNorm = selfPath?.trimEnd('/')
 
         val out = ArrayList<XFile>()
         val responses = doc.getElementsByTagNameNS(DAV_NS, "response")
@@ -220,7 +241,7 @@ class WebDavFileSystem(
             // Some servers return full URLs; always take the path part and decode it
             val hrefPath = runCatching { URI(hrefRaw).path ?: hrefRaw }.getOrDefault(hrefRaw)
             val decoded = URLDecoder.decode(hrefPath, "UTF-8").trimEnd('/')
-            if (decoded == selfNorm) continue // skip the directory itself
+            if (selfNorm != null && decoded == selfNorm) continue // skip the directory itself
 
             val name = decoded.substringAfterLast('/')
             if (name.isEmpty()) continue

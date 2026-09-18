@@ -41,6 +41,13 @@ class LocalFileSystem(
         return toXFile(f)
     }
 
+    /** A real stat, with the privileged fallback for paths we cannot see ourselves. */
+    override fun stat(path: String): XFile? {
+        val f = File(path)
+        if (f.exists()) return toXFile(f)
+        return if (maybeHidden(f)) fallback?.stat(path) else null
+    }
+
     override fun list(dir: XFile): List<XFile> {
         val f = File(dir.path)
         // isDirectory needs a successful stat(2); on a path we may traverse but not

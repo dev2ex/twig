@@ -48,6 +48,28 @@ class SafFileSystem(context: Context) : FileSystem {
 
     override fun resolve(path: String): XFile = XFile(SCHEME, path, isDir = true)
 
+    /**
+     * One query on the document itself. ★ The default implementation cannot work here: it
+     * slices a parent out of the path, and a SAF path is a whole document URI — the very trap
+     * the SAF lessons file is about. The display name matters as much as the size: it is not
+     * in the path at all.
+     */
+    override fun stat(path: String): XFile? = runCatching {
+        val uri = Uri.parse(path)
+        resolver.query(uri, PROJECTION, null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return null
+            val mime = c.getString(c.getColumnIndexOrThrow(Document.COLUMN_MIME_TYPE))
+            val isDir = mime == Document.MIME_TYPE_DIR
+            val name = c.getString(c.getColumnIndexOrThrow(Document.COLUMN_DISPLAY_NAME))
+            XFile(
+                SCHEME, path, isDir = isDir,
+                size = if (isDir) 0L else c.getLong(c.getColumnIndexOrThrow(Document.COLUMN_SIZE)),
+                lastModified = c.getLong(c.getColumnIndexOrThrow(Document.COLUMN_LAST_MODIFIED)),
+                displayName = name,
+            )
+        }
+    }.getOrNull()
+
     override fun list(dir: XFile): List<XFile> {
         val dirUri = Uri.parse(dir.path)
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(

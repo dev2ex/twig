@@ -236,10 +236,10 @@ object MusicEngine {
                 // For network sources (SMB/WebDAV/…) openRandom().length() takes XFile.size directly;
                 // size must be correct, otherwise the data source EOFs on first read and the
                 // extractor sees an empty stream — network audio won't play. When size is missing
-                // (m3u8 / old lists) backfill the real size — note that FileSystem.resolve() can't
-                // be used (SmbFileSystem.resolve is a non-statting stub returning isDir=true/size=0);
-                // we must list the parent directory and match by file name to get the entry with
-                // its real size.
+                // (m3u8 / old lists) backfill the real size. `FileSystem.stat()` answers exactly
+                // this, but **not per track**: a playlist is usually one directory, so [statByListing]
+                // keeps its own LRU of listings and one round trip serves every track in it
+                // (stat's own default would list that directory again for each one).
                 if (t.size > 0) {
                     // ★ displayName must come back too: for media servers the last path segment
                     // is the entry id (Emby uses pure numbers); losing it doesn't just make the

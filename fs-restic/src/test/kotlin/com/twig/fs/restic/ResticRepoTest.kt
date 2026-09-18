@@ -5,6 +5,7 @@ import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -90,6 +91,20 @@ class ResticRepoTest {
         assertFalse(rfs.exists(XFile("restic", "/nosuchsnapshot", true)))
         assertFalse(rfs.exists(XFile("restic", "$snap/tmp/twig_rsrc/nope.txt", false)))
         assertFalse(rfs.exists(XFile("restic", "$snap/nothing/here", true)))
+    }
+
+    @Test
+    fun statGivesRealMetadata() {
+        val repo = open("test123")
+        val rfs = ResticFileSystem(repo, "restic")
+        val snap = rfs.list(rfs.root()).first { it.path != "/latest" }.path
+
+        val hello = rfs.stat("$snap/tmp/twig_rsrc/hello.txt")!!
+        assertEquals("hello restic\n".length.toLong(), hello.size)
+        assertFalse(hello.isDir)
+        assertTrue(rfs.stat("$snap/tmp/twig_rsrc/sub")!!.isDir)
+        assertNull(rfs.stat("$snap/tmp/twig_rsrc/nope.txt"))
+        assertNull(rfs.stat("/nosuchsnapshot/x"))
     }
 
     @Test

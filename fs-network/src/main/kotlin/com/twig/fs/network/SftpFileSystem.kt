@@ -472,6 +472,18 @@ class SftpFileSystem(
             }
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
 
+    /** One stat round trip (`statExistence`), instead of listing the whole parent directory. */
+    override fun stat(path: String): XFile? {
+        val attrs = runCatching { retry { it.statExistence(serverPath(path)) } }.getOrNull() ?: return null
+        return XFile(
+            scheme = scheme,
+            path = path,
+            isDir = attrs.type == FileMode.Type.DIRECTORY,
+            size = if (attrs.type == FileMode.Type.DIRECTORY) 0L else attrs.size,
+            lastModified = attrs.mtime * 1000L,
+        )
+    }
+
     override fun openInput(file: XFile): InputStream {
         val rf = retry { it.open(serverPath(file.path)) }
         return object : FilterInputStream(rf.RemoteFileInputStream()) {

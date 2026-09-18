@@ -90,3 +90,7 @@
       `when (which)` first: once an item can be absent, a written-out index silently points at
       the wrong action.
 
+- **`stat()` must be overridden here** (2026-09-18): its default implementation slices a parent
+  out of the path, which for SAF is a whole document URI — the same trap as everything else in
+  this file. `SafFileSystem.stat` queries the document itself, and brings back the display name
+  as well: it is not in the path at all.

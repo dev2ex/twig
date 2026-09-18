@@ -101,6 +101,29 @@ interface FileSystem {
     fun rename(file: XFile, newName: String): XFile
 
     /**
+     * Real metadata for [path], or null when there is nothing there.
+     *
+     * The honest counterpart to [resolve]: what comes back is what the backend actually
+     * knows — type, size, modification time, display name — never an optimistic stub. Use it
+     * whenever those fields matter (building an XFile to hand to a player, showing a size,
+     * deciding whether a target can be written).
+     *
+     * The default asks the backend the only way that always works: list the parent and match
+     * by **path** (not name — a media server's name is a title while its path is an id).
+     * That is one round trip on a network source, so a backend with a cheap stat overrides
+     * this; `SMB`/`FTP`/`S3`/media servers deliberately do not, having no cheaper answer than
+     * their own listing. A caller that needs many entries from one directory should still
+     * list that directory once itself rather than call this per entry.
+     */
+    fun stat(path: String): XFile? {
+        if (path.isEmpty() || path == "/") return runCatching { root() }.getOrNull()
+        val parent = XFile(scheme, path, isDir = false).parentPath
+        return runCatching {
+            list(XFile(scheme, parent, isDir = true)).firstOrNull { it.path == path }
+        }.getOrNull()
+    }
+
+    /**
      * Whether the entry exists. **This is the existence check** — see [resolve] for why it is
      * not that one. Implementations answer it honestly, cheaply where the backend allows
      * (a stat) and by listing the parent where it does not.

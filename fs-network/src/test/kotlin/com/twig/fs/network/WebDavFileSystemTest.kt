@@ -113,6 +113,41 @@ class WebDavFileSystemTest {
         assertTrue(req.getHeader("Destination")!!.endsWith("/dav/new.txt"))
     }
 
+    /** stat is a `Depth: 0` PROPFIND, and the entry it describes is the file itself (not filtered out as "self"). */
+    @Test
+    fun statUsesDepthZeroAndKeepsTheEntry() {
+        server.enqueue(
+            MockResponse().setResponseCode(207).setBody(
+                """
+                <?xml version="1.0"?>
+                <d:multistatus xmlns:d="DAV:">
+                  <d:response>
+                    <d:href>/dav/notes.txt</d:href>
+                    <d:propstat><d:prop><d:resourcetype/>
+                      <d:getcontentlength>17</d:getcontentlength>
+                      <d:getlastmodified>Mon, 29 Jun 2026 10:00:00 GMT</d:getlastmodified>
+                    </d:prop></d:propstat>
+                  </d:response>
+                </d:multistatus>
+                """.trimIndent(),
+            ),
+        )
+        val got = fs.stat("/notes.txt")!!
+        assertEquals("/notes.txt", got.path)
+        assertEquals(17L, got.size)
+        assertTrue(got.lastModified > 0)
+
+        val req = server.takeRequest()
+        assertEquals("PROPFIND", req.method)
+        assertEquals("0", req.getHeader("Depth"))
+    }
+
+    @Test
+    fun statIsNullWhenTheServerSaysNotFound() {
+        server.enqueue(MockResponse().setResponseCode(404))
+        assertEquals(null, fs.stat("/gone.txt"))
+    }
+
     /**
      * XXE: a hostile server's DOCTYPE must not make the client read local files into the
      * listing (2026-09-17 review). Parsing may fail outright — that is fine; what must never

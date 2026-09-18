@@ -5,6 +5,7 @@ import com.twig.core.XFile
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -144,5 +145,21 @@ class LocalFileSystemTest {
 
         assertTrue(fs.setModifiedTime(x(f), target))
         assertEquals(target, f.lastModified())
+    }
+
+    /** stat is the honest counterpart to resolve: real metadata, or null. */
+    @Test
+    fun `stat reports type size and time, and null for a missing path`() {
+        val f = File(tmp, "a.txt").apply { writeText("hello") }
+        f.setLastModified(1_700_000_000_000L)
+        val got = fs.stat(f.absolutePath)!!
+        assertEquals(5L, got.size)
+        assertEquals(false, got.isDir)
+        assertEquals(1_700_000_000_000L, got.lastModified)
+
+        val dir = File(tmp, "d").apply { mkdirs() }
+        assertTrue(fs.stat(dir.absolutePath)!!.isDir)
+
+        assertNull(fs.stat(File(tmp, "nope.txt").absolutePath))
     }
 }

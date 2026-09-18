@@ -187,12 +187,12 @@ fun compareDestDir(destRoot: XFile, key: String): XFile {
 /** Build the target directory level by level (use it directly if it already exists); returns null on failure. **Talks to the network; must be called on a background thread**. */
 fun ensureDir(dir: XFile): XFile? = runCatching {
     val fs = FsRegistry.of(dir)
-    if (fs.exists(dir)) return@runCatching fs.resolve(dir.path)
+    fs.stat(dir.path)?.let { if (it.isDir) return@runCatching it }
     val parts = dir.path.trim('/').split('/').filter { it.isNotEmpty() }
-    var cur = fs.resolve("/")
+    var cur = fs.root()
     for (p in parts) {
-        val next = XFile(dir.scheme, "${cur.path.trimEnd('/')}/$p", isDir = true)
-        cur = if (fs.exists(next)) fs.resolve(next.path) else fs.mkdir(cur, p)
+        val next = "${cur.path.trimEnd('/')}/$p"
+        cur = fs.stat(next)?.takeIf { it.isDir } ?: fs.mkdir(cur, p)
     }
     cur
 }.getOrNull()

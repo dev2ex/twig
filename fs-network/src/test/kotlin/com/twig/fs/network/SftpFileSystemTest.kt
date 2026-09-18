@@ -172,6 +172,20 @@ class SftpFileSystemTest {
         assertFalse(File(home, "d").exists())
     }
 
+    /** One stat round trip, real metadata — `resolve` here is a non-statting stub by design. */
+    @Test
+    fun statReportsTypeSizeAndTime() {
+        File(home, "a.txt").writeText("hello")
+        File(home, "sub").mkdirs()
+
+        val f = fs.stat("/a.txt")!!
+        assertEquals(5L, f.size)
+        assertFalse(f.isDir)
+        assertTrue("mtime should be filled in", f.lastModified > 0)
+        assertTrue(fs.stat("/sub")!!.isDir)
+        assertNull(fs.stat("/nope.txt"))
+    }
+
     // ---- retries (2026-09-17 review) ----
 
     /** A server's "no such file" is an answer, not a dropped connection: no reconnect, no second try. */

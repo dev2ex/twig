@@ -40,7 +40,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     fun open(declaredSize: Long) {
         var s = declaredSize
         // XFile is assembled from an Intent and often loses size; if resolve works, ask for the real length once
-        if (s <= 0) s = runCatching { fs.resolve(file.path).size }.getOrDefault(0L)
+        if (s <= 0) s = runCatching { fs.stat(file.path)?.size }.getOrNull() ?: 0L
         if (s > 0) {
             random = fs.openRandom(file)
             size = s

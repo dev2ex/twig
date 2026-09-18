@@ -136,6 +136,28 @@ abstract class ArchiveFileSystem : FileSystem {
         }
     }
 
+    /**
+     * Entry lookup, no listing: exact for files, and a path that only appears as a prefix of
+     * other entries is the implicit directory it describes. Unlike [resolve], a path that
+     * matches nothing at all is null rather than an invented directory.
+     */
+    override fun stat(path: String): XFile? {
+        val archive = archiveOf(path)
+        val inner = innerOf(path)
+        if (inner.isEmpty()) return if (exists(XFile(scheme, path, isDir = true))) dirXFile(archive, "") else null
+        val entries = runCatching { entries(archive) }.getOrNull() ?: return null
+        var isDirPrefix = false
+        for (e in entries) {
+            val n = normalize(e) ?: continue
+            val trimmed = n.trimEnd('/')
+            if (trimmed == inner) {
+                return if (e.isDir) dirXFile(archive, inner) else fileXFile(archive, inner, e)
+            }
+            if (!isDirPrefix && n.startsWith("$inner/")) isDirPrefix = true
+        }
+        return if (isDirPrefix) dirXFile(archive, inner) else null
+    }
+
     override fun list(dir: XFile): List<XFile> {
         val archive = archiveOf(dir.path)
         val inner = innerOf(dir.path)

@@ -25,6 +25,22 @@ class ResticFileSystem(
 
     override fun resolve(path: String): XFile = XFile(scheme, path, isDir = true, canWrite = false)
 
+    /** Straight out of the snapshot tree (cached in [ResticRepo]); null when the path is not in it. */
+    override fun stat(path: String): XFile? = runCatching {
+        val segs = path.trim('/').split('/').filter { it.isNotEmpty() }
+        if (segs.isEmpty()) return root()
+        val snap = repo.snapshotByShort(segs.first()) ?: return null
+        if (segs.size == 1) {
+            return XFile(scheme, path, isDir = true, lastModified = snap.timeMillis, canWrite = false)
+        }
+        val node = repo.resolveNode(snap, segs.drop(1)) ?: return null
+        XFile(
+            scheme, path, isDir = node.isDir,
+            size = if (node.isDir) 0L else node.size,
+            lastModified = node.mtime, canWrite = false,
+        )
+    }.getOrNull()
+
     override fun list(dir: XFile): List<XFile> {
         val segs = dir.path.trim('/').split('/').filter { it.isNotEmpty() }
         if (segs.isEmpty()) {

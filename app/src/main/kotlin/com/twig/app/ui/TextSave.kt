@@ -98,7 +98,9 @@ internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
 /** Whether this entry can be written right now: the whole-source read-only case is covered by `writable()`; the per-entry writable bit is checked live. */
 internal fun canWriteTo(file: XFile): Boolean {
     val fs = FsRegistry.of(file)
-    // The default-true canWrite is not trustworthy (an XFile built from intent/path
-    // never asked the source), so resolve once.
-    return fs.writable() && runCatching { fs.resolve(file.path).canWrite }.getOrDefault(true)
+    // The default-true canWrite is not trustworthy (an XFile built from intent/path never
+    // asked the source), so ask for the real entry — resolve() would hand back an optimistic
+    // stub on half the backends. Unknown (stat returned null) stays permissive: the write
+    // itself will report the truth.
+    return fs.writable() && (runCatching { fs.stat(file.path) }.getOrNull()?.canWrite ?: true)
 }
