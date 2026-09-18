@@ -209,6 +209,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         if (isVideo) {
             setupGestures()
+            applyOrientation()
             b.tvSpeed.setCompoundDrawablesRelativeWithIntrinsicBounds(null, null, fastForwardIcon(), null)
         }
         b.seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -939,22 +940,35 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
      */
     private fun toggleOrientationLock() {
         orientationLocked = !orientationLocked
-        requestedOrientation = if (orientationLocked) {
-            ActivityInfo.SCREEN_ORIENTATION_LOCKED
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        applyOrientation()
+        showGestureHint(
+            getString(
+                if (orientationLocked) R.string.player_orientation_locked else R.string.player_orientation_auto,
+            ),
+            autoHide = true,
+        )
+    }
+
+    /**
+     * ★ Video follows the sensor even when the system's auto-rotate is off.
+     * `SCREEN_ORIENTATION_SENSOR` is the one value that overrides the user's rotation lock, and a
+     * locked phone is exactly the case this matters for: people keep auto-rotate off all day and
+     * still want a 16:9 video to turn landscape when they tilt the phone. Nothing about the system
+     * setting is written — this is only what *this* Activity asks for — so whatever is underneath
+     * goes back to obeying the lock (and to the orientation it was in) the moment the player
+     * closes. Audio playback keeps UNSPECIFIED: there is nothing to turn for.
+     */
+    private fun applyOrientation() {
+        requestedOrientation = when {
+            orientationLocked -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            isVideo -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         b.btnOrientation.setImageResource(
             if (orientationLocked) R.drawable.ic_rotate_lock else R.drawable.ic_rotate_unlock,
         )
         b.btnOrientation.imageTintList = ColorStateList.valueOf(
             ContextCompat.getColor(this, if (orientationLocked) R.color.accent else R.color.white),
-        )
-        showGestureHint(
-            getString(
-                if (orientationLocked) R.string.player_orientation_locked else R.string.player_orientation_auto,
-            ),
-            autoHide = true,
         )
     }
 
