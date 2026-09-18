@@ -182,7 +182,8 @@ class PosterAspectTest {
      * grow into it one frame later. That late growth is what made scrolling up jerk: a row
      * entering at the top of the screen suddenly gets taller and shoves everything below it
      * down, once per row (reported as "it judders, worst on Emby"). `Thumbs` remembers the
-     * height `fillAspect` settled on (`cacheDir/thumbs_ratios`) and applies it in `bind`.
+     * height `fillAspect` settled on (in memory, for this run of the process) and applies it
+     * in `bind`.
      *
      * Deliberately **not** pinned: a first sighting. Guessing a shape for an entry never
      * measured would leave blank space around any cover that does not fill the guess — the
@@ -211,7 +212,8 @@ class PosterAspectTest {
         val settledH = icon.layoutParams.height
         assertTrue("precondition: the first bind grew the cell", settledH > iconPx())
 
-        // Scrolled far away and back: the bitmap is evicted, the remembered shape is not.
+        // Scrolled far away and back: the bitmap is evicted from the image cache, the
+        // remembered shape is a separate table and survives.
         evictMemoryCache()
         val vh2 = adapter.createViewHolder(parent, adapter.getItemViewType(0))
         parent.addView(vh2.itemView)

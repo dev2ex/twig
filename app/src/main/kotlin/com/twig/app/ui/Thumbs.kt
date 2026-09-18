@@ -233,65 +233,33 @@ object Thumbs {
     private const val TRIM_INTERVAL_MS = 10 * 60 * 1000L
 
     /**
-     * The `height / width` [fillAspect] settled on for a thumbnail cell, per key.
+     * The `height / width` [fillAspect] settled on for a thumbnail cell, per key —
+     * **memory only, for this run of the process**.
      *
      * A tree row is bound at the small icon size and only takes its real height once the
      * image arrives, inside a `post{}` — one frame later. Scrolling **up**, every row
      * entering at the top then pushes everything below it down, and the list jerks once
      * per row (worst on a media server: a 2:3 poster goes 26dp -> 72dp, and the cover
-     * comes off the network). Whatever [fillAspect] worked out last time is applied at
-     * bind ([applyKnownShape]), so the row is measured at its final height from the start
-     * and the arriving image changes nothing.
+     * comes off the network). Whatever [fillAspect] worked out is applied at bind
+     * ([applyKnownShape]), so on the way back the row is measured at its final height
+     * from the start and the arriving image changes nothing.
      *
-     * An entry never seen before has no answer here and keeps the old behaviour — it is
-     * deliberately **not** guessed at: a guessed cell that the image then does not fill is
-     * blank space next to the icon, which looks worse than the jerk it avoids.
-     *
-     * Append-only text in cacheDir, same shape as the blacklist file: one `key ratio` per
-     * line, later lines win, rewritten from the map past [RATIO_LINES_MAX] lines.
+     * Two things deliberately left out:
+     * - **Nothing is persisted.** The first pass over a directory after launch jerks
+     *   exactly as it did before; a file cache to spare it would be more machinery
+     *   (invalidation, size cap, disk writes on every new row) than one janky pass is
+     *   worth, and this table costs nothing to rebuild — the image has to be decoded
+     *   again anyway.
+     * - **Nothing is guessed.** An entry never measured keeps the old behaviour rather
+     *   than getting an assumed shape: a cell the image then does not fill is blank space
+     *   next to the icon, which looks worse than the jerk it avoids.
      */
-    private const val RATIO_FILE = "thumbs_ratios"
-    private const val RATIO_LINES_MAX = 4000
-    private var ratios: MutableMap<String, Float>? = null
-    private var ratioLines = 0
+    private val shapes = LruCache<String, Float>(2000)
 
-    private fun loadRatios(ctx: Context): MutableMap<String, Float> {
-        ratios?.let { return it }
-        synchronized(this) {
-            ratios?.let { return it }
-            val map = Collections.synchronizedMap(HashMap<String, Float>())
-            var lines = 0
-            runCatching {
-                File(ctx.cacheDir, RATIO_FILE).forEachLine { line ->
-                    val sp = line.lastIndexOf(' ')
-                    if (sp <= 0) return@forEachLine
-                    val r = line.substring(sp + 1).toFloatOrNull() ?: return@forEachLine
-                    map[line.substring(0, sp)] = r
-                    lines++
-                }
-            }
-            ratioLines = lines
-            ratios = map
-            return map
-        }
-    }
-
-    private fun rememberShape(ctx: Context, key: String, ratio: Float) {
-        val map = loadRatios(ctx)
-        val old = map[key]
+    private fun rememberShape(key: String, ratio: Float) {
+        val old = shapes.get(key)
         if (old != null && kotlin.math.abs(old - ratio) < 0.01f) return
-        map[key] = ratio
-        runCatching {
-            val f = File(ctx.cacheDir, RATIO_FILE)
-            if (ratioLines >= RATIO_LINES_MAX) {
-                val all = synchronized(map) { map.entries.map { it.key to it.value } }
-                f.writeText(all.joinToString("") { (k, r) -> "$k ${"%.4f".format(r)}\n" })
-                ratioLines = all.size
-            } else {
-                f.appendText("$key ${"%.4f".format(ratio)}\n")
-                ratioLines++
-            }
-        }
+        shapes.put(key, ratio)
     }
 
     /**
@@ -302,8 +270,8 @@ object Thumbs {
      * Only for tree rows (an `infoBox` sibling, same test [fill] uses): a grid cell is a
      * fixed square and must not be reshaped by a ratio the tree recorded for the same file.
      */
-    private fun applyKnownShape(ctx: Context, view: ImageView, key: String, growPx: Int) {
-        val ratio = loadRatios(ctx)[key] ?: return
+    private fun applyKnownShape(view: ImageView, key: String, growPx: Int) {
+        val ratio = shapes.get(key) ?: return
         if ((view.parent as? ViewGroup)?.findViewById<View>(R.id.infoBox) == null) return
         val lp = view.layoutParams ?: return
         val w = if (growPx > 0) growPx else lp.width
@@ -377,7 +345,7 @@ object Thumbs {
         if (!canThumb(file)) return
         val key = keyOf(file)
         val ctx = view.context.applicationContext
-        applyKnownShape(ctx, view, key, growPx)
+        applyKnownShape(view, key, growPx)
         mem.get(key)?.let { fill(view, it, key); return }
         if (recentlyFailed(ctx, key)) return
         if (!eligible(ctx, file)) { failed[key] = System.currentTimeMillis(); return }
@@ -430,13 +398,9 @@ object Thumbs {
         mem.evictAll()
         failed.clear()
         failCount.clear()
-        synchronized(this) {
-            blacklist = mutableSetOf()
-            ratios = null
-            ratioLines = 0
-        }
+        synchronized(this) { blacklist = mutableSetOf() }
+        shapes.evictAll()
         blacklistFile(ctx).delete()
-        File(ctx.cacheDir, RATIO_FILE).delete()
         synchronized(dirCoverBytes) { dirCoverBytes.clear() }
         diskDir(ctx).listFiles()?.forEach { it.delete() }
     }
@@ -525,7 +489,7 @@ object Thumbs {
                 view.layoutParams = lp
             }
             // Next time this row binds, it starts at this height instead of growing into it.
-            rememberShape(view.context.applicationContext, key, h.toFloat() / w)
+            rememberShape(key, h.toFloat() / w)
             if (natural <= maxH) {
                 view.scaleType = ImageView.ScaleType.FIT_CENTER
             } else {
