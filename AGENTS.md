@@ -120,6 +120,11 @@ each write `= null`.
 - `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
   toggling + fling gestures, same layout in portrait and landscape).
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
+  Expanding a node reuses its cached children, **except for local directories**: those re-list
+  in the background behind the expansion (`relistQuietly`) and correct the rows if they differ,
+  because a collapsed directory is watched by nothing and the cache goes stale as soon as
+  another app touches it. Expanded local directories stay live through inotify
+  (`PaneFragment.syncObservers`) plus a re-list on resume.
   The tree always expands/collapses **in place**, it never "enters" a directory.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.

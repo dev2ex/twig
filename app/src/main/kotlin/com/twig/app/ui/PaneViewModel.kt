@@ -1395,6 +1395,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Re-list [dir] in the background and replace its cached children if they changed, with
+     * no spinner and no scroll/selection side effects — the row is already expanded and
+     * showing the previous listing.
+     */
+    private fun relistQuietly(key: String, dir: XFile) {
+        viewModelScope.launch {
+            val fresh = withContext(io) { runCatching { listChildren(dir, key) }.getOrNull() } ?: return@launch
+            if (!expanded.contains(key)) return@launch // collapsed again while we were listing
+            val sorted = sortList(key, applyListing(fresh))
+            if (children[key] == sorted) return@launch
+            children[key] = sorted
+            rebuild()
+        }
+    }
+
+    /**
      * Clear [dir]'s own children cache (whether expanded or not). [refresh] only
      * re-lists "currently expanded" directories — so if you create a directory on a
      * collapsed one (long-press menu, no need to open it first) and it was previously
@@ -1759,6 +1775,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             children.containsKey(key) && !freshGit && !freshMedia -> {
                 mountRoots[key]?.let { currentDir = it } // Archive: current directory becomes the archive root.
                 accordionExpand(key); rebuild()
+                // ★ A local directory that has been collapsed is not being watched any more
+                // ([PaneFragment.syncObservers] only watches what is on screen), so whatever
+                // another app — or the shell, or the other pane — did to it since is not in
+                // the cached listing, and re-expanding used to show the stale one until the
+                // user hit refresh. Listing it again is cheap, so do it **behind** the
+                // expansion: the rows appear instantly from the cache and are corrected a
+                // moment later if they differ, instead of paying a spinner every time.
+                if (n.file.scheme == "file") relistQuietly(key, n.file)
             }
             // This row is already being fetched (common after "abandon then tap
             // back"): claimExpand above has reclaimed it and the spinner is
