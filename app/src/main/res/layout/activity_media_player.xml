@@ -158,7 +158,7 @@
             android:id="@+id/tv_pos"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="0:00"
+            android:text="00:00"
             android:textColor="@color/white"
             android:textSize="12sp" />
 
@@ -172,7 +172,7 @@
             android:id="@+id/tv_dur"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="0:00"
+            android:text="00:00"
             android:textColor="@color/white"
             android:textSize="12sp" />
 
