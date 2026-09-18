@@ -177,6 +177,90 @@ class PosterAspectTest {
         )
     }
 
+    /**
+     * ★ **The row must be measured at its final height the second time it is bound**, not
+     * grow into it one frame later. That late growth is what made scrolling up jerk: a row
+     * entering at the top of the screen suddenly gets taller and shoves everything below it
+     * down, once per row (reported as "it judders, worst on Emby"). `Thumbs` remembers the
+     * height `fillAspect` settled on (`cacheDir/thumbs_ratios`) and applies it in `bind`.
+     *
+     * Deliberately **not** pinned: a first sighting. Guessing a shape for an entry never
+     * measured would leave blank space around any cover that does not fill the guess — the
+     * jerk is the lesser evil, and it happens once per entry, ever.
+     *
+     * ★★ The size is read **immediately after bind**, before any layout pass or `Looper`
+     * idle. Reading it afterwards would pass on the old code too, since `fillAspect` has run
+     * by then — the same trap the seeded-cache assertions above fall into (they measure a
+     * synchronous fill, so they cannot see this property at all).
+     */
+    @Test
+    fun `the second bind starts at the height the first one settled on`() {
+        val album = XFile(scheme, "/lib/music/remembered", isDir = true)
+        seedCache(album, 500, 500) // square album art: nothing like the 2:3 a poster would be
+
+        val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {}, thumbs = true)
+        adapter.submitList(listOf(node(album)))
+        val parent = attachedParent()
+        val vh = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+        parent.addView(vh.itemView)
+        adapter.bindViewHolder(vh, 0)
+        layoutOnce(vh.itemView)
+        shadowOf(Looper.getMainLooper()).idle()
+        val icon = vh.itemView.findViewById<ImageView>(R.id.icon)
+        val settledW = icon.layoutParams.width
+        val settledH = icon.layoutParams.height
+        assertTrue("precondition: the first bind grew the cell", settledH > iconPx())
+
+        // Scrolled far away and back: the bitmap is evicted, the remembered shape is not.
+        evictMemoryCache()
+        val vh2 = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+        parent.addView(vh2.itemView)
+        adapter.bindViewHolder(vh2, 0)
+
+        val icon2 = vh2.itemView.findViewById<ImageView>(R.id.icon)
+        assertEquals(
+            "the cell must already be that wide at bind time",
+            settledW, icon2.layoutParams.width,
+        )
+        assertEquals(
+            "and that tall — growing into it later is what shoves the rows below it down",
+            settledH, icon2.layoutParams.height,
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun evictMemoryCache() {
+        (Thumbs::class.java.getDeclaredField("mem").apply { isAccessible = true }
+            .get(Thumbs) as LruCache<String, Bitmap>).evictAll()
+    }
+
+    /** A grid cell has no `infoBox` and is a fixed square; the ratio the tree recorded for the same file must not reshape it. */
+    @Test
+    fun `a remembered shape does not leak into a grid cell`() {
+        val album = XFile(scheme, "/lib/music/grid-album", isDir = true)
+        seedCache(album, 500, 250) // 2:1, nothing like a square
+        val parent = attachedParent()
+        val tree = FileAdapter(1, {}, {}, {}, { _, _ -> }, {}, thumbs = true)
+        tree.submitList(listOf(node(album)))
+        val vh = tree.createViewHolder(parent, tree.getItemViewType(0))
+        parent.addView(vh.itemView)
+        tree.bindViewHolder(vh, 0)
+        layoutOnce(vh.itemView)
+        shadowOf(Looper.getMainLooper()).idle()
+
+        // ★ Its own host: `findViewById` searches the whole subtree, so a cell dropped into
+        // the parent that already holds the tree row would find *that* row's infoBox and be
+        // treated as a tree row. A real grid cell hangs under `item_thumb_cell`, which has none.
+        val gridHost = attachedParent()
+        val cell = ImageView(gridHost.context).apply {
+            layoutParams = FrameLayout.LayoutParams(dp(96), dp(96))
+        }
+        gridHost.addView(cell)
+        Thumbs.bind(cell, album)
+        assertEquals("a grid cell stays square", dp(96), cell.layoutParams.width)
+        assertEquals("a grid cell stays square", dp(96), cell.layoutParams.height)
+    }
+
     /** An icon slot that grew for a poster must reset when recycled for the next row's plain directory. */
     @Test
     fun `a poster's size does not leak into the next row`() {
