@@ -388,7 +388,7 @@ object Thumbs {
 
     // ---- Internals ----
 
-    /** Tree-style rows (with an `infoBox` sibling view) adjust height to the image's aspect ratio — no crop, or top-crop; see [fillAspect]; grid cells and other contexts keep the original fixed square + CENTER_CROP. */
+    /** Tree-style rows (with an `infoBox` sibling view) adjust height to the image's aspect ratio — no crop, or centre-crop; see [fillAspect]; grid cells and other contexts keep the original fixed square + CENTER_CROP. */
     private fun fill(view: ImageView, bmp: Bitmap, key: String) {
         view.setPadding(0, 0, 0, 0)
         val box = (view.parent as? ViewGroup)?.findViewById<View>(R.id.infoBox)
@@ -402,7 +402,7 @@ object Thumbs {
     }
 
 
-    /** Tree-list thumbnail: width unchanged, height computed from the image's aspect ratio — landscape images get shorter and show fully (no crop); portrait images get taller, capped at the right-side info area's ([box]) current height; over the cap, top-crop fills it (never shorter than the current square width, since a portrait ratio naturally yields height ≥ width). Wait for [box] to finish this pass's layout ([View.post]) before reading its measured height — avoid reading the previous bind's stale value; use [key] as the tag check, if the view was recycled to another file before `post` fires, give up (prevents cross-pollination of images). */
+    /** Tree-list thumbnail: width unchanged, height computed from the image's aspect ratio — landscape images get shorter and show fully (no crop); portrait images get taller, capped at the right-side info area's ([box]) current height; over the cap, centre-crop fills it (never shorter than the current square width, since a portrait ratio naturally yields height ≥ width). Wait for [box] to finish this pass's layout ([View.post]) before reading its measured height — avoid reading the previous bind's stale value; use [key] as the tag check, if the view was recycled to another file before `post` fires, give up (prevents cross-pollination of images). */
     private fun fillAspect(view: ImageView, bmp: Bitmap, box: View, key: String) {
         val lp = view.layoutParams
         // Directory covers (movie/show posters are 2:3 portrait): at bind time still the small-icon size, only grow when the image actually arrives.
@@ -423,7 +423,7 @@ object Thumbs {
             view.tag = null
             // The "grow" path needs a more generous height cap, otherwise a 2:3 poster
             // (natural = 1.5w) gets clamped back to a square by maxOf(box.height, w)
-            // and top/bottom get MATRIX-cropped — defeating the point of a portrait.
+            // and top/bottom get cropped away — defeating the point of a portrait.
             // Still keep an upper bound (2× width) so an extreme long-strip image
             // can't blow a row up to half the screen.
             val maxH = if (grow > 0) maxOf(box.height, grow * 2) else maxOf(box.height, w)
@@ -437,9 +437,12 @@ object Thumbs {
             if (natural <= maxH) {
                 view.scaleType = ImageView.ScaleType.FIT_CENTER
             } else {
-                val scale = w.toFloat() / bw
-                view.scaleType = ImageView.ScaleType.MATRIX
-                view.imageMatrix = Matrix().apply { setScale(scale, scale) }
+                // Over the cap: crop the **middle** of the image, not its top.
+                // CENTER_CROP scales by max(w/bw, h/bh); since h < natural here,
+                // that max is w/bw — the same scale the MATRIX path used — and it
+                // additionally centres vertically, which is what a cropped portrait
+                // should show (a face sits in the middle, not against the top edge).
+                view.scaleType = ImageView.ScaleType.CENTER_CROP
             }
             view.setImageBitmap(bmp)
         }
