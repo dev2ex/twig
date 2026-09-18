@@ -200,7 +200,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         b.btnPlay.setOnClickListener { toggle() }
         b.btnSubtitle.setOnClickListener { showSubtitleDialog() }
         b.btnAudioTrack.setOnClickListener { showAudioTrackDialog() }
-        b.btnScale.setOnClickListener { showScaleDialog() }
+        b.btnScale.setOnClickListener { cycleScaleMode() }
         b.btnOrientation.setOnClickListener { toggleOrientationLock() }
         if (!isVideo) {
             b.btnSubtitle.visibility = View.GONE
@@ -646,7 +646,8 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
         gesture = Gesture.NONE
         gestureSeekTo = -1
-        handler.postDelayed({ b.tvGesture.visibility = View.GONE }, 300)
+        handler.removeCallbacks(hideHint)
+        handler.postDelayed(hideHint, 300)
     }
 
     /** 2.0f → "2", 1.5f → "1.5" (integers don't carry a useless .0). */
@@ -707,10 +708,15 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         return BitmapDrawable(resources, bmp)
     }
 
-    private fun showGestureHint(text: String, autoHide: Boolean = false) {
+    /** One shared runnable, so a second hint replaces the first one's countdown instead of
+     *  inheriting it — otherwise tapping twice in a row makes the second hint vanish early. */
+    private val hideHint = Runnable { b.tvGesture.visibility = View.GONE }
+
+    private fun showGestureHint(text: String, autoHide: Boolean = false, holdMs: Long = 600) {
         b.tvGesture.text = text
         b.tvGesture.visibility = View.VISIBLE
-        if (autoHide) handler.postDelayed({ b.tvGesture.visibility = View.GONE }, 600)
+        handler.removeCallbacks(hideHint)
+        if (autoHide) handler.postDelayed(hideHint, holdMs)
     }
 
     // ---- Subtitles ----
@@ -801,21 +807,27 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     // ---- Subtitle / audio track selection ----
 
-    private fun showScaleDialog() {
-        val names = arrayOf(
-            getString(R.string.scale_best_fit),
-            getString(R.string.scale_crop),
-            getString(R.string.scale_fill),
+    /**
+     * Step to the next scale mode. There are only three of them and each one is visible the
+     * instant it applies, so a dialog asking which to pick was a worse way to answer "does this
+     * one look better?" than simply tapping again; the centre hint names the mode that just took
+     * effect, the way the orientation lock does.
+     */
+    private fun cycleScaleMode() {
+        scaleMode = (scaleMode.coerceIn(0, 2) + 1) % 3
+        resizeSurface()
+        b.pgsView.invalidate()
+        showGestureHint(
+            getString(
+                when (scaleMode) {
+                    SCALE_CROP -> R.string.scale_crop
+                    SCALE_FILL -> R.string.scale_fill
+                    else -> R.string.scale_best_fit
+                },
+            ),
+            autoHide = true,
+            holdMs = 1000,
         )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.player_scale_mode)
-            .setSingleChoiceItems(names, scaleMode.coerceIn(0, 2)) { d, which ->
-                scaleMode = which
-                resizeSurface()
-                b.pgsView.invalidate()
-                d.dismiss()
-            }
-            .show()
     }
 
     private fun trackName(g: Tracks.Group, i: Int, prefix: String): String {
@@ -1272,6 +1284,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         handler.removeCallbacks(ticker)
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
+        handler.removeCallbacks(hideHint)
         player?.release() // asynchronous teardown, doesn't block the main thread
         player = null
         val src = fsSrc; fsSrc = null
