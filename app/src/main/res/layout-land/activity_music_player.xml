@@ -257,7 +257,7 @@
                             android:layout_height="wrap_content"
                             android:textColor="#CCFFFFFF"
                             android:textSize="11sp"
-                            android:text="0:00" />
+                            android:text="00:00" />
 
                         <TextView
                             android:id="@+id/tvIndex"
@@ -274,7 +274,7 @@
                             android:layout_height="wrap_content"
                             android:textColor="#CCFFFFFF"
                             android:textSize="11sp"
-                            android:text="0:00" />
+                            android:text="00:00" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>

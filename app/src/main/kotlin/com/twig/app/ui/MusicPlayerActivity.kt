@@ -496,10 +496,13 @@ class MusicPlayerActivity : AppCompatActivity() {
         }
     }
 
+    /** [h:]mm:ss — the hour part appears only for material an hour or longer. */
     private fun fmt(ms: Long): String {
-        if (ms <= 0) return "0:00"
+        if (ms <= 0) return "00:00"
         val s = ms / 1000
-        return "%d:%02d".format(s / 60, s % 60)
+        val h = s / 3600
+        return if (h > 0) "%d:%02d:%02d".format(h, s / 60 % 60, s % 60)
+        else "%02d:%02d".format(s / 60, s % 60)
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
