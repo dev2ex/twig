@@ -1270,14 +1270,19 @@ class TerminalActivity : AppCompatActivity() {
         }
         if (t.isLocal) {
             // A local session's title is written by our own prompt line, so it is always absolute.
+            // ★ But not necessarily canonical: a shell reports `$PWD` as the user walked in, and
+            // `/sdcard` and `/storage/self/primary` are symlinks, while the tree is built from
+            // `/storage/emulated/0`. Revealing the alias walks the tree as far as it matches and
+            // stops there — measured: `/sdcard/Download` landed on internal storage's row.
+            val real = runCatching { java.io.File(cand).canonicalPath }.getOrNull() ?: cand
             when {
                 !cand.startsWith("/") ->
                     Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
                 // A title can outlive what it named — the directory may have been moved or deleted
                 // since. Saying so beats handing the pane a path it will fail to list.
-                !java.io.File(cand).isDirectory ->
+                !java.io.File(real).isDirectory ->
                     Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
-                else -> jumpTo(LocalFileSystem.SCHEME, cand, cand)
+                else -> reveal(LocalFileSystem.SCHEME, real)
             }
             return
         }
@@ -1315,10 +1320,27 @@ class TerminalActivity : AppCompatActivity() {
                     abs == null -> Toast.makeText(this, R.string.terminal_locate_failed, Toast.LENGTH_SHORT).show()
                     target == null -> Toast.makeText(this, R.string.terminal_locate_outside, Toast.LENGTH_LONG).show()
                     there != true -> Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
+                    // Inside the connection: the directory has a row of its own, so locate it there
+                    // — the user keeps the tree they know, and the pane keeps the result.
+                    inside != null -> reveal(t.scheme, inside)
+                    // Outside it: nothing in the tree can be revealed, hence the temporary node.
                     else -> jumpTo(target.first, target.second, abs)
                 }
             }
         }, "twig-term-locate").start()
+    }
+
+    /**
+     * Locate the directory in the tree the pane already has, and leave — the session keeps running in
+     * [TermManager], exactly as the back arrow leaves it. Used whenever the directory really is in
+     * that tree: a local one, or a remote one inside what the connection mounts.
+     */
+    private fun reveal(scheme: String, path: String) {
+        startActivity(
+            MainActivity.revealIntent(this, scheme, path)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        finish()
     }
 
     /**

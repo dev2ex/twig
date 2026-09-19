@@ -165,15 +165,18 @@ each write `= null`.
   difference can never be reached.
 - Git: `GitActivity` (status/history), `DiffActivity` (two-column patience diff);
   SFTP repositories run git remotely over exec via `SshGitData`.
-- **Terminal → pane** (`TerminalActivity.locateCurrentDir` → `MainActivity.locateIntent` →
-  `PaneViewModel.mountLocated`): "Locate current directory" does **not** navigate the pane. The
-  session's directory is pinned on top of the tree like an externally opened archive, and the back
-  key takes it down, restores what was there and returns to the session — which is why the terminal
-  is not finished on the way out. That shape is what makes it work at all when the directory lies
-  **outside** the subdirectory an SFTP connection mounts: there is no row to reveal, so
-  `Connections.sftpRootTwin` registers a second filesystem for the same server rooted at `/` (kept
-  for the life of the process — a copy in flight resolves its filesystem by scheme on every file).
-  Where the directory comes from is its own problem, see [docs/lessons/terminal-local.md](docs/lessons/terminal-local.md).
+- **Terminal → pane** (`TerminalActivity.locateCurrentDir`): "Locate current directory" takes one of
+  two routes, and which one depends on whether the directory is in the pane's tree at all.
+  **In it** — a local path, or a remote one inside the subdirectory the SFTP connection mounts —
+  it is an ordinary `MainActivity.revealIntent`, so the user lands in the tree they know and the pane
+  keeps the result. **Outside it** there is no row to reveal, so `MainActivity.locateIntent` pins the
+  directory on top of the tree like an externally opened archive (`PaneViewModel.mountLocated`) and
+  the back key takes it down, restores what was there and returns to the session — which is why that
+  route does not finish the terminal. Reaching such a path needs a filesystem that can:
+  `Connections.sftpRootTwin` registers a second one for the same server rooted at `/`, kept for the
+  life of the process (a copy in flight resolves its filesystem by scheme on every file).
+  Where the directory itself comes from is its own problem, see
+  [docs/lessons/terminal-local.md](docs/lessons/terminal-local.md).
 - Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
   `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
   (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).
