@@ -205,3 +205,29 @@
   byte count falls short of the source size, as a net for any backend with the same habit.
   Regression tests: `a write that cannot land fails on close`,
   `a read that cannot happen fails instead of looking empty` (both fail on the old code).
+
+- **The root terminal exited with code 1 the instant it opened, printing nothing at all
+  (★ 2026-09-19, Magisk 26.3 / Android 9)**: `su` must be a **child of a shell**, never the
+  process the pty was forked into. `createSubprocess` exec'd `/sbin/su` directly, so `su` was
+  the session leader that had just acquired the pty as its controlling terminal — and it died
+  in ~60 ms with an empty screen. The fix is the shape Termux's `tsu` has: open an ordinary
+  `/system/bin/sh` and feed it one line, `PrivShell.rootKickoff()` = `<su path>; exit`.
+  - **What the evidence ruled out**, in order, because every one of them looked plausible:
+    **SELinux** (it fails under `setenforce 0` as well — and the two `entrypoint` denials in
+    `dmesg` were from the investigation's own `su -Z` probes, not from the app);
+    **the rc file `$ENV` points at** (it fails with `.mkshrc` truncated to zero bytes);
+    **the working directory** (`--es dir /` fails too); **the environment** (`env -i` and a
+    hand-built copy of `localEnv` both reach uid 0); **the su path** (`which su` is the very
+    `/sbin/su` that was being exec'd); and **the Magisk policy** (`policy=2`, with no
+    `su: request rejected` line logged for that attempt, while the manager was woken to show
+    its grant toast).
+  - **What pinned it**: the *same app process* reached uid 0 through `ProcessBuilder("su")`
+    (pipes, `twig-priv: connect: ok, uid=0`) while the pty one died, and typing that same
+    absolute path by hand into Twig's own local terminal turned that session into root
+    (`id -u` → 0). The only remaining variable was who owns the pty.
+  - ★ **No `exec` in the kickoff line**: `exec su` would replace the shell with `su` and put it
+    straight back into the failing shape. The trailing `; exit` is what keeps
+    "a privileged terminal never degrades silently" true — when `su` fails, the outer shell
+    leaves immediately and the session ends carrying su's own error message, instead of handing
+    back a prompt at the app's uid that looks like root. The echoed kickoff line stays visible
+    on purpose; it is how you tell which route a session took, and `twig-priv` logs it too.

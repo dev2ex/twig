@@ -59,14 +59,36 @@ object PrivShell {
      */
     fun command(ctx: Context, mode: Int): Pair<String, Array<String>>? = when (mode) {
         Privileged.OFF -> SHELL to arrayOf()
-        // Don't pass `-p`: the various su implementations (Magisk/KernelSU/APatch)
-        // disagree on whether they support it, and an unsupported one errors out.
-        // The environment is already provided by createSubprocess.
-        Privileged.ROOT -> suPath()?.let { it to arrayOf<String>() }
+        // ★ Root starts an **ordinary** shell and becomes root on its first line — see
+        // [rootKickoff] for why `su` must not be the process the pty was forked into.
+        // `suPath()` is still what decides whether root can be offered at all.
+        Privileged.ROOT -> suPath()?.let { SHELL to arrayOf<String>() }
         // Shizuku does not run a local process; TwigPrivService allocates the PTY —
         // see the note in available().
         else -> null
     }
+
+    /**
+     * The line fed to a freshly opened local shell to turn it into a root one, or null when no `su`
+     * was found.
+     *
+     * ★★ **`su` has to be a *child* of the shell, never the process the pty was forked into**
+     * (measured 2026-09-19 on a Magisk 26.3 / Android 9 device): exec'ing `su` straight from
+     * `createSubprocess` — where it is the session leader that has just acquired the pty as its
+     * controlling terminal — made it exit 1 within ~60 ms, printing nothing at all, while the very
+     * same binary reached uid 0 from the very same app process through a pipe, and typing the same
+     * absolute path by hand into Twig's own local terminal turned that session into root. Ruled out
+     * along the way: SELinux (it fails under `setenforce 0` too), the rc file `$ENV` points at (it
+     * fails with that file truncated to zero bytes), the working directory, the environment, and the
+     * Magisk policy (allow, with no rejection logged). This is also the shape Termux's `tsu` has:
+     * `su` runs as a child and execs the real shell.
+     *
+     * No `exec`: that would replace the shell with `su` and put us back to the failing shape. The
+     * trailing `exit` is what keeps the promise that a privileged session never silently degrades —
+     * when `su` fails, the outer shell leaves at once and the session ends carrying su's own error
+     * message, instead of quietly handing back a prompt at the app's uid that looks like root.
+     */
+    fun rootKickoff(): String? = suPath()?.let { "$it; exit\n" }
 
     const val SHELL = "/system/bin/sh"
 

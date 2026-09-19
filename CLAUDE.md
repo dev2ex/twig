@@ -449,9 +449,11 @@ add its symptom here.
   share the exec lock; the extracted `.so` must never be writable even for an instant; the
   privileged terminal is its own menu item and never falls back silently.
   One-shot `cat` streams must check the exit status — EOF is not success.
+  `su` has to be a **child of a shell**, never the process the pty was forked into.
   *Explains*: a command that hangs until timeout, `/sdcard` listing as empty, "the dialog
   has no options at all", a root process left alive after an upgrade, a file that vanished
-  when moved into a place even root could not write.
+  when moved into a place even root could not write, a root terminal that exits with code 1
+  the moment it opens and prints nothing.
 - **[RAR and F-Droid](docs/lessons/rar-and-fdroid.md)** — `full` and `libre` differ in RAR
   **alone**; check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`; the
   verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads

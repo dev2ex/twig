@@ -574,7 +574,16 @@ class TerminalActivity : AppCompatActivity() {
             return
         }
         val (exe, args) = cmd
-        if (priv != Privileged.OFF) Log.i(PRIV_TAG, "local session priv=$priv exec=$exe args=${args.joinToString(" ")}")
+        // Root does not exec su itself; the session opens as an ordinary shell and its first line
+        // turns it into a root one (PrivShell.rootKickoff explains why).
+        val kickoff = if (priv == Privileged.ROOT) PrivShell.rootKickoff() else null
+        if (priv != Privileged.OFF) {
+            Log.i(
+                PRIV_TAG,
+                "local session priv=$priv exec=$exe args=${args.joinToString(" ")} " +
+                    "kickoff=${kickoff?.trim() ?: "-"}",
+            )
+        }
         val title = when (priv) {
             Privileged.ROOT -> getString(R.string.terminal_local_root)
             Privileged.SHIZUKU -> getString(R.string.terminal_local_shizuku)
@@ -609,6 +618,8 @@ class TerminalActivity : AppCompatActivity() {
             t.emulator = em
             t.alive = true
             t.connecting = false
+            // The pty buffers this until the shell starts reading, so there is no race with startup.
+            if (kickoff != null) runCatching { s.write(kickoff) }
             refreshSessions()
         }, 120)
     }
