@@ -1107,30 +1107,54 @@ class TerminalActivity : AppCompatActivity() {
         showSession(next)
     }
 
-    /** Rebuild the dropdown list (titles + connection/closed state markers) and align selection with the current session. */
+    /**
+     * Rebuild the dropdown list (titles + connection/closed state markers) and align selection with the current session.
+     *
+     * The dropdown rows are two-line: the session's own name, and under it [screenTitle] — what the running
+     * program last set via OSC. ★ That second line is read **when the row is bound**, not stored here: a Spinner
+     * builds its popup at the moment it is opened, so the list is current without a title callback rebuilding
+     * this adapter on every shell prompt (a PS1 that sets the title does so for every command).
+     */
     private fun refreshSessions() {
         if (isDestroyed) return
         val list = TermManager.list()
         if (list.isEmpty()) { finish(); return }
-        val labels = list.map { it.title + statusTag(it) }
-        val adapter = object : ArrayAdapter<String>(
-            this, android.R.layout.simple_spinner_item, labels,
+        val adapter = object : ArrayAdapter<TermSession>(
+            this, android.R.layout.simple_spinner_item, list,
         ) {
             override fun getView(pos: Int, cv: View?, parent: ViewGroup): View =
                 (super.getView(pos, cv, parent) as TextView).apply {
+                    text = label(list[pos])
                     setTextColor(0xFFFFFFFF.toInt())
                 }
-            override fun getDropDownView(pos: Int, cv: View?, parent: ViewGroup): View =
-                (super.getDropDownView(pos, cv, parent) as TextView).apply {
-                    setTextColor(0xFFEEEEEE.toInt())
-                }
+            override fun getDropDownView(pos: Int, cv: View?, parent: ViewGroup): View {
+                val v = cv ?: layoutInflater.inflate(R.layout.item_term_session, parent, false)
+                val t = list[pos]
+                v.findViewById<TextView>(R.id.session_name).text = label(t)
+                val sub = v.findViewById<TextView>(R.id.session_sub)
+                val screen = screenTitle(t)
+                sub.text = screen.orEmpty()
+                sub.visibility = if (screen == null) View.GONE else View.VISIBLE
+                return v
+            }
         }
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         suppressSpinner = true
         b.sessionSpinner.adapter = adapter
         val idx = list.indexOfFirst { it === displayed }
         if (idx >= 0) b.sessionSpinner.setSelection(idx)
         b.sessionSpinner.post { suppressSpinner = false }
+    }
+
+    private fun label(t: TermSession): String = t.title + statusTag(t)
+
+    /**
+     * The title the program running in the session set through OSC 0/1/2 (htop, ranger, vim, a shell whose PS1
+     * writes one), or null when there is none worth showing — no emulator yet, an empty title, or one that only
+     * repeats the session's own name.
+     */
+    private fun screenTitle(t: TermSession): String? {
+        val s = t.emulatorOrNull?.title?.trim() ?: return null
+        return s.takeIf { it.isNotEmpty() && it != t.title }
     }
 
     private fun statusTag(t: TermSession): String = when {
