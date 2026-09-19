@@ -38,6 +38,7 @@ import com.termux.terminal.TerminalOutput
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
+import com.twig.app.MainActivity
 import com.twig.app.Prefs
 import com.twig.app.PrivShell
 import com.twig.app.Privileged
@@ -45,6 +46,7 @@ import com.twig.app.R
 import com.twig.app.TermRc
 import com.twig.app.databinding.ActivityTerminalBinding
 import com.twig.core.FsRegistry
+import com.twig.fs.local.LocalFileSystem
 import com.twig.fs.network.SftpFileSystem
 import kotlin.math.roundToInt
 
@@ -210,10 +212,15 @@ class TerminalActivity : AppCompatActivity() {
         if (Privileged.active != Privileged.OFF && PrivShell.available(this, Privileged.active)) {
             b.toolbar.menu.add(0, MENU_NEW_PRIV, 4, getString(R.string.terminal_new_priv))
         }
-        b.toolbar.menu.add(0, MENU_FONT, 4, getString(R.string.settings_term_font))
-        b.toolbar.menu.add(0, MENU_COLORS, 5, getString(R.string.settings_term_colors))
-        b.toolbar.menu.add(0, MENU_END_ALL, 6, getString(R.string.terminal_end_all))
-        b.toolbar.menu.add(0, MENU_KEEP_AWAKE, 7, getString(R.string.terminal_keep_awake)).apply {
+        // The return trip of "Open terminal here" — see [locateCurrentDir]. Always present rather
+        // than shown only when a path is available: whether it is depends on what the shell last
+        // wrote, which changes under the user's fingers, and a menu item that comes and goes between
+        // two looks is worse than one that explains itself when tapped.
+        b.toolbar.menu.add(0, MENU_LOCATE, 5, getString(R.string.terminal_locate))
+        b.toolbar.menu.add(0, MENU_FONT, 6, getString(R.string.settings_term_font))
+        b.toolbar.menu.add(0, MENU_COLORS, 7, getString(R.string.settings_term_colors))
+        b.toolbar.menu.add(0, MENU_END_ALL, 8, getString(R.string.terminal_end_all))
+        b.toolbar.menu.add(0, MENU_KEEP_AWAKE, 9, getString(R.string.terminal_keep_awake)).apply {
             isCheckable = true
             isChecked = Prefs.terminalKeepAwake(this@TerminalActivity)
         }
@@ -226,6 +233,7 @@ class TerminalActivity : AppCompatActivity() {
                 MENU_COLORS -> { chooseColors(); true }
                 MENU_NEW_LOCAL -> { openLocal(null); true }
                 MENU_NEW_PRIV -> { openPrivileged(null); true }
+                MENU_LOCATE -> { locateCurrentDir(); true }
                 MENU_END_ALL -> { TermManager.closeAll(); finish(); true }
                 MENU_KEEP_AWAKE -> {
                     val on = !it.isChecked
@@ -1194,6 +1202,36 @@ class TerminalActivity : AppCompatActivity() {
         return s.takeIf { it.isNotEmpty() && it != t.title }
     }
 
+    /**
+     * Jump the file manager to the directory this session is sitting in — the return trip of
+     * "Open terminal here".
+     *
+     * The directory comes from the same place as the dropdown's second line, the title the shell
+     * wrote ([screenTitle]), and is only used when it is **absolute**: a title is free text, and a
+     * remote prompt that writes `user@host:~` or a program that writes `htop` names no directory we
+     * could honestly resolve. Local / root / Shizuku sessions land on the local filesystem; an SSH
+     * session resolves the path on its own server's scheme, so the path travels to the right side.
+     *
+     * NEW_TASK is required and correct here: the terminal has its own taskAffinity, and without it
+     * a second MainActivity would be built inside the terminal's task instead of bringing the file
+     * manager's own task forward. Finishing afterwards matches what the back arrow does — the
+     * session keeps running in [TermManager] and reopens where it left off.
+     */
+    private fun locateCurrentDir() {
+        val t = displayed
+        val path = t?.let { screenTitle(it) }?.takeIf { it.startsWith("/") }
+        if (t == null || path == null) {
+            Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val scheme = if (t.isLocal) LocalFileSystem.SCHEME else t.scheme
+        startActivity(
+            MainActivity.revealIntent(this, scheme, path)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        finish()
+    }
+
     private fun statusTag(t: TermSession): String = when {
         t.connecting -> getString(R.string.terminal_connecting_tag)
         !t.alive -> getString(R.string.terminal_closed_tag)
@@ -1594,6 +1632,7 @@ class TerminalActivity : AppCompatActivity() {
         private const val MENU_COLORS = 7
         private const val MENU_NEW_LOCAL = 8
         private const val MENU_NEW_PRIV = 9
+        private const val MENU_LOCATE = 10
 
         /** A local session that exits within this duration is treated as "failed to start", not "user exited". */
         private const val QUICK_EXIT_MS = 3000L

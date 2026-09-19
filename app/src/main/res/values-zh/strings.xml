@@ -191,6 +191,8 @@
     <string name="terminal_keep_awake">屏幕常亮</string>
     <string name="terminal_connecting_tag"> · 连接中</string>
     <string name="terminal_closed_tag"> · 已结束</string>
+    <string name="terminal_locate">跳转到当前目录</string>
+    <string name="terminal_locate_none">这个会话没有报告目录</string>
     <string name="server_edit">编辑服务</string>
     <string name="server_remove">移出</string>
     <string name="ftp_connect">连接</string>

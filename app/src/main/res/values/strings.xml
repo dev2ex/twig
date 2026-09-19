@@ -191,6 +191,8 @@
     <string name="terminal_keep_awake">Keep screen on</string>
     <string name="terminal_connecting_tag"> · Connecting</string>
     <string name="terminal_closed_tag"> · Ended</string>
+    <string name="terminal_locate">Locate current directory</string>
+    <string name="terminal_locate_none">This session has not reported a directory</string>
     <string name="server_edit">Edit server</string>
     <string name="server_remove">Remove</string>
     <string name="ftp_connect">Connect</string>
