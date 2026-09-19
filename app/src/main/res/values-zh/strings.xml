@@ -479,6 +479,10 @@
     <string name="settings_grid_off">关闭(树式列表)</string>
     <string name="settings_grid_media">仅媒体文件(排在目录后聚齐)</string>
     <string name="settings_grid_all">全部文件</string>
+    <string name="settings_grid_cell">格子大小</string>
+    <string name="settings_grid_cell_small">小(一行更多)</string>
+    <string name="settings_grid_cell_normal">中</string>
+    <string name="settings_grid_cell_large">大(一行更少)</string>
     <string name="settings_grid_names">网格显示文件名</string>
     <string name="settings_grid_names_desc">关闭后格子里只显示图,文件名可长按查看</string>
     <string name="settings_section_slideshow">幻灯片</string>

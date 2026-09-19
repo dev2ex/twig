@@ -307,6 +307,22 @@ object Prefs {
         sp(ctx).edit().putInt("thumbs_grid", mode.coerceIn(0, 2)).apply()
     }
 
+    /**
+     * Grid cell size: 0=small 1=normal 2=large, default normal.
+     *
+     * The tier is the **target edge of one cell**, not a column count: the pane divides its own width by it
+     * (see [ui.AutoFitGrid]), so the same tier gives a phone 4 columns and a tablet 8 — which is the point,
+     * a cell keeps roughly the same physical size everywhere instead of a tablet showing four huge pictures.
+     */
+    fun gridCell(ctx: Context): Int = sp(ctx).getInt("grid_cell", 1)
+
+    fun setGridCell(ctx: Context, tier: Int) {
+        sp(ctx).edit().putInt("grid_cell", tier.coerceIn(0, 2)).apply()
+    }
+
+    /** Target cell edge in dp for the current tier; "large" (96dp) is what every build up to 1.10.0 used. */
+    fun gridCellDp(ctx: Context): Int = intArrayOf(64, 80, 96)[gridCell(ctx).coerceIn(0, 2)]
+
     /** Show filenames in grid mode, default on. */
     fun thumbsGridNames(ctx: Context): Boolean = sp(ctx).getBoolean("thumbs_grid_names", true)
 
@@ -385,7 +401,7 @@ object Prefs {
     /** Signature of preferences that affect main UI layout; when it changes after
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
-        density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx),
+        density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx),
         showHidden(ctx), rowDivider(ctx),
     ).joinToString(",")
 

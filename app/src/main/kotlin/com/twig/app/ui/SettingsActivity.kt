@@ -216,6 +216,19 @@ class SettingsActivity : AppCompatActivity() {
             get = { Prefs.thumbsGrid(this) },
             set = { Prefs.setThumbsGrid(this, it) },
         )
+        // Cell size, not column count: the column count is this divided into the pane's width, so one tier
+        // reads the same on a phone and on a tablet. Settings page only -- it is set once, and the top-bar
+        // menu is reserved for what gets flipped several times a day.
+        choiceRow(
+            getString(R.string.settings_grid_cell),
+            arrayOf(
+                getString(R.string.settings_grid_cell_small),
+                getString(R.string.settings_grid_cell_normal),
+                getString(R.string.settings_grid_cell_large),
+            ),
+            get = { Prefs.gridCell(this) },
+            set = { Prefs.setGridCell(this, it) },
+        )
         switchRow(
             getString(R.string.settings_grid_names), getString(R.string.settings_grid_names_desc),
             get = { Prefs.thumbsGridNames(this) },

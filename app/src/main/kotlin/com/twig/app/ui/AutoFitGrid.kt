@@ -61,9 +61,10 @@ class AutoFitGrid(
 
     companion object {
         /**
-         * Target edge of one grid cell, and so the only knob for "how many pictures per row".
-         * 80dp rather than the original 96dp: a 384dp-wide phone (1260px at density 3.28) gives 332dp to the
-         * pane once the 52dp action strip is taken out, and 332/96 = 3.46 lost a whole column by half a cell.
+         * Default target edge of one grid cell — the "normal" tier of `Prefs.gridCellDp`, which is what the
+         * pane actually passes in. 80dp rather than the 96dp used up to 1.10.0: a 384dp-wide phone (1260px at
+         * density 3.28) gives 332dp to the pane once the 52dp action strip is taken out, and 332/96 = 3.46
+         * lost a whole column by half a cell. 96dp is still reachable as the "large" tier.
          */
         const val CELL_DP = 80
 

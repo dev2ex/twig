@@ -154,7 +154,7 @@ class PaneFragment : Fragment() {
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
         // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is
         // decided inside the layout pass -- see AutoFitGrid for why that timing matters.
-        val glm = AutoFitGrid(requireContext()) { px, rowsOnScreen ->
+        val glm = AutoFitGrid(requireContext(), cellDp = Prefs.gridCellDp(requireContext())) { px, rowsOnScreen ->
             if (::adapter.isInitialized) {
                 adapter.cellPx = px
                 // Cells bound later in this pass read the new edge directly; ones already on screen were bound

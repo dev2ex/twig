@@ -482,6 +482,10 @@
     <string name="settings_grid_off">Off (tree list)</string>
     <string name="settings_grid_media">Media only (grouped after folders)</string>
     <string name="settings_grid_all">All files</string>
+    <string name="settings_grid_cell">Cell size</string>
+    <string name="settings_grid_cell_small">Small (more per row)</string>
+    <string name="settings_grid_cell_normal">Normal</string>
+    <string name="settings_grid_cell_large">Large (fewer per row)</string>
     <string name="settings_grid_names">Show filenames in grid</string>
     <string name="settings_grid_names_desc">When off, cells show only the thumbnail; long-press to see the filename</string>
     <string name="settings_section_slideshow">Slideshow</string>
