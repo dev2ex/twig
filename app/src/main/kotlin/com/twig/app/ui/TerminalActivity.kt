@@ -1206,11 +1206,9 @@ class TerminalActivity : AppCompatActivity() {
      * Jump the file manager to the directory this session is sitting in — the return trip of
      * "Open terminal here".
      *
-     * The directory comes from the same place as the dropdown's second line, the title the shell
-     * wrote ([screenTitle]), and is only used when it is **absolute**: a title is free text, and a
-     * remote prompt that writes `user@host:~` or a program that writes `htop` names no directory we
-     * could honestly resolve. Local / root / Shizuku sessions land on the local filesystem; an SSH
-     * session resolves the path on its own server's scheme, so the path travels to the right side.
+     * The directory comes from the same place as the dropdown's second line: the title the shell
+     * wrote ([screenTitle]), read through [TermTitle.path] because a title is free text and only some
+     * titles name a directory at all.
      *
      * NEW_TASK is required and correct here: the terminal has its own taskAffinity, and without it
      * a second MainActivity would be built inside the terminal's task instead of bringing the file
@@ -1219,17 +1217,58 @@ class TerminalActivity : AppCompatActivity() {
      */
     private fun locateCurrentDir() {
         val t = displayed
-        val path = t?.let { screenTitle(it) }?.takeIf { it.startsWith("/") }
-        if (t == null || path == null) {
+        val cand = t?.let { screenTitle(it) }?.let { TermTitle.path(it) }
+        if (t == null || cand == null) {
             Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
             return
         }
-        val scheme = if (t.isLocal) LocalFileSystem.SCHEME else t.scheme
+        if (t.isLocal) {
+            // A local session's title is written by our own prompt line, so it is always absolute.
+            if (cand.startsWith("/")) reveal(LocalFileSystem.SCHEME, cand)
+            else Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val fs = runCatching { FsRegistry.of(t.scheme) }.getOrNull() as? SftpFileSystem
+        if (fs == null) {
+            Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Both steps talk to the server: `~` only the server can expand, and a connection rooted at
+        // a subdirectory has to map the server path back to the one the pane shows.
+        Thread({
+            val abs = resolveOnServer(fs, cand)
+            val visible = abs?.let { fs.visiblePath(it) }
+            main.post {
+                if (isDestroyed) return@post
+                when {
+                    abs == null -> Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+                    // Inside the server but outside what this connection mounts: saying so is the
+                    // whole point of visiblePath returning null — never fall back to the raw path,
+                    // which would land the pane somewhere else entirely.
+                    visible == null -> Toast.makeText(this, R.string.terminal_locate_outside, Toast.LENGTH_LONG).show()
+                    else -> reveal(t.scheme, visible)
+                }
+            }
+        }, "twig-term-locate").start()
+    }
+
+    private fun reveal(scheme: String, path: String) {
         startActivity(
             MainActivity.revealIntent(this, scheme, path)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
         finish()
+    }
+
+    /** Blocking: turns [TermTitle.path]'s answer into an absolute path on the server. */
+    private fun resolveOnServer(fs: SftpFileSystem, cand: String): String? = when {
+        cand.startsWith("/") -> cand
+        cand == "~" || cand.startsWith("~/") -> {
+            val home = runCatching { fs.exec("echo \"\$HOME\"") }.getOrNull()
+                ?.toString(Charsets.UTF_8)?.trim()?.takeIf { it.startsWith("/") }
+            home?.let { if (cand == "~") it else it.trimEnd('/') + cand.removePrefix("~") }
+        }
+        else -> null
     }
 
     private fun statusTag(t: TermSession): String = when {
