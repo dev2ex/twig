@@ -163,3 +163,38 @@
   inside the "rows/columns changed" branch (`setTypeface` compensates for this itself,
   `setTextSize` did not), so changing the font size must issue one itself.
 
+
+- **The local shell's row in the session list had no title under it (★ 2026-09-19)**: the
+  session dropdown's second line is whatever the running program set through OSC 0/2 — htop,
+  ranger, vim and most distributions' default prompts write one, so SSH rows have it.
+  Android's `/system/bin/sh` (mksh R59) writes none, and nothing on a stock device does
+  either, so a local row was blank. The fix is one line appended to the generated `.mkshrc`
+  ([`TermRc.TITLE`]), wrapping whatever PS1 the system `/system/etc/mkshrc` set: mksh
+  re-expands PS1 on every prompt (its own default already relies on that — it contains
+  `${PWD:-?}`), so `${PWD}` follows `cd` with no callback of ours involved.
+  **What a local row promises is the directory and nothing else** — no program name will
+  appear there, because no program on the device writes one. Do not "fix" that.
+  - ★★ **The escape has to be wrapped in mksh's non-printing delimiters, or line editing
+    drifts**: mksh counts the prompt's width in characters, escape sequences included, and
+    then believes the cursor is further right than it is, so a long command line scrolls
+    early and redraws misaligned. ksh's convention — which Android's mksh implements — is
+    *if the second character of PS1 is `\r`, the first character is a delimiter, and anything
+    between a pair of it is not counted*. Hence `PS1=$'\001\r\001\033]0;${PWD}\a\001'"$PS1"`.
+  - **Measured, not reasoned** (`adb shell -t -t` with a 40-column `stty` and a 3-character
+    prompt, counting the characters echoed before the line wrapped): bare escape **27**,
+    wrapped escape **35**, plain prompt with no escape at all **35**. The 8-character
+    difference is exactly the length of `ESC ] 0 ; T T T BEL`. The end-to-end check then ran
+    the string **extracted from the built APK's dex** as an rc file on the device, so the
+    Kotlin escaping was verified too, not just the intended bytes: the prompt emitted
+    `ESC]0;/BEL`, and after `cd /data/local/tmp` it emitted `ESC]0;/data/local/tmpBEL`.
+  - The block is appended to an existing `.mkshrc` **once**, guarded by
+    `Prefs.termTitleRcDone` rather than by searching the file for it: the rc file belongs to
+    the user, so deleting the block has to keep it deleted.
+  - ★ **A privileged session sources no rc unless you give it one**: `privEnv` (the Shizuku
+    pty) never set `$ENV`, so the shell fell back to mksh's default startup and none of this
+    reached it — the row stayed blank while plain local rows worked. It cannot point at the
+    app's own `.mkshrc` either: the helper runs as the **shell** uid and the app's private
+    directory is 0700. The rc for privileged shells is therefore written **by the helper**
+    into `/data/local/tmp/twig` (the directory it already owns for `libtwigpty.so`), and
+    because setting `$ENV` *replaces* mksh's default startup file, that rc has to source
+    `/system/etc/mkshrc` itself or the session loses its normal prompt.

@@ -70,6 +70,10 @@ class TwigPrivService : ITwigPrivService.Stub() {
             Log.e(TAG, "cannot load $so", it)
             return null
         }
+        // Best effort: the shell's startup file, written from this side because only shell/root can write
+        // where an unprivileged shell can read it. A failure here costs the session its directory title,
+        // nothing else, so it must never stop the pty from opening.
+        runCatching { ensurePrivRc() }.onFailure { Log.w(TAG, "cannot write ${com.twig.app.TermRc.PRIV_PATH}", it) }
         val fd = Pty.nativeOpen(cmd, cwd, arrayOf(), env, pid, rows, cols)
         if (fd < 0) {
             Log.e(TAG, "forkpty failed for $cmd")
@@ -138,6 +142,30 @@ class TwigPrivService : ITwigPrivService.Stub() {
         // writable files left behind by older versions need to be re-hardened.
         harden(out)
         return out.absolutePath
+    }
+
+    /**
+     * Write the rc that privileged shells source through `$ENV` (see [com.twig.app.TermRc]).
+     *
+     * Same temp-file-then-rename dance as [ensureLib], for the same reason: the file is read by a root
+     * shell, so there must be no window in which it is world-writable. It is rewritten whenever the
+     * content differs, which is what carries an upgrade's changes over.
+     */
+    private fun ensurePrivRc() {
+        val dir = File(TMP_DIR).apply { mkdirs() }
+        val out = File(dir, File(com.twig.app.TermRc.PRIV_PATH).name)
+        val want = com.twig.app.TermRc.PRIV_CONTENT
+        if (out.isFile && runCatching { out.readText() }.getOrNull() == want) return
+        val tmp = File(dir, "mkshrc.tmp")
+        tmp.delete()
+        tmp.writeText(want)
+        tmp.setReadable(true, false)
+        tmp.setWritable(false, false)
+        out.delete()
+        if (!tmp.renameTo(out)) {
+            tmp.delete()
+            error("could not put the shell rc in place")
+        }
     }
 
     /**

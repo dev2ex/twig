@@ -71,6 +71,17 @@ object Prefs {
         sp(ctx).edit().putBoolean(KEY_TERM_KEEP_AWAKE, on).apply()
     }
 
+    /**
+     * Whether the block that makes the local shell report its directory as the terminal title has already been
+     * added to `.mkshrc`. It is appended **once**, to an rc file that predates the feature; the flag is what makes
+     * "once" mean once — the file belongs to the user, so deleting the block has to keep it deleted.
+     */
+    fun termTitleRcDone(ctx: Context): Boolean = sp(ctx).getBoolean("term_title_rc", false)
+
+    fun setTermTitleRcDone(ctx: Context) {
+        sp(ctx).edit().putBoolean("term_title_rc", true).apply()
+    }
+
     /** Terminal font size (px), remembered after pinch-zoom; 0 = never set, fall back to a screen-density-derived default. */
     fun terminalTextSize(ctx: Context): Int = sp(ctx).getInt("terminal_text_size", 0)
 

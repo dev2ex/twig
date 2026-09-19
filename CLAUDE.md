@@ -485,8 +485,13 @@ add its symptom here.
   returning to the foreground may arm the size thaw; a terminal font is acceptable only
   at a 0.5em advance; `attachSession` forks the shell itself; the key bar shares one text
   size.
+  A local shell reports nothing about itself: the session list's second line is an OSC title,
+  which Android's mksh never writes — the prompt has to write it (the directory, and only the
+  directory), with the escape wrapped in mksh's `\001` delimiters or line editing drifts; a
+  privileged session sources no rc at all unless `$ENV` names one the shell uid can read.
   *Explains*: a garbled screen after screen-off, fat Chinese and a thin `●`, tab
-  completion finding no commands, pinch zoom doing nothing, clipped key labels.
+  completion finding no commands, pinch zoom doing nothing, clipped key labels, a local
+  session whose row stays one line while SSH rows show what is running.
 - **[Tree and adapter](docs/lessons/tree-and-adapter.md)** — a duplicate row key makes
   DiffUtil pick the wrong row; for async expansion the later tap wins, and "do not
   accordionExpand" ≠ "do not expand"; writes are gated by `isMutable()` /
