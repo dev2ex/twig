@@ -93,6 +93,22 @@ class TermSession(
     /** Only the currently-displayed session sets this callback to refresh the UI; background sessions are null and just silently accumulate into the emulator. */
     @Volatile var onOutput: (() -> Unit)? = null
 
+    /**
+     * The most recent title that named a directory, kept **separately from the emulator's current
+     * title** because a shell may write several titles per prompt and the last one is not the useful
+     * one: oh-my-zsh writes the full `user@host:/path` to OSC 2 and then a 15-character left-truncated
+     * `..th/tail` to OSC 1, and half a path cannot be turned back into a directory. The emulator keeps
+     * whichever came last; this keeps the one worth acting on, which is what "Locate current directory"
+     * needs. Display still uses the live title — while `htop` runs, that is what the session is doing.
+     */
+    @Volatile var pathTitle: String? = null
+
+    /** Called for every title the session writes; keeps [pathTitle] at the newest one naming a directory. */
+    fun noteTitle(raw: String?) {
+        val t = raw?.trim() ?: return
+        if (t.isNotEmpty() && TermTitle.path(t) != null) pathTitle = t
+    }
+
     fun close() {
         closing = true
         alive = false
@@ -765,6 +781,7 @@ class TerminalActivity : AppCompatActivity() {
         // Don't call initializeEmulator (that would JNI-launch a local process); inject the emulator by reflection.
         val s = TerminalSession("/system/bin/sh", "/", arrayOf(), arrayOf(), 5000, sessionClient)
         val output = SshOutput()
+        output.onTitle = { t.noteTitle(it) }
         val emulator = TerminalEmulator(output, 80, 24, 5000, sessionClient)
         TerminalSession::class.java.getDeclaredField("mEmulator")
             .apply { isAccessible = true }.set(s, emulator)
@@ -863,6 +880,7 @@ class TerminalActivity : AppCompatActivity() {
         val t = TermManager.create(LOCAL_SCHEME, getString(R.string.terminal_local_shizuku))
         val s = TerminalSession("/system/bin/sh", "/", arrayOf(), arrayOf(), 5000, sessionClient)
         val output = SshOutput()
+        output.onTitle = { t.noteTitle(it) }
         val emulator = TerminalEmulator(output, 80, 24, 5000, sessionClient)
         TerminalSession::class.java.getDeclaredField("mEmulator")
             .apply { isAccessible = true }.set(s, emulator)
@@ -985,7 +1003,8 @@ class TerminalActivity : AppCompatActivity() {
             if (t.gen == myGen && !t.closing) main.post { onSessionEnded(t) }
         }, "twig-priv-out").start()
 
-        cwd?.let { s.write(cdCommand(it)) }
+        // A privileged shell is a local mksh: it reads our own rc, so it needs no prompt hook typed in.
+        cwd?.let { s.write(cdCommand(it, remoteTitle = false)) }
     }
 
     /**
@@ -1051,7 +1070,16 @@ class TerminalActivity : AppCompatActivity() {
             }
         }, "twig-term-out").start()
 
-        cwd?.let { s.write(cdCommand(it)) }
+        Log.i(TAG, "ssh startup: cwd=${cwd ?: "-"} gen=$myGen")
+        if (cwd != null) {
+            s.write(cdCommand(cwd, remoteTitle = true))
+        } else {
+            // Nothing to enter — a reconnect, or "New session" with no directory. The prompt hook
+            // still has to go in, on its own line; leading space so shells set to ignore such lines
+            // keep it out of the user's history. ★ Missing this branch is what made the hook reach
+            // only the sessions opened *at* a directory.
+            s.write(" " + TermRc.REMOTE_TITLE + "\r")
+        }
         // Command shortcut: after `cd`, type the command in (with Enter, like the user typed it themselves; output scrolls as usual)
         command?.takeIf { it.isNotBlank() }?.let { s.write(it.trimEnd() + "\r") }
     }
@@ -1063,11 +1091,18 @@ class TerminalActivity : AppCompatActivity() {
      * strip the artificial leading slash (cmd.exe doesn't accept "/D:/bin", it has to be "D:/bin"); the default
      * shell is cmd.exe: it doesn't honour single-quote escapes, and crossing drives requires `cd /d`.
      */
-    private fun cdCommand(dir: String): String =
+    /**
+     * The line an SSH session opens with. [TermRc.REMOTE_TITLE] rides along on the existing `cd`
+     * rather than being sent separately: this line ends in `clear`, so chaining it here costs the
+     * user no visible output at all, and `&&` keeps a failed `cd` visible exactly as before.
+     * The Windows branch talks to cmd.exe, where none of that shell syntax means anything.
+     */
+    private fun cdCommand(dir: String, remoteTitle: Boolean): String =
         if (WINDOWS_PATH.containsMatchIn(dir)) {
             "cd /d \"${dir.removePrefix("/").replace("\"", "")}\" && cls\r"
         } else {
-            "cd ${shq(dir)} && clear\r"
+            val hook = if (remoteTitle) "${TermRc.REMOTE_TITLE} && " else ""
+            "cd ${shq(dir)} && $hook" + "clear\r"
         }
 
     /**
@@ -1217,20 +1252,38 @@ class TerminalActivity : AppCompatActivity() {
      */
     private fun locateCurrentDir() {
         val t = displayed
-        val cand = t?.let { screenTitle(it) }?.let { TermTitle.path(it) }
+        // ★ The **live** title first, and only then the remembered one: preferring the remembered
+        // one would hand back a directory the session has since left, whenever a shell writes a
+        // parseable title only now and then (see [TermSession.pathTitle]). Live title that parses =
+        // this prompt, this directory.
+        val title = t?.let { live ->
+            screenTitle(live)?.takeIf { TermTitle.path(it) != null } ?: live.pathTitle
+        }
+        val cand = title?.let { TermTitle.path(it) }
+        // ★ One line naming every step, because the four ways this can fail look identical from the
+        // outside and only the title itself says which one happened: `adb logcat -s TwigTerm:I`.
+        Log.i(TAG, "locate: scheme=${t?.scheme} title=${title ?: "-"} path=${cand ?: "-"}")
         if (t == null || cand == null) {
             Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
             return
         }
         if (t.isLocal) {
             // A local session's title is written by our own prompt line, so it is always absolute.
-            if (cand.startsWith("/")) reveal(LocalFileSystem.SCHEME, cand)
-            else Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+            when {
+                !cand.startsWith("/") ->
+                    Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+                // A title can outlive what it named — the directory may have been moved or deleted
+                // since. Saying so beats handing the pane a path it will fail to list.
+                !java.io.File(cand).isDirectory ->
+                    Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
+                else -> reveal(LocalFileSystem.SCHEME, cand)
+            }
             return
         }
         val fs = runCatching { FsRegistry.of(t.scheme) }.getOrNull() as? SftpFileSystem
         if (fs == null) {
-            Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+            Log.w(TAG, "locate: ${t.scheme} is not an SFTP backend")
+            Toast.makeText(this, R.string.terminal_locate_failed, Toast.LENGTH_SHORT).show()
             return
         }
         // Both steps talk to the server: `~` only the server can expand, and a connection rooted at
@@ -1238,14 +1291,21 @@ class TerminalActivity : AppCompatActivity() {
         Thread({
             val abs = resolveOnServer(fs, cand)
             val visible = abs?.let { fs.visiblePath(it) }
+            // One stat while we are here: a title is a claim about the past, and the honest answer to
+            // a directory that has since gone is to say so, not to open a pane that cannot list it.
+            val there = visible?.let { runCatching { fs.stat(it) }.getOrNull()?.isDir == true }
+            Log.i(TAG, "locate: server=${abs ?: "-"} visible=${visible ?: "-"} there=$there")
             main.post {
                 if (isDestroyed) return@post
                 when {
-                    abs == null -> Toast.makeText(this, R.string.terminal_locate_none, Toast.LENGTH_SHORT).show()
+                    // Asking the server failed: it is reachable enough to have a terminal, so this
+                    // is about the answer, not about the path — a separate message from "no path".
+                    abs == null -> Toast.makeText(this, R.string.terminal_locate_failed, Toast.LENGTH_SHORT).show()
                     // Inside the server but outside what this connection mounts: saying so is the
                     // whole point of visiblePath returning null — never fall back to the raw path,
                     // which would land the pane somewhere else entirely.
                     visible == null -> Toast.makeText(this, R.string.terminal_locate_outside, Toast.LENGTH_LONG).show()
+                    there != true -> Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
                     else -> reveal(t.scheme, visible)
                 }
             }
@@ -1353,10 +1413,14 @@ class TerminalActivity : AppCompatActivity() {
     /** The emulator's write-back channel (terminal replies like cursor-position queries); delivered to the input queue via `redirect`. */
     private class SshOutput : TerminalOutput() {
         var redirect: ((ByteArray, Int, Int) -> Unit)? = null
+        /** Every title this session writes, not just the one the emulator ends up holding — see [TermSession.pathTitle]. */
+        var onTitle: ((String?) -> Unit)? = null
         override fun write(data: ByteArray, offset: Int, count: Int) {
             runCatching { redirect?.invoke(data, offset, count) }
         }
-        override fun titleChanged(oldTitle: String?, newTitle: String?) = Unit
+        override fun titleChanged(oldTitle: String?, newTitle: String?) {
+            runCatching { onTitle?.invoke(newTitle) }
+        }
         override fun onCopyTextToClipboard(text: String?) = Unit
         override fun onPasteTextFromClipboard() = Unit
         override fun onBell() = Unit
@@ -1379,7 +1443,9 @@ class TerminalActivity : AppCompatActivity() {
         override fun onTextChanged(s: TerminalSession) {
             if (!isDestroyed && s === displayed?.session) b.terminal.onScreenUpdated()
         }
-        override fun onTitleChanged(s: TerminalSession) = Unit
+        override fun onTitleChanged(s: TerminalSession) {
+            TermManager.list().firstOrNull { it.session === s }?.noteTitle(runCatching { s.title }.getOrNull())
+        }
         /**
          * Local shell process exited (exit / Ctrl+D): same as a normal SSH exit, tear the session down.
          *

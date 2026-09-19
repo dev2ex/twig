@@ -194,6 +194,8 @@
     <string name="terminal_locate">Locate current directory</string>
     <string name="terminal_locate_none">This session has not reported a directory</string>
     <string name="terminal_locate_outside">That directory is outside the root of this connection</string>
+    <string name="terminal_locate_failed">Could not confirm that directory with the server</string>
+    <string name="terminal_locate_gone">That directory is no longer there</string>
     <string name="server_edit">Edit server</string>
     <string name="server_remove">Remove</string>
     <string name="ftp_connect">Connect</string>

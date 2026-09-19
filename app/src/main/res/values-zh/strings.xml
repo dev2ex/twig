@@ -194,6 +194,8 @@
     <string name="terminal_locate">跳转到当前目录</string>
     <string name="terminal_locate_none">这个会话没有报告目录</string>
     <string name="terminal_locate_outside">该目录不在此连接的根目录范围内</string>
+    <string name="terminal_locate_failed">无法向服务器确认该目录</string>
+    <string name="terminal_locate_gone">那个目录已经不在了</string>
     <string name="server_edit">编辑服务</string>
     <string name="server_remove">移出</string>
     <string name="ftp_connect">连接</string>
