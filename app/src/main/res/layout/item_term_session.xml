@@ -1,32 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- One row of the terminal's session dropdown: the session's own name on top, and below it
-     the title the running program set via OSC (htop, ranger, a shell's PS1) — hidden when there is none. -->
+<!--
+  One row of the terminal's session dropdown: the session's own name on top, and below it the title
+  the running program set via OSC (htop, ranger, a shell's PS1) — hidden when there is none.
+
+  The row currently on screen is marked by the check on the right plus a bold name. The check keeps
+  its space when it is not shown (INVISIBLE, never GONE) so the text block is the same width on every
+  row and names do not shift as the selection moves.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:minHeight="48dp"
-    android:orientation="vertical"
+    android:orientation="horizontal"
     android:gravity="center_vertical"
     android:background="?attr/selectableItemBackground"
     android:paddingHorizontal="16dp"
     android:paddingVertical="8dp">
 
-    <TextView
-        android:id="@+id/session_name"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:textColor="#EEEEEE"
-        android:textSize="16sp" />
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/session_sub"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:maxLines="1"
-        android:ellipsize="end"
-        android:textColor="#99FFFFFF"
-        android:textSize="12sp"
-        android:visibility="gone" />
+        <TextView
+            android:id="@+id/session_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="#EEEEEE"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/session_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="#99FFFFFF"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/session_check"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="12dp"
+        android:src="@drawable/ic_sel_check"
+        android:visibility="invisible"
+        android:contentDescription="@null" />
 </LinearLayout>

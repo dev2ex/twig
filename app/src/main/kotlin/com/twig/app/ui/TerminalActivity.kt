@@ -1130,11 +1130,18 @@ class TerminalActivity : AppCompatActivity() {
             override fun getDropDownView(pos: Int, cv: View?, parent: ViewGroup): View {
                 val v = cv ?: layoutInflater.inflate(R.layout.item_term_session, parent, false)
                 val t = list[pos]
-                v.findViewById<TextView>(R.id.session_name).text = label(t)
+                val current = t === displayed
+                v.findViewById<TextView>(R.id.session_name).apply {
+                    text = label(t)
+                    setTypeface(null, if (current) Typeface.BOLD else Typeface.NORMAL)
+                }
                 val sub = v.findViewById<TextView>(R.id.session_sub)
                 val screen = screenTitle(t)
                 sub.text = screen.orEmpty()
                 sub.visibility = if (screen == null) View.GONE else View.VISIBLE
+                // INVISIBLE, not GONE: the check keeps its space so names line up across rows.
+                v.findViewById<View>(R.id.session_check).visibility =
+                    if (current) View.VISIBLE else View.INVISIBLE
                 return v
             }
         }
