@@ -502,7 +502,8 @@ add its symptom here.
   A local shell reports nothing about itself: the session list's second line is an OSC title,
   which Android's mksh never writes — the prompt has to write it (the directory, and only the
   directory), with the escape wrapped in mksh's `\001` delimiters or line editing drifts; a
-  privileged session sources no rc at all unless `$ENV` names one the shell uid can read.
+  privileged session sources no rc at all unless `$ENV` names one the shell uid can read. Never
+  type such a hook into a *remote* shell: it is echoed, and it lands in that server's history.
   *Explains*: a garbled screen after screen-off, fat Chinese and a thin `●`, tab
   completion finding no commands, pinch zoom doing nothing, clipped key labels, a local
   session whose row stays one line while SSH rows show what is running.

@@ -1005,7 +1005,7 @@ class TerminalActivity : AppCompatActivity() {
         }, "twig-priv-out").start()
 
         // A privileged shell is a local mksh: it reads our own rc, so it needs no prompt hook typed in.
-        cwd?.let { s.write(cdCommand(it, remoteTitle = false)) }
+        cwd?.let { s.write(cdCommand(it)) }
     }
 
     /**
@@ -1072,13 +1072,7 @@ class TerminalActivity : AppCompatActivity() {
         }, "twig-term-out").start()
 
         Log.i(TAG, "ssh startup: cwd=${cwd ?: "-"} gen=$myGen")
-        // ★ The prompt hook goes in **only** when there is a `cd` to hang it on, because that line
-        // ends in `clear` and so costs the user nothing to look at. On its own it is a screenful of
-        // shell syntax echoed into someone else's session — and `clear`ing that away is not the fix
-        // either: it would take the login banner (MOTD, "your password expires in 3 days") with it.
-        // A session without it is not broken; it falls back to the title the remote prompt writes,
-        // which every mainstream default does write.
-        cwd?.let { s.write(cdCommand(it, remoteTitle = true)) }
+        cwd?.let { s.write(cdCommand(it)) }
         // Command shortcut: after `cd`, type the command in (with Enter, like the user typed it themselves; output scrolls as usual)
         command?.takeIf { it.isNotBlank() }?.let { s.write(it.trimEnd() + "\r") }
     }
@@ -1091,17 +1085,20 @@ class TerminalActivity : AppCompatActivity() {
      * shell is cmd.exe: it doesn't honour single-quote escapes, and crossing drives requires `cd /d`.
      */
     /**
-     * The line an SSH session opens with. [TermRc.REMOTE_TITLE] rides along on the existing `cd`
-     * rather than being sent separately: this line ends in `clear`, so chaining it here costs the
-     * user no visible output at all, and `&&` keeps a failed `cd` visible exactly as before.
-     * The Windows branch talks to cmd.exe, where none of that shell syntax means anything.
+     * The line a session opens with, typed into the shell like the user typed it.
+     *
+     * ★ Keep it short, and add nothing to it that is only for Twig's benefit. It is typed into an
+     * **interactive** shell, so it lands in that shell's history — on someone else's server. A
+     * prompt hook that reported `$PWD` as the title used to ride along here; it was removed because
+     * this is where it ended up, and the one thing it bought (a session on a server whose prompt
+     * writes no title at all) is not worth writing into a stranger's history file. See
+     * [TermSession.pathTitle] for where the directory comes from instead.
      */
-    private fun cdCommand(dir: String, remoteTitle: Boolean): String =
+    private fun cdCommand(dir: String): String =
         if (WINDOWS_PATH.containsMatchIn(dir)) {
             "cd /d \"${dir.removePrefix("/").replace("\"", "")}\" && cls\r"
         } else {
-            val hook = if (remoteTitle) "${TermRc.REMOTE_TITLE} && " else ""
-            "cd ${shq(dir)} && $hook" + "clear\r"
+            "cd ${shq(dir)} && clear\r"
         }
 
     /**

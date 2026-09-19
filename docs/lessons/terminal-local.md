@@ -190,6 +190,18 @@
   - The block is appended to an existing `.mkshrc` **once**, guarded by
     `Prefs.termTitleRcDone` rather than by searching the file for it: the rc file belongs to
     the user, so deleting the block has to keep it deleted.
+  - ★ **Do not type a prompt hook into a remote shell** (tried and removed, same day): a remote
+    prompt's title can be truncated (oh-my-zsh's default tab title is `%15<..<%~%<<`, so Twig saw
+    `..r_cmt/backend`), and the obvious answer — send the far side a PS1/precmd hook of our own —
+    is wrong for two reasons that only show up on a real server. Sent on its own it is echoed into
+    the session, twice, because zsh's line editor redraws it; and chaining `clear` after it would
+    take the login banner with it. Sent chained onto the `cd` a session opens with it is invisible,
+    but it still lands in **that server's shell history**, because everything Twig types into an
+    interactive shell does. The directory comes from the titles the prompt already writes instead
+    (`TermSession.pathTitle` keeps the newest one that names a path — oh-my-zsh writes the full
+    `%n@%m:%~` to OSC 2 *and* the truncation to OSC 1, and the emulator only keeps the last).
+    What is left typed into a session is the one short `cd … && clear` that has always been there.
+
   - ★ **A privileged session sources no rc unless you give it one**: `privEnv` (the Shizuku
     pty) never set `$ENV`, so the shell fell back to mksh's default startup and none of this
     reached it — the row stayed blank while plain local rows worked. It cannot point at the

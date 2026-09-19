@@ -30,38 +30,6 @@ object TermRc {
             "PS1=\$'\\001\\r\\001\\033]0;\${PWD}\\a\\001'\"\$PS1\"\n"
 
     /**
-     * The one line an SSH session is opened with, so the shell on the far side reports its working
-     * directory as the terminal title too.
-     *
-     * It cannot be done the local way — that edits a file, and the file over there is the user's.
-     * It is worth doing because a remote prompt's own title is written for humans and can be
-     * **truncated** (`..ork/self/twig`, zsh's `%<..<`), and half a path cannot be turned back into a
-     * directory; the far side therefore gets a prompt hook of our own, for the session only,
-     * appended after whatever it already had so that ours is the title that survives.
-     *
-     * ★ It is sent **only chained onto the `cd` a session opens with**, never on its own: that line
-     * ends in `clear`, so it costs nothing to look at, while on its own it is a screenful of shell
-     * syntax echoed into someone else's session (zsh's line editor redraws it, so it even appears
-     * twice). Clearing that away would take the login banner with it, so the answer is not to send
-     * it. A session that never gets the hook is not broken — it falls back to the title the remote
-     * prompt writes, which is also how [com.twig.app.ui.TermSession.pathTitle] gets its material.
-     *
-     * Measured through a real pty on both shells before shipping: with a distribution's default
-     * bash prompt the system's own `user@host:/tmp` is emitted first and ours (`/tmp`) last, which
-     * is the one that sticks; under zsh only ours appears. Other shells run the `if` and match no
-     * branch, so nothing happens and nothing breaks — and the whole line is POSIX, so a `cd` chained
-     * in front of it still short-circuits on failure.
-     *
-     * bash embeds it in PS1 rather than PROMPT_COMMAND on purpose: a PS1 that sets its own title
-     * (Debian and Ubuntu ship one) is printed *after* PROMPT_COMMAND runs and would overwrite ours.
-     * zsh uses `precmd_functions` for the same reason, appended last.
-     */
-    const val REMOTE_TITLE =
-        "if [ -n \"\$ZSH_VERSION\" ]; then _twig_title(){ printf '\\033]0;%s\\a' \"\$PWD\"; }; " +
-            "precmd_functions+=(_twig_title); elif [ -n \"\$BASH_VERSION\" ]; then " +
-            "PS1=\"\$PS1\"'\\[\\e]0;\$PWD\\a\\]'; fi"
-
-    /**
      * Where the rc for **privileged** shells lives. It cannot be the app's own `.mkshrc`: the Shizuku helper
      * runs as the shell uid, and the app's private directory is 0700 — unreadable to it. `/data/local/tmp/twig`
      * is the directory the helper already owns (it extracts `libtwigpty.so` there), and shell and root can
