@@ -198,6 +198,40 @@ object Connections {
      * translates it back. For every other scheme the visible path is already the real one,
      * so this is the identity.
      */
+    /**
+     * A second SFTP filesystem for the same server, rooted at `/` instead of at the subdirectory the
+     * connection mounts, registered under `<scheme>~root`; null when [scheme] is not a saved SFTP
+     * connection.
+     *
+     * It exists for the terminal: a session can sit anywhere on the server, including outside what
+     * the connection mounts, and "Locate current directory" has to be able to show that directory —
+     * [SftpFileSystem.visiblePath] can only refuse such a path, which is the honest answer for the
+     * tree but a dead end for the user.
+     *
+     * ★ Created once and **kept** for the life of the process, never dropped when the temporary tree
+     * node goes away: a copy in flight resolves its filesystem by scheme for every file, so pulling
+     * the registration out from under it would break the transfer. The cost is one idle SSH
+     * connection, and only for a server someone actually located outside the root.
+     */
+    fun sftpRootTwin(ctx: Context, scheme: String): String? {
+        val twin = scheme + ROOT_TWIN_SUFFIX
+        if (FsRegistry.all().any { it.scheme == twin }) return twin
+        val conn = ofScheme(scheme)?.takeIf { it.type == "sftp" } ?: return null
+        FsRegistry.register(
+            SftpFileSystem(
+                SftpConfig(
+                    conn.host, conn.port, conn.user, conn.password, keyPath = conn.keyPath,
+                    knownHostKey = conn.hostKey, path = "",
+                    onLearnHostKey = { fp -> rememberHostKey(ctx, conn, fp) },
+                ),
+                twin,
+            ),
+        )
+        return twin
+    }
+
+    const val ROOT_TWIN_SUFFIX = "~root"
+
     fun shellPath(scheme: String, path: String): String =
         (runCatching { FsRegistry.of(scheme) }.getOrNull() as? SftpFileSystem)?.serverPath(path) ?: path
 

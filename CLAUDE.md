@@ -165,6 +165,15 @@ each write `= null`.
   difference can never be reached.
 - Git: `GitActivity` (status/history), `DiffActivity` (two-column patience diff);
   SFTP repositories run git remotely over exec via `SshGitData`.
+- **Terminal → pane** (`TerminalActivity.locateCurrentDir` → `MainActivity.locateIntent` →
+  `PaneViewModel.mountLocated`): "Locate current directory" does **not** navigate the pane. The
+  session's directory is pinned on top of the tree like an externally opened archive, and the back
+  key takes it down, restores what was there and returns to the session — which is why the terminal
+  is not finished on the way out. That shape is what makes it work at all when the directory lies
+  **outside** the subdirectory an SFTP connection mounts: there is no row to reveal, so
+  `Connections.sftpRootTwin` registers a second filesystem for the same server rooted at `/` (kept
+  for the life of the process — a copy in flight resolves its filesystem by scheme on every file).
+  Where the directory comes from is its own problem, see [docs/lessons/terminal-local.md](docs/lessons/terminal-local.md).
 - Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
   `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
   (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).

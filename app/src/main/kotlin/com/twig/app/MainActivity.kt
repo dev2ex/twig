@@ -81,6 +81,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         private const val EXTRA_MOUNT_PATH = "mount_path"
         private const val EXTRA_MOUNT_NAME = "mount_name"
         private const val EXTRA_MOUNT_SIZE = "mount_size"
+        private const val EXTRA_LOCATE_SCHEME = "locate_scheme"
+        private const val EXTRA_LOCATE_PATH = "locate_path"
+        private const val EXTRA_LOCATE_LABEL = "locate_label"
         private const val EXTRA_SHOW_TRANSFER = "show_transfer"
         private const val EXTRA_SHOW_SHARE = "show_share"
 
@@ -110,6 +113,23 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
          * row after expanding so "go to containing directory" lands you directly on the file
          * rather than stopping at the directory.
          */
+        /**
+         * Show a terminal session's directory **without navigating the pane**: it is pinned on top
+         * of the tree like an externally opened archive and taken down again when the user goes
+         * back, which also returns them to the terminal they came from.
+         *
+         * That, rather than [revealIntent], is how the terminal jumps: a session can sit anywhere on
+         * a server, including outside the subdirectory the connection mounts, where there is no row
+         * in the tree to reveal — and a temporary node leaves the pane exactly as the user left it.
+         */
+        fun locateIntent(ctx: Context, scheme: String, path: String, label: String): Intent =
+            Intent(ctx, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(EXTRA_LOCATE_SCHEME, scheme)
+                putExtra(EXTRA_LOCATE_PATH, path)
+                putExtra(EXTRA_LOCATE_LABEL, label)
+            }
+
         fun revealIntent(ctx: Context, scheme: String, path: String, file: String? = null): Intent =
             Intent(ctx, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -145,6 +165,8 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     private var pendingRevealFile: XFile? = null
     /** External archive waiting to mount (see [mountIntent]); same — wait until the pane is ready before mounting. */
     private var pendingMount: XFile? = null
+    private var pendingLocate: XFile? = null
+    private var pendingLocateLabel: String? = null
     /** Returning from a notification tap: re-attach the transfer progress dialog once the pane is ready (see [transferIntent]). */
     private var pendingShowTransfer = false
 
@@ -226,6 +248,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
         readRevealExtras(intent)
         readMountExtras(intent)
+        readLocateExtras(intent)
         readTransferExtra(intent)
         readShareExtra(intent)
         // ★ Unlocking must happen before the panes initialise: as soon as the panes exist, they
@@ -241,6 +264,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         setIntent(intent)
         readRevealExtras(intent)
         readMountExtras(intent)
+        readLocateExtras(intent)
         readTransferExtra(intent)
         readShareExtra(intent)
         applyPendingReveal()
@@ -252,6 +276,15 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         pendingReveal = XFile(scheme, path, isDir = true)
         pendingRevealFile = intent.getStringExtra(EXTRA_REVEAL_FILE)
             ?.let { XFile(scheme, it, isDir = false) }
+    }
+
+    private fun readLocateExtras(intent: Intent?) {
+        val scheme = intent?.getStringExtra(EXTRA_LOCATE_SCHEME) ?: return
+        val path = intent.getStringExtra(EXTRA_LOCATE_PATH) ?: return
+        pendingLocate = XFile(scheme, path, isDir = true)
+        pendingLocateLabel = intent.getStringExtra(EXTRA_LOCATE_LABEL)
+        // A relaunch after a configuration change must not mount it a second time.
+        intent.removeExtra(EXTRA_LOCATE_SCHEME)
     }
 
     private fun readTransferExtra(intent: Intent?) {
@@ -290,6 +323,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             pendingMount = null
             activePane()?.mountExternal(it)
         }
+        pendingLocate?.let {
+            pendingLocate = null
+            activePane()?.mountLocated(it, pendingLocateLabel)
+            pendingLocateLabel = null
+        }
         val target = pendingReveal ?: return
         val focus = pendingRevealFile
         pendingReveal = null
@@ -300,6 +338,16 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (activePane()?.handleBack() == true) return // inside a takeover view: go up a level / exit the takeover view
+        // Came here from a terminal session's "Locate current directory": take the temporary node
+        // down, put the pane back the way it was, and return to the session — which is still
+        // running in its own task, so this brings that task forward rather than starting anything.
+        if (activePane()?.unmountLocated() == true) {
+            startActivity(
+                Intent(this, com.twig.app.ui.TerminalActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            return
+        }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -644,7 +692,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         applyLayoutMode()
         // Wait for the fragment transaction to land and the panes to be ready.
-        if (pendingReveal != null || pendingMount != null) b.root.post { applyPendingReveal() }
+        if (pendingReveal != null || pendingMount != null || pendingLocate != null) {
+            b.root.post { applyPendingReveal() }
+        }
     }
 
     // ---- Host ----

@@ -38,6 +38,7 @@ import com.termux.terminal.TerminalOutput
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalViewClient
+import com.twig.app.Connections
 import com.twig.app.MainActivity
 import com.twig.app.Prefs
 import com.twig.app.PrivShell
@@ -1276,7 +1277,7 @@ class TerminalActivity : AppCompatActivity() {
                 // since. Saying so beats handing the pane a path it will fail to list.
                 !java.io.File(cand).isDirectory ->
                     Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
-                else -> reveal(LocalFileSystem.SCHEME, cand)
+                else -> jumpTo(LocalFileSystem.SCHEME, cand, cand)
             }
             return
         }
@@ -1290,34 +1291,48 @@ class TerminalActivity : AppCompatActivity() {
         // a subdirectory has to map the server path back to the one the pane shows.
         Thread({
             val abs = resolveOnServer(fs, cand)
-            val visible = abs?.let { fs.visiblePath(it) }
+            // Inside what this connection mounts, the session's own scheme shows the directory under
+            // the paths the user knows. Outside it, visiblePath can only refuse — so the jump goes
+            // through a second filesystem for the same server rooted at `/`, which is exactly what
+            // the temporary mount is for: no row has to exist in the tree for it.
+            val inside = abs?.let { fs.visiblePath(it) }
+            val target = when {
+                abs == null -> null
+                inside != null -> t.scheme to inside
+                else -> Connections.sftpRootTwin(this, t.scheme)?.let { it to abs }
+            }
             // One stat while we are here: a title is a claim about the past, and the honest answer to
-            // a directory that has since gone is to say so, not to open a pane that cannot list it.
-            val there = visible?.let { runCatching { fs.stat(it) }.getOrNull()?.isDir == true }
-            Log.i(TAG, "locate: server=${abs ?: "-"} visible=${visible ?: "-"} there=$there")
+            // a directory that has since gone is to say so, not to mount a path nothing can list.
+            val there = target?.let { (sc, p) ->
+                runCatching { FsRegistry.of(sc).stat(p)?.isDir }.getOrNull() == true
+            }
+            Log.i(TAG, "locate: server=${abs ?: "-"} target=${target?.second ?: "-"}@${target?.first ?: "-"} there=$there")
             main.post {
                 if (isDestroyed) return@post
                 when {
                     // Asking the server failed: it is reachable enough to have a terminal, so this
                     // is about the answer, not about the path — a separate message from "no path".
                     abs == null -> Toast.makeText(this, R.string.terminal_locate_failed, Toast.LENGTH_SHORT).show()
-                    // Inside the server but outside what this connection mounts: saying so is the
-                    // whole point of visiblePath returning null — never fall back to the raw path,
-                    // which would land the pane somewhere else entirely.
-                    visible == null -> Toast.makeText(this, R.string.terminal_locate_outside, Toast.LENGTH_LONG).show()
+                    target == null -> Toast.makeText(this, R.string.terminal_locate_outside, Toast.LENGTH_LONG).show()
                     there != true -> Toast.makeText(this, R.string.terminal_locate_gone, Toast.LENGTH_SHORT).show()
-                    else -> reveal(t.scheme, visible)
+                    else -> jumpTo(target.first, target.second, abs)
                 }
             }
         }, "twig-term-locate").start()
     }
 
-    private fun reveal(scheme: String, path: String) {
+    /**
+     * Hand the directory to the file manager as a temporary node on top of its tree.
+     *
+     * ★ This activity is **not** finished: the pane's back key takes that node down, restores what
+     * was there and comes back to this session, so the terminal has to still be here. NEW_TASK is
+     * what brings the file manager's own task forward — the terminal has its own taskAffinity.
+     */
+    private fun jumpTo(scheme: String, path: String, label: String) {
         startActivity(
-            MainActivity.revealIntent(this, scheme, path)
+            MainActivity.locateIntent(this, scheme, path, label)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
-        finish()
     }
 
     /** Blocking: turns [TermTitle.path]'s answer into an absolute path on the server. */

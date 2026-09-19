@@ -503,6 +503,16 @@ class PaneFragment : Fragment() {
         viewModel.mountExternal(archive)
     }
 
+    /** A terminal session's directory, pinned on top until the user goes back (see [PaneViewModel.mountLocated]). */
+    fun mountLocated(dir: XFile, label: String?) {
+        if (mapMode) exitTreemap()
+        pendingScrollToCurrent = true
+        viewModel.mountLocated(dir, label)
+    }
+
+    /** Undo [mountLocated]; false when no such mount is up. */
+    fun unmountLocated(): Boolean = viewModel.unmountLocated()
+
     /**
      * Recent: directories where files have been opened / Git views entered (most recent first, up to
      * [HistoryStore.MAX] entries). Tap one to jump there. Long-press to delete a single entry.

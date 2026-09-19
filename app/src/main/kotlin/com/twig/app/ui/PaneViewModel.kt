@@ -321,6 +321,19 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Archive handed in by an external App, pinned at the top of the tree temporarily (see [mountExternal]); only one at a time. */
     private var externalMount: XFile? = null
+
+    /** Row label for [externalMount]; a located directory names itself by its full path, an archive by its file name. */
+    private var externalLabel: String? = null
+
+    /**
+     * What the tree looked like before the terminal mounted a directory on top of it. The mount is
+     * meant to be **temporary** — you came from the terminal to look at one directory and you go
+     * back to the terminal — so leaving it behind, along with a current directory that points into
+     * it, would quietly change what the next paste targets.
+     */
+    private class MountSnapshot(val mount: XFile?, val label: String?, val dir: XFile?, val key: String?)
+
+    private var locateRestore: MountSnapshot? = null
     private val connecting = HashSet<String>()
     /** Node key currently asynchronously loading children (used to show the loading spinner). */
     private val loadingKeys = HashSet<String>()
@@ -873,9 +886,39 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * Only keep the most recent one — external entries don't belong to any real
      * directory, keeping a history would just pile up at the top.
      */
-    fun mountExternal(archive: XFile) {
+    fun mountExternal(archive: XFile) = mountAt(archive, null)
+
+    /**
+     * Mount [dir] on top of the tree for a terminal session's "Locate current directory", remembering
+     * what was there so [unmountLocated] can put it back. Same pinned node an externally opened
+     * archive gets — including its own key prefix, so the subtree cannot collide with the same
+     * directory's ordinary row further down.
+     */
+    fun mountLocated(dir: XFile, label: String?) {
+        if (locateRestore == null) {
+            locateRestore = MountSnapshot(externalMount, externalLabel, currentDir, currentKey)
+        }
+        mountAt(dir, label)
+    }
+
+    /** Undo [mountLocated]; false when no such mount is up. */
+    fun unmountLocated(): Boolean {
+        val snap = locateRestore ?: return false
+        locateRestore = null
+        // Only when nothing else was mounted: an archive that was pinned before keeps its expansion.
+        if (snap.mount == null) expanded.removeAll { it.startsWith(EXTERNAL_KEY_PREFIX) }
+        externalMount = snap.mount
+        externalLabel = snap.label
+        currentDir = snap.dir
+        currentKey = snap.key
+        rebuild()
+        return true
+    }
+
+    private fun mountAt(archive: XFile, label: String?) {
         val key = EXTERNAL_KEY_PREFIX + fileKey(archive)
         externalMount = archive
+        externalLabel = label
         keyFile[key] = archive
         currentKey = key
         children.remove(key) // Re-opening the same archive (its contents may have changed) doesn't reuse the children cache.
@@ -890,7 +933,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 {
                     putListing(key, it)
                     if (mine) {
-                        it.mountRoot?.let { root -> currentDir = root } // An externally-opened archive can also act as a destination directory.
+                        // An externally-opened archive can also act as a destination directory; a mounted
+                    // directory simply is one.
+                    (it.mountRoot ?: archive.takeIf { f -> f.isDir })?.let { root -> currentDir = root }
                         accordionExpand(key)
                     }
                     rebuild()
@@ -2464,7 +2509,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             val ext = Environment.getExternalStorageDirectory().absolutePath
             // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
-            externalMount?.let { addFile(rows, it, 0, keyPrefix = EXTERNAL_KEY_PREFIX) }
+            externalMount?.let { addFile(rows, it, 0, externalLabel, keyPrefix = EXTERNAL_KEY_PREFIX) }
             addGroup(rows, "fav", str(R.string.group_fav))
             // Saved comparisons have no dedicated empty state — if none were ever saved, don't show the group at all (saves space).
             if (CompareStore.all(getApplication()).isNotEmpty()) {
