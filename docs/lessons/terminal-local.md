@@ -200,7 +200,18 @@
     interactive shell does. The directory comes from the titles the prompt already writes instead
     (`TermSession.pathTitle` keeps the newest one that names a path — oh-my-zsh writes the full
     `%n@%m:%~` to OSC 2 *and* the truncation to OSC 1, and the emulator only keeps the last).
-    What is left typed into a session is the one short `cd … && clear` that has always been there.
+    ★★ And the `cd … && clear` that had always been typed is gone too, for the same reason: an SSH
+    channel can **run a command** instead of starting a bare shell, and sshd runs it through the
+    login shell, so nothing is typed, nothing is echoed and nothing reaches the history file —
+    `SftpFileSystem.openShell(cols, rows, command)` with `cd '<dir>'; exec ${SHELL:-/bin/sh} -l`.
+    Three things make that line what it is: `exec` so the user still gets their own shell and not a
+    subshell; `;` rather than `&&` so a directory that has gone leaves them a shell with `cd`'s
+    message on screen instead of an ended session; and `${SHELL:-/bin/sh}` because `$SHELL` is what
+    sshd sets from the account. Measured through a real pty before shipping — `$-` contains `i`,
+    `$0` is the login shell, and the cwd is the target. The cast to `Session.Shell` in `openShell`
+    is not cosmetic: `exec` is typed as `Session.Command`, sshj answers both with the same
+    `SessionChannel`, and window-change (SIGWINCH on rotate / keyboard) lives on the `Shell` side.
+    Windows servers keep the typed `cd /d … && cls`: cmd.exe has no `exec`.
 
   - ★ **A privileged session sources no rc unless you give it one**: `privEnv` (the Shizuku
     pty) never set `$ENV`, so the shell fell back to mksh's default startup and none of this

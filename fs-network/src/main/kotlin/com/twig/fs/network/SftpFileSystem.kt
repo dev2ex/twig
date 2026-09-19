@@ -443,12 +443,28 @@ class SftpFileSystem(
      * concurrent channel reads/writes) and large file transfers can stall the
      * terminal.
      */
-    fun openShell(cols: Int, rows: Int): ShellSession {
+    fun openShell(cols: Int, rows: Int, command: String? = null): ShellSession {
         val c = newAuthedClient()
         return try {
             val s = c.startSession()
             s.allocatePTY("xterm-256color", cols, rows, 0, 0, emptyMap())
-            ShellSession(c, s, s.startShell())
+            // ★ With a [command], the channel *runs* it instead of starting a bare shell — the way to
+            // open a session somewhere other than the home directory without **typing** anything into
+            // the shell. Typed input is echoed and lands in that server's history file, which is the
+            // user's, not ours; a command on the channel is executed by sshd through the login shell
+            // and leaves no trace. The caller ends it with `exec $SHELL`, so what the user gets is
+            // still their own interactive shell, not a subshell.
+            //
+            // The cast is what makes window-change still work: `exec` is typed as `Session.Command`,
+            // but sshj answers both that and `Session.Shell` with the same `SessionChannel`, and
+            // resizing needs the latter (checked against sshj 0.38 rather than assumed).
+            val channel = if (command == null) {
+                s.startShell()
+            } else {
+                s.exec(command) as? net.schmizz.sshj.connection.channel.direct.Session.Shell
+                    ?: error("this sshj cannot resize an exec channel")
+            }
+            ShellSession(c, s, channel)
         } catch (e: Exception) {
             runCatching { c.disconnect() }
             throw FsException("Could not open terminal: ${e.message}", e)

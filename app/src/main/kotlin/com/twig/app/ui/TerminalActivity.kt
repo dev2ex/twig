@@ -805,7 +805,7 @@ class TerminalActivity : AppCompatActivity() {
             val cols = emulator.mColumns.coerceIn(20, 500)
             val rows = emulator.mRows.coerceIn(6, 300)
             Thread({
-                val sh = runCatching { fs.openShell(cols, rows) }
+                val sh = runCatching { fs.openShell(cols, rows, startCommand(cwd)) }
                     .onFailure { Log.e(TAG, "openShell", it) }
                     .getOrNull()
                 main.post {
@@ -1072,7 +1072,9 @@ class TerminalActivity : AppCompatActivity() {
         }, "twig-term-out").start()
 
         Log.i(TAG, "ssh startup: cwd=${cwd ?: "-"} gen=$myGen")
-        cwd?.let { s.write(cdCommand(it)) }
+        // POSIX servers are already in the right directory — the channel ran [startCommand] instead
+        // of a bare shell. cmd.exe has no `exec`, so a Windows server is still told the old way.
+        cwd?.takeIf { WINDOWS_PATH.containsMatchIn(it) }?.let { s.write(cdCommand(it)) }
         // Command shortcut: after `cd`, type the command in (with Enter, like the user typed it themselves; output scrolls as usual)
         command?.takeIf { it.isNotBlank() }?.let { s.write(it.trimEnd() + "\r") }
     }
@@ -1085,15 +1087,24 @@ class TerminalActivity : AppCompatActivity() {
      * shell is cmd.exe: it doesn't honour single-quote escapes, and crossing drives requires `cd /d`.
      */
     /**
-     * The line a session opens with, typed into the shell like the user typed it.
+     * What an SSH channel runs **instead of** starting a bare shell, so the session begins in [cwd]
+     * without a single character being typed into it; null when there is no directory to enter, or
+     * when the far side is Windows (cmd.exe has neither `exec` nor these quoting rules — that one
+     * still gets [cdCommand] typed in).
      *
-     * ★ Keep it short, and add nothing to it that is only for Twig's benefit. It is typed into an
-     * **interactive** shell, so it lands in that shell's history — on someone else's server. A
-     * prompt hook that reported `$PWD` as the title used to ride along here; it was removed because
-     * this is where it ended up, and the one thing it bought (a session on a server whose prompt
-     * writes no title at all) is not worth writing into a stranger's history file. See
-     * [TermSession.pathTitle] for where the directory comes from instead.
+     * ★ This is the whole point: anything Twig types into an interactive shell is echoed **and
+     * written to that server's history file**, which belongs to the user, not to us. A command on
+     * the channel is run by sshd through the login shell and leaves nothing behind. `exec` then
+     * replaces it with the user's own interactive login shell, so this costs no extra process and
+     * changes nothing about the shell they get; `;` rather than `&&` because a directory that is
+     * gone should leave them a shell (with `cd`'s own message on screen), not an ended session.
      */
+    private fun startCommand(cwd: String?): String? {
+        val dir = cwd?.takeIf { it.isNotBlank() && !WINDOWS_PATH.containsMatchIn(it) } ?: return null
+        return "cd ${shq(dir)}; exec \${SHELL:-/bin/sh} -l"
+    }
+
+    /** Typed into the shell; only Windows servers still need it, see [startCommand]. */
     private fun cdCommand(dir: String): String =
         if (WINDOWS_PATH.containsMatchIn(dir)) {
             "cd /d \"${dir.removePrefix("/").replace("\"", "")}\" && cls\r"
