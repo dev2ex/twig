@@ -1072,15 +1072,13 @@ class TerminalActivity : AppCompatActivity() {
         }, "twig-term-out").start()
 
         Log.i(TAG, "ssh startup: cwd=${cwd ?: "-"} gen=$myGen")
-        if (cwd != null) {
-            s.write(cdCommand(cwd, remoteTitle = true))
-        } else {
-            // Nothing to enter — a reconnect, or "New session" with no directory. The prompt hook
-            // still has to go in, on its own line; leading space so shells set to ignore such lines
-            // keep it out of the user's history. ★ Missing this branch is what made the hook reach
-            // only the sessions opened *at* a directory.
-            s.write(" " + TermRc.REMOTE_TITLE + "\r")
-        }
+        // ★ The prompt hook goes in **only** when there is a `cd` to hang it on, because that line
+        // ends in `clear` and so costs the user nothing to look at. On its own it is a screenful of
+        // shell syntax echoed into someone else's session — and `clear`ing that away is not the fix
+        // either: it would take the login banner (MOTD, "your password expires in 3 days") with it.
+        // A session without it is not broken; it falls back to the title the remote prompt writes,
+        // which every mainstream default does write.
+        cwd?.let { s.write(cdCommand(it, remoteTitle = true)) }
         // Command shortcut: after `cd`, type the command in (with Enter, like the user typed it themselves; output scrolls as usual)
         command?.takeIf { it.isNotBlank() }?.let { s.write(it.trimEnd() + "\r") }
     }
