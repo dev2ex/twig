@@ -79,14 +79,22 @@ data class SubMemo(val kind: Int, val track: TrackDesc? = null, val suffix: Stri
     }
 }
 
-/** What is remembered for one scope; either half may be absent (the user only ever changed one). */
-data class TrackMemo(val audio: TrackDesc? = null, val sub: SubMemo? = null) {
-    val isEmpty: Boolean get() = audio == null && sub == null
+/**
+ * What is remembered for one scope; any field may be absent (the user only ever changed one).
+ *
+ * [scale] is the player's picture scaling mode (best fit / crop / fill). It rides along with the
+ * track choices because it has exactly the same shape of answer — "how this title should be
+ * played" — and the same scope: every episode of a show has the same aspect ratio, so the crop
+ * that removed the black bars on episode 1 is the right one for episode 2. Unlike a track it
+ * needs no matching: the value is just the mode.
+ */
+data class MediaMemo(val audio: TrackDesc? = null, val sub: SubMemo? = null, val scale: Int? = null) {
+    val isEmpty: Boolean get() = audio == null && sub == null && scale == null
 }
 
 /**
- * Persistence for "which audio track / subtitle the user picked" (SharedPreferences + JSON),
- * capped at [MAX] entries, least-recently-used dropped first.
+ * Persistence for "how the user wants this title played" — audio track, subtitle and picture
+ * scaling (SharedPreferences + JSON), capped at [MAX] entries, least-recently-used dropped first.
  *
  * **Two scopes, written together and read narrowest-first:**
  * - per file (`f|<name>|<size>`, the same path-independent key as [PlaybackStore]) — you
@@ -102,12 +110,12 @@ data class TrackMemo(val audio: TrackDesc? = null, val sub: SubMemo? = null) {
  * player). Writing back what the player auto-selected would freeze one episode's wrong
  * default into a preference and repeat it forever.
  */
-object TrackPrefStore {
-    private const val FILE = "twig_tracks"
+object MediaPrefStore {
+    private const val FILE = "twig_media_prefs"
     private const val KEY = "list"
     const val MAX = 200
 
-    data class Entry(val key: String, val memo: TrackMemo, val updatedAt: Long)
+    data class Entry(val key: String, val memo: MediaMemo, val updatedAt: Long)
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -126,9 +134,10 @@ object TrackPrefStore {
                 val k = o.optString("k", "").ifEmpty { return@mapNotNull null }
                 Entry(
                     key = k,
-                    memo = TrackMemo(
+                    memo = MediaMemo(
                         audio = o.optJSONObject("a")?.let { TrackDesc.fromJson(it) },
                         sub = o.optJSONObject("s")?.let { SubMemo.fromJson(it) },
+                        scale = if (o.has("sc")) o.optInt("sc") else null,
                     ),
                     updatedAt = o.optLong("at", 0L),
                 )
@@ -148,14 +157,15 @@ object TrackPrefStore {
      * [TrackMatch] score "the second track" as agreement, which is exactly the false positive
      * matching by identity exists to avoid.
      */
-    fun memoFor(ctx: Context, fileKey: String, seriesKey: String?): TrackMemo {
-        if (!Prefs.rememberTracks(ctx)) return TrackMemo()
+    fun memoFor(ctx: Context, fileKey: String, seriesKey: String?): MediaMemo {
+        if (!Prefs.rememberMediaPrefs(ctx)) return MediaMemo()
         val list = all(ctx)
         val f = list.firstOrNull { it.key == fileKey }?.memo
         val s = seriesKey?.let { k -> list.firstOrNull { it.key == k }?.memo }
-        return TrackMemo(
+        return MediaMemo(
             audio = f?.audio ?: s?.audio?.copy(index = -1),
             sub = f?.sub ?: s?.sub?.let { it.copy(track = it.track?.copy(index = -1)) },
+            scale = f?.scale ?: s?.scale,
         )
     }
 
@@ -165,15 +175,18 @@ object TrackPrefStore {
     fun putSub(ctx: Context, fileKey: String, seriesKey: String?, sub: SubMemo?) =
         update(ctx, fileKey, seriesKey) { it.copy(sub = sub) }
 
+    fun putScale(ctx: Context, fileKey: String, seriesKey: String?, scale: Int?) =
+        update(ctx, fileKey, seriesKey) { it.copy(scale = scale) }
+
     fun clear(ctx: Context) = sp(ctx).edit().remove(KEY).apply()
 
-    private fun update(ctx: Context, fileKey: String, seriesKey: String?, edit: (TrackMemo) -> TrackMemo) {
-        if (!Prefs.rememberTracks(ctx)) return
+    private fun update(ctx: Context, fileKey: String, seriesKey: String?, edit: (MediaMemo) -> MediaMemo) {
+        if (!Prefs.rememberMediaPrefs(ctx)) return
         val now = System.currentTimeMillis()
         val keys = listOfNotNull(fileKey, seriesKey)
         val byKey = all(ctx).associateBy { it.key }.toMutableMap()
         for (k in keys) {
-            val memo = edit(byKey[k]?.memo ?: TrackMemo())
+            val memo = edit(byKey[k]?.memo ?: MediaMemo())
             if (memo.isEmpty) byKey.remove(k) else byKey[k] = Entry(k, memo, now)
         }
         persist(ctx, byKey.values.sortedByDescending { it.updatedAt }.take(MAX))
@@ -187,6 +200,7 @@ object TrackPrefStore {
                     put("k", e.key)
                     e.memo.audio?.let { put("a", it.toJson()) }
                     e.memo.sub?.let { put("s", it.toJson()) }
+                    e.memo.scale?.let { put("sc", it) }
                     put("at", e.updatedAt)
                 },
             )

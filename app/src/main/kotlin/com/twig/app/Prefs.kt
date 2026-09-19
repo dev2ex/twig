@@ -178,17 +178,20 @@ object Prefs {
     }
 
     /**
-     * Remember the audio track / subtitle the user picks and apply it to the next episode
-     * and the next time this file is opened, default on (records see [TrackPrefStore]).
+     * Remember how the user set up a title in the player — audio track, subtitle and picture
+     * scaling — and apply it to the next episode and the next time the file is opened, default
+     * on (records see [MediaPrefStore]).
      *
-     * Deliberately **its own switch**, not a sub-option of [resumePlayback]: "where I was"
-     * and "which language I watch in" are independent wishes, and bolting one onto the
-     * other is exactly the coupling the settings page keeps getting cleaned of.
+     * Deliberately **its own switch**, not a sub-option of [resumePlayback]: "where I was" and
+     * "how I watch this" are independent wishes, and bolting one onto the other is exactly the
+     * coupling the settings page keeps getting cleaned of. The three settings it does cover are
+     * one wish, not three — nobody wants their audio track remembered but their subtitle
+     * forgotten — so they share a switch instead of multiplying it.
      */
-    fun rememberTracks(ctx: Context): Boolean = sp(ctx).getBoolean("remember_tracks", true)
+    fun rememberMediaPrefs(ctx: Context): Boolean = sp(ctx).getBoolean("remember_media_prefs", true)
 
-    fun setRememberTracks(ctx: Context, on: Boolean) {
-        sp(ctx).edit().putBoolean("remember_tracks", on).apply()
+    fun setRememberMediaPrefs(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("remember_media_prefs", on).apply()
     }
 
     fun imageAutoFit(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_IMG_AUTOFIT, true)

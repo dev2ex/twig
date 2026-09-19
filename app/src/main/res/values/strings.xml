@@ -530,10 +530,10 @@
     <string name="settings_speed_n">%1$.1f×</string>
     <string name="settings_resume_playback">Remember playback position</string>
     <string name="settings_resume_playback_desc">Resume videos where you left off. Finished ones are forgotten; up to %1$d titles are kept</string>
-    <string name="settings_remember_tracks">Remember audio track and subtitle</string>
-    <string name="settings_remember_tracks_desc">An audio track or subtitle you pick by hand is selected again next time you open the same title, and on other episodes of the same series; up to %1$d records are kept</string>
+    <string name="settings_remember_media">Remember audio track, subtitle and scaling</string>
+    <string name="settings_remember_media_desc">An audio track, subtitle or picture scaling you pick by hand is applied again next time you open the same title, and on other episodes of the same series; up to %1$d records are kept</string>
     <string name="settings_clear_playback">Clear playback positions</string>
-    <string name="settings_clear_tracks">Clear audio/subtitle choices</string>
+    <string name="settings_clear_media_prefs">Clear remembered playback choices</string>
     <string name="settings_playback_count">%1$d record(s)</string>
     <string name="settings_section_music">Music</string>
     <string name="settings_audio_cache_count">Network music cache count</string>

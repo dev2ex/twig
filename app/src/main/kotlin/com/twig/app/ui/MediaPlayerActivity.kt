@@ -59,8 +59,8 @@ import com.twig.app.R
 import com.twig.app.SubMemo
 import com.twig.app.TrackDesc
 import com.twig.app.TrackMatch
-import com.twig.app.TrackMemo
-import com.twig.app.TrackPrefStore
+import com.twig.app.MediaMemo
+import com.twig.app.MediaPrefStore
 import com.twig.app.databinding.ActivityMediaPlayerBinding
 import com.twig.core.FsRegistry
 import com.twig.core.RandomSource
@@ -143,7 +143,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var subUserChosen = false // once the user has manually picked subtitles, no longer auto-enable embedded tracks
 
     /**
-     * The remembered audio / subtitle choice that applies to this playback (see [TrackPrefStore]),
+     * The remembered audio / subtitle choice that applies to this playback (see [MediaPrefStore]),
      * and the bookkeeping for applying it exactly once.
      *
      * [seriesKey] is what makes the next episode inherit the choice. It is derived from the file
@@ -151,7 +151,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
      * out titles instead, so there it stays null until the episode queue arrives — see
      * [adoptSeriesKey].
      */
-    private var memo = TrackMemo()
+    private var memo = MediaMemo()
     private var seriesKey: String? = null
     private var audioRestored = false // the audio memory has had its one chance on this file
     private var subMemoApplied = false // ditto for OFF / embedded subtitle memories
@@ -848,6 +848,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         scaleMode = (scaleMode.coerceIn(0, 2) + 1) % 3
         resizeSurface()
         b.pgsView.invalidate()
+        saveScaleMemo()
         showGestureHint(
             getString(
                 when (scaleMode) {
@@ -897,7 +898,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
      */
     private fun loadMemo() {
         seriesKey = seriesKeyFor(file)
-        memo = TrackPrefStore.memoFor(this, TrackPrefStore.fileKey(file), seriesKey?.let { TrackPrefStore.seriesKey(it) })
+        memo = MediaPrefStore.memoFor(this, MediaPrefStore.fileKey(file), seriesKey?.let { MediaPrefStore.seriesKey(it) })
         audioRestored = false
         subMemoApplied = false
         extScanned = false
@@ -906,7 +907,11 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // manual choice has been recorded, so "subtitles off" carries over as a memory instead of
         // as a leftover flag. With the feature switched off, a manual choice keeps sticking for
         // the rest of the sitting, which is what those users already expect.
-        if (com.twig.app.Prefs.rememberTracks(this)) subUserChosen = false
+        if (com.twig.app.Prefs.rememberMediaPrefs(this)) subUserChosen = false
+        // Scaling needs no matching — the mode is the whole record — so it applies right here
+        // rather than waiting for tracks. `resizeSurface` is a no-op until a video size is known,
+        // and the size callback runs it again for the new episode anyway.
+        if (isVideo) memo.scale?.let { scaleMode = it.coerceIn(0, 2); resizeSurface() }
     }
 
     /**
@@ -922,7 +927,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         com.twig.app.Episodes.parse(f.name)?.let { "${f.scheme}|${it.prefix}" }
             ?: queue.firstOrNull()?.let { "${it.scheme}|${it.path}" }
 
-    private fun memoKeys() = TrackPrefStore.fileKey(file) to seriesKey?.let { TrackPrefStore.seriesKey(it) }
+    private fun memoKeys() = MediaPrefStore.fileKey(file) to seriesKey?.let { MediaPrefStore.seriesKey(it) }
 
     /** Project a track group into the plain description the memory is keyed on (see [TrackDesc]). */
     private fun descOf(g: Tracks.Group, index: Int): TrackDesc {
@@ -1022,7 +1027,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         val desc = descOf(g, index)
         memo = memo.copy(audio = desc)
         val (fk, sk) = memoKeys()
-        TrackPrefStore.putAudio(this, fk, sk, desc)
+        MediaPrefStore.putAudio(this, fk, sk, desc)
     }
 
     /** Record a subtitle choice the user made; [which] is the index in the subtitle dialog. */
@@ -1039,7 +1044,19 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         } ?: return
         memo = memo.copy(sub = sub)
         val (fk, sk) = memoKeys()
-        TrackPrefStore.putSub(this, fk, sk, sub)
+        MediaPrefStore.putSub(this, fk, sk, sub)
+    }
+
+    /**
+     * Record the scaling mode the user just cycled to. Every mode is stored, the default
+     * included: tapping back to best fit is as deliberate a choice as tapping away from it, and
+     * dropping the record would let a series-level crop override the user's own decision on
+     * this file.
+     */
+    private fun saveScaleMemo() {
+        memo = memo.copy(scale = scaleMode)
+        val (fk, sk) = memoKeys()
+        MediaPrefStore.putScale(this, fk, sk, scaleMode)
     }
 
     /**
@@ -1054,9 +1071,10 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (seriesKey != null || q.isEmpty()) return
         seriesKey = seriesKeyFor(file) ?: return
         val (fk, sk) = memoKeys()
-        val fresh = TrackPrefStore.memoFor(this, fk, sk)
+        val fresh = MediaPrefStore.memoFor(this, fk, sk)
         if (fresh.isEmpty) return
         memo = fresh
+        if (isVideo) fresh.scale?.let { scaleMode = it.coerceIn(0, 2); resizeSurface() }
         if (!audioUserChosen) { audioRestored = false; restoreAudio() }
         if (memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
             rememberedExternalSub(subFiles)?.let { subMemoApplied = true; loadSubtitleFile(it) }

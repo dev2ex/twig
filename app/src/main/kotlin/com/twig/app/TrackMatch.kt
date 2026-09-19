@@ -60,7 +60,7 @@ object TrackMatch {
      * How well [cand] answers the remembered [want].
      *
      * ★ Index agreement counts only when [want] still carries an index, which happens for a
-     * per-file memory alone: [TrackPrefStore.memoFor] strips it from a series-level record,
+     * per-file memory alone: [MediaPrefStore.memoFor] strips it from a series-level record,
      * where the track layout is not the one the index was taken from.
      */
     fun score(want: TrackDesc, cand: TrackDesc): Int {

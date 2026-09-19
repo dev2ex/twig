@@ -61,7 +61,7 @@ class TrackMatchTest {
     }
 
     /**
-     * Same file, though (a per-file memory keeps its index — see `TrackPrefStore.memoFor`),
+     * Same file, though (a per-file memory keeps its index — see `MediaPrefStore.memoFor`),
      * the layout cannot have moved, so the index is allowed to carry the match for tracks that
      * declare no language at all.
      */
