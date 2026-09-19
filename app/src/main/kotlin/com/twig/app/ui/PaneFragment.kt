@@ -152,17 +152,21 @@ class PaneFragment : Fragment() {
             onInfoHash = { node -> viewModel.computeHash(node) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
-        // the column count adapts to the pane's actual width (dual-pane / portrait-vs-landscape widths differ).
-        val glm = GridLayoutManager(requireContext(), 4)
+        // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is
+        // decided inside the layout pass -- see AutoFitGrid for why that timing matters.
+        val glm = AutoFitGrid(requireContext()) { px, rowsOnScreen ->
+            if (::adapter.isInitialized) {
+                adapter.cellPx = px
+                // Cells bound later in this pass read the new edge directly; ones already on screen were bound
+                // with the old one, and notifying the adapter from inside a layout pass throws.
+                if (rowsOnScreen) _b?.list?.post { if (_b != null) adapter.notifyDataSetChanged() }
+            }
+        }
         glm.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
             override fun getSpanSize(position: Int): Int =
                 if (adapter.isCellAt(position)) 1 else glm.spanCount
         }
         b.list.layoutManager = glm
-        b.list.addOnLayoutChangeListener { _, l, _, r, _, _, _, _, _ ->
-            val w = r - l
-            if (w > 0) updateSpan(glm, w)
-        }
         b.list.adapter = adapter
         b.list.itemAnimator = null // The tree changes instantly on tap; item animations would make the highlight frame drift through the transition.
         if (Prefs.rowDivider(requireContext())) b.list.addItemDecoration(RowDivider(requireContext()))
@@ -205,20 +209,6 @@ class PaneFragment : Fragment() {
             viewModel.bootstrap(Prefs.locationExpanded(requireContext(), paneIndex), cur)
         } else {
             viewModel.bootstrap()
-        }
-    }
-
-    /** Grid column count ≈ pane width / 96dp; the cell edge length is fed back to the adapter so cells stay square.
-     * The deduction is the 2dp padding on `item_thumb_cell` itself (one on each side = 4dp total), which is the measured
-     * width of the thumbnail frame — earlier we deducted 8dp, which made the frame 4dp shorter than the width and
-     * CENTER_CROP chopped a strip off the top and bottom of square app icons. */
-    private fun updateSpan(glm: GridLayoutManager, width: Int) {
-        val cell = (96 * resources.displayMetrics.density).toInt()
-        val n = (width / cell).coerceIn(2, 8)
-        adapter.cellPx = width / n - (4 * resources.displayMetrics.density).toInt()
-        if (glm.spanCount != n) {
-            glm.spanCount = n
-            adapter.notifyDataSetChanged()
         }
     }
 
