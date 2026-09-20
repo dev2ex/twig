@@ -110,6 +110,15 @@ class TermSession(
         if (t.isNotEmpty() && TermTitle.path(t) != null) pathTitle = t
     }
 
+    /**
+     * Close the input queue the bridge threads read from. Closing it releases anyone blocked writing into a full
+     * queue — which is the **UI thread**, the one that writes key strokes and mouse reports — and ends the bridge
+     * threads' blocking read. A local session is termux's own and closes its queue in `finishIfRunning`.
+     */
+    fun closeBridgeInput() {
+        if (::session.isInitialized) runCatching { TermBridge.closeInput(session) }
+    }
+
     fun close() {
         closing = true
         alive = false
@@ -117,6 +126,7 @@ class TermSession(
         onOutput = null
         privFd?.let { pfd ->
             privFd = null
+            closeBridgeInput()
             // Kill the process group first, then close the fd: only closing the fd means the shell won't receive SIGHUP
             // until its next write, and a shell stuck reading may never write.
             if (privPid > 0) runCatching { com.twig.app.priv.Pty.nativeKill(privPid) }
@@ -127,6 +137,7 @@ class TermSession(
             if (::session.isInitialized) runCatching { session.finishIfRunning() }
             return
         }
+        closeBridgeInput()
         val sh = shell
         shell = null
         if (sh != null) Thread({ runCatching { sh.close() } }, "twig-term-close").start()
@@ -982,6 +993,11 @@ class TerminalActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Log.w(PRIV_TAG, "pty stdin bridge ended", e)
+            } finally {
+                // Nobody reads the input queue from here on. Close it, or the UI thread hangs inside `write` once
+                // 4096 bytes of keys and mouse reports have piled up behind it (see [TermBridge.closeInput]) —
+                // a session kept on screen after a quick exit would otherwise freeze the app on the next scroll.
+                if (t.gen == myGen) t.closeBridgeInput()
             }
         }, "twig-priv-in").start()
 
@@ -1030,19 +1046,48 @@ class TerminalActivity : AppCompatActivity() {
 
         if (myGen == 1) {
             val readInput = TermBridge.inputReader(s)
-            // Key input → session queue → SSH stdin (sole writer for the entire session lifetime)
+            // Key input → session queue → unbounded buffer → SSH stdin (sole writer for the entire session lifetime).
+            //
+            // ★ **Two threads, and neither may ever end on a write error.** The session queue is termux's 4096-byte
+            // ByteQueue and its `write` blocks while the queue is full — on the **UI thread**, which is where key
+            // strokes and, under a mouse-reporting program (htop, less, vim), every scroll gesture are written. So
+            // the drain thread does nothing but empty that queue into a buffer of our own, and a second thread does
+            // the SSH write, which may stall on a bad network or throw when the connection drops. Letting a write
+            // error end the thread used to hang the app: the stdin bridge is built once per session (see [myGen])
+            // and a reconnect only swaps [TermSession.shell], so the queue was left with no reader at all, filled
+            // up with mouse reports and froze the UI thread inside `write` until the system killed the app.
+            val pending = java.util.concurrent.LinkedBlockingQueue<ByteArray>(STDIN_CHUNKS)
             Thread({
                 val buf = ByteArray(4096)
                 try {
                     while (!t.closing) {
                         val n = readInput(buf)
                         if (n <= 0) break
-                        t.shell?.write(buf, 0, n) // shell is null between reconnects, drop silently
+                        // Full only while the sender is stalled: drop the oldest input rather than push back on the UI thread.
+                        val chunk = buf.copyOf(n)
+                        while (!pending.offer(chunk)) pending.poll()
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "stdin bridge", e)
+                    Log.e(TAG, "stdin drain", e)
+                } finally {
+                    // The invariant this whole bridge rests on: the queue never outlives its reader. This thread is
+                    // the session's only one, so closing on the way out keeps a UI-thread write from blocking forever.
+                    t.closeBridgeInput()
+                    pending.clear()
+                    pending.offer(STDIN_EOF)
                 }
             }, "twig-term-in").start()
+
+            Thread({
+                while (!t.closing) {
+                    val chunk = runCatching { pending.take() }.getOrNull() ?: break
+                    if (chunk === STDIN_EOF) break
+                    // shell is null between reconnects, drop silently; a write that throws loses those bytes the
+                    // same way a dropped connection does — the next reconnect keeps feeding the very same buffer.
+                    runCatching { t.shell?.write(chunk, 0, chunk.size) }
+                        .onFailure { Log.w(TAG, "stdin write dropped ${chunk.size}B", it) }
+                }
+            }, "twig-term-send").start()
         }
 
         // SSH stdout → main thread → emulator (accumulates while the UI is gone, picked up on return)
@@ -1784,6 +1829,16 @@ class TerminalActivity : AppCompatActivity() {
 
         /** A local session that exits within this duration is treated as "failed to start", not "user exited". */
         private const val QUICK_EXIT_MS = 3000L
+
+        /**
+         * How many input chunks the stdin bridge buffers between the session queue and the SSH write. Big enough
+         * that a stalled network never pushes back on the UI thread, small enough that a connection stuck for
+         * minutes doesn't replay an ancient burst of key strokes at the server once it comes back.
+         */
+        private const val STDIN_CHUNKS = 256
+
+        /** Queued by the drain thread on its way out, to end the sender thread without interrupting it mid-write. */
+        private val STDIN_EOF = ByteArray(0)
 
         /** Same tag as Privileged — privileged-related events show up under one filter. */
         private const val PRIV_TAG = "twig-priv"
