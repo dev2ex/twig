@@ -4,6 +4,8 @@ import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.XFile
+import net.schmizz.keepalive.KeepAliveProvider
+import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
@@ -181,7 +183,24 @@ class SftpFileSystem(
 
     /** Creates and authenticates a new SSH connection (not reused); used independently by SFTP and the terminal. */
     private fun newAuthedClient(): SSHClient {
-        val s = SSHClient()
+        // Keepalive: mobile networks / NATs silently kill idle connections after a few minutes, especially when
+        // the app goes background; periodic keepalives keep the connection alive and let us detect a real
+        // disconnect faster.
+        //
+        // ★ **The interval has to be armed before `connect()`.** sshj starts the keepalive thread inside
+        // `connect()` — `onConnect()` does `if (keepAlive.isEnabled()) keepAlive.start()`, and `isEnabled()` is
+        // just `interval > 0`, which is 0 until someone sets it. Setting the interval afterwards leaves the field
+        // set, `isEnabled()` true, and the thread **never started** — a connection that sends nothing at all,
+        // which is exactly how it was until 2026-09-20 (verified against sshj 0.38: set after connect, the process
+        // has an `sshj-Reader` thread and no `sshj-KeepAliveRunner`; set before, both are there).
+        //
+        // KEEP_ALIVE rather than the default HEARTBEAT: HEARTBEAT sends SSH_MSG_IGNORE, which keeps a NAT entry
+        // warm but is never answered, so a connection that died while we were away still looks alive until
+        // something is typed into it. KEEP_ALIVE sends keepalive@openssh.com with want-reply and gives up after
+        // `maxAliveCount` (5) unanswered ones, which surfaces as a dropped connection the terminal reconnects from.
+        val cfg = DefaultConfig().apply { keepAliveProvider = KeepAliveProvider.KEEP_ALIVE }
+        val s = SSHClient(cfg)
+        s.connection.keepAlive.keepAliveInterval = KEEPALIVE_SECONDS
         s.addHostKeyVerifier(hostKeyVerifier())
         try {
             s.connect(config.host, config.port)
@@ -214,10 +233,6 @@ class SftpFileSystem(
             e.printStackTrace() // logcat W/System.err:twig — debug connection failures with empty e.message
             throw FsException("SFTP connection failed: ${e::class.simpleName}: ${e.message}", e)
         }
-        // Keepalive: mobile networks / NATs silently kill idle connections after a
-        // few minutes, especially when the app goes background; periodic keepalives
-        // keep the connection alive and let us detect a real disconnect faster.
-        s.connection.keepAlive.keepAliveInterval = 15
         return s
     }
 
@@ -623,6 +638,13 @@ class SftpFileSystem(
 
     companion object {
         const val SCHEME = "sftp"
+
+        /**
+         * Seconds between keepalives. Short enough for the most impatient carrier NAT (some recycle an idle
+         * TCP entry after a minute), and with sshj's default `maxAliveCount` of 5 it also means a connection
+         * that died while the screen was off is noticed about 75 seconds in, instead of on the next key press.
+         */
+        private const val KEEPALIVE_SECONDS = 15
 
         /** SFTP statuses that describe the connection, not the file ([isServerAnswer]). */
         private val CONNECTION_STATUSES = setOf(
