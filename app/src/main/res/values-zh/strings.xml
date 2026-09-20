@@ -536,6 +536,8 @@
     <string name="settings_speed_n">%1$.1f×</string>
     <string name="settings_resume_playback">记住播放进度</string>
     <string name="settings_resume_playback_desc">下次从上次看到的位置接着播;看完的自动忘掉,最多保留 %1$d 部</string>
+    <string name="settings_fill_cutout">画面延伸到摄像头挖孔区域</string>
+    <string name="settings_fill_cutout_desc">让视频铺满挖孔/刘海所在的那一条,不再显示黑边;如果挖孔正好挡住画面内容,可以关掉</string>
     <string name="settings_remember_media">记住音轨、字幕与画面缩放</string>
     <string name="settings_remember_media_desc">手动选过的音轨、字幕和画面缩放方式,下次打开同一部片、或同一部剧的其他集时自动沿用,最多保留 %1$d 条</string>
     <string name="settings_clear_playback">清除播放进度</string>

@@ -63,6 +63,7 @@ object Prefs {
     private const val KEY_FULLSCREEN = "fullscreen"
     private const val KEY_IMG_AUTOFIT = "img_autofit"
     private const val KEY_TERM_KEEP_AWAKE = "terminal_keep_awake"
+    private const val KEY_FILL_CUTOUT = "video_fill_cutout"
 
     /** Keep screen on for the terminal page, default off (avoid pointless battery drain). */
     fun terminalKeepAwake(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_TERM_KEEP_AWAKE, false)
@@ -217,6 +218,17 @@ object Prefs {
 
     fun setFullscreen(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean(KEY_FULLSCREEN, on).apply()
+    }
+
+    /**
+     * Let video draw under a punch-hole/notch cutout instead of leaving it letterboxed black,
+     * default on. Some devices place the cutout where it visibly clips the picture, so this is
+     * its own switch rather than baked into [fullscreen].
+     */
+    fun fillCutout(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_FILL_CUTOUT, true)
+
+    fun setFillCutout(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_FILL_CUTOUT, on).apply()
     }
 
 

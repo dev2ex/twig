@@ -391,6 +391,12 @@ class SettingsActivity : AppCompatActivity() {
             get = { Prefs.resumePlayback(this) },
             set = { Prefs.setResumePlayback(this, it) },
         )
+        switchRow(
+            getString(R.string.settings_fill_cutout),
+            getString(R.string.settings_fill_cutout_desc),
+            get = { Prefs.fillCutout(this) },
+            set = { Prefs.setFillCutout(this, it) },
+        )
         actionRow(
             getString(R.string.settings_clear_playback),
             getString(R.string.settings_playback_count, PlaybackStore.all(this).size),
