@@ -1,0 +1,7 @@
+The terminal can now show a session's directory in the file pane — local, over SSH, or a path outside the tree, which mounts on top of it and comes down with back. The session list gains a second line with each session's directory or running program, and marks the one on screen.
+
+The player remembers the audio track, subtitle and picture scaling you pick by hand and reuses them on the next episode.
+
+Grid cell size is now a three-step setting.
+
+Fixed: a root terminal that exited as it opened.
