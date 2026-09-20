@@ -189,6 +189,9 @@
     <string name="terminal_end_current">End current session</string>
     <string name="terminal_end_all">End all</string>
     <string name="terminal_keep_awake">Keep screen on</string>
+    <string name="terminal_service_channel">Terminal sessions</string>
+    <string name="terminal_service_title_one">Terminal session open</string>
+    <string name="terminal_service_title_many">%d terminal sessions open</string>
     <string name="terminal_connecting_tag"> · Connecting</string>
     <string name="terminal_closed_tag"> · Ended</string>
     <string name="terminal_locate">Locate current directory</string>

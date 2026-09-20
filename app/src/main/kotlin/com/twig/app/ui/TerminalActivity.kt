@@ -157,6 +157,20 @@ object TermManager {
         private set
     private var nextId = 1L
 
+    /**
+     * Application context, handed over once at startup (see [com.twig.app.TwigApp]). The session list is
+     * static and reachable without a Context, but [TerminalService] has to follow it, and the service is
+     * what keeps the process — and with it every SSH connection's keepalive — out of the freezer.
+     */
+    @Volatile private var app: Context? = null
+
+    fun attach(context: Context) { app = context.applicationContext }
+
+    /** Called after every change to the list, from whichever thread made it. */
+    private fun changed() {
+        app?.let { TerminalService.sync(it) }
+    }
+
     @Synchronized fun list(): List<TermSession> = ArrayList(sessions)
 
     @Synchronized fun isEmpty(): Boolean = sessions.isEmpty()
@@ -165,11 +179,15 @@ object TermManager {
         val t = TermSession(nextId++, scheme, title)
         sessions.add(t)
         current = t
+        changed()
         return t
     }
 
     @Synchronized fun select(t: TermSession) {
-        if (sessions.contains(t)) current = t
+        if (sessions.contains(t)) {
+            current = t
+            changed() // the notification names the current session
+        }
     }
 
     /** Remove and close a session; returns the session that should be shown after removal (may be null). */
@@ -180,6 +198,7 @@ object TermManager {
         if (current === t) {
             current = sessions.getOrNull(idx) ?: sessions.lastOrNull()
         }
+        changed()
         return current
     }
 
@@ -187,6 +206,7 @@ object TermManager {
         for (s in sessions) s.close()
         sessions.clear()
         current = null
+        changed()
     }
 }
 

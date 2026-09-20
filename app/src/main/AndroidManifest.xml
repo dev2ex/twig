@@ -45,6 +45,10 @@
     <!-- Silent remote command execution (CmdService): a command may run for
          minutes, the process must not be reaped -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Terminal sessions: not a data sync, not media — an interactive session the user is holding open.
+         "specialUse" is the type that says so, and unlike dataSync it carries no runtime budget, so a
+         session left open all afternoon is not stopped out from under the user. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Fingerprint unlock (optional shortcut for the master password, API 28+).
@@ -308,6 +312,19 @@
             android:name=".ui.CmdService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Terminal sessions: open sessions outlive their Activity, and a cached
+             process is a frozen process — without this, an SSH connection's keepalive
+             thread stops the moment the user switches away and the connection is dead
+             by the time they come back -->
+        <service
+            android:name=".ui.TerminalService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user's open terminal sessions and their SSH connections alive while the app is in the background" />
+        </service>
 
         <!-- Copy / move / compress foreground service: progress goes to the
              notification, the dialog can be dismissed to background, the process

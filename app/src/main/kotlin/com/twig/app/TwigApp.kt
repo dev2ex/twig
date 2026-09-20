@@ -25,6 +25,9 @@ class TwigApp : Application() {
         registerBaseFs(this)
         MediaScan.install(this) // local writes → notify the system media store, so copied photos show up in Gallery
         Privileged.restore(this) // if root/Shizuku was on last time, reconnect it in the background (silently stay off on failure)
+        // Terminal sessions outlive their Activity; the session list needs a Context so its foreground
+        // service can follow it (see TermManager.attach / TerminalService).
+        com.twig.app.ui.TermManager.attach(this)
     }
 
     companion object {

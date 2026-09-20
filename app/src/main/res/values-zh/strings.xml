@@ -189,6 +189,9 @@
     <string name="terminal_end_current">结束当前会话</string>
     <string name="terminal_end_all">全部结束</string>
     <string name="terminal_keep_awake">屏幕常亮</string>
+    <string name="terminal_service_channel">终端会话</string>
+    <string name="terminal_service_title_one">终端会话进行中</string>
+    <string name="terminal_service_title_many">%d 个终端会话进行中</string>
     <string name="terminal_connecting_tag"> · 连接中</string>
     <string name="terminal_closed_tag"> · 已结束</string>
     <string name="terminal_locate">跳转到当前目录</string>
