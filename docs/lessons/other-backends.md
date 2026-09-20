@@ -1,7 +1,7 @@
 # Other backends and odds and ends
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **★ A launcher shortcut icon must not rely on `android:tint`** (2026-08-27, `ShortcutIcons`):

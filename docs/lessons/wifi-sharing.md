@@ -1,7 +1,7 @@
 # WiFi sharing
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **Reworking "all backends" mode (★ 2026-08-10, 0.96.0 → 0.97.0)**: the first version of that

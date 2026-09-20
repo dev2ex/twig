@@ -17,7 +17,7 @@ captures/
 keystore.properties
 
 # Machine-local: test device address, release directory, local service credentials
-CLAUDE.local.md
+AGENTS.local.md
 .claude/
 
 # Internal security reviews / audit reports — findings, file:line and repro details

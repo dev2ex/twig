@@ -1,7 +1,7 @@
 # git viewer
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **Cache layering in the git view (2026-07-17)**: the tree's `children` cache

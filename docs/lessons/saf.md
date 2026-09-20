@@ -1,7 +1,7 @@
 # SAF (Storage Access Framework)
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **Files in a SAF tree must not be treated as outsiders (★ 2026-08-26)**: the user's words were

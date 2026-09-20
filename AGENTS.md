@@ -12,9 +12,11 @@
 > expensive. Keeping them out of this file is deliberate: what gets loaded every session
 > stays short, and the detail is one read away.
 >
-> The file keeps the name `CLAUDE.md` because Claude Code reads it automatically; the
-> content applies to humans just as well. Machine-specific settings (test device
-> address, release directory, …) live in `CLAUDE.local.md`, which is not committed.
+> The file is named `AGENTS.md` because coding agents read it automatically; the content
+> applies to humans just as well. There is deliberately **one** copy — it was duplicated
+> per-agent for a while and the copies drifted a day out of sync. Machine-specific
+> settings (test device address, release directory, …) live in `AGENTS.local.md`, which is
+> not committed.
 
 A size-first, dual-pane Android file manager, one tree over every source: plain Kotlin + XML
 Views, no Material library, minimal dependencies.
@@ -36,12 +38,27 @@ Views, no Material library, minimal dependencies.
 - **Verification discipline**: before installing, always confirm with aapt that
   `versionName` is the build you just made. A failed build once got masked by a
   pipeline `exit 0`, and an old APK shipped as a new one (the 0.20.3 == 0.20.2 incident).
-- **Version numbers**: only bump `versionCode` (+1) and `versionName` in
-  `app/build.gradle.kts` when you are really installing for testing or delivering
-  externally; fixes bump the patch component, features bump the minor one. Small
-  intermediate iterations within one round of polishing (tweaking a corner radius or
-  spacing back and forth) only need a compile check
+- **Version numbers**: `versionCode` (+1) and `versionName` in `app/build.gradle.kts`
+  move **only for a release that actually goes out**, never for a test build. A test build
+  is signed with the debug key (`debugSign=true`) and installs straight over the previous
+  one, so it needs no number of its own — and spending one on a build nobody else receives
+  is exactly how 1.9.1 and 1.9.2 became versions that never existed. Small intermediate
+  iterations within one round of polishing (tweaking a corner radius or spacing back and
+  forth) only need a compile check
   (`compileFullReleaseKotlin` / `assembleFullRelease`), not a version bump each time.
+  ★ **Which component moves is decided by the changelog, not by the commit types.**
+  Write the changelog first, then read it back: any sentence saying something is *new* or
+  *now possible* makes it a **minor**; a changelog that only corrects behaviour, or only
+  records an internal change, makes it a **patch**. The rule used to be "fixes bump the
+  patch component, features bump the minor one", and it judged the wrong thing — Twig is
+  an app with no callers, so "what kind of work was this" tells a user nothing. It also
+  had no answer for a `build:` or `chore:` release, and it filed 1.8.5 (whose changelog
+  says "No user-visible change") in the same tier as 1.9.3 (a crash on Android 9 and 10).
+  Reading the changelog instead costs nothing: it has to be written anyway, it is the one
+  text the user actually sees, and build or chore work lands on patch by itself because it
+  cannot produce a "this is new" sentence. What no component can express is **urgency** —
+  F-Droid has no "update now" flag, so a crash, data-loss or security fix has to say so in
+  the changelog's first sentence.
   ★ **Bumping `versionCode` means writing a changelog in the same commit**:
   `fastlane/metadata/android/{en-US,zh-CN}/changelogs/<the new versionCode>.txt`,
   500 characters or less, and the file is named after the **versionCode, not the version
@@ -52,13 +69,13 @@ Views, no Material library, minimal dependencies.
 What happens after that — which device to install on, where builds get published, how
 you get told about it — is every developer's own preference, so it is deliberately not
 in this file. The setup used on the machine this was written on lives in
-`CLAUDE.local.md`, which is not committed.
+`AGENTS.local.md`, which is not committed.
 
 ## Build environment
 
 - **Release is signed with our own keystore**, whose credentials are read from
   `keystore.properties` in the repository root (path and passwords are in
-  `CLAUDE.local.md`; neither the key nor that file is committed).
+  `AGENTS.local.md`; neither the key nor that file is committed).
   ★ When the file is missing, release produces an **unsigned** APK rather than silently
   falling back to the debug config: the AOSP debug key is public, so anyone could sign an
   APK that installs over the real one, and a silent fallback would bury that trap again
@@ -130,8 +147,10 @@ each write `= null`.
   preferences in `Prefs` — all SharedPreferences.
 - Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
   `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
-  **Audio track / subtitle memory** (`TrackPrefStore` + `TrackMatch`): a choice the user makes
-  by hand is applied again on the next episode and the next time the file is opened. Two rules
+  **Playback choice memory** (`MediaPrefStore` + `TrackMatch`): the audio track, the subtitle
+  and the picture scaling a user picks by hand are applied again on the next episode and the
+  next time the file is opened (scaling rides along because it has the same scope — every
+  episode of a show shares an aspect ratio — and needs no matching, the mode is the record). Two rules
   carry it: the record is the track's **identity** (language / label / codec), never its index —
   episodes order their tracks differently, so an index is a wrong answer waiting to happen —
   and a match below `TrackMatch.MIN_SCORE` selects **nothing**, because playing an episode in a
@@ -140,6 +159,7 @@ each write `= null`.
   same for every episode. Scope is per file, falling back per series (`Episodes` prefix, or the
   queue's first episode for a media server, whose names are titles); only deliberate choices are
   written, never what the player auto-selected, or one wrong default would be frozen forever.
+  One switch covers all three (`Prefs.rememberMediaPrefs`) — they are one wish, not three.
   The hex table itself is `HexPane` (one RecyclerView + one `HexSource` + the row rendering),
   shared by the viewer and `HexCompareActivity`; highlights come from a single `hits` hook, so
   search hits and byte differences take the same rendering path.
@@ -162,6 +182,18 @@ each write `= null`.
   difference can never be reached.
 - Git: `GitActivity` (status/history), `DiffActivity` (two-column patience diff);
   SFTP repositories run git remotely over exec via `SshGitData`.
+- **Terminal → pane** (`TerminalActivity.locateCurrentDir`): "Locate current directory" takes one of
+  two routes, and which one depends on whether the directory is in the pane's tree at all.
+  **In it** — a local path, or a remote one inside the subdirectory the SFTP connection mounts —
+  it is an ordinary `MainActivity.revealIntent`, so the user lands in the tree they know and the pane
+  keeps the result. **Outside it** there is no row to reveal, so `MainActivity.locateIntent` pins the
+  directory on top of the tree like an externally opened archive (`PaneViewModel.mountLocated`) and
+  the back key takes it down, restores what was there and returns to the session — which is why that
+  route does not finish the terminal. Reaching such a path needs a filesystem that can:
+  `Connections.sftpRootTwin` registers a second one for the same server rooted at `/`, kept for the
+  life of the process (a copy in flight resolves its filesystem by scheme on every file).
+  Where the directory itself comes from is its own problem, see
+  [docs/lessons/terminal-local.md](docs/lessons/terminal-local.md).
 - Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
   `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
   (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).
@@ -446,9 +478,11 @@ add its symptom here.
   share the exec lock; the extracted `.so` must never be writable even for an instant; the
   privileged terminal is its own menu item and never falls back silently.
   One-shot `cat` streams must check the exit status — EOF is not success.
+  `su` has to be a **child of a shell**, never the process the pty was forked into.
   *Explains*: a command that hangs until timeout, `/sdcard` listing as empty, "the dialog
   has no options at all", a root process left alive after an upgrade, a file that vanished
-  when moved into a place even root could not write.
+  when moved into a place even root could not write, a root terminal that exits with code 1
+  the moment it opens and prints nothing.
 - **[RAR and F-Droid](docs/lessons/rar-and-fdroid.md)** — `full` and `libre` differ in RAR
   **alone**; check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`; the
   verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads
@@ -482,8 +516,14 @@ add its symptom here.
   returning to the foreground may arm the size thaw; a terminal font is acceptable only
   at a 0.5em advance; `attachSession` forks the shell itself; the key bar shares one text
   size.
+  A local shell reports nothing about itself: the session list's second line is an OSC title,
+  which Android's mksh never writes — the prompt has to write it (the directory, and only the
+  directory), with the escape wrapped in mksh's `\001` delimiters or line editing drifts; a
+  privileged session sources no rc at all unless `$ENV` names one the shell uid can read. Never
+  type such a hook into a *remote* shell: it is echoed, and it lands in that server's history.
   *Explains*: a garbled screen after screen-off, fat Chinese and a thin `●`, tab
-  completion finding no commands, pinch zoom doing nothing, clipped key labels.
+  completion finding no commands, pinch zoom doing nothing, clipped key labels, a local
+  session whose row stays one line while SSH rows show what is running.
 - **[Tree and adapter](docs/lessons/tree-and-adapter.md)** — a duplicate row key makes
   DiffUtil pick the wrong row; for async expansion the later tap wins, and "do not
   accordionExpand" ≠ "do not expand"; writes are gated by `isMutable()` /

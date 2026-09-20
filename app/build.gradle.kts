@@ -6,7 +6,7 @@ plugins {
 }
 
 // Release signing: the key **never goes into the repo**; it's read from
-// keystore.properties (path / passwords in CLAUDE.local.md).
+// keystore.properties (path / passwords in AGENTS.local.md).
 // If the file is missing -> release produces an **unsigned APK**, not a silent
 // fallback to the debug key.
 // ★ The debug key is the AOSP public one; anyone can sign an APK that
@@ -41,7 +41,7 @@ val debugSign = (
     )?.toBoolean() == true
 
 // Default assembleFullRelease keeps producing the one fat APK with arm64-v8a +
-// x86_64 (documented in CLAUDE.md). Pass -PabiSplit=true to instead get three
+// x86_64 (documented in AGENTS.md). Pass -PabiSplit=true to instead get three
 // separate per-ABI APKs (armeabi-v7a too) for size/compatibility comparison —
 // see splits { abi {} } below.
 val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
@@ -74,7 +74,7 @@ android {
     // license, non-free, F-Droid rejects it); full is the self-built / self-
     // distributed complete build. **They differ in RAR alone** — don't sneak
     // other differences into these two flavors.
-    // See CLAUDE.md "RAR and F-Droid".
+    // See AGENTS.md "RAR and F-Droid".
     flavorDimensions += "distribution"
     productFlavors {
         register("full") { dimension = "distribution"; isDefault = true }

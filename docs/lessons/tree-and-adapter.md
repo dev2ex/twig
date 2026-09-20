@@ -1,7 +1,7 @@
 # Tree and adapter (`PaneViewModel` / `FileAdapter`)
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **Two rows with the same key = one of them expands to nothing (★ 2026-08-17,

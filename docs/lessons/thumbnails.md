@@ -1,7 +1,7 @@
 # Thumbnails and frame grabbing
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **Network video thumbnails (★ 2026-07-22, the whole `Thumbs.genVideoNetworkFrame`

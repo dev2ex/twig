@@ -1,7 +1,7 @@
 # SSH, SFTP and the terminal
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
-> shared conventions are in [CLAUDE.md](../../CLAUDE.md); the other sections live
+> shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
 - **SSHJ + BouncyCastle**: the "BC" bundled with Android is a stripped build (no X25519),
