@@ -15,9 +15,11 @@ restic are all implemented from scratch.
 **Version 1.11.0** (versionCode 296) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-<!-- Screenshots are referenced out of fastlane/ rather than copied here: F-Droid
-     needs them at that exact path, and a second copy would put the same 2 MB in
-     the repository twice. -->
+<!-- The eight screenshots above are referenced out of fastlane/ rather than copied
+     here: F-Droid needs them at that exact path, and a second copy would put the
+     same 2 MB in the repository twice. The rest of the gallery is not part of the
+     store listing, so it lives in docs/img/screenshots/ as WebP — same 822x1920
+     resolution, 1.3 MB for nineteen images instead of 4.5 MB. -->
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="Dual pane in landscape">
@@ -33,6 +35,41 @@ restic are all implemented from scratch.
 | Directory compare | Wi-Fi sharing | Built-in terminal |
 |---|---|---|
 | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/05-directory-compare.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/07-wifi-sharing.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/08-terminal.png) |
+
+</details>
+
+<details>
+<summary><strong>The rest of the gallery</strong> — browsing, media servers, viewers, sharing, terminal</summary>
+
+**Browsing**
+
+| Favourites across every source | Long-press menu on a folder | Copying between two sources | Packing into the other pane |
+|---|---|---|---|
+| ![](docs/img/screenshots/browse-favourites.webp) | ![](docs/img/screenshots/browse-folder-menu.webp) | ![](docs/img/screenshots/browse-copy.webp) | ![](docs/img/screenshots/browse-compress.webp) |
+
+**Sources, appearance and shortcuts**
+
+| A document tree named after the app that granted it | Elevated access: root or Shizuku | Light theme, landscape | Shortcuts on the home screen |
+|---|---|---|---|
+| ![](docs/img/screenshots/browse-document-tree.webp) | ![](docs/img/screenshots/settings-elevated-access.webp) | ![](docs/img/screenshots/browse-light-theme.webp) | ![](docs/img/screenshots/shortcuts-home-screen.webp) |
+
+**Media servers and music**
+
+| An Emby library's "Latest" | Music player with waveform | Playlist |
+|---|---|---|
+| ![](docs/img/screenshots/media-emby-latest.webp) | ![](docs/img/screenshots/media-music-player.webp) | ![](docs/img/screenshots/media-music-playlist.webp) |
+
+**Viewers and compare**
+
+| Text viewer, hand-written highlighting | Hex viewer | Text compare with merge arrows | A saved comparison, synced from its row |
+|---|---|---|---|
+| ![](docs/img/screenshots/viewer-text.webp) | ![](docs/img/screenshots/viewer-hex.webp) | ![](docs/img/screenshots/compare-text.webp) | ![](docs/img/screenshots/compare-saved.webp) |
+
+**Sharing, terminal and git**
+
+| Another Twig found over UDP | A share mounted back as WebDAV | Git status beside a terminal | A command pinned to the home screen |
+|---|---|---|---|
+| ![](docs/img/screenshots/share-devices-found.webp) | ![](docs/img/screenshots/share-as-webdav.webp) | ![](docs/img/screenshots/terminal-git.webp) | ![](docs/img/screenshots/terminal-command-shortcut.webp) |
 
 </details>
 

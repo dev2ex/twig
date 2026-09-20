@@ -13,8 +13,10 @@
 **版本 1.11.0**(versionCode 296)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-<!-- 截图直接引用 fastlane/ 下的那份,不在这里再放一遍:F-Droid 要求它们位于那个
-     确切路径,复制一份等于把同样的 2 MB 在仓库里存两次。 -->
+<!-- 上面这八张直接引用 fastlane/ 下的那份,不在这里再放一遍:F-Droid 要求它们位于
+     那个确切路径,复制一份等于把同样的 2 MB 在仓库里存两次。其余的截图不进商店页,
+     所以以 WebP 放在 docs/img/screenshots/ ——分辨率仍是 822x1920,十九张合计
+     1.3 MB,而不是 4.5 MB。 -->
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="横屏双面板">
@@ -30,6 +32,41 @@
 | 目录对比 | WiFi 共享 | 内置终端 |
 |---|---|---|
 | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/05-directory-compare.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/07-wifi-sharing.png) | ![](fastlane/metadata/android/en-US/images/phoneScreenshots/08-terminal.png) |
+
+</details>
+
+<details>
+<summary><strong>其余截图</strong> —— 浏览、媒体服务器、查看器、共享、终端</summary>
+
+**浏览**
+
+| 收藏横跨所有来源 | 目录长按菜单 | 跨来源复制 | 打包到对侧面板 |
+|---|---|---|---|
+| ![](docs/img/screenshots/browse-favourites.webp) | ![](docs/img/screenshots/browse-folder-menu.webp) | ![](docs/img/screenshots/browse-copy.webp) | ![](docs/img/screenshots/browse-compress.webp) |
+
+**来源、外观与快捷方式**
+
+| 文档树按授权的那个应用命名 | 特权访问:root 或 Shizuku | 浅色主题,横屏 | 桌面上的快捷方式 |
+|---|---|---|---|
+| ![](docs/img/screenshots/browse-document-tree.webp) | ![](docs/img/screenshots/settings-elevated-access.webp) | ![](docs/img/screenshots/browse-light-theme.webp) | ![](docs/img/screenshots/shortcuts-home-screen.webp) |
+
+**媒体服务器与音乐**
+
+| Emby 媒体库的「最新」 | 音乐播放器与波形 | 播放列表 |
+|---|---|---|
+| ![](docs/img/screenshots/media-emby-latest.webp) | ![](docs/img/screenshots/media-music-player.webp) | ![](docs/img/screenshots/media-music-playlist.webp) |
+
+**查看器与对比**
+
+| 文本查看器,手写着色 | Hex 查看器 | 文本对比,逐块合并箭头 | 保存的对比,从那行直接同步 |
+|---|---|---|---|
+| ![](docs/img/screenshots/viewer-text.webp) | ![](docs/img/screenshots/viewer-hex.webp) | ![](docs/img/screenshots/compare-text.webp) | ![](docs/img/screenshots/compare-saved.webp) |
+
+**共享、终端与 Git**
+
+| UDP 扫到另一台 Twig | 共享反过来挂成 WebDAV | Git 状态与终端并排 | 命令固定到桌面 |
+|---|---|---|---|
+| ![](docs/img/screenshots/share-devices-found.webp) | ![](docs/img/screenshots/share-as-webdav.webp) | ![](docs/img/screenshots/terminal-git.webp) | ![](docs/img/screenshots/terminal-command-shortcut.webp) |
 
 </details>
 
