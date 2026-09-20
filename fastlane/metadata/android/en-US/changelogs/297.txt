@@ -1,0 +1,5 @@
+Fixed: the app could freeze and be killed after an SSH session reconnected — a few scrolls in htop were enough.
+
+Fixed: SSH connections sent no keepalives at all, so idle terminals and SFTP transfers were dropped by the first impatient router. Open sessions now keep a notification while they run — that is what stops Android freezing them; it names the current one and can end them all.
+
+Fixed: video left a black strip beside the camera cutout; a setting turns it off if it clips the picture.
