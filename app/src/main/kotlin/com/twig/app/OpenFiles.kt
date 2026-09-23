@@ -23,6 +23,9 @@ object OpenFiles {
         "txt", "log", "md", "markdown", "json", "xml", "csv", "ini", "conf", "cfg", "properties",
         "html", "htm", "css", "js", "kt", "kts", "java", "c", "cpp", "h", "py",
         "sh", "gradle", "yml", "yaml", "toml", "rs", "go", "sql",
+        "bash", "zsh", "cc", "cxx", "hpp", "hh", "hxx", "mjs", "cjs", "jsx", "tsx", "mts", "cts",
+        "cs", "csx", "php", "rb", "rake", "gemspec", "ru", "lua", "pl", "pm", "t",
+        "swift", "dart", "scala",
     )
 
     private val PREVIEW_EXT = setOf("md", "markdown", "html", "htm")

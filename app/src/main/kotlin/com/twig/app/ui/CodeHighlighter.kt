@@ -145,19 +145,148 @@ object CodeHighlighter {
             ),
             annotation = '#',
         )
-        put("c", c); put("h", c); put("cpp", c)
+        for (e in listOf("c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx")) put(e, c)
+        val jsKeywords = setOf(
+            "function", "var", "let", "const", "if", "else", "for", "while", "do",
+            "switch", "case", "default", "break", "continue", "return", "new", "delete",
+            "typeof", "instanceof", "in", "of", "this", "null", "undefined", "true",
+            "false", "class", "extends", "super", "import", "export", "from", "async",
+            "await", "yield", "try", "catch", "finally", "throw", "void", "get", "set",
+            "static",
+        )
+        val js = Lang(jsKeywords, backtick = true, annotation = '@')
+        for (e in listOf("js", "mjs", "cjs", "jsx")) put(e, js)
+        val ts = Lang(
+            jsKeywords + setOf(
+                "interface", "type", "enum", "implements", "private", "public", "protected",
+                "readonly", "abstract", "declare", "namespace", "module", "keyof", "as", "is",
+                "any", "unknown", "never", "number", "string", "boolean", "satisfies",
+            ),
+            backtick = true, annotation = '@',
+        )
+        // plain "ts" is MPEG-TS video as far as OpenFiles is concerned; mapped anyway for "open as text"
+        for (e in listOf("ts", "tsx", "mts", "cts")) put(e, ts)
+        val cs = Lang(
+            setOf(
+                "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+                "checked", "class", "const", "continue", "decimal", "default", "delegate", "do",
+                "double", "else", "enum", "event", "explicit", "extern", "false", "finally",
+                "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int",
+                "interface", "internal", "is", "lock", "long", "namespace", "new", "null",
+                "object", "operator", "out", "override", "params", "private", "protected",
+                "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof",
+                "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
+                "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
+                "virtual", "void", "volatile", "while", "var", "async", "await", "dynamic",
+                "get", "set", "value", "yield", "record", "init", "where", "nameof", "when",
+            ),
+            annotation = '#',
+        )
+        put("cs", cs); put("csx", cs)
         put(
-            "js",
+            "php",
             Lang(
                 setOf(
-                    "function", "var", "let", "const", "if", "else", "for", "while", "do",
-                    "switch", "case", "default", "break", "continue", "return", "new", "delete",
-                    "typeof", "instanceof", "in", "of", "this", "null", "undefined", "true",
-                    "false", "class", "extends", "super", "import", "export", "from", "async",
-                    "await", "yield", "try", "catch", "finally", "throw", "void", "get", "set",
-                    "static",
+                    "abstract", "and", "array", "as", "break", "callable", "case", "catch",
+                    "class", "clone", "const", "continue", "declare", "default", "do", "echo",
+                    "else", "elseif", "empty", "enddeclare", "endfor", "endforeach", "endif",
+                    "endswitch", "endwhile", "extends", "final", "finally", "fn", "for",
+                    "foreach", "function", "global", "if", "implements", "include",
+                    "include_once", "instanceof", "insteadof", "interface", "isset", "list",
+                    "match", "namespace", "new", "or", "print", "private", "protected", "public",
+                    "readonly", "require", "require_once", "return", "static", "switch", "throw",
+                    "trait", "try", "unset", "use", "var", "while", "xor", "yield", "true",
+                    "false", "null", "self", "parent", "int", "float", "bool", "string", "void",
+                    "mixed",
                 ),
-                backtick = true, annotation = '@',
+                lineComments = arrayOf("//", "#"), annotation = '$', caseInsensitive = true,
+            ),
+        )
+        val ruby = Lang(
+            setOf(
+                "alias", "and", "begin", "break", "case", "class", "def", "defined", "do",
+                "else", "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next",
+                "nil", "not", "or", "redo", "rescue", "retry", "return", "self", "super", "then",
+                "true", "undef", "unless", "until", "when", "while", "yield", "require",
+                "require_relative", "include", "extend", "attr_reader", "attr_writer",
+                "attr_accessor", "private", "protected", "public", "raise", "lambda", "proc",
+                "puts", "__FILE__", "__LINE__",
+            ),
+            lineComments = arrayOf("#"), blockStart = "=begin", blockEnd = "=end",
+            backtick = true, annotation = '@',
+        )
+        for (e in listOf("rb", "rake", "gemspec", "ru")) put(e, ruby)
+        put(
+            "lua",
+            Lang(
+                setOf(
+                    "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+                    "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
+                    "true", "until", "while", "self", "require", "pairs", "ipairs", "print",
+                ),
+                lineComments = arrayOf("--"), blockStart = "--[[", blockEnd = "]]",
+                typeHl = false,
+            ),
+        )
+        val perl = Lang(
+            setOf(
+                "my", "our", "local", "sub", "if", "elsif", "else", "unless", "while", "until",
+                "for", "foreach", "do", "last", "next", "redo", "return", "package", "use",
+                "no", "require", "BEGIN", "END", "and", "or", "not", "eq", "ne", "lt", "gt",
+                "le", "ge", "cmp", "undef", "defined", "print", "printf", "say", "die", "warn",
+                "eval", "shift", "push", "pop", "unshift", "splice", "keys", "values", "each",
+                "exists", "delete", "scalar", "ref", "bless", "wantarray", "open", "close",
+                "chomp", "split", "join", "map", "grep", "sort", "reverse", "qw", "__END__",
+                "__DATA__",
+            ),
+            lineComments = arrayOf("#"), blockStart = "\n=", blockEnd = "\n=cut", // POD: any line starting with =
+            backtick = true, annotation = '$',
+        )
+        put("pl", perl); put("pm", perl); put("t", perl)
+        put(
+            "swift",
+            Lang(
+                setOf(
+                    "func", "let", "var", "if", "else", "guard", "switch", "case", "default",
+                    "for", "in", "while", "repeat", "break", "continue", "return", "class",
+                    "struct", "enum", "protocol", "extension", "import", "init", "deinit",
+                    "self", "Self", "super", "nil", "true", "false", "throw", "throws",
+                    "rethrows", "try", "catch", "do", "defer", "where", "as", "is", "public",
+                    "private", "fileprivate", "internal", "open", "static", "final", "override",
+                    "mutating", "lazy", "weak", "unowned", "inout", "typealias", "associatedtype",
+                    "some", "any", "async", "await", "actor", "get", "set", "willSet", "didSet",
+                ),
+                triple = true, annotation = '@',
+            ),
+        )
+        put(
+            "dart",
+            Lang(
+                setOf(
+                    "abstract", "as", "assert", "async", "await", "break", "case", "catch",
+                    "class", "const", "continue", "default", "deferred", "do", "dynamic", "else",
+                    "enum", "export", "extends", "extension", "external", "factory", "false",
+                    "final", "finally", "for", "get", "if", "implements", "import", "in", "is",
+                    "late", "library", "mixin", "new", "null", "on", "operator", "part",
+                    "required", "rethrow", "return", "sealed", "set", "static", "super", "switch",
+                    "this", "throw", "true", "try", "typedef", "var", "void", "while", "with",
+                    "yield", "int", "double", "num", "bool", "String",
+                ),
+                triple = true, annotation = '@',
+            ),
+        )
+        put(
+            "scala",
+            Lang(
+                setOf(
+                    "abstract", "case", "catch", "class", "def", "do", "else", "extends", "false",
+                    "final", "finally", "for", "forSome", "if", "implicit", "import", "lazy",
+                    "match", "new", "null", "object", "override", "package", "private",
+                    "protected", "return", "sealed", "super", "this", "throw", "trait", "try",
+                    "true", "type", "val", "var", "while", "with", "yield", "given", "using",
+                    "enum", "then", "extension",
+                ),
+                triple = true, annotation = '@',
             ),
         )
         put(
@@ -173,18 +302,16 @@ object CodeHighlighter {
                 lineComments = arrayOf("#"), blockStart = null, triple = true, annotation = '@',
             ),
         )
-        put(
-            "sh",
-            Lang(
-                setOf(
-                    "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case",
-                    "esac", "function", "return", "exit", "local", "export", "echo", "read",
-                    "source", "break", "continue", "in", "until", "select", "shift", "eval",
-                    "set", "unset", "trap", "declare", "readonly", "cd", "test",
-                ),
-                lineComments = arrayOf("#"), blockStart = null, backtick = true, typeHl = false,
+        val sh = Lang(
+            setOf(
+                "if", "then", "else", "elif", "fi", "for", "while", "do", "done", "case",
+                "esac", "function", "return", "exit", "local", "export", "echo", "read",
+                "source", "break", "continue", "in", "until", "select", "shift", "eval",
+                "set", "unset", "trap", "declare", "readonly", "cd", "test",
             ),
+            lineComments = arrayOf("#"), blockStart = null, backtick = true, typeHl = false,
         )
+        for (e in listOf("sh", "bash", "zsh")) put(e, sh)
         put(
             "go",
             Lang(
@@ -255,15 +382,16 @@ object CodeHighlighter {
         var i = 0
         while (i < n && out.size < MAX_TOKENS) {
             val c = text[i]
+            // block before line: Lua's `--[[` would otherwise be taken as a `--` line comment
+            if (lang.blockStart != null && text.startsWith(lang.blockStart, i)) {
+                var j = text.indexOf(lang.blockEnd, i + lang.blockStart.length)
+                j = if (j < 0) n else j + lang.blockEnd.length
+                out.add(Token(i, j, COMMENT)); i = j; continue
+            }
             val lc = lang.lineComments.firstOrNull { text.startsWith(it, i) }
             if (lc != null) {
                 var j = text.indexOf('\n', i)
                 if (j < 0) j = n
-                out.add(Token(i, j, COMMENT)); i = j; continue
-            }
-            if (lang.blockStart != null && text.startsWith(lang.blockStart, i)) {
-                var j = text.indexOf(lang.blockEnd, i + lang.blockStart.length)
-                j = if (j < 0) n else j + lang.blockEnd.length
                 out.add(Token(i, j, COMMENT)); i = j; continue
             }
             if (c in lang.quotes || (lang.backtick && c == '`')) {
