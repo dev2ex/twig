@@ -110,8 +110,8 @@ Jellyfin/Emby 服务器,对 UI 来说是同一个东西。任意两者之间的�
 - **只读浏览 restic 备份仓库**,在设备上解密,快照按日期呈现为目录——据我们所知,
   Android 上没有第二个这么做的。
 - **网络视频缩略图不下载整个文件。** Twig 自己解析容器(MP4 采样表、Matroska EBML
-  Cues),定位到时长 1/10 处的关键帧,只取约 2 MB。74 GB 的远程 remux 也能在几秒内
-  出图。
+  Cues),定位到时长 1/10 处的关键帧,只取约 2 MB——文件再大也是这个量,读取量不随
+  体积增长。
 - **纯 Kotlin 从零写的 git 客户端**——状态、历史、双栏 patience diff、worktree 与
   子模块,本地仓库和远程仓库都支持。
 - **真正的蓝光 M2TS 播放**:192 字节 BDAV 包、HDMV 私有 stream type(DTS-HD MA、

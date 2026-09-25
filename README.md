@@ -118,8 +118,8 @@ measured.
   presented as dated folders — as far as we know, nothing else on Android does this.
 - **Thumbnails for network video without downloading the file.** Twig parses the
   container itself (MP4 sample tables, Matroska EBML cues), locates the keyframe
-  at 1/10 of the duration, and fetches roughly 2 MB. A 74 GB remote remux gets a
-  thumbnail in seconds.
+  at 1/10 of the duration, and fetches roughly 2 MB — as much for a huge file as for
+  a small one, because the amount read does not scale with its size.
 - A **git client written from scratch in Kotlin** — status, history, side-by-side
   patience diff, worktrees and submodules, over local *and* remote repositories.
 - **Real Blu-ray M2TS playback**: 192-byte BDAV packets, HDMV private stream
