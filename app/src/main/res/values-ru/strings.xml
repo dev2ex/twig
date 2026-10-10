@@ -7,14 +7,14 @@
     <string name="action_refresh">Обновить</string>
     <string name="strip_up">Вверх</string>
     <string name="strip_refresh">Обновить</string>
-    <string name="strip_new_folder">Новый</string>
+    <string name="strip_new_folder">Новая</string>
     <string name="strip_copy">Копировать</string>
     <string name="strip_move">Переместить</string>
     <string name="strip_rename">Переименовать</string>
     <string name="strip_compress">Сжать</string>
     <string name="strip_delete">Удалить</string>
     <string name="confirm_delete_server">Удалить сервер %1$s?</string>
-    <string name="msg_pick_dir_first">Сначала нажмите на папку, чтобы выбрать её в качестве целевой</string>
+    <string name="msg_pick_dir_first">Сначала нажмите на папку, чтобы выбрать её как целевую</string>
     <string name="msg_dest_not_writable">Получатель не доступен для записи (только чтение); выберите другую папку</string>
     <string name="restic_repo">Хранилище резервных копий Restic</string>
     <string name="restic_locked">Нажмите, чтобы ввести пароль и разблокировать</string>
@@ -26,20 +26,20 @@
     <string name="action_density">Высота строки</string>
     <string name="action_text_size">Размер текста</string>
     <string name="action_sort">Сортировка</string>
-    <string name="action_remember_location">Помнить последнее расположение</string>
-    <string name="action_fullscreen">Полный экран (скрыть статусбар)</string>
+    <string name="action_remember_location">Помнить посл. расположение</string>
+    <string name="action_fullscreen">Полный экран (скр. статусбар)</string>
     <string name="sort_by">Сортировать по</string>
     <string name="sort_name">Имени</string>
     <string name="sort_size">Размеру</string>
     <string name="sort_ext">Расширению</string>
     <string name="sort_date">Дате</string>
     <string name="sort_reversed">Обратная</string>
-    <string name="sort_folders_by">Порядок папок</string>
-    <string name="sort_date_old">Дата (старые первыми)</string>
-    <string name="sort_date_new">Дата (новые первыми)</string>
+    <string name="sort_folders_by">Порядок папок по</string>
+    <string name="sort_date_old">Дате (старые первыми)</string>
+    <string name="sort_date_new">Дате (новые первыми)</string>
     <string name="density_compact">Компактная</string>
     <string name="density_normal">Нормальная</string>
-    <string name="density_large">Свободная</string>
+    <string name="density_large">Увеличенная</string>
     <string name="text_size_small">Маленький</string>
     <string name="text_size_normal">Нормальный</string>
     <string name="text_size_large">Крупный</string>
@@ -78,12 +78,12 @@
     <string name="strip_search">Поиск</string>
     <string name="strip_share">Поделиться</string>
     <string name="strip_history">Недавние</string>
-    <string name="history_title">Недавние местоположения</string>
-    <string name="history_empty">Пока нет недавних местоположений — откройте файл (или представление Git), и папка появится здесь</string>
+    <string name="history_title">Недавние расположения</string>
+    <string name="history_empty">Нет недавних расположений — откройте файл (или представление Git), и папка появится здесь</string>
     <string name="history_clear">Очистить</string>
     <string name="history_git_prefix">Git · %1$s</string>
     <string name="history_conn_missing">Это соединение больше не существует</string>
-    <string name="search_hint">Символ подстановки (например, *.jpg) или обычный текст</string>
+    <string name="search_hint">Символы подстановки (например, *.jpg) либо обычный текст</string>
     <string name="search_result_title">Результаты поиска (%1$d)</string>
     <string name="search_stats">Папка: %1$s\nШаблон: %2$s\nСовпало файлов: %3$d\nСовпало папок: %4$d</string>
     <string name="search_scanning_suffix">\n(сканирование продолжается…)</string>
@@ -176,7 +176,7 @@
     <string name="conn_name">Название/примечание (опционально)</string>
     <string name="sftp_pass_hint">Пароль / пароль-фраза приватного ключа (опционально)</string>
     <string name="sftp_key">Файл приватного ключа (опционально)</string>
-    <string name="sftp_pick_key">Выберите</string>
+    <string name="sftp_pick_key">Выбрать</string>
     <string name="sftp_key_copied">Приватный ключ импортирован: %1$s</string>
     <string name="sftp_key_failed">Не удалось импортировать приватный ключ: %1$s</string>
     <string name="shortcut_terminal">Терминал</string>
@@ -214,8 +214,8 @@
          and ends up looking bigger next to digits whose x-height is only half an em. -->
     <string name="player_speed">%1$s×</string>
     <string name="player_orientation">Заблокировать ориентацию экрана</string>
-    <string name="player_orientation_locked">Ориентация заблокирована</string>
-    <string name="player_orientation_auto">Ориентация следует системе</string>
+    <string name="player_orientation_locked">Поворот заблокирован</string>
+    <string name="player_orientation_auto">Поворот как в системе</string>
     <string name="player_brightness">Яркость %1$d%%</string>
     <string name="player_volume">Громкость %1$d%%</string>
     <string name="player_subtitle">Субтитры</string>
@@ -288,7 +288,7 @@
     <string name="compare_title">Сравнить папки</string>
     <string name="strip_compare">Сравнить</string>
     <string name="compare_need_two">Сначала выберите папку в каждой панели</string>
-    <string name="compare_stat">%1$d совпадений · %2$d различий</string>
+    <string name="compare_stat">%1$d совпад. · %2$d различий</string>
     <string name="compare_switch_side">Сменить сторону</string>
     <string name="compare_side_left">Левая</string>
     <string name="compare_side_right">Правая</string>
@@ -325,9 +325,9 @@
     <string name="img_cmp_undecodable">не удаётся декодировать</string>
     <string name="compare_select_all">Выбрать всё</string>
     <string name="compare_selected">%1$d выб.</string>
-    <string name="compare_copy_to">Копировать выделенное на сторону %1$s</string>
-    <string name="compare_sync_to">Синхронизировать различия со стороной %1$s</string>
-    <string name="compare_delete_side">Удалить выделенное на стороне %1$s</string>
+    <string name="compare_copy_to">Копир. выдел. на сторону %1$s</string>
+    <string name="compare_sync_to">Синхр. различия со стороной %1$s</string>
+    <string name="compare_delete_side">Удалить выдел. на стороне %1$s</string>
     <string name="compare_none_on_side">На активной стороне нет выбранных элементов</string>
     <string name="compare_nothing_to_sync">С этой стороны нечего синхронизировать</string>
     <string name="compare_pick_pair">Выберите файл, существующий с обеих сторон</string>
@@ -427,7 +427,7 @@
     <string name="music_confirm_exit">Покинуть музыкальный плеер? Воспроизведение остановится, а уведомление исчезнет.</string>
     <string name="music_track_count">%1$d трек(ов)</string>
     <string name="music_load_failed">Не удалось открыть ни один трек в этом плейлисте — подключён ли сервер?</string>
-    <string name="music_pin_shortcut">Добавить ярлык "Музыка" на главный экран</string>
+    <string name="music_pin_shortcut">Доб. ярлык "Музыка" на глав. экран</string>
     <!-- Default display name for the always-present Favorites playlist (created on first access). -->
     <string name="playlist_favorites">Избранное</string>
     <string name="music_pin_shortcut_unsupported">Текущий лаунчер не поддерживает закрепление ярлыков</string>
@@ -484,7 +484,7 @@
 
     <!-- Settings page (SettingsActivity) -->
     <string name="settings_section_display">Отображение</string>
-    <string name="settings_show_hidden">Показать скрытые файлы</string>
+    <string name="settings_show_hidden">Показывать скрытые файлы</string>
     <string name="settings_show_hidden_desc">Если отключено, файлы и папки, имена которых начинаются с точки, будут скрыты</string>
     <string name="settings_sniff_types">Определение типа файлов без расширения</string>
     <string name="settings_sniff_types_desc">Считывает первые 4 КБ каждого файла без расширения, чтобы определить его иконку, программу для просмотра и миниатюру. Ценой одной небольшой операции чтения для каждого такого файла, в том числе по сети</string>
@@ -509,8 +509,8 @@
     <string name="settings_slideshow_loop">Зациклить</string>
     <string name="settings_slideshow_loop_desc">Переход к первому изображению после последнего; если отключено, воспроизведение останавливается на последнем изображении</string>
     <string name="settings_slideshow_keep_awake">Не выключать экран во время воспроизведения</string>
-    <string name="settings_slideshow_keep_awake_desc">Предотвращает переход экрана в спящий режим во время автоматического воспроизведения</string>
-    <string name="settings_slideshow_max">Максимальное количество изображений для сканирования</string>
+    <string name="settings_slideshow_keep_awake_desc">Предотвращает засыпание экрана во время автоматического воспроизведения</string>
+    <string name="settings_slideshow_max">Максимум сканируемых изображений</string>
     <string name="settings_slideshow_max_n">%1$d изображений</string>
     <string name="settings_section_thumbs">Миниатюры</string>
     <string name="settings_thumbs_switch">Показать миниатюры</string>
@@ -518,12 +518,12 @@
     <string name="settings_thumbs_network">Генерировать миниатюры для сетевых файлов</string>
     <string name="settings_thumbs_network_desc">Требуется загрузка и декодирование всего файла; если отключено, считывается только миниатюра из заголовка jpg (минимальный трафик). Видео / PDF генерируются только локально</string>
     <string name="settings_thumbs_embedded">Предпочитать встроенные миниатюры файлов</string>
-    <string name="settings_thumbs_embedded_desc">При наличии использовать встроенную в EXIF ​​миниатюру файла jpg напрямую: это быстрее, но обычно всего 160×120 и более размыто</string>
+    <string name="settings_thumbs_embedded_desc">При наличии использовать встроенную в EXIF ​​миниатюру jpg файла напрямую: это быстрее, но обычно всего 160×120 и более размыто</string>
     <string name="settings_clear_thumbs_cache">Очистить кэш миниатюр</string>
     <string name="settings_section_text">Текст</string>
     <string name="settings_text_charsets">Текстовая кодировка</string>
     <string name="charsets_none">Только Unicode</string>
-    <string name="charsets_dialog_note">Если текст не в Unicode, проверяемые кодировки перебираются в указанном порядке, и первой срабатывает та, которая обеспечивает корректное декодирование. Однобайтовые кодировки (windows-125x, ISO-8859-x, KOI8-R) следует размещать в конце — так как они принимают практически любые байты, из-за чего до проверки остальных кодировок дело просто не дойдёт.</string>
+    <string name="charsets_dialog_note">Если текст не в Unicode, проверяемые кодировки перебираются в указанном порядке, и первой срабатывает та, которая обеспечивает корректное декодирование. Однобайтовые кодировки (windows-125x, ISO-8859-x, KOI8-R) следует размещать в конце — так как они принимают практически любые байты, из-за чего до проверки остальных кодировок очередь никогда не дойдёт.</string>
     <string name="charset_item">%1$s \u00b7 %2$s</string>
     <string name="charset_move_up">Выше</string>
     <string name="charset_move_down">Ниже</string>
@@ -546,11 +546,11 @@
     <string name="settings_longpress_speed">Скорость при удержании нажатия</string>
     <string name="settings_speed_n">%1$.1f×</string>
     <string name="settings_resume_playback">Помнить позицию воспроизведения</string>
-    <string name="settings_resume_playback_desc">Продолжить видео с того места, где вы остановились. Просмотренные видео забываются; сохраняется до %1$d названий</string>
+    <string name="settings_resume_playback_desc">Продолжить видео с того места, где вы остановились. Просмотренные видео забываются; запоминается до %1$d названий</string>
     <string name="settings_fill_cutout">Выводить видео под вырезом камеры</string>
-    <string name="settings_fill_cutout_desc">Позвольте видео заполнить полосу позади отверстия или выреза в экране, вместо того чтобы оставлять её чёрной. Отключите, если вырез перекрывает часть изображения</string>
+    <string name="settings_fill_cutout_desc">Позволить видео заполнить полосу позади отверстия или выреза в экране, вместо того чтобы оставлять её чёрной. Отключите, если вырез перекрывает часть изображения</string>
     <string name="settings_remember_media">Запомнить аудиодорожку, субтитры и масштаб</string>
-    <string name="settings_remember_media_desc">Аудиодорожка, субтитры или масштабирование, выбранные вами вручную, будут применены при следующем открытии того же видео, а также к другим сериям того же сериала; сохраняется до %1$d записей</string>
+    <string name="settings_remember_media_desc">Аудиодорожка, субтитры или масштабирование, выбранные вами вручную, будут применены при следующем открытии того же видео, а также к другим сериям того же сериала; запоминается до %1$d записей</string>
     <string name="settings_clear_playback">Очистить позиции воспроизведения</string>
     <string name="settings_clear_media_prefs">Очистить сохранённые параметры воспроизведения</string>
     <string name="settings_playback_count">%1$d записей(и)</string>
@@ -588,7 +588,7 @@
 
     <string name="settings_section_terminal">Терминал</string>
     <string name="settings_term_font">Шрифт терминала</string>
-    <string name="settings_term_font_default">Системный моноширинный (CJK растягивается)</string>
+    <string name="settings_term_font_default">Системный моноширинный (CJK растягиваются)</string>
     <string name="settings_term_font_import">Импортировать файл шрифта…</string>
     <string name="settings_term_font_reset">Вернуться к системному моноширинному</string>
     <string name="msg_font_applied">Шрифт применён: %1$s</string>
@@ -601,7 +601,7 @@
     <string name="msg_colors_invalid">Не найдены подходящие цвета (ожидается termux colors.properties: foreground/background/color0…)</string>
     <string name="picker_title">Выберите файл</string>
     <string name="picker_confirm">Выбрать</string>
-    <string name="picker_hint_single">Нажмите на файл, чтобы выбрать его</string>
+    <string name="picker_hint_single">Нажмите на файл для его выбора</string>
     <string name="picker_hint_multi">Отметьте файлы, затем нажмите Выбрать</string>
     <string name="picker_none_checked">Пока ни один файл не отмечен</string>
     <!-- StreamProvider messages surfaced to other apps via SecurityException / IllegalArgumentException. -->
@@ -630,7 +630,7 @@
     <string name="cmd_title_server">Команда на %1$s</string>
     <string name="cmd_label">Название ярлыка</string>
     <string name="cmd_command">Команда</string>
-    <string name="cmd_workdir">Рабочий каталог (пустота = логин по умолчанию)</string>
+    <string name="cmd_workdir">Рабочий каталог (пусто = логин по умолчанию)</string>
     <string name="cmd_pick_script">Выберите скрипт…</string>
     <string name="cmd_in_terminal">Запустить в терминале (иначе работать в фоновом режиме)</string>
     <string name="cmd_create">Добавить на главный экран</string>
@@ -678,7 +678,7 @@
     <string name="info_folder">Папка</string>
     <string name="info_contains">Содержит</string>
     <string name="info_contains_value">%1$d папок, %2$d файлов</string>
-    <string name="info_contains_all">Содержит (все)</string>
+    <string name="info_contains_all">Содержит (всё)</string>
     <string name="info_total_size">Общий размер</string>
     <string name="info_size">Размер</string>
     <string name="info_size_value">%1$s (%2$s байт)</string>
@@ -820,7 +820,7 @@
     <string name="settings_master_pw">Главный пароль</string>
     <string name="settings_master_pw_off">Выкл. — пароли защищены аппаратным хранилищем ключей данного устройства</string>
     <string name="settings_master_pw_on">Вкл. — требуется каждый раз при запуске приложения</string>
-    <string name="master_pw_note">Сохранённые пароли всегда зашифрованы: ключ хранится в аппаратном хранилище ключей этого устройства и никогда его не покидает, поэтому копирование /data/data в другое место ничего не раскрывает.\n\nГлавный пароль обеспечивает ещё более высокий уровень безопасности — ключ формируется на основе введённых вами данных и нигде не сохраняется, поэтому он остаётся недоступным даже на рутированном устройстве. Его нужно будет вводить один раз при каждом запуске приложения.</string>
+    <string name="master_pw_note">Сохранённые пароли всегда зашифрованы: ключ хранится в аппаратном хранилище ключей этого устройства и никогда его не покидает, поэтому копирование /data/data в другое место ничего не раскрывает.\n\nГлавный пароль обеспечивает ещё более высокий уровень безопасности — ключ формируется на основе введённых вами данных и нигде не сохраняется, поэтому он остаётся недоступным даже на рутированном устройстве. Его нужно будет ввести один раз при каждом запуске приложения.</string>
     <string name="master_pw_enable">Установить главный пароль</string>
     <string name="master_pw_change">Изменить главный пароль</string>
     <string name="master_pw_disable">Отключить главный пароль</string>
@@ -845,11 +845,11 @@
     <string name="settings_backup_export">Экспорт конфигурации</string>
     <string name="settings_backup_export_desc">Подключения, пароли, избранное и настройки — всё в одном .twigbak файле</string>
     <string name="settings_backup_import">Импорт конфигурации</string>
-    <string name="settings_backup_import_desc">Объединить файл .twigbak с этим устройством</string>
+    <string name="settings_backup_import_desc">Объединить .twigbak файл с этим устройством</string>
     <string name="backup_export_title">Экспорт конфигурации</string>
-    <string name="backup_export_note">Выберите пароль для шифрования резервной копии. Оставьте поле пустым, чтобы экспортировать в виде обычного читаемого текста.</string>
+    <string name="backup_export_note">Укажите пароль для шифрования резервной копии. Оставьте поле пустым, чтобы экспортировать в виде обычного читаемого текста.</string>
     <string name="backup_export_warn">Этот файл содержит все пароли к серверам и приватные ключи в открытом виде. Не размещайте его в облачных хранилищах и не пересылайте через мессенджеры.</string>
-    <string name="backup_pw_hint">Пароль (пустое = без шифрования)</string>
+    <string name="backup_pw_hint">Пароль (пусто = без шифрования)</string>
     <string name="backup_import_pw_title">Эта резервная копия зашифрована</string>
     <string name="backup_import_pw_note">Введите пароль, использованный при экспорте.</string>
     <string name="backup_export_failed">Экспорт не удался: %1$s</string>
@@ -862,7 +862,7 @@
     <string name="backup_locked">Сначала разблокируйте с помощью главного пароля</string>
     <string name="picker_hint_dir">Откройте папку, в которую хотите сохранить, а затем нажмите OK</string>
     <string name="backup_pick_dir">Сохранить резервную копию в</string>
-    <string name="backup_pick_file">Выберите файл резервной копии</string>
+    <string name="backup_pick_file">Выберите файл бэкапа</string>
     <string name="backup_exported_at">Экспортировано в %1$s</string>
     <string name="action_lock">Блокировка</string>
     <string name="action_exit">Выйти</string>
@@ -883,17 +883,17 @@
     <!-- About -->
     <string name="settings_section_about">О приложении</string>
     <string name="settings_about">О Twig</string>
-    <string name="about_version">Версия %1$s (%2$d)</string>
+    <string name="about_version">Версия: %1$s (%2$d)</string>
     <string name="about_body">%1$s\nЛицензия: GPL-3.0-only\n\nИсходный код, вопросы и релизы:\n%2$s</string>
-    <string name="about_open">Страница проекта</string>
-    <string name="about_copy">Копировать ссылку</string>
+    <string name="about_open">Посетить</string>
+    <string name="about_copy">Скопировать</string>
     <string name="about_no_browser">На этом устройстве нечем открыть ссылку — вместо этого адрес был скопирован в буфер обмена</string>
     <string name="pdf_page_mode">По одной странице на экран</string>
     <string name="pdf_open_failed">Не удаётся открыть этот PDF</string>
     <string name="settings_swipe_animation">Анимация свайпа</string>
     <string name="settings_swipe_animation_desc">Анимировать переключение панелей при свайпе</string>
     <string name="settings_date_format">Формат даты</string>
-    <string name="date_format_system">Следовать системному региону</string>
+    <string name="date_format_system">Регион системы</string>
     <string name="date_format_ymd">YY-MM-DD</string>
     <string name="date_format_dmy">DD.MM.YY</string>
     <string name="date_format_mdy">MM/DD/YY</string>
