@@ -400,11 +400,11 @@
     <string name="music_sort_title">Название</string>
     <string name="music_sort_album">Альбом</string>
     <string name="music_sort_artist">Исполнитель</string>
-    <string name="music_sort_artist_album_track">Исполнитель → альбом → номер</string>
+    <string name="music_sort_artist_album_track">Исполнитель → альбом → трек</string>
     <string name="music_sort_path">Путь</string>
     <string name="music_sort_filename">Имя файла</string>
     <string name="music_sort_duration">Длительность</string>
-    <string name="music_sort_album_track">Альбом → номер</string>
+    <string name="music_sort_album_track">Альбом → трек</string>
     <string name="music_menu">Музыка</string>
     <string name="music_title">Сейчас Играет</string>
     <string name="music_channel">Сейчас играет</string>
@@ -418,9 +418,9 @@
     <string name="music_export">Экспорт</string>
     <string name="music_export_missing">Плейлист больше не существует</string>
     <string name="music_export_source_missing">Источник недоступен: %1$s</string>
-    <string name="music_export_done">Экспортирован %1$s</string>
+    <string name="music_export_done">Экспортировано %1$s</string>
     <string name="music_export_failed">Ошибка экспорта: %1$s</string>
-    <string name="music_export_invalid_path">Путь трека содержит перенос строки</string>
+    <string name="music_export_invalid_path">Путь трека содержит разрыв строки</string>
     <string name="music_save">Сохранить</string>
     <string name="music_resume">Продолжить воспроизведение</string>
     <string name="music_delete">Удалить плейлист</string>
@@ -483,7 +483,7 @@
     <string name="confirm_remove_saf">Отменить доступ к \"%1$s\"?\n\nОтменяется только разрешение доступа — папка и всё, что в ней находится, остаются на месте, а доступ к ней можно будет снова предоставить в любой момент.</string>
     <string name="saf_remove_failed">Не удалось отозвать это разрешение на доступ</string>
     <string name="saf_root_no_move">Корень дерева документов это право доступа, а не обычная папка — его можно копировать, но нельзя переместить</string>
-    <string name="fav_hint">Нажмите и удерживайте папку, чтобы добавить ее в избранное</string>
+    <string name="fav_hint">Нажмите и удерживайте папку, чтобы добавить её в избранное</string>
     <string name="err_reveal_unsupported">Этот источник не удаётся найти в панели</string>
     <string name="err_conn_deleted">Соответствующее соединение было удалено</string>
     <string name="err_repo_conn_deleted">Соединение, через которое размещался репозиторий, было удалено</string>
@@ -898,8 +898,8 @@
     <string name="settings_about">О Twig</string>
     <string name="about_version">Версия: %1$s (%2$d)</string>
     <string name="about_body">%1$s\nЛицензия: GPL-3.0-only\n\nИсходный код, вопросы и релизы:\n%2$s</string>
-    <string name="about_open">Посетить</string>
-    <string name="about_copy">Скопировать</string>
+    <string name="about_open">Перейти</string>
+    <string name="about_copy">Копировать</string>
     <string name="about_no_browser">На этом устройстве нечем открыть ссылку — вместо этого адрес был скопирован в буфер обмена</string>
     <string name="pdf_page_mode">По одной странице на экран</string>
     <string name="pdf_open_failed">Не удаётся открыть этот PDF</string>
@@ -911,10 +911,10 @@
     <string name="date_format_dmy">DD.MM.YY</string>
     <string name="date_format_mdy">MM/DD/YY</string>
     <string name="music_temporary_playlist">Временный плейлист</string>
-    <string name="smb1_mode">Совместимость с SMB1 (только старые устройства)</string>
-    <string name="settings_folder_counts">Количество элементов папок</string>
-    <string name="settings_folder_counts_desc">Показывать число непосредственных подпапок и файлов в локальных и SMB-папках. Для SMB могут потребоваться дополнительные запросы.</string>
+    <string name="smb1_mode">Совместимость с SMB1 (для устаревших устройств)</string>
+    <string name="settings_folder_counts">Количество элементов в папках</string>
+    <string name="settings_folder_counts_desc">Показывать количество подпапок и файлов в локальных и SMB-папках. Для SMB могут потребоваться дополнительные запросы.</string>
     <string name="folder_counts_description">Папок: %1$d, файлов: %2$d</string>
-    <string name="info_activity_failed">Не удалось открыть Activity</string>
-    <string name="info_app_shortcuts_limited">Android ограничивает доступ к динамическим ярлыкам других приложений. Показаны только ярлыки, объявленные приложением.</string>
+    <string name="info_app_shortcuts_limited">Android ограничивает доступ к динамическим ярлыкам из других приложений. Отображаются только объявленные ярлыки.</string>
+    <string name="info_activity_failed">Не удалось открыть эту активити</string>
 </resources>
