@@ -30,6 +30,9 @@
     native <methods>;
 }
 -keep class com.twig.fs.smb.NativeSmbClient { *; }
+-keep class com.twig.fs.nfs.NativeNfsClient { *; }
+-keep class com.twig.fs.nfs.NfsEntry { *; }
+-keep class com.twig.core.FsException { *; }
 
 # media3 loads the ffmpeg extension renderer reflectively (DefaultRenderersFactory)
 -keep class androidx.media3.decoder.ffmpeg.** { *; }

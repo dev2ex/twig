@@ -782,6 +782,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     override fun onAddServer(type: String) = when (type) {
+        "nfs" -> showNfsDialog()
         "smb" -> showSmbDialog()
         "ftp" -> showFtpDialog()
         "sftp" -> showSftpDialog()
@@ -806,6 +807,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     override fun onEditServer(conn: SavedConnection) = when (conn.type) {
+        "nfs" -> showNfsDialog(conn)
         "smb" -> showSmbDialog(conn)
         "ftp" -> showFtpDialog(conn)
         "sftp" -> showSftpDialog(conn)
@@ -869,6 +871,44 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
                 )
             }
             .show()
+    }
+
+    private fun showNfsDialog(edit: SavedConnection? = null) {
+        val d = com.twig.app.databinding.DialogNfsBinding.inflate(layoutInflater)
+        edit?.let {
+            d.etName.setText(it.name); d.etHost.setText(it.host); d.etPath.setText(it.share)
+            d.etPort.setText(it.nfsVersion.toString())
+            d.etUser.setText(it.nfsUid.toString()); d.etPass.setText(it.nfsGid.toString())
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (edit == null) getString(R.string.action_add_nfs) else getString(R.string.server_edit))
+            .setView(d.root)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val host = d.etHost.text.toString().trim()
+                val export = d.etPath.text.toString().trim()
+                val version = d.etPort.text.toString().toIntOrNull()
+                val uid = d.etUser.text.toString().toIntOrNull()
+                val gid = d.etPass.text.toString().toIntOrNull()
+                if (host.isEmpty()) { d.etHost.error = getString(R.string.nfs_host); return@setOnClickListener }
+                if (!export.startsWith('/') || '\u0000' in export) {
+                    d.etPath.error = getString(R.string.nfs_export); return@setOnClickListener
+                }
+                if (version != 3 && version != 4) {
+                    d.etPort.error = getString(R.string.nfs_version); return@setOnClickListener
+                }
+                if (uid == null || uid < 0) { d.etUser.error = getString(R.string.nfs_uid); return@setOnClickListener }
+                if (gid == null || gid < 0) { d.etPass.error = getString(R.string.nfs_gid); return@setOnClickListener }
+                saveServer(edit, SavedConnection("nfs", host, share = export,
+                    name = d.etName.text.toString().trim(), nfsVersion = version,
+                    nfsUid = uid, nfsGid = gid), "nfs")
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun showFtpDialog(edit: SavedConnection? = null) {

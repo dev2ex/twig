@@ -1068,7 +1068,7 @@ class FileAdapter(
                     "websites" -> R.drawable.ic_website
                     "fav" -> R.drawable.ic_star
                     "cmp" -> R.drawable.ic_compare_fav
-                    "lan" -> R.drawable.ic_lan
+                    "lan", "nfs" -> R.drawable.ic_lan
                     "ftp" -> R.drawable.ic_ftp
                     "dav", "s3" -> R.drawable.ic_cloud
                     // The group id "media" is shared by Jellyfin / Emby (the other two names exist only as defensive aliases), so

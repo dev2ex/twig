@@ -111,7 +111,7 @@ object FileIcons {
 
     /** Same as [sourceIconRes], but given the connection type directly — recents only store the type, not the scheme. */
     fun sourceIconOfType(type: String): Int = when (type) {
-        "smb" -> R.drawable.ic_lan
+        "smb", "nfs" -> R.drawable.ic_lan
         // SFTP and FTP each get their own icon: they are the two most-used connection types,
         // and sharing "a monitor" / "a cloud" with everything else made the path bar and the
         // recents list say nothing about which kind of server a row came from.

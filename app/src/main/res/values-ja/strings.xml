@@ -1063,4 +1063,10 @@
     <string name="website_open_url">URLを開く</string>
     <string name="website_user_agent_global_hint">空欄 = グローバルUser-Agent、未設定ならモバイル/デスクトップの既定値</string>
     <string name="website_global_settings_hint">User-Agentはサイトごとに上書きできます。JavaScript、CSS、非表示要素、リクエストブロックはグローバル設定と統合されます。表示設定は新規サイトの既定値です。</string>
+    <string name="action_add_nfs">＋ Add NFS</string>
+    <string name="nfs_host">NFS server address</string>
+    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
+    <string name="nfs_version">NFS version (3 or 4)</string>
+    <string name="nfs_uid">UID (default 65534)</string>
+    <string name="nfs_gid">GID (default 65534)</string>
 </resources>

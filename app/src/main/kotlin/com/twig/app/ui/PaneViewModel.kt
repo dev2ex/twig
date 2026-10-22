@@ -1166,6 +1166,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 ?: throw FsException(str(R.string.err_reveal_unsupported))
             val group = when {
                 conn.type == "smb" -> "lan"
+                conn.type == "nfs" -> "nfs"
                 conn.type == "webdav" -> "dav"
                 conn.isMediaServer() -> "media" // Jellyfin and Emby share one group.
                 else -> conn.type
@@ -1574,6 +1575,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** The group id the server lives in (lan/dav/sftp/ftp) — matches the mapping used by [revealPath]. */
     private fun groupIdFor(conn: SavedConnection): String = when {
         conn.type == "smb" -> "lan"
+        conn.type == "nfs" -> "nfs"
         conn.type == "webdav" -> "dav"
         conn.isMediaServer() -> "media" // Jellyfin and Emby share one group.
         else -> conn.type
@@ -2833,6 +2835,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             addFile(rows, XFile("file", "/", isDir = true), 0, str(R.string.group_root), capacity("/"))
             if (trashEnabled) addFile(rows, XFile("trash", "/", isDir = true, canWrite = false), 0, str(R.string.trash_title))
             addGroup(rows, "lan", str(R.string.group_lan))
+            addGroup(rows, "nfs", "NFS")
             addGroup(rows, "ftp", "FTP")
             addGroup(rows, "sftp", "SSH (SFTP)")
             addGroup(rows, "dav", "WebDAV")
@@ -3016,7 +3019,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (!exp) return
         val app = getApplication<Application>()
         when (id) {
-            "lan", "ftp", "sftp", "dav", "s3" -> {
+            "lan", "nfs", "ftp", "sftp", "dav", "s3" -> {
                 val type = when (id) {
                     "lan" -> "smb"
                     "dav" -> "webdav"
@@ -3025,6 +3028,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 for (conn in ConnectionStore.all(app).filter { it.type == type }) addServer(rows, conn)
                 val label = when (type) {
                     "smb" -> str(R.string.action_add_smb)
+                    "nfs" -> str(R.string.action_add_nfs)
                     "ftp" -> str(R.string.action_add_ftp)
                     "sftp" -> str(R.string.action_add_sftp)
                     "s3" -> str(R.string.action_add_s3)

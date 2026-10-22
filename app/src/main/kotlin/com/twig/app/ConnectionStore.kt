@@ -62,12 +62,16 @@ data class SavedConnection(
     val userId: String = "",
     /** Explicit legacy SMB1 connection; the default backend remains libsmb2 (SMB2/3). */
     val smb1: Boolean = false,
+    val nfsVersion: Int = 3,
+    val nfsUid: Int = 65534,
+    val nfsGid: Int = 65534,
 ) {
     /** Whether it is a media server (Jellyfin / Emby): these two types behave identically everywhere, judgement centralised here. */
     fun isMediaServer(): Boolean = type == "jellyfin" || type == "emby"
 
     /** Unique identifier for deduplication and persistence keys; for display use [displayLabel]. */
     fun label(): String = when (type) {
+        "nfs" -> "nfs://$host/${share.trim('/')}?version=$nfsVersion&uid=$nfsUid&gid=$nfsGid"
         "smb" -> "smb://$host/$share"
         "sftp" -> "sftp://${user.ifEmpty { "root" }}@$host:$port" + rootSuffix()
         "webdav" -> host
@@ -99,6 +103,7 @@ data class SavedConnection(
      * you can't tell which server a given line points at.
      */
     fun rawShortLabel(): String = when (type) {
+        "nfs" -> "$host/${share.trim('/')}"
         "smb" -> if (share.isEmpty()) host else "$host/$share"
         "webdav" -> host.substringAfter("://").trimEnd('/')
         "s3" -> host.substringAfter("://").trimEnd('/') + if (share.isEmpty()) "" else "/$share"
@@ -114,6 +119,9 @@ data class SavedConnection(
         put("region", region); put("pathStyle", pathStyle)
         put("apiKey", apiKey); put("token", token); put("userId", userId)
         put("smb1", smb1)
+        if (type == "nfs") {
+            put("nfsVersion", nfsVersion); put("nfsUid", nfsUid); put("nfsGid", nfsGid)
+        }
     }
 
     companion object {
@@ -135,6 +143,9 @@ data class SavedConnection(
             token = o.optString("token", ""),
             userId = o.optString("userId", ""),
             smb1 = o.optBoolean("smb1", false),
+            nfsVersion = o.optInt("nfsVersion", 3),
+            nfsUid = o.optInt("nfsUid", 65534),
+            nfsGid = o.optInt("nfsGid", 65534),
         )
     }
 }
