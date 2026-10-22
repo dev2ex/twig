@@ -437,7 +437,7 @@
     <string name="music_confirm_exit">Покинуть музыкальный плеер? Воспроизведение остановится, а уведомление исчезнет.</string>
     <string name="music_track_count">%1$d трек(ов)</string>
     <string name="music_load_failed">Не удалось открыть ни один трек в этом плейлисте — подключён ли сервер?</string>
-    <string name="music_pin_shortcut">Доб. ярлык "Музыка" на глав. экран</string>
+    <string name="music_pin_shortcut">Доб. ярлык "Музыка" на гл. экран</string>
     <!-- Default display name for the always-present Favorites playlist (created on first access). -->
     <string name="playlist_favorites">Избранное</string>
     <string name="music_pin_shortcut_unsupported">Текущий лаунчер не поддерживает закрепление ярлыков</string>
@@ -445,7 +445,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">Избранное</string>
     <string name="group_internal_storage">Внутренний накопитель</string>
-    <string name="group_root">Root</string>
+    <string name="group_root">Корневой каталог</string>
     <string name="group_lan">Локальная сеть (SMB)</string>
     <string name="group_saf">Дерево документов (SAF)</string>
     <string name="volume_grant_saf">Предоставить доступ через SAF</string>
@@ -897,7 +897,7 @@
     <string name="about_version">Версия: %1$s (%2$d)</string>
     <string name="about_body">%1$s\nЛицензия: GPL-3.0-only\n\nИсходный код, вопросы и релизы:\n%2$s</string>
     <string name="about_open">Перейти</string>
-    <string name="about_copy">Копир.</string>
+    <string name="about_copy">Скопир.</string>
     <string name="about_no_browser">На этом устройстве нечем открыть ссылку — вместо этого адрес был скопирован в буфер обмена</string>
     <string name="pdf_page_mode">По одной странице на экран</string>
     <string name="pdf_open_failed">Не удаётся открыть этот PDF</string>
