@@ -73,7 +73,7 @@
     <string name="treemap_reveal">Показать в другой панели</string>
     <string name="menu_swap_pane">Переключиться на другую панель</string>
     <!-- Short labels for the action strip's pinned top row (9sp, single line; long copy is truncated) -->
-    <string name="strip_term">Термин.</string>
+    <string name="strip_term">Терминал</string>
     <string name="strip_swap">Панели</string>
     <string name="strip_menu">Меню</string>
     <string name="strip_search">Поиск</string>
@@ -1099,42 +1099,42 @@
     <string name="website_open_url">Открыть URL</string>
     <string name="website_user_agent_global_hint">Пусто = глобальный User-Agent, затем мобильный/настольный</string>
     <string name="website_global_settings_hint">Сайт может переопределить глобальный User-Agent. JavaScript, CSS, скрытые элементы и блокировка запросов объединяются с глобальными настройками. Параметры отображения задают значения по умолчанию для новых сайтов.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Добавить NFS</string>
+    <string name="nfs_host">Адрес NFS сервера</string>
+    <string name="nfs_export">Путь экспорта (например, /volume1/public)</string>
+    <string name="nfs_version">Версия NFS (3 или 4)</string>
+    <string name="nfs_uid">UID (по умолчанию 65534)</string>
+    <string name="nfs_gid">GID (по умолчанию 65534)</string>
     <string name="website_media_permission">Разрешить %1$s использовать:</string>
     <string name="website_microphone">Микрофон</string>
     <string name="website_camera">Камера</string>
     <string name="website_permission_ask">Спрашивать каждый раз</string>
     <string name="website_permission_allow">Разрешить</string>
-    <string name="website_permission_deny">Запретить</string>
-    <string name="website_permission_remember">Запомнить решение для этого сайта</string>
+    <string name="website_permission_deny">Блокировать</string>
+    <string name="website_permission_remember">Запомнить это решение для данного сайта</string>
     <string name="website_location">Местоположение</string>
     <string name="website_group_display">Отображение и панель инструментов</string>
-    <string name="website_group_browsing">Просмотр и управление</string>
-    <string name="website_group_privacy">Конфиденциальность и фоновая работа</string>
-    <string name="player_skip_head">Пропустить заставку</string>
-    <string name="player_skip_tail">Пропустить титры</string>
+    <string name="website_group_browsing">Просмотр и взаимодействие</string>
+    <string name="website_group_privacy">Конфиденциальность и работа в фоне</string>
+    <string name="player_skip_head">Пропустить вступление</string>
+    <string name="player_skip_tail">Пропустить концовку</string>
     <string name="player_skip_marked">%1$s: %2$s</string>
-    <string name="player_skip_cleared">%1$s сброшено</string>
-    <string name="player_skip_invalid">Выберите точку между заставкой и титрами.</string>
+    <string name="player_skip_cleared">%1$s очищено</string>
+    <string name="player_skip_invalid">Выберите точку между началом и концом.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Показать/скрыть корневые элементы</string>
+    <string name="action_root_items">Показать/скрыть элементы корня</string>
     <string name="private_space">Личное пространство</string>
-    <string name="private_space_create_failed">Не удалось создать личное пространство</string>
+    <string name="private_space_create_failed">Не удалось создать Личное пространство</string>
 
     <!-- Completion feedback. -->
     <string name="settings_operation_notifications">Оповещения об операциях</string>
     <string name="settings_completion_vibration">Вибрация по завершении</string>
-    <string name="settings_completion_vibration_desc">Копирование, перемещение, удаление, упаковка и распаковка</string>
+    <string name="settings_completion_vibration_desc">Копирования, перемещения, удаления, упаковки и распаковки</string>
     <string name="settings_foreground_completion">Уведомления при открытом Twig</string>
-    <string name="settings_foreground_completion_desc">Уведомлять также во время работы в Twig. В фоне и при заблокированном экране уведомлять всегда.</string>
+    <string name="settings_foreground_completion_desc">Уведомлять также во время работы в Twig. В фоне и при заблокированном экране - уведомлять всегда.</string>
 
     <string name="settings_exit_on_back">Выход по кнопке «Назад»</string>
-    <string name="settings_exit_on_back_desc">Выходить из Twig, когда кнопка «Назад» закрывает главный экран. Запрашивать подтверждение, если есть выполняющиеся задачи.</string>
+    <string name="settings_exit_on_back_desc">Выходить из Twig, когда кнопка «Назад» закрывает его главный экран. Запрашивать подтверждение, если есть выполняющиеся задачи.</string>
     <string name="share_text_filename">Полученный текст.txt</string>
 </resources>
