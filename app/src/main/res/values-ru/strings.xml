@@ -1110,8 +1110,8 @@
     <string name="website_camera">Камера</string>
     <string name="website_permission_ask">Спрашивать каждый раз</string>
     <string name="website_permission_allow">Разрешить</string>
-    <string name="website_permission_deny">Блокировать</string>
-    <string name="website_permission_remember">Запомнить это решение для данного сайта</string>
+    <string name="website_permission_deny">Запретить</string>
+    <string name="website_permission_remember">Запомнить решение для этого сайта</string>
     <string name="website_location">Местоположение</string>
     <string name="website_group_display">Отображение и панель инструментов</string>
     <string name="website_group_browsing">Просмотр и взаимодействие</string>
@@ -1119,8 +1119,8 @@
     <string name="player_skip_head">Пропустить вступление</string>
     <string name="player_skip_tail">Пропустить концовку</string>
     <string name="player_skip_marked">%1$s: %2$s</string>
-    <string name="player_skip_cleared">%1$s очищено</string>
-    <string name="player_skip_invalid">Выберите точку между началом и концом.</string>
+    <string name="player_skip_cleared">%1$s сброшено</string>
+    <string name="player_skip_invalid">Выберите точку между вступлением и концовкой.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
     <string name="action_root_items">Показать/скрыть элементы корня</string>
