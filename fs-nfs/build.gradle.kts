@@ -33,7 +33,7 @@ dependencies {
 // Host-built JNI library for opt-in integration tests against an isolated export.
 tasks.withType<Test>().configureEach {
     System.getenv("TWIG_NFS_NATIVE_DIR")?.let { systemProperty("java.library.path", it) }
-    if (!System.getenv("TWIG_NFS_TEST_HOST").isNullOrBlank()) {
+    if (!System.getenv("TWIG_NFS_TEST_HOST").isNullOrBlank() || System.getenv("TWIG_NFS_FAULT_PROXY") == "true") {
         outputs.upToDateWhen { false }
         outputs.doNotCacheIf("NFS live tests depend on an external fixture") { true }
     }

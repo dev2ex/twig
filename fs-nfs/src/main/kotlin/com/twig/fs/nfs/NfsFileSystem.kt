@@ -19,9 +19,22 @@ class NfsFileSystem(
     override val displayName = "NFS ($host:$export)"
     private var metadata: NativeNfsClient? = null
     private fun client() = NativeNfsClient(host, export, version, uid, gid)
-    @Synchronized private fun <T> exec(block: (NativeNfsClient) -> T): T {
-        val c = metadata ?: client().also { metadata = it }
-        return block(c)
+    @Synchronized private fun <T> exec(retryRead: Boolean = false, block: (NativeNfsClient) -> T): T {
+        var attempts = if (retryRead) 2 else 1
+        while (true) {
+            val c = metadata ?: client().also { metadata = it }
+            try {
+                return block(c)
+            } catch (e: FsException) {
+                // A network change can leave this context permanently unusable. Discard
+                // it even when the retry fails, so a later request can mount afresh.
+                metadata = null
+                runCatching { c.close() }
+                // Only reads can be replayed: a failed mutation may already have reached
+                // the server, so repeating it could overwrite or delete something twice.
+                if (--attempts == 0) throw e
+            }
+        }
     }
     fun connect() { exec { } }
     @Synchronized fun disconnect() {
@@ -35,14 +48,14 @@ class NfsFileSystem(
         XFile(scheme, path, isDir = mode.toInt() and 0xf000 == 0x4000,
             size = size, lastModified = modified)
 
-    override fun list(dir: XFile): List<XFile> = exec { c ->
+    override fun list(dir: XFile): List<XFile> = exec(retryRead = true) { c ->
         c.list(dir.path).map { e -> entry(join(dir.path, e.name), e.mode, e.size, e.modified) }
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
     }
-    override fun stat(path: String): XFile? = exec { c ->
+    override fun stat(path: String): XFile? = exec(retryRead = true) { c ->
         c.stat(path)?.let { entry(path, it[0], it[1], it[2]) }
     }
-    override fun exists(file: XFile) = exec { it.stat(file.path, follow = false) != null }
+    override fun exists(file: XFile) = exec(retryRead = true) { it.stat(file.path, follow = false) != null }
     private fun opened(file: XFile, write: Boolean): NativeNfsClient {
         val c = client()
         try { c.open(file.path, write); return c }

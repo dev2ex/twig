@@ -1,5 +1,20 @@
 # Other backends and odds and ends
 
+- **NFS directory connections must be discarded after failure** (2026-10-27).
+  Switching networks left a cached libnfs context returning
+  `opendir call failed with "nfs_service failed"` indefinitely. Native reconnect
+  was disabled to avoid replaying uncertain writes, but the Kotlin metadata cache
+  also reused failed contexts forever. A local TCP fault proxy reproduced the
+  exact message without changing exports or permissions. Discard a metadata
+  context after any filesystem error; read-only listing/stat/exists may mount
+  afresh and retry once, discarding a failed retry too. Never replay mutations
+  automatically: the server may have applied them before the reply was lost.
+  Active file streams retain their own failure behavior. `NfsRecoveryLiveTest`
+  covers dropped sockets, a fully offline interval, recovery with the same
+  filesystem, mutation non-replay and a fresh mount. A genuinely new process
+  has no cached native context; persistent cold-start failures still need a
+  reachability/server diagnosis rather than being attributed to this cache.
+
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
