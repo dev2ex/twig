@@ -1,0 +1,13 @@
+<!-- NFS: two server bays above a network connector, based on the supplied reference. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@color/primary">
+    <path android:fillColor="@android:color/white" android:fillType="evenOdd"
+        android:pathData="M4,2h16a1,1 0 0,1 1,1v4a1,1 0 0,1 -1,1H4a1,1 0 0,1 -1,-1V3a1,1 0 0,1 1,-1zM19.1,5a1.1,1.1 0 1,1 -2.2,0a1.1,1.1 0 1,1 2.2,0zM4,9.5h16a1,1 0 0,1 1,1v4a1,1 0 0,1 -1,1H4a1,1 0 0,1 -1,-1v-4a1,1 0 0,1 1,-1zM19.1,12.5a1.1,1.1 0 1,1 -2.2,0a1.1,1.1 0 1,1 2.2,0z" />
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white" android:strokeWidth="1.6"
+        android:strokeLineCap="round" android:pathData="M12,15.5v5M3,20.5h18" />
+    <path android:fillColor="@android:color/white"
+        android:pathData="M10.5,18.5h3a0.5,0.5 0 0,1 0.5,0.5v3a0.5,0.5 0 0,1 -0.5,0.5h-3a0.5,0.5 0 0,1 -0.5,-0.5v-3a0.5,0.5 0 0,1 0.5,-0.5z" />
+</vector>

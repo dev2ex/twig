@@ -1063,7 +1063,7 @@
     <string name="website_open_url">Buka URL</string>
     <string name="website_user_agent_global_hint">Kosong = User-Agent global, lalu default seluler/desktop</string>
     <string name="website_global_settings_hint">User-Agent dapat diganti per situs. JavaScript, CSS, elemen tersembunyi dan pemblokiran permintaan digabung dengan setelan global. Opsi tampilan menjadi default untuk situs baru.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
+    <string name="action_add_nfs">Add NFS</string>
     <string name="nfs_host">NFS server address</string>
     <string name="nfs_export">Export path (e.g. /volume1/public)</string>
     <string name="nfs_version">NFS version (3 or 4)</string>
@@ -1119,4 +1119,5 @@
     <string name="share_prepare_failed">Tidak dapat menyiapkan file untuk dibagikan.</string>
     <string name="share_prepare_space">Ruang tidak cukup untuk menyiapkan file.</string>
     <string name="share_prepare_incomplete">File berubah atau tidak dapat dibaca sepenuhnya.</string>
+    <string name="nfs_port">Port (default 2049)</string>
 </resources>

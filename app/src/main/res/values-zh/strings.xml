@@ -1093,7 +1093,7 @@
     <string name="website_open_url">打开网址</string>
     <string name="website_user_agent_global_hint">留空使用全局 User-Agent，未设置时使用手机/桌面默认值</string>
     <string name="website_global_settings_hint">网站可覆盖全局 User-Agent；JavaScript、CSS、隐藏元素和请求拦截与全局配置合并。显示选项仅作为新建网站的默认值。</string>
-    <string name="action_add_nfs">＋ 添加 NFS</string>
+    <string name="action_add_nfs">添加 NFS</string>
     <string name="nfs_host">NFS 服务器地址</string>
     <string name="nfs_export">导出路径（如 /volume1/public）</string>
     <string name="nfs_version">NFS 版本（3 或 4）</string>
@@ -1149,4 +1149,5 @@
     <string name="share_prepare_failed">无法准备要分享的文件。</string>
     <string name="share_prepare_space">空间不足，无法准备要分享的文件。</string>
     <string name="share_prepare_incomplete">文件已更改或未能完整读取。</string>
+    <string name="nfs_port">端口（默认 2049）</string>
 </resources>

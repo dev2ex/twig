@@ -9,7 +9,7 @@ object RootItems {
         Item("root", R.string.group_root, R.drawable.ic_storage_root),
         Item("private", R.string.private_space, R.drawable.ic_private_space),
         Item("lan", R.string.group_lan, R.drawable.ic_lan),
-        Item("nfs", R.string.group_nfs, R.drawable.ic_lan),
+        Item("nfs", R.string.group_nfs, R.drawable.ic_nfs),
         Item("ftp", R.string.group_ftp, R.drawable.ic_ftp),
         Item("sftp", R.string.group_sftp, R.drawable.ic_sftp),
         Item("dav", R.string.group_webdav, R.drawable.ic_webdav),

@@ -15,7 +15,8 @@ class NfsLiveTest {
     private fun roundTrip(version: Int) {
         val host = System.getenv("TWIG_NFS_TEST_HOST").orEmpty()
         assumeTrue(host.isNotEmpty())
-        val fs = NfsFileSystem(host, System.getenv("TWIG_NFS_TEST_EXPORT") ?: "/export", version)
+        val port = System.getenv("TWIG_NFS_TEST_PORT")?.toInt() ?: 2049
+        val fs = NfsFileSystem(host, System.getenv("TWIG_NFS_TEST_EXPORT") ?: "/export", version, port = port)
         fs.connect()
         val dir = fs.mkdir(fs.root(), "twig-${version}-${System.nanoTime()}")
         try {
@@ -45,6 +46,22 @@ class NfsLiveTest {
             assertFalse(fs.exists(listed))
             assertTrue(fs.exists(moved))
             assertNull(fs.stat(listed.path))
+            // A live handle still refers to its original file if its path is reused.
+            NativeNfsClient(host, System.getenv("TWIG_NFS_TEST_EXPORT") ?: "/export", version, 65534, 65534, port).use { c ->
+                c.open(moved.path, write = false)
+                val held = fs.rename(moved, "held.bin")
+                try {
+                    fs.openOutput(moved, false).use { it.write(byteArrayOf(9)) }
+                    assertEquals(1L, fs.stat(moved.path)!!.size)
+                    assertEquals(payload.size.toLong(), c.size())
+                    val bytes = ByteArray(16)
+                    assertEquals(bytes.size, c.read(700_000, bytes, 0, bytes.size))
+                    assertArrayEquals(payload.copyOfRange(700_000, 700_016), bytes)
+                } finally {
+                    fs.delete(moved)
+                    fs.rename(held, moved.name)
+                }
+            }
             // Independent stream contexts: copy within the same backend and list while open.
             val copy = fs.createFile(dir, "copy.bin")
             fs.openInput(moved).use { input ->
@@ -67,6 +84,10 @@ class NfsLiveTest {
             try { fs.openInput(fs.createFile(dir, "missing")); fail("Missing file must throw") }
             catch (_: FsException) { }
             fs.mkdir(dir, "nested")
+            // Error text must preserve ordinary UTF-8, including supplementary characters.
+            val unicodeDir = fs.mkdir(dir, "parent-中文-😀")
+            try { fs.openInput(fs.createFile(unicodeDir, "missing")); fail("Missing file must throw") }
+            catch (e: FsException) { assertTrue(e.message, e.message.orEmpty().contains(unicodeDir.name)) }
         } finally {
             fs.delete(dir)
             assertFalse(fs.exists(dir))

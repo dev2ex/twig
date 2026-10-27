@@ -25,6 +25,15 @@
         android:id="@+id/et_port"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:hint="@string/nfs_port"
+        android:inputType="number"
+        android:text="2049"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/et_version"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:hint="@string/nfs_version"
         android:inputType="number"
         android:text="3"

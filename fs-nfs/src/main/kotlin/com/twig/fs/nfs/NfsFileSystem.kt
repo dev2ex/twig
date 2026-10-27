@@ -15,10 +15,12 @@ class NfsFileSystem(
     private val uid: Int = 65534,
     private val gid: Int = 65534,
     override val scheme: String = "nfs",
+    private val port: Int = NfsEndpoint.DEFAULT_PORT,
 ) : FileSystem {
-    override val displayName = "NFS ($host:$export)"
+    init { require(port in 1..65535) { "NFS port must be between 1 and 65535" } }
+    override val displayName = "NFS (${NfsEndpoint(host, port).authority()}:$export)"
     private var metadata: NativeNfsClient? = null
-    private fun client() = NativeNfsClient(host, export, version, uid, gid)
+    private fun client() = NativeNfsClient(host, export, version, uid, gid, port)
     @Synchronized private fun <T> exec(retryRead: Boolean = false, block: (NativeNfsClient) -> T): T {
         var attempts = if (retryRead) 2 else 1
         while (true) {
@@ -79,7 +81,8 @@ class NfsFileSystem(
     override fun randomAccessEfficient() = true
     override fun openRandom(file: XFile): RandomSource {
         val c = opened(file, write = false)
-        val size = try { c.stat(file.path)?.get(1) ?: file.size }
+        // Query the opened handle: the path may have been renamed or replaced since open.
+        val size = try { c.size() }
         catch (e: Throwable) { runCatching { c.close() }; throw e }
         return object : RandomSource {
             @Synchronized override fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int {

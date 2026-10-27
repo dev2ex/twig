@@ -11,12 +11,16 @@
 /* A file stream owns a session. Kotlin serializes every use of each session. */
 struct session { struct nfs_context *nfs; struct nfsfh *file; };
 static struct session *session(jlong h) { return (struct session *)(intptr_t)h; }
+static jstring string(JNIEnv *env, const char *p);
 static void fail(JNIEnv *env, struct session *s) {
+    if ((*env)->ExceptionCheck(env)) return;
     const char *message = s ? nfs_get_error(s->nfs) : "NFS allocation failed";
     jclass cls = (*env)->FindClass(env, "com/twig/core/FsException");
+    if (!cls) return;
     jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(Ljava/lang/String;Ljava/lang/Throwable;)V");
-    jstring msg = (*env)->NewStringUTF(env, message ? message : "NFS operation failed");
-    jthrowable error = (*env)->NewObject(env, cls, ctor, msg, NULL);
+    if (!ctor) { (*env)->DeleteLocalRef(env, cls); return; }
+    jstring msg = string(env, message ? message : "NFS operation failed");
+    jthrowable error = msg ? (*env)->NewObject(env, cls, ctor, msg, NULL) : NULL;
     if (error) (*env)->Throw(env, error);
     (*env)->DeleteLocalRef(env, msg);
     (*env)->DeleteLocalRef(env, error);
@@ -27,6 +31,7 @@ static char *text(JNIEnv *env, jbyteArray bytes) {
     char *p = calloc((size_t)n + 1, 1);
     if (!p) { fail(env, NULL); return NULL; }
     (*env)->GetByteArrayRegion(env, bytes, 0, n, (jbyte *)p);
+    if ((*env)->ExceptionCheck(env)) { free(p); return NULL; }
     return p;
 }
 /* JNI NewStringUTF uses modified UTF-8; file names use ordinary UTF-8. */
@@ -35,9 +40,11 @@ static jstring string(JNIEnv *env, const char *p) {
     if (!bytes) return NULL;
     (*env)->SetByteArrayRegion(env, bytes, 0, (jsize)strlen(p), (const jbyte *)p);
     jclass cls = (*env)->FindClass(env, "java/lang/String");
+    if (!cls) { (*env)->DeleteLocalRef(env, bytes); return NULL; }
     jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "([BLjava/lang/String;)V");
+    if (!ctor) { (*env)->DeleteLocalRef(env, bytes); (*env)->DeleteLocalRef(env, cls); return NULL; }
     jstring charset = (*env)->NewStringUTF(env, "UTF-8");
-    jstring result = (*env)->NewObject(env, cls, ctor, bytes, charset);
+    jstring result = charset ? (*env)->NewObject(env, cls, ctor, bytes, charset) : NULL;
     (*env)->DeleteLocalRef(env, bytes);
     (*env)->DeleteLocalRef(env, charset);
     (*env)->DeleteLocalRef(env, cls);
@@ -45,17 +52,19 @@ static jstring string(JNIEnv *env, const char *p) {
 }
 #define JNI(name) Java_com_twig_fs_nfs_NativeNfsClient_##name
 JNIEXPORT jlong JNICALL JNI(nConnect)(JNIEnv *env, jobject self, jbyteArray host,
-        jbyteArray export, jint version, jint uid, jint gid) {
+        jbyteArray export, jint version, jint uid, jint gid, jint port) {
     struct session *s = calloc(1, sizeof(*s));
     if (!s) { fail(env, NULL); return 0; }
     s->nfs = nfs_init_context();
     if (!s->nfs) { free(s); fail(env, NULL); return 0; }
     nfs_set_uid(s->nfs, uid); nfs_set_gid(s->nfs, gid);
+    nfs_set_nfsport(s->nfs, port);
     nfs_set_timeout(s->nfs, 15000);
     nfs_set_retrans(s->nfs, 0);
     nfs_set_autoreconnect(s->nfs, 0);
     nfs_set_dircache(s->nfs, 0);
-    char *h = text(env, host), *e = text(env, export);
+    char *h = text(env, host);
+    char *e = h ? text(env, export) : NULL;
     int result = -1;
     if (h && e && nfs_set_version(s->nfs, version) == 0)
         result = nfs_mount(s->nfs, h, e);
@@ -85,12 +94,15 @@ JNIEXPORT jobjectArray JNICALL JNI(nList)(JNIEnv *env, jobject self, jlong handl
         if (strcmp(e->name, ".") && strcmp(e->name, "..")) count++;
     nfs_rewinddir(s->nfs, dir);
     jclass cls = (*env)->FindClass(env, "com/twig/fs/nfs/NfsEntry");
+    if (!cls) { nfs_closedir(s->nfs, dir); return NULL; }
     jmethodID ctor = (*env)->GetMethodID(env, cls, "<init>", "(Ljava/lang/String;JJJ)V");
+    if (!ctor) { nfs_closedir(s->nfs, dir); return NULL; }
     jobjectArray entries = (*env)->NewObjectArray(env, count, cls, NULL);
     int i = 0;
     while (entries && (e = nfs_readdir(s->nfs, dir))) {
         if (!strcmp(e->name, ".") || !strcmp(e->name, "..")) continue;
         jstring name = string(env, e->name);
+        if (!name) break;
         jobject entry = (*env)->NewObject(env, cls, ctor, name,
             (jlong)(e->mode | (e->type == 2 ? S_IFDIR : 0)), (jlong)e->size,
             (jlong)e->mtime.tv_sec * 1000 + e->mtime.tv_usec / 1000);
@@ -125,6 +137,12 @@ JNIEXPORT void JNICALL JNI(nOpen)(JNIEnv *env, jobject self, jlong handle, jbyte
     free(p);
     if (result < 0) fail(env, s);
 }
+JNIEXPORT jlong JNICALL JNI(nSize)(JNIEnv *env, jobject self, jlong handle) {
+    struct session *s = session(handle);
+    struct nfs_stat_64 st;
+    if (nfs_fstat64(s->nfs, s->file, &st) < 0) { fail(env, s); return 0; }
+    return (jlong)st.nfs_size;
+}
 JNIEXPORT jint JNICALL JNI(nRead)(JNIEnv *env, jobject self, jlong handle, jlong position,
         jbyteArray bytes, jint offset, jint length) {
     struct session *s = session(handle);
@@ -142,6 +160,7 @@ JNIEXPORT void JNICALL JNI(nWrite)(JNIEnv *env, jobject self, jlong handle, jlon
     char *buffer = malloc((size_t)length);
     if (!buffer) { fail(env, NULL); return; }
     (*env)->GetByteArrayRegion(env, bytes, offset, length, (jbyte *)buffer);
+    if ((*env)->ExceptionCheck(env)) { free(buffer); return; }
     int done = 0;
     while (done < length) {
         int n = nfs_pwrite(s->nfs, s->file, buffer + done, (size_t)(length - done), (uint64_t)position + done);
@@ -157,7 +176,8 @@ JNIEXPORT void JNICALL JNI(nWrite)(JNIEnv *env, jobject self, jlong handle, jlon
 JNIEXPORT void JNICALL JNI(nMutate)(JNIEnv *env, jobject self, jlong handle, jint operation,
         jbyteArray path, jbyteArray target) {
     struct session *s = session(handle);
-    char *p = text(env, path), *t = text(env, target);
+    char *p = text(env, path);
+    char *t = p ? text(env, target) : NULL;
     if (!p || !t) { free(p); free(t); return; }
     int result = -EINVAL;
     switch (operation) {

@@ -13,10 +13,18 @@ listing, stat, streaming reads/writes, positional reads, mkdir, rename and delet
 Specify an export path explicitly; export discovery is not included. Servers must
 permit unprivileged source ports (Linux exports: insecure). No root is needed.
 Each open stream owns its context; the metadata context is serialized.
+The connection editor separates the address and NFS port (default 2049), and
+splits pasted `host:port` or `[IPv6]:port` addresses. Unbracketed IPv6 remains a
+host literal. NFSv3 still uses rpcbind to discover mountd; the configured port
+only overrides the NFS data service. Set `TWIG_NFS_TEST_PORT` for live tests on
+a non-default NFS port.
 
 Metadata failures discard the cached context. Listing, stat and existence checks
 may reconnect and retry once; failed retries are discarded too. Mutations and
 active file streams report failures without automatic replay.
+Stream length comes from the opened file handle, so a concurrent rename or path
+replacement cannot substitute another file's size. Native error messages use
+ordinary UTF-8 decoding, including paths with supplementary Unicode characters.
 
 ## Connection recovery regression
 

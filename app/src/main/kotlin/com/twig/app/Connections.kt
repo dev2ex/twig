@@ -106,7 +106,7 @@ object Connections {
         }
         when (conn.type) {
             "nfs" -> {
-                val fs = NfsFileSystem(conn.host, conn.share, conn.nfsVersion, conn.nfsUid, conn.nfsGid, s)
+                val fs = NfsFileSystem(conn.host, conn.share, conn.nfsVersion, conn.nfsUid, conn.nfsGid, s, conn.nfsPort)
                 fs.connect()
                 onInfo("NFS${conn.nfsVersion}")
                 FsRegistry.register(fs)

@@ -1063,7 +1063,7 @@
     <string name="website_open_url">URLを開く</string>
     <string name="website_user_agent_global_hint">空欄 = グローバルUser-Agent、未設定ならモバイル/デスクトップの既定値</string>
     <string name="website_global_settings_hint">User-Agentはサイトごとに上書きできます。JavaScript、CSS、非表示要素、リクエストブロックはグローバル設定と統合されます。表示設定は新規サイトの既定値です。</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
+    <string name="action_add_nfs">Add NFS</string>
     <string name="nfs_host">NFS server address</string>
     <string name="nfs_export">Export path (e.g. /volume1/public)</string>
     <string name="nfs_version">NFS version (3 or 4)</string>
@@ -1119,4 +1119,5 @@
     <string name="share_prepare_failed">共有するファイルを準備できませんでした。</string>
     <string name="share_prepare_space">共有するファイルを準備する空き容量がありません。</string>
     <string name="share_prepare_incomplete">ファイルが変更されたか、完全に読み取れませんでした。</string>
+    <string name="nfs_port">Port (default 2049)</string>
 </resources>

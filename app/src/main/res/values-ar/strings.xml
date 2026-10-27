@@ -1067,7 +1067,7 @@
     <string name="website_open_url">فتح رابط</string>
     <string name="website_user_agent_global_hint">فارغ = User-Agent العام، ثم افتراضي الهاتف/سطح المكتب</string>
     <string name="website_global_settings_hint">يمكن لكل موقع تجاوز User-Agent العام. تُدمج JavaScript وCSS والعناصر المخفية وحظر الطلبات مع الإعدادات العامة. خيارات العرض هي القيم الافتراضية للمواقع الجديدة.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
+    <string name="action_add_nfs">Add NFS</string>
     <string name="nfs_host">NFS server address</string>
     <string name="nfs_export">Export path (e.g. /volume1/public)</string>
     <string name="nfs_version">NFS version (3 or 4)</string>
@@ -1123,4 +1123,5 @@
     <string name="share_prepare_failed">تعذر تحضير الملفات للمشاركة.</string>
     <string name="share_prepare_space">لا توجد مساحة كافية لتحضير الملفات.</string>
     <string name="share_prepare_incomplete">تغير الملف أو تعذرت قراءته بالكامل.</string>
+    <string name="nfs_port">Port (default 2049)</string>
 </resources>
