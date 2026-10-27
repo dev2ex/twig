@@ -1197,4 +1197,8 @@
     <string name="share_prepare_space">Not enough space to prepare files for sharing.</string>
     <string name="share_prepare_incomplete">The file changed or could not be read completely.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="transfer_retry">Retry unfinished items</string>
+    <string name="transfer_retry_detail">Retry only unfinished items. Completed files are skipped; partial files resume when supported.</string>
+    <string name="transfer_failed_target">Target: %1$s</string>
+    <string name="transfer_skip_failed">Skip this item</string>
 </resources>

@@ -128,3 +128,25 @@ invisible from a normal build.
 - Two things that are *not* problems, having been measured: R8 with the same version is
   deterministic (two builds with intermediates deleted are byte-identical), and JDK 17 and JDK 21
   produce the same output.
+
+**(2026-10-27, 1.16.0 / upstream issue #40)** The update already had an automated
+fdroiddata MR (!54481); checking only the merged metadata incorrectly suggested
+F-Droid was still testing 1.15.2. Read the open update MR and its build artifacts
+before deciding which release failed.
+
+The 1.16.0 build compiled successfully but failed the reference APK comparison on
+`classes.dex`, `baseline.prof` and `baseline.profm`. Both sides used R8 8.8.34, and
+the dex lengths differed by 124 bytes, so this was not just the earlier R8 marker
+problem. Rebuilding the unchanged `v1.16.0` commit in a fresh git checkout with
+`clean --no-build-cache --no-configuration-cache --rerun-tasks
+-Pkotlin.incremental=false` produced identical ZIP entry contents to F-Droid's
+retained APK and passed `apksigcopier compare --unsigned` against it. This verifies
+the clean rebuild; it does not identify which previous intermediate or cache
+entry caused the published APK to differ.
+
+`tools/release.sh` now builds in a fresh checkout with those flags. Use
+`tools/release.sh --tag v1.16.0` to rebuild an existing tag without including current
+development work or overwriting the original release files. It saves combined
+APK R8 mappings before the split build cleans intermediates. `--offline` can reuse
+downloaded dependencies while build caches remain disabled; deleting the global
+Gradle dependency cache is unnecessary for this verified rebuild.

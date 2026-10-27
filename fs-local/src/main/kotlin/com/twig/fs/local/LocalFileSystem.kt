@@ -23,7 +23,7 @@ import java.io.OutputStream
 class LocalFileSystem(
     private val rootDir: File = File("/"),
     override val displayName: String = "Local storage",
-) : FileSystem {
+) : FileSystem, com.twig.core.ResumableWrite {
 
     override val scheme: String = SCHEME
 
@@ -160,6 +160,11 @@ class LocalFileSystem(
      * default and must be overridden, otherwise every copy degrades to one
      * syscall per byte.
      */
+    override fun canResumeWrites(directory: XFile): Boolean =
+        directory.scheme == scheme && documents(directory) == null
+
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
+
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         documents(file)?.let { return it.openOutput(file, append) }
         val f = File(file.path)

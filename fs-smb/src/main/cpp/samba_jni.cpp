@@ -224,13 +224,17 @@ Java_com_twig_fs_smb_NativeSmbClient_nativePread(
 extern "C"
 JNIEXPORT jlong JNICALL
 Java_com_twig_fs_smb_NativeSmbClient_nativeOpenWrite(
-        JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPath) {
+        JNIEnv* env, jobject /*thiz*/, jlong handle, jstring jPath, jboolean append) {
     if (!handle) return 0;
     auto* ctx = reinterpret_cast<smb2_context*>(handle);
     const char* path = jstr(env, jPath);
-    smb2fh* fh = smb2_open(ctx, path, O_WRONLY | O_CREAT | O_TRUNC);
+    smb2fh* fh = smb2_open(ctx, path, O_WRONLY | (append ? 0 : (O_CREAT | O_TRUNC)));
     reljstr(env, jPath, path);
     if (!fh) { LOGE("smb2_open(w) failed: %s", smb2_get_error(ctx)); return 0; }
+    if (append && smb2_lseek(ctx, fh, 0, SEEK_END, nullptr) < 0) {
+        smb2_close(ctx, fh);
+        return 0;
+    }
     return reinterpret_cast<jlong>(fh);
 }
 

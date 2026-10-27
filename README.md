@@ -627,6 +627,18 @@ For a release rehearsal, run `tools/release.sh` from a clean, committed tree wit
 release signing configured. It builds and verifies all five APKs and generates
 bilingual release notes under `build/release/<version>/`, without tagging or pushing.
 `tools/release.sh --publish` also tags, pushes and creates the GitHub release.
+Both modes build from a fresh detached git checkout, with Gradle build and
+configuration caches and Kotlin incremental compilation disabled. Downloaded
+dependencies remain available; add `--offline` to require cached dependencies.
+
+To rebuild an existing release, run `tools/release.sh --tag v1.16.0` (optionally
+with `--offline`). This uses the tag even if the current checkout has newer or
+uncommitted work. It keeps the original release files and writes the five verified
+APKs, notes and source commit to `build/release/1.16.0/rebuild.<suffix>/`.
+The build checkout stays under `build/release-checkouts/` for inspection, including
+R8 mappings. Builds use this machine's `local.properties` and `keystore.properties`;
+use an absolute `storeFile` path in the latter. Tag rebuilds cannot publish or
+replace remote release assets.
 
 ### Adding a new source
 

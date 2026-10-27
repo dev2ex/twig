@@ -133,6 +133,8 @@ object Transfers {
         val destIcon: Int,
         plan0: CopyEngine.Plan?,
     ) {
+        internal var checkpoint = com.twig.core.TransferCheckpoint()
+        internal var skipOnStart: com.twig.core.TransferCheckpoint.Failure? = null
         @Volatile var plan: CopyEngine.Plan? = plan0
         @Volatile var fileName = ""
         @Volatile var fileSize = 0L
@@ -272,11 +274,26 @@ object Transfers {
         }
 
         val result = runCatching {
+            s.skipOnStart?.let { failed ->
+                s.checkpoint.skip(failed)
+                val key = s.checkpoint.key(failed.source, failed.directory)
+                s.checkpoint.partials.remove(key)?.let { partial ->
+                    runCatching { FsRegistry.of(partial.file).delete(partial.file) }
+                }
+            }
+            val pairs = when (val w = s.work) {
+                is Work.Copy -> w.items.map { it to w.dest }
+                is Work.Sync -> w.pairs
+                else -> emptyList()
+            }
+            val remaining = if (pairs.isEmpty()) s.work.items else pairs.filter { (src, dest) ->
+                "root:" + s.checkpoint.key(src, dest) !in s.checkpoint.completed
+            }.map { it.first }
             val plan = s.plan
                 ?: s.work.takeIf { s.isDelete }?.let { w ->
                     CopyEngine.Plan(0, w.items.count { !it.isDir }, w.items.count { it.isDir })
                 }
-                ?: runCatching { CopyEngine.plan(s.work.items) }.getOrNull()
+                ?: runCatching { CopyEngine.plan(remaining) }.getOrNull()
                 ?: CopyEngine.Plan(0, 0, 0)
             s.plan = plan
             s.dirsLeft = plan.dirs
@@ -315,7 +332,7 @@ object Transfers {
                 is Work.Download -> w.task.execute(ctx, w.dest, listener, isCancelled = { s.cancelled.get() })
                 is Work.Copy -> CopyEngine.transfer(
                     w.items, w.dest, w.move, listener,
-                    { s.cancelled.get() }, resolverFor(s), plan.bytes,
+                    { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                 )
                 is Work.Sync -> {
                     // Group by destination and move one group at a time. Each group reports
@@ -335,7 +352,7 @@ object Transfers {
                         lastCopied = 0L
                         CopyEngine.transfer(
                             srcs, dest, w.move, offset,
-                            { s.cancelled.get() }, resolverFor(s), plan.bytes,
+                            { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                         )
                         base += lastCopied
                     }
@@ -353,7 +370,21 @@ object Transfers {
         }.map { }
 
         s.finished = result
+        if (s.cancelled.get() || result.isSuccess) discardPartials(s)
         finish(ctx, s, onComplete)
+    }
+
+    /** Retry state belongs only to the failed operation currently being shown. */
+    internal fun retrySession(previous: Session, skipFailed: Boolean = false): Session =
+        Session(previous.work, previous.titleRes, previous.destLabel, previous.destIcon, null).apply {
+            checkpoint = previous.checkpoint
+            if (skipFailed) skipOnStart = previous.checkpoint.failure
+        }
+
+    internal fun discardPartials(s: Session) {
+        val partials = s.checkpoint.partials.values.toList()
+        s.checkpoint.partials.clear()
+        partials.forEach { partial -> runCatching { FsRegistry.of(partial.file).delete(partial.file) } }
     }
 
     /** Count confirmed entries, leaving recursive and symlink handling to the owning backend. */

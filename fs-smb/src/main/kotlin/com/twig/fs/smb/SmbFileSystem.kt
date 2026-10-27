@@ -31,7 +31,7 @@ class SmbFileSystem(
     private val config: SmbConfig,
     /** Supports mounting multiple servers simultaneously: each instance gets a unique scheme (e.g. "smb1a2b"). */
     override val scheme: String = SCHEME,
-) : FileSystem {
+) : FileSystem, com.twig.core.ResumableWrite {
 
     /** The share name alone — the first segment of [SmbConfig.share], which may carry a path. */
     private val share = config.share.trim('/').substringBefore('/')
@@ -103,14 +103,11 @@ class SmbFileSystem(
 
     override fun openInput(file: XFile): InputStream = at(file) { c, p -> c.openInput(p) }
 
-    /**
-     * Append is not implemented (the native open always truncates). Refused rather than
-     * silently treated as an overwrite: a caller that asks to append — resumable copies,
-     * say — would otherwise wipe what it meant to extend.
-     */
+    /** Native append opens without truncation and seeks to the current end. */
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
+
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
-        if (append) throw FsException("SMB does not support appending to a file")
-        return at(file) { c, p -> c.openOutput(p) }
+        return at(file) { c, p -> c.openOutput(p, append) }
     }
 
     override fun mkdir(parent: XFile, name: String): XFile {

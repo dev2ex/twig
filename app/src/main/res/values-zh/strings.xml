@@ -1150,4 +1150,8 @@
     <string name="share_prepare_space">空间不足，无法准备要分享的文件。</string>
     <string name="share_prepare_incomplete">文件已更改或未能完整读取。</string>
     <string name="nfs_port">端口（默认 2049）</string>
+    <string name="transfer_retry">重试未完成项</string>
+    <string name="transfer_retry_detail">仅重试未完成项。已完成文件会跳过，支持续传的文件从断点继续。</string>
+    <string name="transfer_failed_target">目标地址：%1$s</string>
+    <string name="transfer_skip_failed">跳过此项</string>
 </resources>

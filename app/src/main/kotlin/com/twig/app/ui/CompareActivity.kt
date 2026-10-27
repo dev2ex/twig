@@ -944,7 +944,8 @@ class CompareActivity : AppCompatActivity() {
             onFinished = {
                 // Only revalidate the items actually moved this time; do not rescan the whole tree
                 revalidate(pendingNodes)
-                pendingNodes = emptyList()
+                if (!showTransferRetry(this, it, onStarted = { showTransferBox() },
+                    onClosed = { pendingNodes = emptyList() })) pendingNodes = emptyList()
             },
         )
     }

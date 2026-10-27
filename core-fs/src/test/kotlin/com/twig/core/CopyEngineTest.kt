@@ -2,6 +2,7 @@ package com.twig.core
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -30,8 +31,29 @@ import java.io.OutputStream
 class CopyEngineTest {
 
     /** An in-memory filesystem that supports read/write and has a real notion of directories. */
-    private class MemFs(override val scheme: String) : FileSystem {
+    private class MemFs(override val scheme: String) : FileSystem, ResumableWrite {
         override val displayName get() = scheme
+
+        val randomOffsets = mutableListOf<Long>()
+        val opened = mutableListOf<String>()
+        var deleteFailPath: String? = null
+        override fun appendPartial(file: XFile) = openOutput(file, true)
+        override fun openRandom(file: XFile): RandomSource {
+            opened.add(file.path)
+            return object : RandomSource {
+                override fun length() = file.size
+                override fun close() {}
+                override fun readAt(position: Long, buffer: ByteArray, offset: Int, length: Int): Int {
+                    randomOffsets.add(position)
+                    val data = files.getValue(file.path)
+                    if (position >= data.size) return -1
+                    if (failAfter != null && position >= failAfter!!) throw FsException("connection reset")
+                    val n = minOf(length, data.size - position.toInt(), (failAfter ?: data.size) - position.toInt())
+                    data.copyInto(buffer, offset, position.toInt(), position.toInt() + n)
+                    return n
+                }
+            }
+        }
 
         val files = LinkedHashMap<String, ByteArray>()
         val dirs = linkedSetOf("/")
@@ -77,6 +99,7 @@ class CopyEngineTest {
         }
 
         override fun openInput(file: XFile): InputStream {
+            opened.add(file.path)
             val data = files[file.path] ?: throw FsException("does not exist: ${file.path}")
             readLimit?.let { return ByteArrayInputStream(data.copyOf(minOf(it, data.size))) }
             val fail = failAfter ?: return ByteArrayInputStream(data)
@@ -104,6 +127,7 @@ class CopyEngineTest {
         }
 
         override fun delete(file: XFile) {
+            if (file.path == deleteFailPath) throw FsException("delete denied")
             val prefix = "${file.path}/"
             files.keys.removeAll { it == file.path || it.startsWith(prefix) }
             dirs.removeAll { it == file.path || it.startsWith(prefix) }
@@ -565,4 +589,269 @@ class CopyEngineTest {
         assertEquals("hello world", src.text("/a.txt"))
         assertEquals(null, dst.text("/a.txt"))
     }
+    @Test fun retryResumesPartialAndProtectsOriginalUntilMoveCompletes() {
+        val source = MemFs("retry-source")
+        val target = MemFs("retry-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/video", "abcdefghij", 123)
+        target.put("/video", "original")
+        source.failAfter = 3
+        val item = source.resolve("/video")
+        val checkpoint = TransferCheckpoint()
+        var conflicts = 0
+        val resolver = CopyEngine.ConflictResolver { _, _ -> conflicts++; CopyEngine.Decision.OVERWRITE }
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, resolver = resolver, checkpoint = checkpoint)
+        }
+        assertEquals("original", target.text("/video"))
+        assertEquals("abcdefghij", source.text("/video"))
+        assertEquals(3, target.files.getValue(checkpoint.partials.values.single().file.path).size)
+        source.failAfter = null
+        source.randomOffsets.clear()
+        CopyEngine.transfer(listOf(item), target.root(), true, resolver = resolver, checkpoint = checkpoint)
+        assertEquals(3L, source.randomOffsets.first())
+        assertEquals("abcdefghij", target.text("/video"))
+        assertFalse(source.files.containsKey("/video"))
+        assertTrue(checkpoint.partials.isEmpty())
+        assertEquals(1, conflicts)
+    }
+
+    @Test fun retrySkipsCompletedChildrenOfAnUnfinishedDirectory() {
+        val source = MemFs("retry-tree-source")
+        val target = MemFs("retry-tree-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/folder/a", "abc", 123)
+        source.put("/folder/b", "abcdefghij", 123)
+        source.failAfter = 3
+        val item = source.resolve("/folder")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        assertTrue(source.exists(item))
+        source.opened.clear()
+        source.failAfter = null
+        CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        assertEquals(listOf("/folder/b"), source.opened)
+        assertEquals("abc", target.text("/folder/a"))
+        assertEquals("abcdefghij", target.text("/folder/b"))
+        assertFalse(source.exists(item))
+    }
+
+    @Test fun retryStillDeletesSourceWhenThePreviousDeleteFailed() {
+        val source = MemFs("retry-delete-source")
+        val target = MemFs("retry-delete-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "complete", 123)
+        source.deleteFailPath = "/file"
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        source.deleteFailPath = null
+        source.opened.clear()
+        CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        assertTrue(source.opened.isEmpty())
+        assertFalse(source.exists(item))
+        assertEquals("complete", target.text("/file"))
+    }
+
+    @Test fun retryRestartsIncompleteFilesOnTargetsWithoutResumeSupport() {
+        val source = MemFs("retry-fallback-source")
+        val storage = MemFs("retry-fallback-target")
+        val target = object : FileSystem by storage {}
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "abcdefghij", 123)
+        storage.put("/file", "original")
+        source.failAfter = 3
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), false, checkpoint = checkpoint)
+        }
+        assertEquals("original", storage.text("/file"))
+        assertTrue(checkpoint.partials.isEmpty())
+        source.failAfter = null
+        CopyEngine.transfer(listOf(item), target.root(), false, checkpoint = checkpoint)
+        assertEquals("abcdefghij", storage.text("/file"))
+    }
+
+    @Test fun changedSourceRestartsRatherThanAppendingToAnOldPartial() {
+        val source = MemFs("changed-source")
+        val target = MemFs("changed-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "abcdefghij", 123)
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        source.failAfter = 3
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), false, checkpoint = checkpoint)
+        }
+        source.put("/file", "NEWCONTENT", 456)
+        source.failAfter = null
+        source.randomOffsets.clear()
+        CopyEngine.transfer(listOf(item), target.root(), false, checkpoint = checkpoint)
+        assertEquals(0L, source.randomOffsets.first())
+        assertEquals("NEWCONTENT", target.text("/file"))
+    }
+
+    @Test fun cancelledTransferKeepsItsPartialForManualRetry() {
+        val source = MemFs("cancel-source")
+        val target = MemFs("cancel-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "abcdefghij", 123)
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        var cancelled = false
+        CopyEngine.transfer(listOf(item), target.root(), true,
+            listener = object : CopyEngine.ProgressListener {
+                override fun onFileBytes(copied: Long, size: Long) { if (copied > 0) cancelled = true }
+            }, cancelled = { cancelled }, checkpoint = checkpoint)
+        assertTrue(source.exists(item))
+        assertEquals(1, checkpoint.partials.size)
+        CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        assertEquals("abcdefghij", target.text("/file"))
+        assertFalse(source.exists(item))
+    }
+
+    @Test fun missingCompletedDestinationIsRecopiedBeforeDeletingTheSource() {
+        val source = MemFs("missing-source")
+        val target = MemFs("missing-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "complete", 123)
+        source.deleteFailPath = "/file"
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        target.files.remove("/file")
+        source.deleteFailPath = null
+        source.opened.clear()
+        CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        assertEquals(listOf("/file"), source.opened)
+        assertEquals("complete", target.text("/file"))
+        assertFalse(source.exists(item))
+    }
+
+    @Test fun sourcesWithoutStatOrModificationTimeStillCopyNormally() {
+        val storage = MemFs("unstatable-source")
+        val source = object : FileSystem by storage {
+            override fun stat(path: String): XFile? = null
+        }
+        val target = MemFs("unstatable-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        storage.put("/file", "shared text")
+        CopyEngine.transfer(listOf(storage.resolve("/file")), target.root(), false,
+            checkpoint = TransferCheckpoint())
+        assertEquals("shared text", target.text("/file"))
+    }
+
+    @Test fun retryDoesNotPlanRootsThatWereAlreadyMovedAndDeleted() {
+        val source = MemFs("moved-roots-source")
+        val target = MemFs("moved-roots-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/a", "abc", 123)
+        source.put("/b", "abcdefghij", 123)
+        val items = listOf(source.resolve("/a"), source.resolve("/b"))
+        val checkpoint = TransferCheckpoint()
+        source.failAfter = 3
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(items, target.root(), true, checkpoint = checkpoint)
+        }
+        assertFalse(source.exists(items[0]))
+        source.failAfter = null
+        CopyEngine.transfer(items, target.root(), true, checkpoint = checkpoint)
+        assertEquals("abc", target.text("/a"))
+        assertEquals("abcdefghij", target.text("/b"))
+        assertFalse(source.exists(items[1]))
+    }
+
+    @Test fun skipFailedChildContinuesTheDirectoryAndKeepsItsMoveSource() {
+        val source = MemFs("skip-child-source")
+        val target = MemFs("skip-child-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/folder/a", "abc", 123)
+        source.put("/folder/b", "broken-file", 123)
+        source.put("/folder/c", "xyz", 123)
+        target.put("/folder/b", "original")
+        source.failAfter = 3
+        val folder = source.resolve("/folder")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(folder), target.root(), true, checkpoint = checkpoint)
+        }
+        val failed = checkpoint.failure!!
+        assertEquals("/folder/b", failed.source.path)
+        assertEquals("/folder", failed.directory.path)
+        assertEquals("b", failed.targetName)
+        checkpoint.skip(failed)
+        source.opened.clear()
+        CopyEngine.transfer(listOf(folder), target.root(), true, checkpoint = checkpoint)
+        assertEquals(listOf("/folder/c"), source.opened)
+        assertEquals("abc", target.text("/folder/a"))
+        assertEquals("original", target.text("/folder/b"))
+        assertEquals("xyz", target.text("/folder/c"))
+        assertTrue(source.exists(folder))
+        assertEquals("broken-file", source.text("/folder/b"))
+        assertNull(checkpoint.failure)
+    }
+
+    @Test fun successiveSkipsKeepPreviousChoicesAndReportTheNextFailedRoot() {
+        val source = MemFs("successive-skip-source")
+        val target = MemFs("successive-skip-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/bad-one", "broken-one", 123)
+        source.put("/bad-two", "broken-two", 123)
+        source.put("/good", "abc", 123)
+        val items = listOf(source.resolve("/bad-one"), source.resolve("/bad-two"), source.resolve("/good"))
+        source.failAfter = 3
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(items, target.root(), true, checkpoint = checkpoint)
+        }
+        checkpoint.skip(checkpoint.failure!!)
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(items, target.root(), true, checkpoint = checkpoint)
+        }
+        assertEquals("/bad-two", checkpoint.failure!!.source.path)
+        checkpoint.skip(checkpoint.failure!!)
+        source.opened.clear()
+        CopyEngine.transfer(items, target.root(), true, checkpoint = checkpoint)
+        assertEquals(listOf("/good"), source.opened)
+        assertEquals("abc", target.text("/good"))
+        assertFalse(source.exists(items[2]))
+        assertTrue(source.exists(items[0]))
+        assertTrue(source.exists(items[1]))
+    }
+
+    @Test fun failureReportsTheFinalRenamedDestination() {
+        val source = MemFs("rename-failure-source")
+        val target = MemFs("rename-failure-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file.txt", "broken-file", 123)
+        target.put("/file.txt", "original")
+        source.failAfter = 3
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(source.resolve("/file.txt")), target.root(), false,
+                resolver = { _, _ -> CopyEngine.Decision.RENAME }, checkpoint = checkpoint)
+        }
+        assertEquals("file (1).txt", checkpoint.failure!!.targetName)
+        assertEquals("original", target.text("/file.txt"))
+    }
+
 }

@@ -234,15 +234,15 @@ class NativeSmbClient : AutoCloseable {
         }
     }
 
-    fun openOutput(path: String): OutputStream {
+    fun openOutput(path: String, append: Boolean = false): OutputStream {
         val fh = exec {
             ensureConnected()
-            var f = nativeOpenWrite(handle, path)
+            var f = nativeOpenWrite(handle, path, append)
             // Reconnecting won't help when the server explicitly rejects us (e.g.
             // insufficient permissions); it would just disconnect once for nothing and
             // force every subsequent operation to redo the handshake. Only a suspected
             // drop is worth a reconnect-and-retry.
-            if (f == 0L && !deniedByServer() && reconnect()) f = nativeOpenWrite(handle, path)
+            if (f == 0L && !deniedByServer() && reconnect()) f = nativeOpenWrite(handle, path, append)
             f
         }
         if (fh == 0L) throw FsException("Open for write failed ($path): ${errText()}")
@@ -324,7 +324,7 @@ class NativeSmbClient : AutoCloseable {
     private external fun nativeOpenFile(handle: Long, path: String): Long
     private external fun nativeGetFileSize(handle: Long, fh: Long): Long
     private external fun nativeReadFile(handle: Long, fh: Long, buf: ByteArray, offset: Int, length: Int): Int
-    private external fun nativeOpenWrite(handle: Long, path: String): Long
+    private external fun nativeOpenWrite(handle: Long, path: String, append: Boolean): Long
     private external fun nativeWriteFile(handle: Long, fh: Long, buf: ByteArray, offset: Int, length: Int): Int
     private external fun nativeCloseFile(handle: Long, fh: Long)
     private external fun nativePread(handle: Long, fh: Long, offset: Long, buf: ByteArray, bufOffset: Int, length: Int): Int

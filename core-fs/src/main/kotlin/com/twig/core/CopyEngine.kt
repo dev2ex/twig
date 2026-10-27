@@ -76,6 +76,7 @@ object CopyEngine {
         val resolver: ConflictResolver,
         val total: Long,
         val move: Boolean,
+        val checkpoint: TransferCheckpoint?,
     ) {
         var bytes = 0L
         var aborted = false // user picked "Cancel" in the conflict dialog
@@ -86,8 +87,7 @@ object CopyEngine {
     /** Existing entries of a destination directory (cached; newly created entries are added for later conflict / same-name checks). */
     private fun childrenOf(task: Task, destFs: FileSystem, destDir: XFile): MutableMap<String, XFile> =
         task.listed.getOrPut(destDir.toUri()) {
-            runCatching { destFs.list(destDir).associateBy { it.name }.toMutableMap() }
-                .getOrDefault(HashMap())
+            destFs.list(destDir).associateBy { it.name }.toMutableMap()
         }
 
     /**
@@ -105,30 +105,78 @@ object CopyEngine {
         cancelled: Cancelled = Cancelled { false },
         resolver: ConflictResolver = ConflictResolver { _, _ -> Decision.OVERWRITE },
         plannedBytes: Long = -1, // when the caller has already called plan(), pass it in to avoid a second recursive scan
+        checkpoint: TransferCheckpoint? = null,
     ) {
-        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(items), move)
+        checkpoint?.failure = null
+        val pending = items.filterNot { checkpoint?.completed?.contains("root:" + checkpoint.key(it, destDir)) == true }
+        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(pending), move, checkpoint)
         val destFs = FsRegistry.of(destDir)
         for (item in items) {
             if (task.cancelled.isCancelled() || task.aborted) break
             // Refused, not fatal: the rest of the batch still copies (see [isSafeName])
             if (!isSafeName(item.name)) { listener?.onRefused(item); continue }
-            // Same file system and no same-name conflict at the destination: prefer
-            // in-place move, saving a full copy.
-            if (move && item.scheme == destDir.scheme &&
-                childrenOf(task, destFs, destDir)[item.name] == null &&
-                destFs.moveWithin(item, destDir, item.name)
-            ) {
-                listener?.onItemDone(item.isDir)
+            if (checkpoint?.completed?.contains("root:" + checkpoint.key(item, destDir)) == true) continue
+            if (checkpoint?.isSkipped(item, destDir) == true) {
+                skipItem(item, task)
                 continue
             }
-            val complete = copyRecursive(item, destDir, task)
-            if (move && complete) FsRegistry.of(item).delete(item)
+            try {
+                // Same file system and no same-name conflict at the destination: prefer
+                // in-place move, saving a full copy.
+                if (move && item.scheme == destDir.scheme &&
+                    childrenOf(task, destFs, destDir)[item.name] == null &&
+                    destFs.moveWithin(item, destDir, item.name)
+                ) {
+                    checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
+                    listener?.onItemDone(item.isDir)
+                    continue
+                }
+                val priorKey = checkpoint?.key(item, destDir)
+                val needsRefresh = checkpoint != null &&
+                    (priorKey in checkpoint.partials || priorKey in checkpoint.outputs)
+                val source = if (needsRefresh && !item.isDir && item.lastModified > 0) {
+                    FsRegistry.of(item).stat(item.path) ?: throw FsException("Source unavailable: ${item.name}")
+                } else item
+                val complete = copyRecursive(source, destDir, task)
+                if (move && complete) FsRegistry.of(item).delete(item)
+                if (complete) checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
+            } catch (t: Throwable) {
+                if (checkpoint != null && checkpoint.failure == null) {
+                    val key = checkpoint.key(item, destDir)
+                    val name = checkpoint.partials[key]?.name ?: checkpoint.outputs[key]?.name ?: item.name
+                    checkpoint.failure = TransferCheckpoint.Failure(item, destDir, name)
+                }
+                throw t
+            }
         }
         listener?.onDone()
     }
 
     /** @return whether the copy completed cleanly (no skips / cancels); `move` uses this to decide whether to delete the source. */
     private fun copyRecursive(src: XFile, destDir: XFile, task: Task): Boolean {
+        if (task.checkpoint?.isSkipped(src, destDir) == true) {
+            skipItem(src, task)
+            return false // A move must keep the source directory containing this entry.
+        }
+        val checkpoint = task.checkpoint
+        val key = checkpoint?.key(src, destDir)
+        val name = checkpoint?.partials?.get(key)?.name ?: checkpoint?.outputs?.get(key)?.name ?: src.name
+        val attempt = TransferCheckpoint.Failure(src, destDir, name)
+        return try {
+            copyEntry(src, destDir, task, attempt)
+        } catch (t: Throwable) {
+            task.checkpoint?.let { if (it.failure == null) it.failure = attempt }
+            throw t
+        }
+    }
+
+    private fun skipItem(src: XFile, task: Task) {
+        task.bytes += src.size.coerceAtLeast(0)
+        task.listener?.onBytes(task.bytes, task.total)
+        task.listener?.onItemDone(src.isDir)
+    }
+
+    private fun copyEntry(src: XFile, destDir: XFile, task: Task, attempt: TransferCheckpoint.Failure): Boolean {
         if (task.cancelled.isCancelled() || task.aborted) return false
         if (!isSafeName(src.name)) {
             // Skipped, and the directory holding it counts as incomplete — so a move keeps it
@@ -144,6 +192,7 @@ object CopyEngine {
             // Same-name directory: merge into the existing directory directly.
             val newDir = if (existing?.isDir == true) existing
             else destFs.mkdir(destDir, src.name).also { siblings[it.name] = it }
+            attempt.targetName = newDir.name
             var complete = true
             for (child in srcFs.list(src)) {
                 if (!copyRecursive(child, newDir, task)) complete = false
@@ -153,9 +202,30 @@ object CopyEngine {
             return complete
         }
 
-        var name = src.name
-        if (existing != null) {
-            when (task.resolver.resolve(src, existing)) {
+        val checkpoint = task.checkpoint
+        val key = checkpoint?.key(src, destDir)
+        val savedOutput = checkpoint?.outputs?.get(key)
+        val savedEntry = savedOutput?.let { saved -> siblings[saved.name]?.takeIf { it.path == saved.path } }
+        if (key != null && key in checkpoint.completed && savedOutput != null && savedEntry != null &&
+            !savedEntry.isDir && (src.size <= 0 || savedEntry.size == src.size) &&
+            (savedOutput.lastModified <= 0 || savedEntry.lastModified == savedOutput.lastModified)
+        ) {
+            task.bytes += src.size.coerceAtLeast(0)
+            task.listener?.onBytes(task.bytes, task.total)
+            task.listener?.onItemDone(false)
+            return true
+        }
+        if (key != null) checkpoint.completed.remove(key)
+        val rememberedPartial = checkpoint?.partials?.get(key)
+        var name = rememberedPartial?.name ?: savedOutput?.name ?: src.name
+        attempt.targetName = name
+        val collision = siblings[name]
+        val approved = rememberedPartial?.replacing
+        val unchangedConflict = approved != null && collision != null && approved.path == collision.path &&
+            approved.size == collision.size && approved.lastModified == collision.lastModified &&
+            approved.isDir == collision.isDir
+        if (collision != null && !unchangedConflict) {
+            when (task.resolver.resolve(src, collision)) {
                 Decision.OVERWRITE -> Unit
                 Decision.SKIP -> {
                     task.bytes += src.size // advance the total progress even on skip, to keep the bar consistent
@@ -168,33 +238,80 @@ object CopyEngine {
             }
         }
 
+        attempt.targetName = name
         task.listener?.onFile(src)
         // RENAME picked a free name, so only OVERWRITE still has something to protect.
-        val replacing = existing?.takeIf { name == src.name }
+        val replacing = siblings[name]
         // Replacing ends with delete(existing), which is recursive — a file must never
         // "overwrite" a folder of the same name that way.
         if (replacing?.isDir == true) throw FsException("A folder named ${src.name} is in the way")
         val target = try {
-            srcFs.openInput(src).use { input ->
-                SafeWrite.replace(destFs, destDir, name, replacing) { output ->
-                    val copied = pump(input, output, task, src.size)
-                    if (copied < 0) throw CopyCancelled()
-                    // ★ A move deletes the source next, so "the stream ended" is not good
-                    // enough proof that the copy is whole: a backend that reports a failed
-                    // read as EOF (the privileged `cat` did, see PrivilegedShell.openInput)
-                    // would hand us a short file and we would delete the only complete
-                    // copy. Checked inside the write so a short copy never replaces an
-                    // existing file either. Plain copies are not held to this — some
-                    // sources (third-party content providers) report sizes that are simply
-                    // wrong, and there the source survives anyway.
-                    if (task.move && src.size > 0 && copied < src.size) {
-                        throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
+            if (checkpoint != null && key != null && destFs is ResumableWrite && destFs.canResumeWrites(destDir) && src.size > 0 && src.lastModified > 0) {
+                var partial = checkpoint.partials[key]
+                if (partial == null) {
+                    val tmp = destFs.createFile(destDir, ".${java.util.UUID.randomUUID()}${SafeWrite.PART_SUFFIX}")
+                    partial = TransferCheckpoint.Partial(tmp, name, replacing)
+                    checkpoint.partial(key, partial)
+                } else if (partial.name != name || partial.replacing != replacing) {
+                    partial = partial.copy(name = name, replacing = replacing)
+                    checkpoint.partial(key, partial)
+                }
+                // List rather than stat: stat's default deliberately hides listing failures.
+                val current = destFs.list(destDir).firstOrNull { it.path == partial.file.path }
+                val offset = current?.size ?: 0L
+                if (offset < 0 || offset > src.size) throw FsException("Invalid partial size for ${src.name}")
+                task.bytes += offset
+                task.listener?.onFileBytes(offset, src.size)
+                task.listener?.onBytes(task.bytes, task.total)
+                srcFs.openRandom(src).use { random ->
+                    var position = offset
+                    val input = object : java.io.InputStream() {
+                        override fun read(): Int {
+                            val b = ByteArray(1)
+                            return if (read(b, 0, 1) < 0) -1 else b[0].toInt() and 255
+                        }
+                        override fun read(b: ByteArray, off: Int, len: Int): Int =
+                            random.readAt(position, b, off, len).also { if (it > 0) position += it }
+                    }
+                    val output = if (offset > 0) destFs.appendPartial(partial.file)
+                        else destFs.openOutput(partial.file, false)
+                    output.use {
+                        val copied = pump(input, it, task, src.size, offset)
+                        if (copied < 0) throw CopyCancelled()
+                        if (copied != src.size) throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
+                    }
+                }
+                val after = destFs.list(destDir)
+                val staged = after.firstOrNull { it.path == partial.file.path }
+                if (staged == null || staged.isDir || staged.size != src.size) {
+                    throw FsException("Incomplete destination for ${src.name}")
+                }
+                val old = after.firstOrNull { it.name == name }
+                if (old?.isDir == true) throw FsException("A folder named $name is in the way")
+                if (old != null) destFs.delete(old)
+                destFs.rename(partial.file, name).also {
+                    checkpoint.partial(key, null)
+                }
+            } else {
+                srcFs.openInput(src).use { input ->
+                    SafeWrite.replace(destFs, destDir, name, replacing) { output ->
+                        val copied = pump(input, output, task, src.size)
+                        if (copied < 0) throw CopyCancelled()
+                        // ★ A move deletes the source next, so "the stream ended" is not good
+                        // enough proof that the copy is whole: a backend that reports a failed
+                        // read as EOF (the privileged `cat` did, see PrivilegedShell.openInput)
+                        // would hand us a short file and we would delete the only complete
+                        // copy. Checked inside the write so a short copy never replaces an
+                        // existing file either. Plain copies are not held to this — some
+                        // sources (third-party content providers) report sizes that are simply
+                        // wrong, and there the source survives anyway.
+                        if (task.move && src.size > 0 && copied < src.size) {
+                            throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
+                        }
                     }
                 }
             }
         } catch (c: CopyCancelled) {
-            // SafeWrite already removed the partial file (or the temp, leaving the original
-            // untouched on OVERWRITE).
             return false
         }
         siblings[target.name] = target
@@ -202,12 +319,14 @@ object CopyEngine {
         // This step is not part of "did the copy succeed" — write failure /
         // unsupported both leave the copy valid; the destination simply keeps the
         // "moment of writing" timestamp (see setModifiedTime docs).
-        if (src.lastModified > 0) runCatching { destFs.setModifiedTime(target, src.lastModified) }
+        val timeSet = src.lastModified > 0 && runCatching { destFs.setModifiedTime(target, src.lastModified) }.getOrDefault(false)
+        checkpoint?.let { it.complete(key!!, target.copy(size = src.size,
+            lastModified = if (timeSet) src.lastModified else 0)) }
         task.listener?.onItemDone(isDir = false)
         return true
     }
 
-    /** Unwinds a cancelled copy through [SafeWrite.replace], which then cleans up its partial file. */
+    /** Unwinds a cancelled write; resumable writes keep their owned partial file. */
     private class CopyCancelled : RuntimeException()
 
     /** @return bytes written, or -1 when cancelled. */
@@ -216,8 +335,9 @@ object CopyEngine {
         output: java.io.OutputStream,
         task: Task,
         srcSize: Long,
+        initial: Long = 0,
     ): Long {
-        var fileCopied = 0L
+        var fileCopied = initial
         val done = pipe(input, output, { task.cancelled.isCancelled() || task.aborted }) { n ->
             fileCopied += n
             task.bytes += n

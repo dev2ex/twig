@@ -56,7 +56,7 @@ data class SftpConfig(
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem {
+) : FileSystem, com.twig.core.ResumableWrite {
 
     /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
     private val base = config.path.trim('/')
@@ -538,6 +538,8 @@ class SftpFileSystem(
             override fun close() { runCatching { rf.close() } }
         }
     }
+
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
 
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         val modes = if (append) {

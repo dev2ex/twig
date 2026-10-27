@@ -7,6 +7,8 @@
 #
 #   tools/release.sh              build, verify, show what would be published
 #   tools/release.sh --publish    the same, then tag, push and create the release
+#   tools/release.sh --tag v1.16.0  rebuild an existing tag without publishing
+#   Add --offline to use downloaded dependencies without enabling build caches.
 #
 # The default is a rehearsal on purpose: a pushed tag and a published release are
 # awkward to take back, and everything that can fail (a stale APK, a missing
@@ -28,12 +30,21 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 
 PUBLISH=0
-case "${1:-}" in
-  --publish) PUBLISH=1 ;;
-  -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-  "") ;;
-  *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
-esac
+SOURCE_TAG=
+GRADLE_ARGS=(--no-build-cache --no-configuration-cache --rerun-tasks -Pkotlin.incremental=false)
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --publish) PUBLISH=1 ;;
+    --offline) GRADLE_ARGS+=(--offline) ;;
+    --tag)
+      [ "$#" -ge 2 ] && [[ "$2" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || { echo '--tag requires a stable release tag such as v1.16.0' >&2; exit 2; }
+      SOURCE_TAG=$2; shift ;;
+    -h|--help) sed -n '2,/^set -/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown argument: $1 (try --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 REMOTE=${TWIG_GH_REMOTE:-github}
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -43,18 +54,36 @@ die()  { printf '\033[31mfatal:\033[0m %s\n' "$*" >&2; exit 1; }
 
 say "Checking the tree"
 
-[ -z "$(git status --porcelain)" ] || die "working tree is dirty; commit or stash first"
+if [ -n "$SOURCE_TAG" ]; then
+  [ "$PUBLISH" -eq 0 ] || die '--tag only rebuilds locally; it cannot publish or replace release assets'
+  COMMIT=$(git rev-parse --verify "refs/tags/$SOURCE_TAG^{commit}") || die "missing tag $SOURCE_TAG"
+else
+  [ -z "$(git status --porcelain)" ] || die "working tree is dirty; commit or stash first"
+  COMMIT=$(git rev-parse HEAD)
+fi
+
+# A real checkout preserves AGP's version-control metadata. An exported source
+# archive would embed NO_VALID_GIT_FOUND and fail F-Droid's comparison.
+mkdir -p "$ROOT/build/release-checkouts"
+BUILD_ROOT=$(mktemp -d "$ROOT/build/release-checkouts/${SOURCE_TAG:-HEAD}.XXXXXX")
+git clone --quiet --shared --no-checkout "$ROOT" "$BUILD_ROOT"
+git -C "$BUILD_ROOT" checkout --quiet --detach "$COMMIT"
+echo "  source       $COMMIT"
+echo "  checkout     $BUILD_ROOT"
+cd "$BUILD_ROOT"
 
 VERSION_NAME=$(grep -oP '^\s*versionName = "\K[^"]+' app/build.gradle.kts)
 VERSION_CODE=$(grep -oP '^\s*versionCode = \K\d+'    app/build.gradle.kts)
 [ -n "$VERSION_NAME" ] && [ -n "$VERSION_CODE" ] || die "could not read the version from app/build.gradle.kts"
+[[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'release version must be X.Y.Z'
 TAG="v$VERSION_NAME"
+[ -z "$SOURCE_TAG" ] || [ "$SOURCE_TAG" = "$TAG" ] || die "$SOURCE_TAG contains version $VERSION_NAME"
 echo "  version      $VERSION_NAME ($VERSION_CODE)  →  tag $TAG"
 
 # A tag that already points here means a previous run got interrupted; one that
 # points elsewhere means the version was not bumped.
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] \
+  [ "$(git rev-parse "$TAG^{commit}")" = "$COMMIT" ] \
     || die "$TAG already exists and points at another commit — bump the version first"
   echo "  tag          $TAG already exists at HEAD, will reuse it"
 fi
@@ -75,30 +104,44 @@ for f in README.md README.zh-CN.md THIRD_PARTY.md; do
 done
 echo "  docs         README, README.zh-CN and THIRD_PARTY mention $VERSION_CODE"
 
-[ -f keystore.properties ] || die "keystore.properties is missing; the build would come out unsigned"
+[ -f "$ROOT/keystore.properties" ] || die "keystore.properties is missing; the build would come out unsigned"
+# Keep the machine's signing choice and SDK path. Do not override debugSign.
+for config in local.properties keystore.properties; do
+  [ ! -f "$ROOT/$config" ] || ln -s "$ROOT/$config" "$BUILD_ROOT/$config"
+done
 
 if [ -n "${TWIG_JAVA_HOME:-}" ]; then
   JDK=$TWIG_JAVA_HOME
 else
   JDK=$(ls -d /usr/lib/jvm/*21* 2>/dev/null | head -1 || true)
 fi
-[ -n "$JDK" ] || die "no JDK 21 found; set TWIG_JAVA_HOME"
+[ -n "$JDK" ] && [ -x "$JDK/bin/java" ] || die "no JDK 21 found; set TWIG_JAVA_HOME"
 echo "  jdk          $JDK"
 
 OUT="$ROOT/build/release/$VERSION_NAME"
-rm -rf "$OUT"; mkdir -p "$OUT"
+mkdir -p "$OUT"
+if [ -n "$SOURCE_TAG" ]; then
+  OUT=$(mktemp -d "$OUT/rebuild.XXXXXX")
+fi
+printf 'tag=%s\ncommit=%s\ncheckout=%s\n' "$TAG" "$COMMIT" "$BUILD_ROOT" > "$OUT/source.txt"
 
 # ---------------------------------------------------------------------- build
 
 # Two passes: AGP refuses to have both ndk.abiFilters and splits.abi set, so the
 # combined APK and the per-ABI ones cannot come out of one invocation.
 say "Building the combined APKs"
-JAVA_HOME="$JDK" ./gradlew :app:assembleFullRelease :app:assembleLibreRelease
+JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease :app:assembleLibreRelease "${GRADLE_ARGS[@]}"
 cp app/build/outputs/apk/full/release/app-full-release.apk   "$OUT/Twig-$VERSION_NAME-full.apk"
 cp app/build/outputs/apk/libre/release/app-libre-release.apk "$OUT/Twig-$VERSION_NAME-libre.apk"
+# Preserve the combined APK mappings before the split build's clean task.
+mkdir -p "$OUT/mapping"
+for flavor in full libre; do
+  mapping="app/build/outputs/mapping/${flavor}Release"
+  [ ! -d "$mapping" ] || cp -R "$mapping" "$OUT/mapping/$flavor"
+done
 
 say "Building the per-ABI APKs"
-JAVA_HOME="$JDK" ./gradlew :app:assembleFullRelease -PabiSplit=true
+JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease -PabiSplit=true "${GRADLE_ARGS[@]}"
 for abi in arm64-v8a armeabi-v7a x86_64; do
   cp "app/build/outputs/apk/full/release/app-full-$abi-release.apk" \
      "$OUT/Twig-$VERSION_NAME-full-$abi.apk"
@@ -107,7 +150,7 @@ done
 # --------------------------------------------------------------------- verify
 
 say "Verifying"
-python3 tools/verify-apk.py \
+python3 "$ROOT/tools/verify-apk.py" \
   --version-code "$VERSION_CODE" --version-name "$VERSION_NAME" \
   "$OUT"/*.apk
 
@@ -161,6 +204,10 @@ if [ "$PUBLISH" -eq 0 ]; then
   say "Rehearsal only — nothing was pushed"
   echo "  APKs   $OUT"
   echo "  notes  $NOTES"
+  if [ -n "$SOURCE_TAG" ]; then
+    echo "  Rebuilt $TAG locally; existing release files were preserved."
+    exit 0
+  fi
   echo
   echo "  Publishing would: tag $TAG, push main and $TAG to '$REMOTE', create the release."
   echo "  Re-run with --publish when the notes above look right."
@@ -168,6 +215,9 @@ if [ "$PUBLISH" -eq 0 ]; then
 fi
 
 say "Publishing"
+cd "$ROOT"
+[ "$(git rev-parse HEAD)" = "$COMMIT" ] || die 'HEAD changed during the build'
+[ -z "$(git status --porcelain)" ] || die 'working tree changed during the build'
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
   || git tag -a "$TAG" -m "Twig $VERSION_NAME (versionCode $VERSION_CODE)"
 git push "$REMOTE" HEAD

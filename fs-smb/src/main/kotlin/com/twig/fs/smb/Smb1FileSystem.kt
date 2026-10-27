@@ -19,7 +19,7 @@ import java.net.URI
 import java.util.Properties
 
 /** Explicit legacy-only backend. Never selected as an automatic fallback from SMB2/3. */
-class Smb1FileSystem(private val config: SmbConfig, override val scheme: String = "smb") : FileSystem {
+class Smb1FileSystem(private val config: SmbConfig, override val scheme: String = "smb") : FileSystem, com.twig.core.ResumableWrite {
     override val displayName = "SMB1"
     private val base = segments(config.share)
     private val serverMode = base.isEmpty()
@@ -95,6 +95,8 @@ class Smb1FileSystem(private val config: SmbConfig, override val scheme: String 
             }
         } catch (e: Exception) { owner.close(); throw e }
     }
+
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
 
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         requireEntry(file)

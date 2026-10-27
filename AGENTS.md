@@ -344,6 +344,16 @@ each write `= null`.
   VM already has rows, only call `resortAll()` and do not bootstrap again** (after
   recreate the VM survives, and a second bootstrap is either skipped by an internal guard
   or breaks position restoration).
+- Transfer retries: failed copy/move/sync operations offer “Retry unfinished items” directly in
+  the failure dialog, along with the exact failing destination and “Skip this item”. Skipping
+  continues the remaining entries and keeps the skipped source (including its containing move
+  directory); repeated failures identify the next entry independently. `TransferCheckpoint` belongs
+  to that operation in memory only; there is no task history or persisted queue. Completed roots/files are skipped on retry; owned UUID
+  `.twigpart` siblings retain partial bytes until retry, success, cancellation or dismissal.
+  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3);
+  other destinations use `SafeWrite` and restart incomplete files. Resume requires known source
+  size and modification time. Original targets survive interrupted writes; only a complete
+  temporary file can replace them. A moving retry must still finish a failed source deletion.
 - Operation completion: `OperationFeedback` tracks resumed Twig activities and checks
   screen/keyguard state; a detached progress dialog does not mean the app is in the
   background. Foreground completion notifications and completion vibration are

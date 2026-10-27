@@ -1407,6 +1407,7 @@ class PaneFragment : Fragment() {
         host?.siblingOf(this)?.viewModel?.refresh()
         if (s.finished == null) return
         host?.onTransferFinished(s)
+        showTransferRetry(requireContext(), s, onStarted = { showTransferBox() })
     }
 
     /** Android 13+ requires runtime permission for notifications; only ask the moment we go to background — before that the notification is just a side effect. */

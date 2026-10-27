@@ -28,7 +28,7 @@ import java.io.OutputStream
 class FtpFileSystem(
     private val config: FtpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem {
+) : FileSystem, com.twig.core.ResumableWrite {
 
     /**
      * [FtpConfig.path] without the surrounding slashes; "" = rooted at the server root.
@@ -127,6 +127,8 @@ class FtpFileSystem(
         }
     }
 
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
+
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
         val c = connect()
         val stream = if (append) c.appendFileStream(srv(file.path)) else c.storeFileStream(srv(file.path))
@@ -141,8 +143,9 @@ class FtpFileSystem(
                 try {
                     super.close()
                 } finally {
-                    runCatching { c.completePendingCommand() }
-                    quietClose(c)
+                    try {
+                        if (!c.completePendingCommand()) throw FsException("Upload failed: ${c.replyString}")
+                    } finally { quietClose(c) }
                 }
             }
         }

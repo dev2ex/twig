@@ -74,6 +74,20 @@ object FileIcons {
      */
     fun sourceIconRes(scheme: String): Int = sourceIconOfType(Format.schemeLabel(scheme))
 
+    /** Standard local directory names; SAF supplies its display name separately from the URI. */
+    fun directoryIconRes(file: XFile): Int? {
+        if (!file.isDir || (file.scheme != "file" && file.scheme != "saf")) return null
+        return when (file.name.lowercase(java.util.Locale.ROOT)) {
+            "dcim" -> R.drawable.ic_folder_dcim
+            "download", "downloads" -> R.drawable.ic_folder_download
+            "picture", "pictures" -> R.drawable.ic_folder_pictures
+            "music" -> R.drawable.ic_folder_music
+            "movies" -> R.drawable.ic_folder_movies
+            "documents" -> R.drawable.ic_folder_documents
+            else -> null
+        }
+    }
+
     /** Path-aware lookup for labeled storage roots; scheme-only callers keep the source icon. */
     fun storageRootIconRes(file: XFile): Int {
         if (file.scheme != "file") return sourceIconRes(file.scheme)

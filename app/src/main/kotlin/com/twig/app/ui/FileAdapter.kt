@@ -869,6 +869,12 @@ class FileAdapter(
         private fun bindFavorite(node: PaneViewModel.FavoriteNode) {
             val ctx = b.root.context
             val fav = node.fav
+            val localDir = when (fav.kind) {
+                "local" -> XFile("file", fav.path, isDir = true)
+                "saf" -> XFile(com.twig.app.SafFileSystem.SCHEME, fav.path, isDir = true,
+                    displayName = fav.pathName.takeIf { it.isNotEmpty() })
+                else -> null
+            }
             b.name.text = favoriteDisplayName(fav, node.conn)
             setMeta(if (node.connecting) ctx.getString(R.string.ftp_connecting) else favoriteFullPath(fav, node.conn))
             b.icon.setImageResource(
@@ -877,9 +883,18 @@ class FileAdapter(
                     // The type table lives only in FileIcons (the path bar, recents, and copy-target rows all use this same set)
                     "conn" -> node.conn?.type?.let { FileIcons.sourceIconOfType(it) }
                         ?: R.drawable.ic_star // connection was deleted, type unknown
-                    else -> R.drawable.ic_folder // local
+                    "local" -> if (fav.path == com.twig.app.PrivateSpace.directory(ctx).path)
+                        R.drawable.ic_private_space else FileIcons.storageRootIconRes(localDir!!)
+                    else -> R.drawable.ic_folder
                 },
             )
+            localDir?.let { dir ->
+                FileIcons.directoryIconRes(dir)?.let { b.icon.setImageResource(it) }
+                val appPackage = com.twig.app.AppPackageFolders.packageOf(dir)
+                    ?: if (com.twig.app.SafFileSystem.isTreeRoot(dir))
+                        com.twig.app.SafFileSystem.providerApp(ctx, dir)?.pkg else null
+                if (appPackage != null) FileIcons.bindApp(b.icon, appPackage)
+            }
             setIndicator(node.expanded)
             if (node.connecting) { b.progress.visibility = View.VISIBLE; setIndicator(null) }
             // Selection: select / deselect all children below (two states), same as search-result rows (the favorite row itself is not an actionable object);
@@ -1003,7 +1018,7 @@ class FileAdapter(
                 file.isDir -> {
                     // Directories on media servers are all virtual (albums / artists / libraries…), give them a distinguishable icon
                     val mediaIcon = FileIcons.mediaDirIcon(file)
-                    b.icon.setImageResource(mediaIcon ?: R.drawable.ic_folder)
+                    b.icon.setImageResource(mediaIcon ?: FileIcons.directoryIconRes(file) ?: R.drawable.ic_folder)
                     // Known package directories reuse the installed-app icon cache; missing apps keep the folder icon.
                     val appPackage = com.twig.app.AppPackageFolders.packageOf(file)
                     if (appPackage != null) {
