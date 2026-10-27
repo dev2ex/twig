@@ -87,6 +87,18 @@ class StorageVolumesTest {
     }
 
     @Test
+    fun `a custom volume label shares the internal storage icon`() {
+        addVolume(sd, "opi_root", primary = false)
+        StorageVolumes.cached(app)
+        assertEquals(
+            R.drawable.ic_storage,
+            com.twig.app.ui.FileIcons.storageRootIconRes(com.twig.core.XFile("file", sd.absolutePath, isDir = true)),
+        )
+        assertEquals(R.drawable.ic_sd_card, com.twig.app.ui.FileIcons.removableIconRes("SD card"))
+        assertEquals(R.drawable.ic_usb_drive, com.twig.app.ui.FileIcons.removableIconRes("USB drive"))
+    }
+
+    @Test
     fun `an unmounted volume does not appear`() {
         addVolume(sd, "SD Card", primary = false, state = Environment.MEDIA_UNMOUNTED)
         assertTrue(StorageVolumes.cached(app).isEmpty())
@@ -116,15 +128,40 @@ class StorageVolumesTest {
     }
 
     @Test
-    fun `the volume row on the tree root sits between internal storage and the root directory`() {
+    fun `built-in storage and root stay together before removable volumes`() {
         addVolume(sd, "SD Card", primary = false)
         val vm = PaneViewModel(app).apply { io = dispatcher }
         vm.refreshTree()
         val labels = vm.state.value.rows.mapNotNull { (it as? PaneViewModel.FileNode)?.label }
         val i = labels.indexOf("SD Card")
         assertTrue("the volume row did not appear at the root: $labels", i > 0)
-        assertEquals(app.getString(R.string.group_internal_storage), labels[i - 1])
-        assertEquals(app.getString(R.string.group_root), labels[i + 1])
+        assertEquals(app.getString(R.string.group_internal_storage), labels[i - 2])
+        assertEquals(app.getString(R.string.group_root), labels[i - 1])
+        assertEquals(app.getString(R.string.private_space), labels[i + 1])
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `a volume below expanded root does not collide with its later shortcut`() {
+        val volumePath = "/storage/1A2B-3C4D"
+        addVolume(File(volumePath), "SD Card", primary = false)
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        val children = PaneViewModel::class.java.getDeclaredField("children")
+            .apply { isAccessible = true }.get(vm) as MutableMap<String, List<com.twig.core.XFile>>
+        val expanded = PaneViewModel::class.java.getDeclaredField("expanded")
+            .apply { isAccessible = true }.get(vm) as MutableSet<String>
+        children["f:file:/"] = listOf(com.twig.core.XFile("file", "/storage", isDir = true))
+        children["f:file:/storage"] = listOf(com.twig.core.XFile("file", volumePath, isDir = true))
+        expanded.addAll(listOf("f:file:/", "f:file:/storage"))
+        vm.refreshTree()
+        val rows = vm.state.value.rows
+        val volumeRows = rows.filterIsInstance<PaneViewModel.FileNode>().filter { it.file.path == volumePath }
+        assertEquals(2, volumeRows.size)
+        assertEquals(rows.size, rows.map { it.key }.toSet().size)
+        assertEquals(
+            setOf("f:file:$volumePath", "${com.twig.app.ui.TreeKeys.NESTED_STORAGE_PREFIX}f:file:$volumePath"),
+            volumeRows.map { it.key }.toSet(),
+        )
     }
 
     @Test

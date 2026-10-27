@@ -91,7 +91,7 @@ object Backup {
      * take the structured plaintext path below.
      */
     private val PREF_FILES = listOf(
-        "twig_prefs", "twig_favorites", "twig_sort", "twig_history",
+        "twig_prefs", "twig_favorites", "twig_sort", "twig_directory_views", "twig_history",
         "twig_compares", "twig_cmds", "twig_playlists", "twig_playback", "twig_websites",
     )
 

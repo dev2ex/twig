@@ -36,8 +36,8 @@
     <string name="sort_date">Date</string>
     <string name="sort_reversed">Reversed</string>
     <string name="sort_folders_by">Folder order</string>
-    <string name="sort_date_old">Date (oldest first)</string>
-    <string name="sort_date_new">Date (newest first)</string>
+    <string name="sort_date_old">Date: oldest → newest</string>
+    <string name="sort_date_new">Date: newest → oldest</string>
     <string name="density_compact">Compact</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Relaxed</string>
@@ -647,9 +647,9 @@
     <!-- Background transfers (copy / move / compress) -->
     <string name="transfer_channel">File transfers</string>
     <string name="transfer_background">Run in background</string>
-    <string name="transfer_background_hint">Transferring in background — tap the notification to return</string>
+    <string name="transfer_background_hint">Running in background — tap the notification to return</string>
     <string name="transfer_waiting">Waiting for your decision…</string>
-    <string name="transfer_busy">A transfer is already running; try again when it finishes</string>
+    <string name="transfer_busy">A file operation is already running; try again when it finishes</string>
     <string name="transfer_done">Transfer complete</string>
     <string name="transfer_failed">Transfer failed</string>
 
@@ -1139,4 +1139,61 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">Allow %1$s to use:</string>
+    <string name="website_microphone">Microphone</string>
+    <string name="website_camera">Camera</string>
+    <string name="website_permission_ask">Ask every time</string>
+    <string name="website_permission_allow">Allow</string>
+    <string name="website_permission_deny">Block</string>
+    <string name="website_permission_remember">Remember this decision for this website</string>
+    <string name="website_location">Location</string>
+    <string name="website_group_display">Display and toolbar</string>
+    <string name="website_group_browsing">Browsing and interaction</string>
+    <string name="website_group_privacy">Privacy and background</string>
+    <string name="player_skip_head">Skip opening</string>
+    <string name="player_skip_tail">Skip ending</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s cleared</string>
+    <string name="player_skip_invalid">Choose a point between the opening and ending.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Show/hide root items</string>
+    <string name="private_space">Private space</string>
+    <string name="private_space_create_failed">Could not create Private space</string>
+
+    <!-- Fixed protocol names, shared by tree roots and visibility settings. -->
+    <string name="group_nfs" translatable="false">NFS</string>
+    <string name="group_ftp" translatable="false">FTP</string>
+    <string name="group_sftp" translatable="false">SSH (SFTP)</string>
+    <string name="group_webdav" translatable="false">WebDAV</string>
+    <string name="group_s3" translatable="false">S3</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Operation alerts</string>
+    <string name="settings_completion_vibration">Vibrate when finished</string>
+    <string name="settings_completion_vibration_desc">Copy, move, delete, archive packing and extraction</string>
+    <string name="settings_foreground_completion">Completion notifications in foreground</string>
+    <string name="settings_foreground_completion_desc">Also notify while using Twig. Background and locked-screen operations always notify.</string>
+
+    <string name="settings_exit_on_back">Exit on Back</string>
+    <string name="settings_exit_on_back_desc">Exit Twig when Back closes the main screen. Ask for confirmation if tasks are running.</string>
+    <string name="share_text_filename">Shared text.txt</string>
+    <string name="settings_toolbar_bottom">Toolbar at bottom</string>
+    <string name="settings_toolbar_bottom_desc">Move the file browser toolbar to the bottom for easier one-handed use</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Default</string>
+    <string name="directory_view_selected">Selected directory</string>
+    <string name="directory_view_custom_sort">Custom sort</string>
+    <string name="directory_view_custom_view">Custom view</string>
+    <string name="directory_view_reset">Use defaults</string>
+    <string name="directory_view_recursive">Apply to subdirectories</string>
+    <string name="sort_name_az">Name: A → Z</string>
+    <string name="sort_name_za">Name: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Preparing to share…</string>
+    <string name="share_prepare_failed">Could not prepare files for sharing.</string>
+    <string name="share_prepare_space">Not enough space to prepare files for sharing.</string>
+    <string name="share_prepare_incomplete">The file changed or could not be read completely.</string>
 </resources>

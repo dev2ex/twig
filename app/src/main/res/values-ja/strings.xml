@@ -36,8 +36,8 @@
     <string name="sort_date">日時</string>
     <string name="sort_reversed">逆順</string>
     <string name="sort_folders_by">フォルダーの並び順</string>
-    <string name="sort_date_old">日時（古い順）</string>
-    <string name="sort_date_new">日時（新しい順）</string>
+    <string name="sort_date_old">日時：古い → 新しい</string>
+    <string name="sort_date_new">日時：新しい → 古い</string>
     <string name="density_compact">コンパクト</string>
     <string name="density_normal">標準</string>
     <string name="density_large">ゆったり</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">不正なストリームトークン</string>
     <string name="transfer_channel">ファイル転送</string>
     <string name="transfer_background">バックグラウンドで実行</string>
-    <string name="transfer_background_hint">バックグラウンドで転送中。通知をタップして戻れます</string>
+    <string name="transfer_background_hint">バックグラウンドで処理中。通知をタップして戻れます</string>
     <string name="transfer_waiting">選択を待っています…</string>
-    <string name="transfer_busy">転送中です。完了後に再試行してください</string>
+    <string name="transfer_busy">ファイル操作中です。完了後に再試行してください</string>
     <string name="transfer_done">転送完了</string>
     <string name="transfer_failed">転送に失敗</string>
     <string name="cmd_channel">リモートコマンド</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">%1$s に使用を許可：</string>
+    <string name="website_microphone">マイク</string>
+    <string name="website_camera">カメラ</string>
+    <string name="website_permission_ask">毎回確認</string>
+    <string name="website_permission_allow">許可</string>
+    <string name="website_permission_deny">ブロック</string>
+    <string name="website_permission_remember">このサイトでの選択を記憶する</string>
+    <string name="website_location">位置情報</string>
+    <string name="website_group_display">表示とツールバー</string>
+    <string name="website_group_browsing">閲覧と操作</string>
+    <string name="website_group_privacy">プライバシーとバックグラウンド</string>
+    <string name="player_skip_head">オープニングをスキップ</string>
+    <string name="player_skip_tail">エンディングをスキップ</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$sを解除しました</string>
+    <string name="player_skip_invalid">オープニングとエンディングの間の位置を選んでください。</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">ルート項目の表示/非表示</string>
+    <string name="private_space">プライベート領域</string>
+    <string name="private_space_create_failed">プライベート領域を作成できませんでした</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">操作の通知</string>
+    <string name="settings_completion_vibration">完了時に振動</string>
+    <string name="settings_completion_vibration_desc">コピー、移動、削除、圧縮、展開に適用</string>
+    <string name="settings_foreground_completion">フォアグラウンドでの完了通知</string>
+    <string name="settings_foreground_completion_desc">Twig の使用中も完了を通知します。バックグラウンドや画面ロック中は常に通知します。</string>
+
+    <string name="settings_exit_on_back">戻る操作で終了</string>
+    <string name="settings_exit_on_back_desc">戻る操作でメイン画面を閉じるときに Twig を終了します。実行中のタスクがある場合は確認します。</string>
+    <string name="share_text_filename">共有テキスト.txt</string>
+    <string name="settings_toolbar_bottom">ツールバーを下部に配置</string>
+    <string name="settings_toolbar_bottom_desc">ファイルブラウザーのツールバーを下部に移動し、片手で操作しやすくします</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">既定</string>
+    <string name="directory_view_selected">選択中のフォルダ</string>
+    <string name="directory_view_custom_sort">並べ替えを個別設定</string>
+    <string name="directory_view_custom_view">表示を個別設定</string>
+    <string name="directory_view_reset">既定に戻す</string>
+    <string name="directory_view_recursive">サブフォルダにも適用</string>
+    <string name="sort_name_az">名前：A → Z</string>
+    <string name="sort_name_za">名前：Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">共有の準備中…</string>
+    <string name="share_prepare_failed">共有するファイルを準備できませんでした。</string>
+    <string name="share_prepare_space">共有するファイルを準備する空き容量がありません。</string>
+    <string name="share_prepare_incomplete">ファイルが変更されたか、完全に読み取れませんでした。</string>
 </resources>

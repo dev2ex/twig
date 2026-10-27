@@ -36,8 +36,8 @@
     <string name="sort_date">날짜</string>
     <string name="sort_reversed">역순</string>
     <string name="sort_folders_by">폴더 순서</string>
-    <string name="sort_date_old">날짜 (오래된 순)</string>
-    <string name="sort_date_new">날짜 (최신순)</string>
+    <string name="sort_date_old">날짜: 오래된 순 → 최신순</string>
+    <string name="sort_date_new">날짜: 최신순 → 오래된 순</string>
     <string name="density_compact">좁게</string>
     <string name="density_normal">보통</string>
     <string name="density_large">넓게</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">잘못된 스트림 토큰</string>
     <string name="transfer_channel">파일 전송</string>
     <string name="transfer_background">백그라운드에서 실행</string>
-    <string name="transfer_background_hint">백그라운드 전송 중 — 알림을 눌러 돌아가기</string>
+    <string name="transfer_background_hint">백그라운드 작업 중 — 알림을 눌러 돌아가기</string>
     <string name="transfer_waiting">선택 대기 중…</string>
-    <string name="transfer_busy">전송이 진행 중입니다. 끝난 후 다시 시도하세요</string>
+    <string name="transfer_busy">파일 작업이 진행 중입니다. 끝난 후 다시 시도하세요</string>
     <string name="transfer_done">전송 완료</string>
     <string name="transfer_failed">전송 실패</string>
     <string name="cmd_channel">원격 명령</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">%1$s에 사용 허용:</string>
+    <string name="website_microphone">마이크</string>
+    <string name="website_camera">카메라</string>
+    <string name="website_permission_ask">매번 묻기</string>
+    <string name="website_permission_allow">허용</string>
+    <string name="website_permission_deny">차단</string>
+    <string name="website_permission_remember">이 웹사이트에 대한 결정 기억</string>
+    <string name="website_location">위치</string>
+    <string name="website_group_display">화면 및 도구 모음</string>
+    <string name="website_group_browsing">탐색 및 조작</string>
+    <string name="website_group_privacy">개인정보 및 백그라운드</string>
+    <string name="player_skip_head">오프닝 건너뛰기</string>
+    <string name="player_skip_tail">엔딩 건너뛰기</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s 해제됨</string>
+    <string name="player_skip_invalid">오프닝과 엔딩 사이의 지점을 선택하세요.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">루트 항목 표시/숨기기</string>
+    <string name="private_space">비공개 공간</string>
+    <string name="private_space_create_failed">비공개 공간을 만들 수 없습니다</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">작업 알림</string>
+    <string name="settings_completion_vibration">완료 시 진동</string>
+    <string name="settings_completion_vibration_desc">복사, 이동, 삭제, 압축 및 압축 해제</string>
+    <string name="settings_foreground_completion">포그라운드 완료 알림</string>
+    <string name="settings_foreground_completion_desc">Twig 사용 중에도 알립니다. 백그라운드 및 화면 잠금 상태에서는 항상 알립니다.</string>
+
+    <string name="settings_exit_on_back">뒤로 가기로 종료</string>
+    <string name="settings_exit_on_back_desc">뒤로 가기로 메인 화면을 닫을 때 Twig를 종료합니다. 실행 중인 작업이 있으면 확인합니다.</string>
+    <string name="share_text_filename">공유 텍스트.txt</string>
+    <string name="settings_toolbar_bottom">도구 모음을 하단에 배치</string>
+    <string name="settings_toolbar_bottom_desc">한 손으로 쉽게 사용할 수 있도록 파일 탐색기의 도구 모음을 하단으로 이동</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">기본값</string>
+    <string name="directory_view_selected">선택한 폴더</string>
+    <string name="directory_view_custom_sort">사용자 지정 정렬</string>
+    <string name="directory_view_custom_view">사용자 지정 보기</string>
+    <string name="directory_view_reset">기본값 사용</string>
+    <string name="directory_view_recursive">하위 폴더에 적용</string>
+    <string name="sort_name_az">이름: A → Z</string>
+    <string name="sort_name_za">이름: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">공유 준비 중…</string>
+    <string name="share_prepare_failed">공유할 파일을 준비하지 못했습니다.</string>
+    <string name="share_prepare_space">공유할 파일을 준비할 공간이 부족합니다.</string>
+    <string name="share_prepare_incomplete">파일이 변경되었거나 완전히 읽을 수 없습니다.</string>
 </resources>

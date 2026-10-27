@@ -225,6 +225,7 @@ class PaneFragment : Fragment() {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        viewModel.paneIndex = paneIndex
         com.twig.app.WebsiteStore.preferences(requireContext()).registerOnSharedPreferenceChangeListener(websiteListener)
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
@@ -359,9 +360,20 @@ class PaneFragment : Fragment() {
         ))
     }
 
+    fun refreshSortAndView() {
+        if (::adapter.isInitialized) {
+            val grid = Prefs.thumbsGrid(requireContext())
+            val changed = adapter.gridMode != grid
+            adapter.gridMode = grid
+            viewModel.refreshSortAndView()
+            if (changed) adapter.notifyDataSetChanged()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         takeImageViewerResult()
+        refreshSortAndView()
         // The user may have just picked "Always" in the system resolver: clear the file-association icon cache and redraw so the icon follows.
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) {
@@ -415,7 +427,10 @@ class PaneFragment : Fragment() {
         }
         b.tvEmpty.visibility = if (s.rows.isEmpty()) View.VISIBLE else View.GONE
         host?.onClipTargetChanged() // Paste target = currentDir, refresh that line on the bar to follow.
-        s.error?.let { toast(it) }
+        s.error?.let {
+            viewModel.dismissError()
+            toast(it)
+        }
         s.passwordFor?.let { askArchivePassword(it) }
         s.dataAccessFor?.let { file ->
             viewModel.dismissDataAccessRequest()
@@ -462,24 +477,9 @@ class PaneFragment : Fragment() {
         observers.clear()
     }
 
-    /**
-     * Path-bar text: local is the absolute path; everything else is `type:/path`; network sources insert the server
-     * name after the type (custom label preferred, see [SavedConnection.shortLabel]), matching the "Recent" entries' style.
-     */
-    private fun pathLabel(f: XFile): String = when {
-        f.scheme == "file" -> f.path
-        f.scheme == "saf" -> f.name
-        else -> {
-            // This pane's reverse lookup wins; otherwise ask the global (copy / compress target directories belong to the
-            // *other* pane — this pane hasn't expanded that server, so looking only at the VM would lose the server name; see [Connections.ofScheme]).
-            val conn = viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme)
-            val server = conn?.shortLabel().orEmpty()
-            val path = if (f.path.startsWith("/")) f.path else "/${f.path}"
-            val head = Format.schemeLabel(f.scheme)
-            // Non-server sources (zip/git/restic…) have no server name; don't insert an extra slash.
-            if (server.isEmpty()) "$head:$path" else "$head:/$server$path"
-        }
-    }
+    /** Match history and directory settings, retaining this pane's server lookup. */
+    private fun pathLabel(f: XFile): String =
+        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme))
 
     /** For the host (share-target page) to display a path in the same format. */
     fun displayPath(f: XFile): String = pathLabel(f)
@@ -636,8 +636,8 @@ class PaneFragment : Fragment() {
     }
 
     /**
-     * System share: via [com.twig.app.StreamProvider]'s streaming grant, files inside SMB / archives / S3 can be sent to other apps
-     * **without being materialized to a temp file**. This is a different thing from the per-directory "WiFi sharing" item
+     * System share: prepare nonlocal sources with progress, then grant the receiving app access.
+     * This is a different thing from the per-directory "WiFi sharing" item
      * (which is for letting other devices connect to this one).
      */
     private fun shareFile(file: XFile) {
@@ -727,25 +727,7 @@ class PaneFragment : Fragment() {
     }
 
     private fun openRecentVideo(mark: PlaybackMark, fromStart: Boolean = false) {
-        val ctx = requireContext()
-        val conn = if (mark.connLabel.isEmpty()) null else Connections.find(ctx, mark.connLabel)
-        if (mark.connLabel.isNotEmpty() && conn == null) {
-            toast(getString(R.string.history_conn_missing))
-            return
-        }
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val scheme = if (conn == null) "file" else Connections.ensure(ctx, conn)
-                    val file = FsRegistry.of(scheme).stat(mark.path)
-                    require(file != null && !file.isDir) { getString(R.string.history_video_missing) }
-                    file
-                }
-            }
-            if (!isAdded) return@launch
-            result.fold(onSuccess = { MediaPlayerActivity.start(ctx, it, asVideo = true, fromStart = fromStart) },
-                onFailure = { toast(it.message ?: getString(R.string.err_failed)) })
-        }
+        MediaPlayerActivity.startRecent(requireContext(), mark, fromStart)
     }
 
     private fun jumpToHistory(e: HistoryEntry) {
@@ -1034,7 +1016,7 @@ class PaneFragment : Fragment() {
                     viewModel.invalidate(dir); viewModel.refresh()
                 }
             }
-            .show()
+            .create().showNameInput(input)
     }
 
     /**
@@ -1047,7 +1029,6 @@ class PaneFragment : Fragment() {
         val input = EditText(requireContext()).apply {
             hint = getString(R.string.hint_name)
             setText(preset)
-            setSelection(0, preset.lastIndexOf('.').let { if (it <= 0) preset.length else it })
         }
         AlertDialog.Builder(requireContext())
             .setTitle(R.string.action_new_text)
@@ -1070,7 +1051,7 @@ class PaneFragment : Fragment() {
                     created?.let { TextViewerActivity.start(requireContext(), it, edit = true) }
                 }
             }
-            .show()
+            .create().showNameInput(input, selectStem = true)
     }
 
     /** Currently-checked files (for picker hosts to grab multi-selection results); empty when nothing is checked. */
@@ -1164,7 +1145,7 @@ class PaneFragment : Fragment() {
                     adapter.clearSelection(); clearMapSelection(); viewModel.refresh()
                 }
             }
-            .show()
+            .create().showNameInput(input, selectStem = !target.isDir)
     }
 
     fun actionDelete() {
@@ -1399,6 +1380,7 @@ class PaneFragment : Fragment() {
     fun showTransferBox() {
         // `active` is cleared by the transfer thread (right at completion); copy it locally before checking, don't crash on `!!`.
         val session = Transfers.active ?: return
+        if (session.isShare) { ShareTransfers.attach(requireContext(), reveal = true); return }
         if (_b == null || Transfers.ui != null) return
         progressBox = TransferBox(
             requireContext(), layoutInflater, session,
@@ -1423,26 +1405,7 @@ class PaneFragment : Fragment() {
         clearMapSelection()
         viewModel.refresh()
         host?.siblingOf(this)?.viewModel?.refresh()
-        val r = s.finished ?: return
-        r.fold(
-            onSuccess = {
-                toast(
-                    when {
-                        s.cancelled.get() -> getString(R.string.dialog_cancel)
-                        // Entries whose own name cannot be written into a directory (an archive's
-                        // "..") are skipped rather than failing the batch — say how many
-                        s.refused > 0 -> getString(R.string.msg_done_refused, s.refused)
-                        else -> getString(R.string.msg_done)
-                    },
-                )
-            },
-            onFailure = {
-                toast(
-                    if (it is ArchiveWriter.Cancelled) getString(R.string.dialog_cancel)
-                    else it.message ?: getString(R.string.err_failed),
-                )
-            },
-        )
+        if (s.finished == null) return
         host?.onTransferFinished(s)
     }
 
@@ -1493,10 +1456,14 @@ class PaneFragment : Fragment() {
         cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
         cb.tvDest.text = pathLabel(dest)
         cb.ivDest.setImageResource(pathIcon(dest))
-        cb.etName.setText("${defaultArchiveName(sel)}.${ArchiveWriter.Format.ZIP.ext}")
+        val format = Prefs.compressFormat(requireContext())
+        cb.rgFormat.check(if (format == ArchiveWriter.Format.SEVEN_Z) R.id.rb_7z else R.id.rb_zip)
+        cb.etName.setText("${defaultArchiveName(sel)}.${format.ext}")
         cb.rgFormat.setOnCheckedChangeListener { _, id ->
+            val selected = formatOf(id)
+            Prefs.setCompressFormat(requireContext(), selected)
             val stem = stripArchiveExt(cb.etName.text.toString())
-            cb.etName.setText("$stem.${formatOf(id).ext}")
+            cb.etName.setText("$stem.${selected.ext}")
             cb.etName.setSelection(stem.length) // setText sends the cursor back to the start; move it back to the end of the name to keep typing.
         }
         // "Encrypted archives are read-only" — only mention it when actually encrypting; don't take up space otherwise.
@@ -1528,12 +1495,7 @@ class PaneFragment : Fragment() {
                 )
             }
             .create()
-        // Rename as soon as the dialog opens: keyboard pops up directly (ALWAYS_ ignores the "user manually hid the keyboard last time" state, must be set before show),
-        // focus lands on the name field and **selects only the stem, not the extension** — typing replaces the name straight away while .zip/.7z is preserved.
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
-        dialog.show()
-        cb.etName.requestFocus()
-        cb.etName.setSelection(0, stripArchiveExt(cb.etName.text.toString()).length)
+        dialog.showNameInput(cb.etName, selectStem = true)
     }
 
     private fun formatOf(checkedId: Int): ArchiveWriter.Format =
@@ -1752,11 +1714,17 @@ class PaneFragment : Fragment() {
         }
     }
 
+    /** Trash is shared by both trees, including a sibling whose root is collapsed or hidden. */
+    private fun refreshTrashPanes() {
+        viewModel.refreshTrash()
+        host?.siblingOf(this)?.viewModel?.refreshTrash()
+    }
+
     private fun longClickFile(node: PaneViewModel.FileNode) {
         if (node.file.scheme == "trash") {
             val selected = adapter.selectedItems()
             if (adapter.isSelected(node) && selected.size > 1) { showBatchMenu(selected); return }
-            TrashDialogs(requireContext(), viewLifecycleOwner) { viewModel.refreshTrash() }.show(node.file, trashFileActions(node))
+            TrashDialogs(requireContext(), viewLifecycleOwner) { refreshTrashPanes() }.show(node.file, trashFileActions(node))
             return
         }
         if (node.file.isDir && node.file.scheme.startsWith("git")) {
@@ -1811,11 +1779,14 @@ class PaneFragment : Fragment() {
     /** Deleted entries remain read-only; inspection and export use their virtual source. */
     private fun trashFileActions(node: PaneViewModel.FileNode): List<MenuAct> {
         val file = node.file
-        if (file.path == "/") return emptyList()
+        if (file.path == "/") return if (!adapter.hasChildren(node)) emptyList() else listOf(MenuAct(
+            getString(R.string.action_select_all),
+            R.drawable.ic_sel_check,
+        ) { adapter.toggleChildrenSelection(node) })
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
-        if (!file.canRead) return actions // A deleted symlink can be inspected/restored, never followed.
         actions.item(getString(R.string.action_select), R.drawable.ic_sel_check) { adapter.toggleSelection(node) }
+        if (!file.canRead) return actions // A deleted symlink can be inspected/restored, never followed.
         if (file.isDir) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(file) }
@@ -1838,27 +1809,37 @@ class PaneFragment : Fragment() {
      */
     private fun showBatchMenu(targets: List<XFile>) {
         val actions = ArrayList<MenuAct>()
+        if (targets.all { it.scheme == "trash" && it.path != "/" }) {
+            actions.item(getString(R.string.trash_restore), R.drawable.ic_up) {
+                TrashDialogs(requireContext(), viewLifecycleOwner) { adapter.clearSelection(); refreshTrashPanes() }
+                    .restoreSelected(targets)
+            }
+            actions.item(getString(R.string.trash_delete_permanently), R.drawable.ic_delete, DANGER) {
+                TrashDialogs(requireContext(), viewLifecycleOwner) { adapter.clearSelection(); refreshTrashPanes() }
+                    .purgeSelected(targets)
+            }
+        }
         actions.item(getString(R.string.file_info), R.drawable.ic_info) {
             val anchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
             pendingSelectionInfoScroll = true
             viewModel.toggleSelectionInfo(targets, anchor?.key)
         }
-        if (targets.none { it.isDir }) {
+        if (targets.all { it.canRead } && targets.none { it.isDir }) {
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFiles(targets) }
         }
-        if (targets.any { it.isDir || Thumbs.canThumb(it) }) {
+        if (targets.all { it.canRead } && targets.any { it.isDir || Thumbs.canThumb(it) }) {
             actions.item(getString(R.string.action_refresh_thumb), R.drawable.ic_file_image) {
                 refreshThumb(targets)
             }
         }
-        actions.item(getString(R.string.action_clip_add), R.drawable.ic_clipboard) { addToClipboard(targets) }
+        if (targets.all { it.canRead }) actions.item(getString(R.string.action_clip_add), R.drawable.ic_clipboard) { addToClipboard(targets) }
         // Same as commonFileActions: copy / compress are pure read-source and always allowed; move / delete require *every* source to be mutable.
         val mutable = targets.all { it.isMutable() }
-        actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) { performCopy(targets, move = false) }
+        if (targets.all { it.canRead }) actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) { performCopy(targets, move = false) }
         if (targets.all { it.isMovableSource() }) {
             actions.item(getString(R.string.strip_move), R.drawable.ic_move) { performCopy(targets, move = true) }
         }
-        actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompress(targets) }
+        if (targets.all { it.canRead }) actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompress(targets) }
         if (mutable) {
             actions.item(getString(R.string.batch_rename), R.drawable.ic_rename) { performBatchRename(targets) }
             actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { performDelete(targets) }
@@ -2333,7 +2314,7 @@ class PaneFragment : Fragment() {
                 val name = input.text.toString().trim()
                 if (name.isNotEmpty()) onRenamed(name)
             }
-            .show()
+            .create().showNameInput(input)
     }
 
     private fun promptRenameFavorite(fav: com.twig.app.Favorite, current: String) {

@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.15.2** (versionCode 308) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.16.0** (versionCode 313) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -104,7 +104,7 @@ S3, restic repositories and Jellyfin/Emby libraries expand in place. Keep two
 sources side by side: compress an SMB folder into a local zip, or copy a file
 from a remote archive straight to an FTP server.
 
-**Small and resource-conscious.** The 1.15.0 full build's arm64-v8a download measures 8.25 MiB,
+**Small and resource-conscious.** The 1.16.0 full build's arm64-v8a download measures 8.37 MiB,
 including the terminal, network backends and media player. Dependencies are added
 only after their APK cost is measured.
 
@@ -144,22 +144,24 @@ only after their APK cost is measured.
 
 ## Size
 
-Measured on the 1.15.0 release builds (R8 + resource shrinking; MiB = 1,048,576 bytes):
+Measured on the signed 1.16.0 release APKs (R8 + resource shrinking; MiB = 1,048,576 bytes):
 
 | | Size |
 |---|---|
-| Full APK (`arm64-v8a` + `x86_64`) | 10.38 MiB |
-| Libre APK (`arm64-v8a` + `x86_64`) | 10.34 MiB |
-| **Per-device download (`arm64-v8a`)** | **8.25 MiB** |
+| Full APK (`arm64-v8a` + `x86_64`) | 10.51 MiB |
+| Libre APK (`arm64-v8a` + `x86_64`) | 10.45 MiB |
+| **Full APK, `arm64-v8a` only** | **8.37 MiB** |
+| Full APK, `x86_64` only | 8.49 MiB |
+| Full APK, `armeabi-v7a` only (experimental) | 8.13 MiB |
 
 Where it goes (compressed entries inside the full `arm64-v8a` APK):
 
 | Component | Size |
 |---|---|
-| `classes*.dex` (all our code plus every JVM dependency) | 3.05 MiB |
+| `classes*.dex` (all our code plus every JVM dependency) | 3.09 MiB |
 | `libffmpegJNI.so` | 1.39 MiB |
 | Bouncy Castle data files | 1.18 MiB |
-| Resources (`resources.arsc` + `res`) | 1.75 MiB |
+| Resources (`resources.arsc` + `res`) | 1.83 MiB |
 | `libsamba_jni.so` (libsmb2) | 484 KiB |
 | `libtwigzstd` / `libtermux` / `libtwigpty` | 109 KiB |
 
@@ -197,6 +199,7 @@ and the app can be built in trimmed configurations by dropping modules.
 | Source | Capability | Implementation |
 |---|---|---|
 | **Local** | Full read/write | `java.io.File` |
+| **Private space** | Full read/write | App-owned storage, browsed through the local filesystem; excluded from backups and removed on uninstall |
 | **Android/data/** | Read/write with permission | Saved SAF grants for the whole folder or individual app folders where the system permits; root/Shizuku access also supported |
 | **System directories** (`/system`, `/vendor`, etc.) | Browse readable directories and files | Direct access to readable system paths even when listing `/` is blocked; protected contents require root/Shizuku, and read-only mounts remain read-only |
 | **ZIP** | **Read + write**, legacy GBK names detected | Mounted as a filesystem; opens like a folder |
@@ -221,12 +224,14 @@ Network sources connect on expand, support multiple servers (each gets a unique
 scheme), and persist their configuration. Extraction is just a cross-source copy;
 so is compression, which is why "compress a folder on SMB into a local archive"
 needs no special case.
+The compression dialog remembers the last ZIP/7Z format across launches, even if cancelled.
 
 ### Browsing
 
-- **One complete tree.** Top-level nodes are internal storage, root, LAN (SMB),
-  FTP, SSH, WebDAV, S3, document tree, favourites, websites and installed apps. Archives are expandable
-  file nodes.
+- **One complete tree.** Top-level nodes include internal storage, root, private space,
+  removable storage, trash, LAN (SMB), FTP, SSH, WebDAV, S3, media servers, document trees,
+  favourites, websites and installed apps. Archives are expandable file nodes.
+  Choose root-item visibility separately for each pane; private space is visible by default.
 - **Always expand in place, never "enter" a directory.** The current directory is
   the last one you tapped, and it is the target for new folders, copies and moves.
 - Single pane in portrait (swipe to switch), **dual pane side by side in
@@ -235,6 +240,17 @@ needs no special case.
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
   files through the system chooser.
+- **Trash** for ordinary writable local shared storage, on the original volume.
+  Restore or permanently purge individual entries or batches; an empty trash root hides
+  automatically. Network, SAF-only and privileged deletions use permanent deletion instead.
+  Delete and purge jobs have background progress and stop between backend calls when cancelled.
+- **Share into Twig** to copy incoming files or save shared text as a UTF-8 file with an
+  editable name. The destination picker has two panes, sorting, search and history, and
+  follows the browser's fullscreen and toolbar-placement settings.
+- **Browser controls:** optionally put the toolbar at the bottom or exit the main screen
+  with Back after pane navigation is exhausted. Completion vibration and foreground
+  completion notifications are separate, default-off settings; background results retain
+  a notification.
 - **Batch rename** selected files and folders with live original/new-name previews.
   Replace text or use regular expressions, choose case sensitivity, and target names,
   extensions or both. Add numbering before or after names with a configurable start
@@ -253,7 +269,12 @@ needs no special case.
   control the moment you touch the list. With position memory off, favourites
   expand by default.
 - **Grid view**, independent of the thumbnail toggle, with adaptive column count.
-- **Thumbnails** for images and videos on local and network sources.
+- **Folder sorting and views:** set global defaults or separate overrides for a folder's
+  sorting and list/media-grid/all-files-grid view. Each override can optionally apply to
+  subfolders; a folder's own setting wins, followed by its nearest recursive ancestor,
+  then the global default. Folder names can be sorted in either direction.
+- **Thumbnails** for images and videos on local and network sources, with an optional
+  remembered playback-progress bar inside video thumbnails.
 - **Optional folder/file counts** beneath local and SMB directories, off by default;
   configurable date formats, including the system region's format.
 - **Property cards** inline under a row: EXIF, media tracks, app info, hashes —
@@ -273,7 +294,7 @@ needs no special case.
   when Android blocks listing `/`; access to their contents still follows system
   permissions.
 - **Treemap disk usage** (SpaceSniffer style) embedded in the pane, pinch to zoom,
-  with the same long-press actions as the tree.
+  with a reset-zoom button and the same long-press actions as the tree.
 - **SD cards and USB drives** get their own rows at the root, named and sized by the
   system. No new permission — a volume the ordinary APIs cannot read can be granted
   through SAF or reached with elevation.
@@ -315,6 +336,13 @@ task through Android's system WebView; pin it to the home screen for direct acce
 Opening an already-running website returns to its existing page rather than loading
 the URL again.
 
+Twig can also open HTTP(S) links from other apps in temporary website tasks. They use
+website defaults and enter the bookmark list only through **Add website**. Long-press
+the **Websites** root to edit defaults: display choices initialise new bookmarks;
+shared JavaScript, CSS, hidden-element and blocking rules apply to existing pages too.
+A site's own User-Agent overrides the shared value; its scripts, styles and rules are
+combined with the shared settings.
+
 Expand **Websites → Add website…**, enter a name and URL, then choose how it opens.
 Long-press its tree entry to edit it or add a home-screen shortcut. Site settings cover:
 
@@ -342,6 +370,14 @@ Long-press its tree entry to edit it or add a home-screen shortcut. Site setting
 - **Downloads:** HTTP(S) downloads go to `Downloads/twig` by default. Confirm the file
   name or choose another writable destination through Twig's own picker, including
   connected storage, with transfer progress and cancellation.
+- **File uploads:** choose one or multiple files through Twig's own picker, including
+  files on connected storage, according to the page's upload request.
+- **Camera, microphone and location:** each bookmark has separate ask/allow/deny
+  controls for its saved HTTPS origin. Capture and location also require Android
+  permissions; temporary pages always ask. New bookmarks do not inherit permission
+  grants, and changing a bookmark's origin resets them.
+- **Prevent screenshots:** an independent per-site option, off by default, also
+  controls recent-task previews after unlocking.
 - **Run in background:** an opt-in setting, off by default, keeps a live website session
   under a foreground service with a notification, for media or other page tasks.
   Close the page or use the notification to end it. It improves background survival;
@@ -354,15 +390,17 @@ depends on the installed system WebView.
 
 When Twig's master password is enabled, opening a website or returning to its task
 requires unlocking Twig if it is locked. Cookies and the live page are retained,
-and opted-in background sessions continue. Website windows block screenshots and
-recent-task previews while the master password is enabled.
+and opted-in background sessions continue. While locked, website windows block screenshots
+and recent-task previews; after unlocking, the site's **Prevent screenshots** setting applies.
 
 ### Compare
 
 - **Directory compare** in the Beyond Compare style: two trees aligned row by row with
   a status column between them — side by side in landscape, one side at a time in
   portrait with the status column always visible. Either side can be *any* source, and
-  small files are compared by content rather than by size and timestamp.
+  small files are compared by content rather than by size and timestamp. Full-content
+  comparison can also be requested for larger files. Read failures are reported as
+  errors and excluded from sync.
 - **One-way sync** in a direction you pick explicitly (left or right, never "the active
   side"), **incremental** by default — push what is missing or different and leave the
   target's extra files alone — or **mirror**, which deletes them. Items that are newer
@@ -401,6 +439,16 @@ all work the same way.
 - **Episode auto-play**: the queue comes from the server on Jellyfin/Emby, and
   from filename numbering (`SxxExx`, `E01`, bare digits) everywhere else. Previous
   and next buttons appear only when a queue could actually be worked out
+- **Opening and ending skips** apply to videos recognised as one series with at least
+  two episodes; episode numbers need not be consecutive. Tap the opening button at
+  the end of the opening, or the ending button at the start of the credits, to remember
+  boundaries shared by the series. Tap a marked button again to clear it.
+  Playback starting inside the opening skips to its end; reaching the ending boundary
+  advances to the next episode, or finishes playback on the last episode.
+- **Continue watching** has its own tab in History for unfinished local videos and
+  videos on saved file-server connections. Resume, start over or locate their folder;
+  removing an entry hides it without deleting its saved position. Opening or seeking
+  must be followed by ten continuous seconds of playback before progress is updated.
 - **Playback preferences** remember manually selected audio/subtitle tracks and
   picture scaling for the next episode and when reopening a file
 - **Playback controls** include swipe seeking, brightness/volume gestures and
@@ -414,14 +462,17 @@ all work the same way.
   queues while their source remains mounted.
 - **Cover art and lyrics.** The interface takes its colours from the cover; tap to
   switch between cover and lyrics, or see both side by side in landscape. Swipe
-  to change tracks.
+  horizontally on the cover to change tracks, or vertically to adjust media volume
+  with an in-player percentage display.
 - **Synchronised bilingual lyrics** from sidecar LRC files, embedded tags or the
   media server. Tap a timed lyric to seek to that line; the waveform also acts as
   a seek bar.
 - **Playlist management** with favourites, name/metadata search, sorting, manual
   drag-to-reorder, shuffle and repeat. Export saved playlists as `.m3u8` files.
 - **Background playback** with notification, lock-screen and headset/Bluetooth
-  controls. The last queue can be restored when reopening the player.
+  controls. The notification includes Like and Exit, and a native playback timer where
+  the system displays it. The last queue can be restored when reopening the player.
+  Exit through the player menu, notification, or by long-pressing Shuffle.
 
 ### Media servers (Jellyfin / Emby)
 
@@ -471,8 +522,11 @@ here, and `org.json` ships with Android.
 - **Customise the terminal.** Import a font and a Termux-compatible
   `colors.properties` scheme, or use the defaults. Pinch to change text size;
   terminal colours also apply to the extra-key bar, independently of the app theme.
-- **Command shortcuts**: attach a command to an SFTP directory or server, run it
-  in a terminal or silently in the background, and pin it to the home screen.
+- **Keep screen on** can keep the session visible; the display dims after the system's
+  idle timeout and returns to its previous brightness on interaction.
+- **Command shortcuts**: attach a command to an SFTP directory, server or local directory,
+  run it in a terminal or silently in the background, and pin it to the home screen.
+  Local commands use the app uid unless the default-off **Use privileged session** is selected.
 
 ### Git
 
@@ -503,9 +557,9 @@ Twig can find it and save it as a connection.
   rewritten. No new dependency: scrypt comes from the Bouncy Castle already in the APK.
 - The master password is an **app lock checked at every entry point** — the main UI,
   "open with Twig", "copy to…", the file picker, the terminal shortcut and the remote
-  command shortcuts, and website tasks. Miss one and the lock only guards the front door. **Lock** drops the
-  key from memory while music, terminals and sharing keep running. A file's desktop
-  shortcut is the one deliberate exception: local and SAF files need no decrypted secret
+  command shortcuts, launcher-configured actions, and website tasks. **Lock** drops the
+  key from memory while music, terminals and sharing keep running. Directly pinned file
+  shortcuts are an exception: local and SAF files need no decrypted secret
   to open, so those skip the prompt entirely — only a shortcut to a server file gates,
   since reconnecting there does need the saved (encrypted) credentials.
 - **Fingerprint unlock** through the platform `BiometricPrompt` (not androidx.biometric —
@@ -516,7 +570,8 @@ Twig can find it and save it as a connection.
   backup can go straight to SMB, WebDAV or S3. Import merges rather than replaces, and
   tokens, host keys and the data key are never exported. Website bookmark lists are
   restored as a whole; their Basic credentials and headers are re-encrypted for the
-  destination device. WebView cookies and login sessions are not included.
+  destination device. Folder-specific sorting/view settings and website defaults are
+  included. WebView cookies, login sessions and private-space files are not included.
 
 ---
 
@@ -741,5 +796,14 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   replacement and numbering, multi-file sharing and selection properties. The path bar
   supports editing by long press or double tap; pane switching and fullscreen cutouts
   are improved.
+- **1.15** — Local trash, expanded batch-rename operations and templates, and clearer
+  read failures in file comparison. Shared website defaults, temporary web pages, file
+  uploads and per-site screenshot settings. Continue Watching in History, saved progress
+  in video thumbnails and a treemap zoom-reset button.
+- **1.16** — Private space, per-pane root visibility, folder-specific sorting and views
+  with optional inheritance, shared-text saving and a dual-pane destination picker.
+  Background deletion, batch trash recovery, optional bottom toolbar and completion
+  alerts. Series opening/ending skips, music volume swipes and notification exit/timer,
+  per-site capture/location permissions, and idle terminal dimming.
 
 </details>

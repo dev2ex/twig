@@ -41,7 +41,7 @@ class M3uPlaylistTest {
 
     @After fun cleanup() { registered.forEach { FsRegistry.unregister(it) } }
 
-    @Test fun `exported favorite style path restores SMB outside the pane and legacy URIs still work`() {
+    @Test fun `exported favorite style path restores SMB outside the pane and internal source URIs still work`() {
         val conn = SavedConnection(type = "smb", host = "playlist-roundtrip.test", share = "Music", user = "u", name = "NAS alias")
         ConnectionStore.save(app, conn)
         val scheme = Connections.schemeOf(conn)
@@ -51,7 +51,7 @@ class M3uPlaylistTest {
         val dir = XFile("file", "/exports", true)
         val text = PlaylistExport.render(dir,
             listOf(PlaylistTrack("conn", audio.path, conn.label()) to audio)) { conn }
-        assertEquals("smb:/playlist-roundtrip.test/Music/album/一 首.flac", text.lines()[2])
+        assertEquals("smb://playlist-roundtrip.test/Music/album/一 首.flac", text.lines()[2])
         val local = Source("file", emptyList(), text)
         register(local)
 
@@ -107,10 +107,33 @@ class M3uPlaylistTest {
         val scheme = Connections.schemeOf(nested)
         val audio = XFile(scheme, "/a.mp3", false, size = 123)
         register(Source(scheme, listOf(audio)))
-        register(Source("file", emptyList(), "smb:/playlist-roots.test/Music/Albums/a.mp3\nsmb:/Album NAS/a.mp3\nsmb:/unknown/Music/a.mp3\n"))
+        register(Source("file", emptyList(), "smb://playlist-roots.test/Music/Albums/a.mp3\nsmb://Album NAS/a.mp3\nsmb:/playlist-roots.test/Music/Albums/a.mp3\nsmb:/Album NAS/a.mp3\nsmb://unknown/Music/a.mp3\n"))
         val tracks = M3uPlaylist.tracks(app, XFile("file", "/list.m3u8", false))
-        assertEquals(listOf(nested.label(), nested.label()), tracks.map { it.connLabel })
-        assertEquals(listOf("/a.mp3", "/a.mp3"), tracks.map { it.path })
+        assertEquals(List(2) { nested.label() }, tracks.map { it.connLabel })
+        assertEquals(List(2) { "/a.mp3" }, tracks.map { it.path })
+    }
+
+    @Test fun `SFTP authority paths resolve and single-slash source paths are skipped`() {
+        val conn = SavedConnection("sftp", "playlist-ssh.test", port = 2222, share = "backup")
+        ConnectionStore.save(app, conn)
+        val scheme = Connections.schemeOf(conn)
+        val audio = XFile(scheme, "/album/a.mp3", false, size = 123)
+        register(Source(scheme, listOf(audio)))
+        register(Source("file", emptyList(),
+            "sftp://playlist-ssh.test:2222/backup/album/a.mp3\nsftp:/playlist-ssh.test:2222/backup/album/a.mp3\n"))
+        val tracks = M3uPlaylist.tracks(app, XFile("file", "/list.m3u8", false))
+        assertEquals(listOf(conn.label()), tracks.map { it.connLabel })
+        assertEquals(listOf(audio), M3uPlaylist.parse(XFile("file", "/list.m3u8", false),
+            resolveLocation = { line -> if (line.startsWith("sftp://")) audio else null }))
+        assertEquals(listOf(audio.path), tracks.map { it.path })
+    }
+
+    @Test fun `content URIs bypass network location parsing`() {
+        val uri = "content://provider/tree/music/document/track-123"
+        register(Source("saf", emptyList()))
+        register(Source("file", emptyList(), "$uri\nfile:///Music/a.mp3\nsmb://unknown/music/a.mp3\n"))
+        val files = M3uPlaylist.parse(XFile("file", "/list.m3u8", false))
+        assertEquals(listOf(XFile("saf", uri, false), XFile("file", "/Music/a.mp3", false)), files)
     }
 
     @Test fun `same source export stays relative when the connection has an alias`() {

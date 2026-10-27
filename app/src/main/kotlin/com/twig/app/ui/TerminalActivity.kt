@@ -221,6 +221,34 @@ class TerminalActivity : AppCompatActivity() {
     private lateinit var fullscreenLayout: StatusBarFullscreen
     private val main = Handler(Looper.getMainLooper())
     private val sessionClient = SessionClient()
+    private var brightnessBeforeDim: Float? = null
+    private val dimScreen = Runnable {
+        if (Prefs.terminalKeepAwake(this) && hasWindowFocus()) {
+            brightnessBeforeDim = window.attributes.screenBrightness
+            window.attributes = window.attributes.apply { screenBrightness = 0.05f }
+        }
+    }
+
+    /** Keep the session visible while allowing its idle screen to use less power. */
+    private fun resetScreenDim(schedule: Boolean = true) {
+        main.removeCallbacks(dimScreen)
+        brightnessBeforeDim?.let { brightness ->
+            window.attributes = window.attributes.apply { screenBrightness = brightness }
+        }
+        brightnessBeforeDim = null
+        if (schedule && Prefs.terminalKeepAwake(this) && hasWindowFocus()) {
+            val timeout = android.provider.Settings.System.getLong(
+                contentResolver, android.provider.Settings.System.SCREEN_OFF_TIMEOUT, 30_000L,
+            ).coerceAtLeast(5_000L)
+            main.postDelayed(dimScreen, timeout)
+        }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        resetScreenDim()
+    }
+
     private var ctrlPending = false
     private var altPending = false
     private var shiftPending = false
@@ -287,6 +315,7 @@ class TerminalActivity : AppCompatActivity() {
                     it.isChecked = on
                     Prefs.setTerminalKeepAwake(this, on)
                     b.terminal.keepScreenOn = on
+                    resetScreenDim()
                     true
                 }
                 else -> false
@@ -556,6 +585,7 @@ class TerminalActivity : AppCompatActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        resetScreenDim(schedule = hasFocus)
         if (!hasFocus) {
             // Screen off takes the window's focus **before** onPause, and the relayout
             // it triggers (the IME is dismissed, the status bar returns for the
@@ -1623,14 +1653,21 @@ class TerminalActivity : AppCompatActivity() {
         override fun shouldUseCtrlSpaceWorkaround() = false
         override fun isTerminalViewSelected() = true
         override fun copyModeChanged(copyMode: Boolean) = Unit
-        override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession) = false
+        override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean {
+            resetScreenDim()
+            return false
+        }
         override fun onKeyUp(keyCode: Int, e: KeyEvent) = false
         override fun onLongPress(event: MotionEvent) = false
         override fun readControlKey(): Boolean = ctrlPending.also { if (it) main.post { setCtrl(false) } }
         override fun readAltKey(): Boolean = altPending.also { if (it) main.post { setAlt(false) } }
         override fun readShiftKey(): Boolean = shiftPending.also { if (it) main.post { setShift(false) } }
         override fun readFnKey() = false
-        override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession) = false
+        override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean {
+            // Soft-keyboard input can arrive through InputConnection without Activity key events.
+            resetScreenDim()
+            return false
+        }
         /**
          * termux only calls back here when columns/rows actually change. Font-size pinch zoom is exactly that
          * path — `setTextSize` does not `requestLayout()`, `OnGlobalLayoutListener` doesn't fire, so a listener-only
@@ -1820,6 +1857,7 @@ class TerminalActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        resetScreenDim(schedule = false)
         // Leaving the foreground (screen off, another app): stop letting layout resize
         // the emulator until we are back and the window has settled. See [thawSize].
         freezeSize("pause")
@@ -1829,6 +1867,7 @@ class TerminalActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        resetScreenDim(schedule = false)
         // Sessions stay in TermManager; only drop the references held by this UI
         displayed?.onOutput = null
     }

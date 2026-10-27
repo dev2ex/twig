@@ -1,6 +1,7 @@
 package com.twig.app.ui
 
 import android.content.Context
+import android.view.LayoutInflater
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -11,7 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import com.twig.app.Prefs
 import com.twig.app.R
 import com.twig.app.TrashStore
-import com.twig.core.FsRegistry
+import com.twig.core.CopyEngine
 import com.twig.core.XFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -72,35 +73,51 @@ object DeleteUi {
                 .setOnDismissListener { onDismiss?.invoke() }
                 .setPositiveButton(R.string.strip_delete) { _, _ ->
                     val recycle = useTrash?.isChecked == true
-                    scope.launch {
-                        val busy = AlertDialog.Builder(context).setMessage(R.string.trash_busy).setCancelable(false).show()
-                        val result = try {
-                            withContext(Dispatchers.IO) {
-                                runCatching {
-                                    var firstError: Throwable? = null
-                                    var failed = 0
-                                    for (target in plan) {
-                                        runCatching {
-                                            if (recycle && target.volume != null) store.move(target)
-                                            else FsRegistry.of(target.file).delete(target.file)
-                                        }.exceptionOrNull()?.let {
-                                            if (firstError == null) firstError = it
-                                            failed++
-                                        }
-                                    }
-                                    if (failed > 0) throw java.io.IOException(
-                                        context.getString(R.string.compare_sync_delete_failed, failed) + "\n" +
-                                            firstError?.message.orEmpty(), firstError)
-                                }
-                            }
-                        } finally { busy.dismiss() }
-                        result.exceptionOrNull()?.let {
-                            Toast.makeText(context, it.message ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
-                        }
-                        // Refresh even after a partial batch failure; successful earlier moves remain recoverable.
-                        onFinished(result.isSuccess)
-                    }
+                    runConfirmed(context, scope, Transfers.Work.Delete(plan, recycle), onFinished)
                 }.show()
+        }
+    }
+
+    /** Start only after a deletion or purge confirmation; execution owns no screen references. */
+    internal fun runConfirmed(
+        context: Context, scope: CoroutineScope, work: Transfers.Work, onFinished: (Boolean) -> Unit,
+    ) {
+        require(work is Transfers.Work.Delete || work is Transfers.Work.Purge)
+        if (work.items.isEmpty()) return
+        val app = context.applicationContext
+        val session = Transfers.Session(
+            work, R.string.strip_delete,
+            context.getString(R.string.title_selected_count, work.items.size), R.drawable.ic_delete,
+            CopyEngine.Plan(0, work.items.count { !it.isDir }, work.items.count { it.isDir }),
+        )
+        val started = runCatching { Transfers.start(app, session) }.getOrElse {
+            Toast.makeText(context, it.message ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!started) {
+            Toast.makeText(context, R.string.transfer_busy, Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Only observation belongs to the host's scope. The service owns execution.
+        scope.launch {
+            val box = TransferBox(
+                context, LayoutInflater.from(context), session,
+                alive = { true },
+                onBackground = {
+                    val activity = context as? android.app.Activity
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && activity != null &&
+                        activity.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ) runCatching { activity.requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1) }
+                    Toast.makeText(context, R.string.transfer_background_hint, Toast.LENGTH_SHORT).show()
+                },
+                onDetach = {}, onFinished = {},
+            )
+            try {
+                session.completion.await()
+                // Refresh even after cancellation or a partial batch failure.
+                onFinished(session.finished?.isSuccess == true && !session.cancelled.get())
+            } finally { box.detach() }
         }
     }
 }

@@ -34,8 +34,20 @@ import java.util.concurrent.atomic.AtomicInteger
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class, shadows = [TrashOsShadow::class, TrashMovesShadow::class])
 class TrashUiTest {
-    class Host : AppCompatActivity() {
+    open class Host : AppCompatActivity() {
         override fun onCreate(state: android.os.Bundle?) { setTheme(R.style.Theme_Twig); super.onCreate(state) }
+    }
+    class DualPaneHost : Host(), PaneFragment.Host {
+        val left = PaneFragment.newInstance(0)
+        val right = PaneFragment.newInstance(1)
+        override fun siblingOf(self: PaneFragment) = if (self === left) right else left
+        override fun onAddServer(type: String) = Unit
+        override fun onEditServer(conn: com.twig.app.SavedConnection) = Unit
+        override fun onPaneTouched(self: PaneFragment) = Unit
+        override fun onPaneSwipe(velocityX: Float) = Unit
+        override fun refreshTrees() = Unit
+        override fun isPaneActive(self: PaneFragment) = self === left
+        override fun focusPane(pane: PaneFragment) = Unit
     }
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private lateinit var root: File
@@ -60,6 +72,11 @@ class TrashUiTest {
         }
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue("background operation did not finish", condition())
+    }
+    private fun executeConfirmedDeletion() {
+        waitFor { Transfers.active != null }
+        val session = Transfers.active ?: error("confirmed deletion must start a session")
+        Thread { Transfers.execute(app, session) {} }.start()
     }
     private fun dialogAfter(previous: android.app.Dialog?): AlertDialog {
         waitFor { ShadowDialog.getLatestDialog() !== previous && ShadowDialog.getLatestDialog()?.isShowing == true }
@@ -90,12 +107,59 @@ class TrashUiTest {
             val message = confirm.findViewById<TextView>(android.R.id.message)!!.text.toString()
             assertEquals(app.getString(R.string.title_selected_count, 2), message)
             confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
             waitFor { finished.get() }
             assertFalse(original.exists())
             assertEquals(1, deleted.get())
             val store = TrashStore(app)
             store.restore(store.snapshot().entries.single())
             assertEquals("keep me", original.readText())
+        } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun `a failed planned trash move never falls back to permanent deletion`() {
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        var permanentDeletes = 0
+        FsRegistry.register(object : com.twig.core.FileSystem by LocalFileSystem() {
+            override fun delete(file: XFile) { permanentDeletes++; LocalFileSystem().delete(file) }
+        })
+        try {
+            val previous = ShadowDialog.getLatestDialog()
+            var success: Boolean? = null
+            DeleteUi.confirm(host.get(), host.get(), listOf(file())) { success = it }
+            val confirm = dialogAfter(previous)
+            assertTrue(confirm.findViewById<android.widget.CheckBox>(android.R.id.checkbox)!!.isChecked)
+            // A conflicting, unmarked trash folder appears after the decision was planned.
+            File(root, TrashStore.DIRECTORY).mkdirs()
+            confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
+            waitFor { success != null }
+            assertEquals(false, success)
+            assertEquals(0, permanentDeletes)
+            assertEquals("keep me", original.readText())
+        } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun `empty trash keeps entries created after the confirmation snapshot`() {
+        val fs = FsRegistry.of("trash") as TrashFileSystem
+        val old = fs.store.move(fs.store.plan(listOf(file())).single())
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        var refreshed = false
+        try {
+            val previous = ShadowDialog.getLatestDialog()
+            TrashDialogs(host.get(), host.get()) { refreshed = true }.show(fs.root())
+            val actions = dialogAfter(previous)
+            actions.listView.performItemClick(actions.listView.adapter.getView(1, null, actions.listView), 1, 1)
+            val confirm = dialogAfter(actions)
+            original.writeText("new entry")
+            val fresh = fs.store.move(fs.store.plan(listOf(file())).single())
+            confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
+            waitFor { refreshed }
+            assertFalse(old.directory.exists())
+            assertTrue(fresh.directory.exists())
+            fs.store.restore(fresh)
+            assertEquals("new entry", original.readText())
         } finally { host.pause().stop().destroy() }
     }
 
@@ -132,10 +196,33 @@ class TrashUiTest {
             assertEquals(original.name,
                 dialog.findViewById<TextView>(android.R.id.message)!!.text)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
             waitFor { finished.get() }
             assertFalse(original.exists())
             assertTrue(TrashStore(app).snapshot().entries.isEmpty())
         } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun `manual deletion uses the optional completion vibration`() {
+        Prefs.setTrashEnabled(app, false)
+        Prefs.setVibrateOnCompletion(app, true)
+        val vibrator = app.getSystemService(android.content.Context.VIBRATOR_SERVICE) as android.os.Vibrator
+        org.robolectric.shadows.ShadowVibrator.reset()
+        shadowOf(vibrator).setHasVibrator(true)
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        try {
+            val previous = ShadowDialog.getLatestDialog()
+            val finished = AtomicBoolean()
+            DeleteUi.confirm(host.get(), host.get(), listOf(file())) { finished.set(true) }
+            dialogAfter(previous).getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
+            waitFor { finished.get() }
+            assertFalse(original.exists())
+            assertEquals(80, shadowOf(vibrator).milliseconds)
+        } finally {
+            Prefs.setVibrateOnCompletion(app, false)
+            host.pause().stop().destroy()
+        }
     }
 
     @Test fun `globally disabling trash hides checkbox and keeps existing trash recoverable`() {
@@ -152,6 +239,7 @@ class TrashUiTest {
             assertNull(dialog.findViewById<android.widget.CheckBox>(android.R.id.checkbox))
             assertEquals(original.name, dialog.findViewById<TextView>(android.R.id.message)!!.text)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
             waitFor { finished.get() }
             assertEquals(1, fs.list(fs.root()).size)
             fs.store.restore(entry)
@@ -174,6 +262,87 @@ class TrashUiTest {
         assertEquals(app.getString(R.string.trash_title), holder.itemView.findViewById<TextView>(R.id.name).text)
         assertEquals(R.drawable.ic_trash,
             shadowOf(holder.itemView.findViewById<android.widget.ImageView>(R.id.icon).drawable).createdFromResId)
+    }
+
+    @Test fun `batch restore continues after a conflict without overwriting either file`() {
+        val other = File(root, "trash-ui-other.txt").apply { writeText("second") }
+        val fs = FsRegistry.of("trash") as TrashFileSystem
+        listOf(file(), XFile("file", other.path, false)).forEach { source ->
+            fs.store.move(fs.store.plan(listOf(source)).single())
+        }
+        val deleted = fs.list(fs.root())
+        original.writeText("conflicting live file")
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        val changed = AtomicBoolean()
+        try {
+            val before = ShadowDialog.getLatestDialog()
+            TrashDialogs(host.get(), host.get()) { changed.set(true) }.restoreSelected(deleted)
+            dialogAfter(before).getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            waitFor { changed.get() }
+            assertEquals("conflicting live file", original.readText())
+            assertEquals("second", other.readText())
+            assertEquals(listOf(original.name), fs.list(fs.root()).map { it.name })
+        } finally { host.pause().stop().destroy(); other.delete() }
+    }
+
+    @Test fun `batch purge uses confirmed snapshot and leaves new trash entries untouched`() {
+        val other = File(root, "trash-ui-other.txt").apply { writeText("second") }
+        val fs = FsRegistry.of("trash") as TrashFileSystem
+        listOf(file(), XFile("file", other.path, false)).forEach { source ->
+            fs.store.move(fs.store.plan(listOf(source)).single())
+        }
+        val selected = fs.list(fs.root())
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        val changed = AtomicBoolean()
+        try {
+            val before = ShadowDialog.getLatestDialog()
+            TrashDialogs(host.get(), host.get()) { changed.set(true) }.purgeSelected(selected)
+            val confirm = dialogAfter(before)
+            original.writeText("new deletion")
+            fs.store.move(fs.store.plan(listOf(file())).single())
+            confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            executeConfirmedDeletion()
+            waitFor { changed.get() }
+            assertEquals(1, fs.list(fs.root()).size)
+            assertEquals("new deletion", fs.openInput(fs.list(fs.root()).single()).bufferedReader().use { it.readText() })
+        } finally { host.pause().stop().destroy(); other.delete() }
+    }
+
+    @Test fun `emptying trash updates both panes including a collapsed sibling root`() {
+        for (expandSibling in listOf(false, true)) {
+            original.writeText("keep me")
+            val fs = FsRegistry.of("trash") as TrashFileSystem
+            fs.store.move(fs.store.plan(listOf(file())).single())
+            val controller = Robolectric.buildActivity(DualPaneHost::class.java).setup()
+            val host = controller.get()
+            try {
+                host.supportFragmentManager.beginTransaction()
+                    .add(host.left, "left").add(host.right, "right").commitNow()
+                fun trashRoot(pane: PaneFragment) = pane.viewModel.state.value.rows
+                    .filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.file.scheme == "trash" && it.file.path == "/" }
+                waitFor {
+                    listOf(host.left, host.right).all {
+                        org.robolectric.util.ReflectionHelpers.getField<Boolean>(it.viewModel, "trashPresenceLoaded") && trashRoot(it) != null
+                    }
+                }
+                if (expandSibling) {
+                    host.right.viewModel.toggle(trashRoot(host.right)!!)
+                    waitFor { host.right.viewModel.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.name == original.name } }
+                }
+                val previous = ShadowDialog.getLatestDialog()
+                org.robolectric.util.ReflectionHelpers.callInstanceMethod<Unit>(host.left, "longClickFile",
+                    org.robolectric.util.ReflectionHelpers.ClassParameter.from(PaneViewModel.FileNode::class.java, trashRoot(host.left)!!))
+                val menu = dialogAfter(previous)
+                val index = (0 until menu.listView.adapter.count).single {
+                    menu.listView.adapter.getItem(it).toString() == app.getString(R.string.trash_empty)
+                }
+                menu.listView.performItemClick(menu.listView.adapter.getView(index, null, menu.listView), index, index.toLong())
+                dialogAfter(menu).getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                executeConfirmedDeletion()
+                waitFor { trashRoot(host.left) == null && trashRoot(host.right) == null }
+                assertTrue(fs.store.snapshot().entries.isEmpty())
+            } finally { controller.pause().stop().destroy() }
+        }
     }
 
     @Test fun `pane expands trash directories one level at a time and refreshes after recovery`() {
@@ -200,7 +369,7 @@ class TrashUiTest {
         val item = fs.item(deep.file)
         fs.store.restoreItem(item.entry, item.relative, "deep.txt", true)
         vm.refreshTrash()
-        waitFor { vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.name == folder.name } }
+        waitFor { vm.state.value.currentKey == rootNode.key && vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.name == folder.name } }
         assertEquals(rootNode.key, vm.state.value.currentKey)
         assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.name == "deep.txt" })
         folder.deleteRecursively()

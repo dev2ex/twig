@@ -169,3 +169,37 @@
   not today, which is an implementation detail, not a guarantee.
 - **restic base64 reports a bad character as corrupt key data** — it used to crash with
   ArrayIndexOutOfBounds on anything non-ASCII.
+
+- **Remote system sharing needs preparation progress, separately from streaming viewers**
+  (2026-10-27, issue #39). Sharing a large SFTP file to WeChat left the user staring
+  at a spinner until the recipient appeared. `OpenFiles.share` handed out the remote
+  URI directly, so reads happened on the recipient/system side without Twig progress.
+  A batch of local files and known-size remote files up to 512 KiB shares directly.
+  A larger or unknown-size remote file sends the batch through preparation, with a
+  cancellable "Preparing to share" dialog; leave "Open with"
+  streaming so external players can seek without a complete download. Execute it as
+  `Transfers.Work.Share` in the existing foreground `TransferService`, with the existing
+  `TransferBox` for progress, cancellation, backgrounding and notification reopening.
+  The headless `ShareTransfers` fragment only attaches that box and hands off completed
+  results while resumed, unlocked and interactive. Rotation does not own/restart the job.
+  Queue completed shares separately from ordinary transfer results, preserving each cache
+  lease until handoff; a subsequent copy must not overwrite a pending share.
+  Share preparation suppresses its success toast, but preserves ordinary completion
+  notification/vibration rules and the shared ongoing foreground progress notification.
+  An entirely cached preparation does not vibrate, even when completion vibration is enabled.
+  Preparation errors still show a toast.
+  Completed cache files are immutable and keyed by scheme, path, display name, size
+  and source modification time. Reuse requires positive size/time and matching cached
+  length; missing metadata means prepare afresh. Write to a unique partial file and
+  publish only after EOF and length checks. Preserve display names in the signed URIs.
+  On cancellation or failure remove partial files, while complete entries remain reusable
+  even if a later file in the selection fails. Hits and lease release refresh the
+  24-hour idle retention; prune expired entries on the next preparation, excluding files
+  held by active preparations, through `CacheDirs.trim` with an age floor and protected
+  files. Stream copying reuses `CopyEngine.pipe`, including its progress/cancellation
+  and overlapping reads/writes. Consuming the result after handoff only drops its lease,
+  preserving files for delayed or repeated recipient reads. Cancellation is checked
+  by the shared copy pipeline; stream closure can still wait for a blocked backend read.
+  Regression tests cover mixed/local sources, duplicate names/selections, metadata changes,
+  unknown sizes/times, truncated reads/cache, failures, cancellation, reuse, expiry,
+  retention of leased entries, rotation and deferred handoff after resume.

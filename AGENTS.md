@@ -71,6 +71,13 @@ you get told about it — is every developer's own preference, so it is delibera
 in this file. The setup used on the machine this was written on lives in
 `AGENTS.local.md`, which is not committed.
 
+For GitHub previews, commit a prerelease version such as `1.16.0-beta.1` and its
+English/Chinese changelogs, then run `tools/preview.sh` to build and verify full/libre
+APKs. Add `--publish` to push the current branch/tag and publish a Pre-release without
+changing Latest. `--notes-file PATH` supplies detailed release notes; `--offline`
+uses cached Gradle dependencies. The script respects the configured signing key and
+uses `tools/verify-apk.py` before publishing. Stable releases use `tools/release.sh`.
+
 ## Build environment
 
 - **Release is signed with our own keystore**, whose credentials are read from
@@ -144,6 +151,31 @@ each write `= null`.
   The tree always expands/collapses **in place**, it never "enters" a directory.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
+  `SortDialog` provides separate sorting and view dialogs, each with defaults or overrides
+  for the selected directory. Resetting one leaves the other unchanged.
+  Defaults remain in `twig_sort` / `twig_prefs`; `DirectoryViewStore` stores only explicit
+  directory overrides in `twig_directory_views` (included in `.twigbak`). Sorting and
+  view mode inherit independently. Each has a default-off recursive flag: a directory's own
+  override wins, otherwise the nearest recursive ancestor wins, then the global default.
+  Nonrecursive overrides do not propagate or block more distant recursive ancestors.
+  Resolve once per directory listing/render, without scanning descendants or persisting copies;
+  ordinary paths derive ancestry, while opaque paths use parent links learned from listings.
+  Listing identities (`mountRoots` / `keyFile`) identify the containing directory, including
+  favorites, servers and opaque SAF paths. `FileNode.gridMode` carries its effective view
+  to the adapter; directory overrides are parsed per settings refresh, not per rendered row.
+  Network display paths share `formatLocationPath` / `Format.pathLabel` and use
+  `type://server/path`; aliases follow history, raw addresses are used for favorites and
+  playlist exports. M3U network locations use `type://server/path`; malformed single-slash
+  source addresses are skipped.
+  Internal `scheme:path` keys remain separate from display text.
+- Private space: `PrivateSpace` uses `applicationInfo.dataDir/private_space` through
+  the ordinary local filesystem. The main menu's root-item visibility choices are
+  stored per pane in one dialog with left/right columns; Private space defaults
+  visible; an explicit hidden choice is retained. Its files are excluded from all
+  system backup/transfer channels, and
+  configuration-only `.twigbak` never includes them. Known ancestors of Twig's data
+  directory get UI-only navigation hints when Android denies enumeration;
+  filesystem copy/compare listings must still fail.
 - Websites: `WebsiteStore` persists per-site options in `twig_websites`; `WebsiteActivity`
   opens each bookmark in its own reusable document task using the shared WebView profile.
   `WebsiteDialogs` shares its editor with website defaults: new bookmarks copy display
@@ -152,6 +184,22 @@ each write `= null`.
   per-site fields separate from effective settings, including debug edits and browser saves,
   so global values never become permanent site additions. Open pages observe global changes;
   locked pages defer applying them until unlock.
+  `WebsiteMediaPermissions` handles HTTPS microphone/camera requests with explicit
+  origin-specific consent followed by Android runtime permissions. Grant only selected,
+  recognized capture resources, after the WebView resumes. Saved bookmarks have independent
+  ask/allow/deny policies and may remember prompt decisions for their saved origin only;
+  temporary pages always ask. Foreign frames and redirected origins cannot inherit them.
+  Navigation, WebView cancellation and leaving the foreground invalidate pending requests,
+  except while Android's own permission prompt is active. Camera/microphone hardware stays
+  optional; Chromium audio capture also requires MODIFY_AUDIO_SETTINGS.
+  Set mediaPlaybackRequiresUserGesture=false before loading/restoring website pages:
+  Chromium latches the gesture lock when each media element is created; changing it
+  during permission callbacks does not unlock existing camera preview elements.
+  `WebsiteLocationPermissions` applies the same per-bookmark origin checks to geolocation.
+  Request coarse/fine Android permissions together and accept approximate-only access;
+  never retain decisions in WebView's shared geolocation store (callback retain=false).
+  Website defaults do not inherit these grants. Changing a bookmark's origin resets all
+  three permissions; revoking one refreshes the matching live page.
   `WebsiteLinkActivity` accepts external HTTP(S) VIEW intents and forwards only the validated
   URL to a temporary `WebsiteActivity` document using those defaults. Temporary pages enter
   the bookmark list only through the explicit add action; debug edits stay in memory.
@@ -231,6 +279,35 @@ each write `= null`.
 - Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
   `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
   (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).
+  Plain shared text uses the same destination picker with an editable filename and
+  UTF-8 bytes carried by `ShareSourceFileSystem` as an internal data URI. Incoming
+  data URIs remain forbidden by `IncomingUri`; attachments take precedence over text
+  captions. Text sources are self-contained so retries need no Activity or cache file.
+  The share destination picker and main screen share `view_panes.xml`, `PaneLayout`
+  and the `PaneSwitch` toolbar control: portrait uses one continuous track with the
+  strip between panes; landscape shows both panes around the middle strip.
+  The picker keeps independent root visibility and navigation; the toolbar switch
+  or horizontal swipe changes the active pane. Only
+  that pane controls the destination button, through a replaceable `enableOnWritableDir`
+  observer. The active side and edited filename survive Activity recreation.
+  `SortDialog` is shared with the main screen; picker strip actions delegate search
+  and history to the active pane, while compress and WiFi sharing stay hidden.
+  The share picker follows `Prefs.fullscreen` through `StatusBarFullscreen`, including
+  resume and window-focus changes.
+  Outgoing system sharing sends directly readable local files and known-size remote
+  files up to 512 KiB directly. If a batch includes a larger or unknown-size nonlocal
+  file, prepare its nonlocal sources in a separate cache as `Transfers.Work.Share`, using `TransferService` and `TransferBox`
+  for progress, cancellation, background execution and notification reopening. A headless
+  `ShareTransfers` fragment only bridges resumed UI to the completed local URIs; there
+  is no separate share dialog/ViewModel. Finished shares retain their cache leases until
+  handoff, independently of ordinary transfer results. Preparation completion suppresses
+  the success toast; notification and vibration follow ordinary operation preferences,
+  except an entirely cached share does not vibrate.
+  Preparation errors still show a toast.
+  Completed files are reused by scheme/path/name/size/mtime when size and time are
+  known; partial files are removed on failure/cancellation. Cache hits refresh the
+  24-hour idle retention, and the next preparation prunes expired files except those
+  held by an active preparation. "Open with" continues to stream.
   Incoming `content://` URIs are all carried by `ShareSourceFileSystem` (scheme `share`),
   whose `openRandom` seeks through `openFileDescriptor` — so archives are parsed
   streaming without materializing and video can seek.
@@ -245,18 +322,42 @@ each write `= null`.
   main UI present.
 - Trash: `TrashStore` keeps local shared-storage deletions on their original volume;
   `DeleteUi` distinguishes recoverable and permanent deletion across pane/viewer/compare
-  entry points. `TrashFileSystem` expands in the pane; `TrashDialogs` restores or purges entries. No privileged, SAF or
+  entry points. Confirmed deletions and trash purges use `Transfers` / `TransferService`
+  for background progress; cancellation stops between backend calls. `TrashFileSystem` expands in the pane; `TrashDialogs` restores or purges entries. No privileged, SAF or
   network fallback for recycling. See [trash safety](docs/lessons/trash.md).
 - Security: `secure/Secrets` (two-layer Keystore/master-password encryption of sensitive
   fields) + `secure/Backup` (`.twigbak` config backup) + `ui/SecurityUi` (dialogs).
   See [docs/lessons/security.md](docs/lessons/security.md).
 - Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
-  view / thumbnails, no preference library). Layout-affecting preferences (row height,
+  view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
+  `ToolbarPlacement` moves the existing browser toolbar below content and matches
+  navigation-bar tint to its background. Main and share-picker screens follow it;
+  the main landscape layout keeps the toolbar hidden and the strip centered.
+  The preference is included in `uiSignature` so returning from settings recreates
+  the main layout while retaining pane ViewModels.
+  The default-off `Prefs.exitOnBack` applies
+  only to the main screen: after pane-local Back handling, it reuses `confirmExit`
+  (active tasks require confirmation). Music keeps its long-press Shuffle exit shortcut.
+  Layout-affecting preferences (row height,
   grid, thumbnails) go through `Prefs.uiSignature` — `MainActivity.onResume` compares the
   signature and calls `recreate()` on change; in `PaneFragment.onViewCreated`, **when the
   VM already has rows, only call `resortAll()` and do not bootstrap again** (after
   recreate the VM survives, and a second bootstrap is either skipped by an internal guard
   or breaks position restoration).
+- Operation completion: `OperationFeedback` tracks resumed Twig activities and checks
+  screen/keyguard state; a detached progress dialog does not mean the app is in the
+  background. Foreground completion notifications and completion vibration are
+  independent, default-off preferences. Background/locked-screen results retain a
+  notification; completion also requests a toast regardless of app visibility.
+  Running transfers always keep their progress notification.
+  `Transfers.finish` handles feedback and service shutdown on the main thread before
+  notifying UI observers, which only refresh their views. Never decide whether to
+  post a result from `Transfers.ui`: completion itself clears that observer, making
+  the old worker-thread check race with dismissal of an open progress dialog.
+  Completion vibration uses alarm alert attributes, so silent ringer mode does not
+  suppress it and background completion is allowed. Do not substitute touch usage:
+  Android restricts that usage for background processes. See the
+  [Android haptics guide](https://developer.android.com/develop/ui/views/haptics/haptics-apis).
 - Thumbnails: `Thumbs` (the engine). Two cache layers: an in-memory LruCache and a
   100 MB disk LRU under `cacheDir/thumbs`; the key is md5(name:size:mtime) and is
   **path-independent** (moving a file or remounting still hits, changing it invalidates).
@@ -481,7 +582,8 @@ add its symptom here.
   stream to be cut back into frames (with a double-sync check), and MPEG-4 arrives in coding
   order, sometimes two VOPs to a chunk, sometimes as 1-byte stuffing; episode queues come from
   the backend first, file names second.
-  *Explains*: fast lyric swipes seeking or toggling the cover, properties stuck loading on a damaged MKV, an AVI that plays as 300 ms of audio, no sound on a TrueHD Blu-ray, "m2ts
+  *Explains*: music notifications lingering after app exit, history video taps appearing unresponsive before the player opens, fast lyric swipes
+  seeking or toggling the cover, properties stuck loading on a damaged MKV, an AVI that plays as 300 ms of audio, no sound on a TrueHD Blu-ray, "m2ts
   seeks slowly", black AVI thumbnails, "half my AVIs open at 13 seconds and then freeze",
   "the picture keeps shaking", "this one plays at two thirds speed", "this one will not open
   at all and has no thumbnail", the next episode not starting, "4K over the network quits

@@ -12,6 +12,7 @@ import java.io.File
  *   outer decompression stream degrades into repeated full decompression); see
  *   [ui.PaneViewModel]'s localArchive.
  * - `open/` — materialised copies for "open with another app"; see [OpenFiles.materialize].
+ * - `share/` — completed outgoing shares; reuse by source metadata and preserve recent grants.
  * - `restic/` — restic repository index ciphertext; see [ResticCache] (content-addressed,
  *   never expires).
  * - `thumbs/` — thumbnails with their own LRU (see `Thumbs.trim`), not managed here.
@@ -25,6 +26,7 @@ object CacheDirs {
 
     const val ARCHIVES = "arc"
     const val OPEN = "open"
+    const val SHARE = "share"
     const val RESTIC = "restic"
 
     /** Cap on the materialised cache (each subdirectory is counted independently). */
@@ -46,17 +48,22 @@ object CacheDirs {
      * when a single file already exceeds the cap (e.g. a 1 GB rar with a 512 MB cap),
      * without excluding it the loop would keep deleting until that file is gone too,
      * leaving the caller holding a path pointing at a deleted file.
+     * [keepFiles] protects active batches; [minAgeMs] preserves recently shared files.
+     * With cap=0, only age/protection decide eviction (the outgoing share cache).
      */
-    fun trim(dir: File, keep: File? = null, cap: Long = CAP) {
+    fun trim(dir: File, keep: File? = null, cap: Long = CAP,
+             minAgeMs: Long = 0, keepFiles: Set<File> = emptySet()) {
         val files = dir.listFiles()?.filter { it.isFile } ?: return
         var total = files.sumOf { it.length() }
-        if (total <= cap) return
+        if (cap > 0 && total <= cap) return
+        val cutoff = System.currentTimeMillis() - minAgeMs
         for (f in files.sortedBy { it.lastModified() }) {
             if (keep != null && f.absolutePath == keep.absolutePath) continue
+            if (f in keepFiles || (minAgeMs > 0 && f.lastModified() > cutoff)) continue
             val len = f.length()
             if (!f.delete()) continue
             total -= len
-            if (total <= cap * LOW_WATER) break
+            if (cap > 0 && total <= cap * LOW_WATER) break
         }
     }
 

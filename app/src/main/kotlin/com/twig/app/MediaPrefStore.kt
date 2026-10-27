@@ -87,14 +87,24 @@ data class SubMemo(val kind: Int, val track: TrackDesc? = null, val suffix: Stri
  * played" — and the same scope: every episode of a show has the same aspect ratio, so the crop
  * that removed the black bars on episode 1 is the right one for episode 2. Unlike a track it
  * needs no matching: the value is just the mode.
+ *
+ * [skip] is stored only on the series record so clearing or changing a mark applies to every
+ * episode. Explicit marks stay active independently of the track-memory switch, but share the
+ * same history limit and the settings action that clears remembered playback choices.
  */
-data class MediaMemo(val audio: TrackDesc? = null, val sub: SubMemo? = null, val scale: Int? = null) {
-    val isEmpty: Boolean get() = audio == null && sub == null && scale == null
+data class MediaMemo(
+    val audio: TrackDesc? = null,
+    val sub: SubMemo? = null,
+    val scale: Int? = null,
+    val skip: EpisodeSkip? = null,
+) {
+    val isEmpty: Boolean get() = audio == null && sub == null && scale == null && skip == null
 }
 
 /**
  * Persistence for "how the user wants this title played" — audio track, subtitle and picture
- * scaling (SharedPreferences + JSON), capped at [MAX] entries, least-recently-used dropped first.
+ * scaling, plus explicit series skip marks (SharedPreferences + JSON), capped at [MAX] entries,
+ * least-recently-used dropped first.
  *
  * **Two scopes, written together and read narrowest-first:**
  * - per file (`f|<name>|<size>`, the same path-independent key as [PlaybackStore]) — you
@@ -138,6 +148,9 @@ object MediaPrefStore {
                         audio = o.optJSONObject("a")?.let { TrackDesc.fromJson(it) },
                         sub = o.optJSONObject("s")?.let { SubMemo.fromJson(it) },
                         scale = if (o.has("sc")) o.optInt("sc") else null,
+                        skip = o.optJSONObject("skip")?.let {
+                            EpisodeSkip(it.optLong("head").coerceAtLeast(0), it.optLong("tail").coerceAtLeast(0))
+                        },
                     ),
                     updatedAt = o.optLong("at", 0L),
                 )
@@ -178,10 +191,22 @@ object MediaPrefStore {
     fun putScale(ctx: Context, fileKey: String, seriesKey: String?, scale: Int?) =
         update(ctx, fileKey, seriesKey) { it.copy(scale = scale) }
 
+    /** Skip marks share the series record and its clear/history limit. Explicit marks always apply. */
+    fun skipFor(ctx: Context, seriesKey: String): EpisodeSkip =
+        all(ctx).firstOrNull { it.key == seriesKey }?.memo?.skip ?: EpisodeSkip()
+
+    fun putSkip(ctx: Context, seriesKey: String, marks: EpisodeSkip) =
+        update(ctx, seriesKey, null, requireMemory = false) {
+            it.copy(skip = marks.takeUnless { value -> value == EpisodeSkip() })
+        }
+
     fun clear(ctx: Context) = sp(ctx).edit().remove(KEY).apply()
 
-    private fun update(ctx: Context, fileKey: String, seriesKey: String?, edit: (MediaMemo) -> MediaMemo) {
-        if (!Prefs.rememberMediaPrefs(ctx)) return
+    private fun update(
+        ctx: Context, fileKey: String, seriesKey: String?, requireMemory: Boolean = true,
+        edit: (MediaMemo) -> MediaMemo,
+    ) {
+        if (requireMemory && !Prefs.rememberMediaPrefs(ctx)) return
         val now = System.currentTimeMillis()
         val keys = listOfNotNull(fileKey, seriesKey)
         val byKey = all(ctx).associateBy { it.key }.toMutableMap()
@@ -201,6 +226,7 @@ object MediaPrefStore {
                     e.memo.audio?.let { put("a", it.toJson()) }
                     e.memo.sub?.let { put("s", it.toJson()) }
                     e.memo.scale?.let { put("sc", it) }
+                    e.memo.skip?.let { put("skip", JSONObject().put("head", it.headMs).put("tail", it.tailMs)) }
                     put("at", e.updatedAt)
                 },
             )

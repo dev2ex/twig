@@ -63,6 +63,91 @@ class PaneDirectoryRefreshTest {
         files["/dir/second.txt"] = "second"
     }
 
+    @Test fun `removed current directory selects its visible parent instead of a stale transfer target`() = runTest(dispatcher) {
+        vm.revealPath(XFile(fs.scheme, "/dir", true)); advanceUntilIdle()
+        val parent = serverRow()
+        dirs["/"] = emptyList()
+        dirs.remove("/dir")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(fs.root(), vm.currentDir)
+        assertEquals(parent.key, vm.state.value.currentKey)
+        assertEquals(vm.currentDir, vm.state.value.currentDir)
+        assertTrue(vm.state.value.rows.any { it.key == vm.state.value.currentKey })
+    }
+
+    @Test fun `removing a selected descendant falls back to the nearest surviving ancestor`() = runTest(dispatcher) {
+        dirs["/dir"] = listOf("nested")
+        dirs["/dir/nested"] = emptyList()
+        vm.revealPath(XFile(fs.scheme, "/dir/nested", true)); advanceUntilIdle()
+        val parent = dirRow()
+        dirs["/dir"] = emptyList()
+        dirs.remove("/dir/nested")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(parent.file, vm.currentDir)
+        assertEquals(parent.key, vm.state.value.currentKey)
+        // Removing that parent as well must not leave the previous fallback as a target.
+        dirs["/"] = emptyList()
+        dirs.remove("/dir")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(fs.root(), vm.currentDir)
+        assertEquals(serverRow().key, vm.state.value.currentKey)
+    }
+
+    @Test fun `removing a whole ancestor subtree selects its surviving parent directly`() = runTest(dispatcher) {
+        dirs["/dir"] = listOf("nested")
+        dirs["/dir/nested"] = emptyList()
+        vm.revealPath(XFile(fs.scheme, "/dir/nested", true)); advanceUntilIdle()
+        dirs["/"] = emptyList()
+        dirs.remove("/dir")
+        dirs.remove("/dir/nested")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(fs.root(), vm.currentDir)
+        assertEquals(serverRow().key, vm.state.value.currentKey)
+    }
+
+    @Test fun `deleting a favorite child selects the favorite root rather than another tree alias`() = runTest(dispatcher) {
+        dirs["/dir"] = listOf("nested")
+        dirs["/dir/nested"] = emptyList()
+        val favorite = Favorite("Dir", "conn", "/dir", connLabel = conn.label())
+        vm.addFavorite(favorite)
+        val parent = vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>()
+            .single { it.fav.id == favorite.id }
+        vm.toggleFavorite(parent, null) { ok, _ -> assertTrue(ok) }; advanceUntilIdle()
+        val child = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .single { it.file.scheme == fs.scheme && it.file.path == "/dir/nested" }
+        vm.toggle(child); advanceUntilIdle()
+        dirs["/dir"] = emptyList()
+        dirs.remove("/dir/nested")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(XFile(fs.scheme, "/dir", true), vm.currentDir)
+        assertEquals(parent.key, vm.state.value.currentKey)
+    }
+
+    @Test fun `failed ancestor listing does not imply the selected directory was removed`() = runTest(dispatcher) {
+        vm.revealPath(XFile(fs.scheme, "/dir", true)); advanceUntilIdle()
+        val before = vm.currentDir
+        val key = vm.state.value.currentKey
+        failing.add("/")
+        vm.refresh(); advanceUntilIdle()
+        assertEquals(before, vm.currentDir)
+        assertEquals(key, vm.state.value.currentKey)
+    }
+
+    @Test fun `refresh does not replace a new selection made while its listing was pending`() = runTest(dispatcher) {
+        dirs["/"] = listOf("dir", "other")
+        dirs["/other"] = emptyList()
+        vm.revealPath(XFile(fs.scheme, "/dir", true)); advanceUntilIdle()
+        dirs["/"] = listOf("other")
+        dirs.remove("/dir")
+        vm.refresh()
+        val other = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .single { it.file.scheme == fs.scheme && it.file.path == "/other" }
+        vm.toggle(other)
+        advanceUntilIdle()
+        assertEquals(other.file, vm.currentDir)
+        assertEquals(other.key, vm.state.value.currentKey)
+    }
+
     @Test fun `cached remote directory is re-read on expansion`() = runTest(dispatcher) {
         vm.revealPath(XFile(fs.scheme, "/dir", true)); advanceUntilIdle()
         vm.toggle(dirRow()); advanceUntilIdle() // collapse

@@ -74,6 +74,28 @@ object FileIcons {
      */
     fun sourceIconRes(scheme: String): Int = sourceIconOfType(Format.schemeLabel(scheme))
 
+    /** Path-aware lookup for labeled storage roots; scheme-only callers keep the source icon. */
+    fun storageRootIconRes(file: XFile): Int {
+        if (file.scheme != "file") return sourceIconRes(file.scheme)
+        if (file.path == "/") return R.drawable.ic_storage_root
+        val volume = com.twig.app.StorageVolumes.of(file.path) ?: return R.drawable.ic_storage
+        return removableIconRes(volume.label)
+    }
+
+    /**
+     * Public volume metadata has no transport type. Recognize explicit system labels only;
+     * a custom label or UUID uses the internal-storage icon when transport is unknown.
+     * USB / OTG / SD tokens survive localized Android descriptions (e.g. "USB 驱动器").
+     */
+    private val usbLabel = Regex("(?i)(?<![a-z0-9])(usb|otg)(?![a-z0-9])")
+    private val sdLabel = Regex("(?i)(?<![a-z0-9])(sd|sdhc|sdxc|microsd)(?![a-z0-9])")
+
+    internal fun removableIconRes(label: String): Int = when {
+        usbLabel.containsMatchIn(label) -> R.drawable.ic_usb_drive
+        sdLabel.containsMatchIn(label) -> R.drawable.ic_sd_card
+        else -> R.drawable.ic_storage
+    }
+
     /**
      * Which icon a given **directory** inside a media server (Jellyfin / Emby) should use; returns null for
      * non-media-server sources.
@@ -117,7 +139,9 @@ object FileIcons {
         // recents list say nothing about which kind of server a row came from.
         "sftp" -> R.drawable.ic_sftp
         "ftp" -> R.drawable.ic_ftp
-        "webdav", "dav", "s3" -> R.drawable.ic_cloud
+        "webdav", "dav" -> R.drawable.ic_webdav
+        "s3" -> R.drawable.ic_s3
+        "saf" -> R.drawable.ic_document_tree
         // Jellyfin / Emby: the same self-drawn play-button shape, differentiated by **each one's official colours**.
         // A cloud icon doesn't read as a media library; sharing one icon between the two doesn't tell them apart.
         // **Deliberately not drawing the official logos** — both names and graphics are registered trademarks, and
@@ -133,7 +157,7 @@ object FileIcons {
         com.twig.app.AppsFileSystem.SCHEME -> R.drawable.ic_file_apk
         // Archive schemes (a mounted archive's own root row), not extensions
         "zip", "7z", "rar", "tar", "gz", "xz", "bz2", "zst" -> R.drawable.ic_file_archive
-        else -> R.drawable.ic_storage // local / SAF / unknown type
+        else -> R.drawable.ic_storage // local / unknown type
     }
 
     /**

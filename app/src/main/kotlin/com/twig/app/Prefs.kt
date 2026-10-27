@@ -2,6 +2,7 @@ package com.twig.app
 
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
+import com.twig.fs.archive.ArchiveWriter
 
 /** Lightweight preferences (SharedPreferences). */
 object Prefs {
@@ -11,6 +12,46 @@ object Prefs {
     private const val KEY_TEXT_SIZE = "row_text_size"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    fun compressFormat(ctx: Context): ArchiveWriter.Format {
+        val saved = sp(ctx).getString("compress_format", null)
+        return ArchiveWriter.Format.entries.firstOrNull { it.name == saved } ?: ArchiveWriter.Format.ZIP
+    }
+
+    fun setCompressFormat(ctx: Context, format: ArchiveWriter.Format) {
+        sp(ctx).edit().putString("compress_format", format.name).apply()
+    }
+
+    fun toolbarAtBottom(ctx: Context): Boolean = sp(ctx).getBoolean("toolbar_at_bottom", false)
+
+    fun setToolbarAtBottom(ctx: Context, bottom: Boolean) {
+        sp(ctx).edit().putBoolean("toolbar_at_bottom", bottom).apply()
+    }
+
+    fun exitOnBack(ctx: Context): Boolean = sp(ctx).getBoolean("exit_on_back", false)
+
+    fun setExitOnBack(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("exit_on_back", on).apply()
+    }
+
+    fun vibrateOnCompletion(ctx: Context): Boolean = sp(ctx).getBoolean("vibrate_on_completion", false)
+
+    fun setVibrateOnCompletion(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("vibrate_on_completion", on).apply()
+    }
+
+    fun foregroundCompletionNotifications(ctx: Context): Boolean = sp(ctx).getBoolean("foreground_completion_notifications", false)
+
+    fun setForegroundCompletionNotifications(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("foreground_completion_notifications", on).apply()
+    }
+
+    fun rootItemVisible(ctx: Context, pane: Int, id: String): Boolean =
+        sp(ctx).getBoolean("root_item_${pane}_$id", RootItems.all.first { it.id == id }.visibleByDefault)
+
+    fun setRootItemVisible(ctx: Context, pane: Int, id: String, visible: Boolean) {
+        sp(ctx).edit().putBoolean("root_item_${pane}_$id", visible).apply()
+    }
 
     /** 0=system region, 1=yy-MM-dd, 2=dd.MM.yy, 3=MM/dd/yy. */
     fun dateFormat(ctx: Context): Int = sp(ctx).getInt("date_format", 0).coerceIn(0, 3)
@@ -462,7 +503,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), trashEnabled(ctx),
+        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

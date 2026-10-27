@@ -36,8 +36,8 @@
     <string name="sort_date">Date</string>
     <string name="sort_reversed">Inversé</string>
     <string name="sort_folders_by">Ordre des dossiers</string>
-    <string name="sort_date_old">Date (plus anciens d’abord)</string>
-    <string name="sort_date_new">Date (plus récents d’abord)</string>
+    <string name="sort_date_old">Date : ancienne → récente</string>
+    <string name="sort_date_new">Date : récente → ancienne</string>
     <string name="density_compact">Compacte</string>
     <string name="density_normal">Normale</string>
     <string name="density_large">Aérée</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Jeton de flux mal formé</string>
     <string name="transfer_channel">Transferts de fichiers</string>
     <string name="transfer_background">Exécuter en arrière-plan</string>
-    <string name="transfer_background_hint">Transfert en arrière-plan — touchez la notification pour revenir</string>
+    <string name="transfer_background_hint">Opération en arrière-plan — touchez la notification pour revenir</string>
     <string name="transfer_waiting">En attente de votre décision…</string>
-    <string name="transfer_busy">Un transfert est en cours ; réessayez après sa fin</string>
+    <string name="transfer_busy">Une opération sur les fichiers est en cours ; réessayez après sa fin</string>
     <string name="transfer_done">Transfert terminé</string>
     <string name="transfer_failed">Échec du transfert</string>
     <string name="cmd_channel">Commandes distantes</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">Autoriser %1$s à utiliser :</string>
+    <string name="website_microphone">Microphone</string>
+    <string name="website_camera">Caméra</string>
+    <string name="website_permission_ask">Toujours demander</string>
+    <string name="website_permission_allow">Autoriser</string>
+    <string name="website_permission_deny">Bloquer</string>
+    <string name="website_permission_remember">Mémoriser cette décision pour ce site</string>
+    <string name="website_location">Localisation</string>
+    <string name="website_group_display">Affichage et barre d’outils</string>
+    <string name="website_group_browsing">Navigation et interactions</string>
+    <string name="website_group_privacy">Confidentialité et arrière-plan</string>
+    <string name="player_skip_head">Passer le générique de début</string>
+    <string name="player_skip_tail">Passer le générique de fin</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s effacé</string>
+    <string name="player_skip_invalid">Choisissez un point entre les génériques de début et de fin.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Afficher/masquer les éléments racine</string>
+    <string name="private_space">Espace privé</string>
+    <string name="private_space_create_failed">Impossible de créer l’espace privé</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Alertes des opérations</string>
+    <string name="settings_completion_vibration">Vibrer à la fin</string>
+    <string name="settings_completion_vibration_desc">Copie, déplacement, suppression, compression et extraction</string>
+    <string name="settings_foreground_completion">Notifications de fin au premier plan</string>
+    <string name="settings_foreground_completion_desc">Notifier aussi pendant l’utilisation de Twig. Toujours notifier en arrière-plan et lorsque l’écran est verrouillé.</string>
+
+    <string name="settings_exit_on_back">Quitter avec Retour</string>
+    <string name="settings_exit_on_back_desc">Quitter Twig lorsque Retour ferme l’écran principal. Demander confirmation si des tâches sont en cours.</string>
+    <string name="share_text_filename">Texte partagé.txt</string>
+    <string name="settings_toolbar_bottom">Barre d’outils en bas</string>
+    <string name="settings_toolbar_bottom_desc">Déplacer la barre d’outils de l’explorateur de fichiers en bas pour faciliter l’utilisation à une main</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Par défaut</string>
+    <string name="directory_view_selected">Dossier sélectionné</string>
+    <string name="directory_view_custom_sort">Tri personnalisé</string>
+    <string name="directory_view_custom_view">Affichage personnalisé</string>
+    <string name="directory_view_reset">Utiliser les réglages par défaut</string>
+    <string name="directory_view_recursive">Appliquer aux sous-dossiers</string>
+    <string name="sort_name_az">Nom : A → Z</string>
+    <string name="sort_name_za">Nom : Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Préparation du partage…</string>
+    <string name="share_prepare_failed">Impossible de préparer les fichiers à partager.</string>
+    <string name="share_prepare_space">Espace insuffisant pour préparer les fichiers à partager.</string>
+    <string name="share_prepare_incomplete">Le fichier a changé ou sa lecture est incomplète.</string>
 </resources>

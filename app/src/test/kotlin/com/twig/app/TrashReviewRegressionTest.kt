@@ -100,21 +100,20 @@ class TrashReviewRegressionTest {
         assertTrue(buildSyncPlan(xf(source), xf(destination), options, 0).deletes.isEmpty())
     }
 
-    @Test fun `empty trash has no files and its pane notice cannot be selected or clicked`() {
+    @Test fun `empty trash hides and new deletions reappear even when the root was hidden`() {
         assertTrue(fs.list(fs.root()).isEmpty())
         assertEquals(0, CopyEngine.plan(listOf(fs.root())).files)
-        val properties = FileInfo.load(app, fs.root()).sections.first().rows.toMap()
-        assertEquals(app.getString(R.string.info_contains_value, 0, 0), properties[app.getString(R.string.info_contains)])
-        val vm = expandedPane()
-        val notice = vm.state.value.rows.filterIsInstance<PaneViewModel.ActionNode>().single { it.informational }
-        assertEquals(app.getString(R.string.trash_no_items), notice.label)
-        assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.depth > 0 && it.file.scheme == "trash" })
-        val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {}, thumbs = false)
-        adapter.submitList(listOf(notice))
-        val holder = adapter.createViewHolder(FrameLayout(ContextThemeWrapper(app, R.style.Theme_Twig)), adapter.getItemViewType(0))
-        adapter.bindViewHolder(holder, 0)
-        assertEquals(View.GONE, holder.itemView.findViewById<View>(R.id.check).visibility)
-        assertFalse(holder.itemView.isClickable)
+        val vm = PaneViewModel(app)
+        vm.refreshTree()
+        fun visible() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.scheme == "trash" }
+        waitFor { !visible() }
+        val entry = trash(File(root, "new.txt").apply { writeText("recover me") })
+        vm.refresh()
+        waitFor { visible() }
+        store.restore(entry)
+        vm.refreshTrash()
+        waitFor { !visible() }
+        assertEquals("recover me", File(root, "new.txt").readText())
     }
 
     @Test fun `repairing damaged trash updates notices even when both child listings are empty`() {
@@ -128,7 +127,7 @@ class TrashReviewRegressionTest {
             vm.state.value.rows.filterIsInstance<PaneViewModel.ActionNode>().single { it.informational }.label)
         assertTrue(unexpected.delete())
         vm.refreshOnResume()
-        waitFor { vm.state.value.rows.filterIsInstance<PaneViewModel.ActionNode>().any { it.label == app.getString(R.string.trash_no_items) } }
+        waitFor { vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().none { it.file.scheme == "trash" } }
         assertTrue(fs.notices.isEmpty())
     }
 

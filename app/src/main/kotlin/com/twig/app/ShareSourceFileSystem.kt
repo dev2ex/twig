@@ -3,6 +3,7 @@ package com.twig.app
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Base64
 import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.RandomSource
@@ -11,7 +12,7 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /**
- * Read-only source: wraps a `content://` URI handed to us by another app as an
+ * Read-only source: wraps shared text or a `content://` URI handed to us by another app as an
  * [XFile]. Two entry points share it:
  *  - Share ("Copy to…", [ui.ShareTargetActivity]): handed to [com.twig.core.CopyEngine]
  *    to copy anywhere
@@ -34,6 +35,13 @@ class ShareSourceFileSystem(context: android.content.Context) : FileSystem {
     /** [uri] stored in path; [name]/[size] come from OpenableColumns metadata queried by the caller. */
     fun wrap(uri: Uri, name: String, size: Long): XFile =
         XFile(SCHEME, uri.toString(), isDir = false, size = size, displayName = name)
+
+    /** Self-contained source: retries and background copies need no Activity or temporary file. */
+    fun wrapText(text: String, name: String): XFile {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        return XFile(SCHEME, TEXT_PREFIX + Base64.encodeToString(bytes, Base64.NO_WRAP),
+            isDir = false, size = bytes.size.toLong(), displayName = name)
+    }
 
     /** Queries OpenableColumns itself to wrap an entry; if the query misses, name
      * falls back to the URI's last segment and size to the fd's length. */
@@ -63,7 +71,8 @@ class ShareSourceFileSystem(context: android.content.Context) : FileSystem {
     override fun parentOf(file: XFile): XFile? = null
 
     override fun openInput(file: XFile): InputStream =
-        resolver.openInputStream(Uri.parse(file.path)) ?: throw FsException(s(R.string.err_read_failed, file.name))
+        if (file.path.startsWith(TEXT_PREFIX)) Base64.decode(file.path.removePrefix(TEXT_PREFIX), Base64.DEFAULT).inputStream()
+        else resolver.openInputStream(Uri.parse(file.path)) ?: throw FsException(s(R.string.err_read_failed, file.name))
 
     /**
      * Random-access read: most providers (MediaStore / DocumentsProvider /
@@ -73,6 +82,7 @@ class ShareSourceFileSystem(context: android.content.Context) : FileSystem {
      * providers) we fall back to the base class's "reopen and skip" implementation.
      */
     override fun openRandom(file: XFile): RandomSource {
+        if (file.path.startsWith(TEXT_PREFIX)) return super.openRandom(file)
         val uri = Uri.parse(file.path)
         val pfd = runCatching { resolver.openFileDescriptor(uri, "r") }.getOrNull()
             ?: return super.openRandom(file)
@@ -104,5 +114,6 @@ class ShareSourceFileSystem(context: android.content.Context) : FileSystem {
 
     companion object {
         const val SCHEME = "share"
+        private const val TEXT_PREFIX = "data:text/plain;charset=utf-8;base64,"
     }
 }

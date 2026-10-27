@@ -18,6 +18,8 @@
         <exclude domain="sharedpref" path="twig_launcher_shortcuts.xml" />
         <!-- Website login data stays on this device. -->
         <exclude domain="root" path="app_webview/" />
+        <!-- User files in Private space stay on this device. -->
+        <exclude domain="root" path="private_space/" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="twig_connections.xml" />
@@ -31,5 +33,7 @@
         <exclude domain="sharedpref" path="twig_launcher_shortcuts.xml" />
         <!-- Website login data stays on this device. -->
         <exclude domain="root" path="app_webview/" />
+        <!-- User files in Private space stay on this device. -->
+        <exclude domain="root" path="private_space/" />
     </device-transfer>
 </data-extraction-rules>

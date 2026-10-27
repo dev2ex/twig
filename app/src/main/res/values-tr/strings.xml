@@ -36,8 +36,8 @@
     <string name="sort_date">Tarih</string>
     <string name="sort_reversed">Ters sırala</string>
     <string name="sort_folders_by">Klasör sırası</string>
-    <string name="sort_date_old">Tarih (önce en eski)</string>
-    <string name="sort_date_new">Tarih (önce en yeni)</string>
+    <string name="sort_date_old">Tarih: eski → yeni</string>
+    <string name="sort_date_new">Tarih: yeni → eski</string>
     <string name="density_compact">Yoğun</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Geniş</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Geçersiz akış belirteci</string>
     <string name="transfer_channel">Dosya aktarımları</string>
     <string name="transfer_background">Arka planda çalıştır</string>
-    <string name="transfer_background_hint">Arka planda aktarılıyor; dönmek için bildirime dokunun</string>
+    <string name="transfer_background_hint">İşlem arka planda sürüyor; dönmek için bildirime dokunun</string>
     <string name="transfer_waiting">Kararınız bekleniyor…</string>
-    <string name="transfer_busy">Aktarım zaten sürüyor; bitince yeniden deneyin</string>
+    <string name="transfer_busy">Bir dosya işlemi zaten sürüyor; bitince yeniden deneyin</string>
     <string name="transfer_done">Aktarım tamamlandı</string>
     <string name="transfer_failed">Aktarım başarısız</string>
     <string name="cmd_channel">Uzak komutlar</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">%1$s için kullanım izni:</string>
+    <string name="website_microphone">Mikrofon</string>
+    <string name="website_camera">Kamera</string>
+    <string name="website_permission_ask">Her seferinde sor</string>
+    <string name="website_permission_allow">İzin ver</string>
+    <string name="website_permission_deny">Engelle</string>
+    <string name="website_permission_remember">Bu site için bu kararı hatırla</string>
+    <string name="website_location">Konum</string>
+    <string name="website_group_display">Görünüm ve araç çubuğu</string>
+    <string name="website_group_browsing">Gezinme ve etkileşim</string>
+    <string name="website_group_privacy">Gizlilik ve arka plan</string>
+    <string name="player_skip_head">Açılışı atla</string>
+    <string name="player_skip_tail">Kapanışı atla</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s temizlendi</string>
+    <string name="player_skip_invalid">Açılış ile kapanış arasında bir nokta seçin.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Kök öğeleri göster/gizle</string>
+    <string name="private_space">Özel alan</string>
+    <string name="private_space_create_failed">Özel alan oluşturulamadı</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">İşlem uyarıları</string>
+    <string name="settings_completion_vibration">Tamamlandığında titreştir</string>
+    <string name="settings_completion_vibration_desc">Kopyalama, taşıma, silme, arşivleme ve çıkarma</string>
+    <string name="settings_foreground_completion">Ön planda tamamlanma bildirimleri</string>
+    <string name="settings_foreground_completion_desc">Twig kullanılırken de bildir. Arka planda ve ekran kilitliyken her zaman bildir.</string>
+
+    <string name="settings_exit_on_back">Geri ile çık</string>
+    <string name="settings_exit_on_back_desc">Geri düğmesi ana ekranı kapattığında Twig uygulamasından çık. Çalışan görevler varsa onay iste.</string>
+    <string name="share_text_filename">Paylaşılan metin.txt</string>
+    <string name="settings_toolbar_bottom">Araç çubuğu altta</string>
+    <string name="settings_toolbar_bottom_desc">Tek elle kullanımı kolaylaştırmak için dosya tarayıcısının araç çubuğunu alta taşı</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Varsayılan</string>
+    <string name="directory_view_selected">Seçili klasör</string>
+    <string name="directory_view_custom_sort">Özel sıralama</string>
+    <string name="directory_view_custom_view">Özel görünüm</string>
+    <string name="directory_view_reset">Varsayılanları kullan</string>
+    <string name="directory_view_recursive">Alt klasörlere uygula</string>
+    <string name="sort_name_az">Ad: A → Z</string>
+    <string name="sort_name_za">Ad: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Paylaşım hazırlanıyor…</string>
+    <string name="share_prepare_failed">Paylaşılacak dosyalar hazırlanamadı.</string>
+    <string name="share_prepare_space">Dosyaları hazırlamak için yeterli alan yok.</string>
+    <string name="share_prepare_incomplete">Dosya değişti veya tamamen okunamadı.</string>
 </resources>

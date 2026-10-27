@@ -36,8 +36,8 @@
     <string name="sort_date">日期</string>
     <string name="sort_reversed">反轉</string>
     <string name="sort_folders_by">資料夾排序</string>
-    <string name="sort_date_old">日期(舊在前)</string>
-    <string name="sort_date_new">日期(新在前)</string>
+    <string name="sort_date_old">時間：舊 → 新</string>
+    <string name="sort_date_new">時間：新 → 舊</string>
     <string name="density_compact">緊湊</string>
     <string name="density_normal">正常</string>
     <string name="density_large">寬鬆</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">stream token 解析失敗</string>
     <string name="transfer_channel">檔案傳輸</string>
     <string name="transfer_background">轉到後臺</string>
-    <string name="transfer_background_hint">後臺傳輸中,點通知欄可返回</string>
+    <string name="transfer_background_hint">背景操作中，點通知欄可返回</string>
     <string name="transfer_waiting">等待確認…</string>
-    <string name="transfer_busy">已有傳輸在進行,完成後再試</string>
+    <string name="transfer_busy">已有檔案操作在進行，完成後再試</string>
     <string name="transfer_done">傳輸完成</string>
     <string name="transfer_failed">傳輸失敗</string>
     <string name="cmd_channel">遠端命令</string>
@@ -1068,4 +1068,54 @@
     <string name="nfs_version">NFS 版本（3 或 4）</string>
     <string name="nfs_uid">UID（預設 65534）</string>
     <string name="nfs_gid">GID（預設 65534）</string>
+    <string name="website_media_permission">允許 %1$s 使用：</string>
+    <string name="website_microphone">麥克風</string>
+    <string name="website_camera">攝影機</string>
+    <string name="website_permission_ask">每次詢問</string>
+    <string name="website_permission_allow">允許</string>
+    <string name="website_permission_deny">拒絕</string>
+    <string name="website_permission_remember">記住對此網站的決定</string>
+    <string name="website_location">位置</string>
+    <string name="website_group_display">顯示與工具列</string>
+    <string name="website_group_browsing">瀏覽與操作</string>
+    <string name="website_group_privacy">隱私與背景執行</string>
+    <string name="player_skip_head">跳過片頭</string>
+    <string name="player_skip_tail">跳過片尾</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">已清除%1$s</string>
+    <string name="player_skip_invalid">請選擇片頭與片尾之間的時間點。</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">顯示/隱藏根節點</string>
+    <string name="private_space">私有空間</string>
+    <string name="private_space_create_failed">無法建立私有空間</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">操作提醒</string>
+    <string name="settings_completion_vibration">操作完成時震動</string>
+    <string name="settings_completion_vibration_desc">適用於複製、移動、刪除、壓縮和解壓縮</string>
+    <string name="settings_foreground_completion">前景操作完成通知</string>
+    <string name="settings_foreground_completion_desc">在 Twig 內操作時也保留完成通知。背景和鎖定螢幕時一律通知。</string>
+
+    <string name="settings_exit_on_back">返回時退出</string>
+    <string name="settings_exit_on_back_desc">返回關閉主畫面時退出 Twig；有執行中的工作時會先確認。</string>
+    <string name="share_text_filename">分享的文字.txt</string>
+    <string name="settings_toolbar_bottom">工具列置於底部</string>
+    <string name="settings_toolbar_bottom_desc">將檔案瀏覽畫面的工具列移到底部，方便單手操作</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">預設</string>
+    <string name="directory_view_selected">選取的目錄</string>
+    <string name="directory_view_custom_sort">自訂排序</string>
+    <string name="directory_view_custom_view">自訂檢視</string>
+    <string name="directory_view_reset">恢復預設</string>
+    <string name="directory_view_recursive">套用至子目錄</string>
+    <string name="sort_name_az">名稱：A → Z</string>
+    <string name="sort_name_za">名稱：Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">正在準備分享…</string>
+    <string name="share_prepare_failed">無法準備要分享的檔案。</string>
+    <string name="share_prepare_space">空間不足，無法準備要分享的檔案。</string>
+    <string name="share_prepare_incomplete">檔案已變更或未能完整讀取。</string>
 </resources>

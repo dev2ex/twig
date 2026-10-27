@@ -15,49 +15,12 @@
         app:title="@string/app_name"
         app:titleTextColor="@color/white" />
 
-    <!-- Portrait: single pane + action strip on the opposite side (left pane → right
-         column, right pane → left column), swiped horizontally to switch. Landscape:
-         dual panes side by side + action strip centered. PaneLayout scrolls one
-         continuous portrait track with a shared strip between the two panes. -->
-    <com.twig.app.ui.PaneLayout
+    <include
+        android:id="@+id/browser"
+        layout="@layout/view_panes"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:id="@+id/panes">
-
-        <include
-            android:id="@+id/strip_left"
-            layout="@layout/action_strip"
-            android:layout_width="52dp"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-
-        <androidx.fragment.app.FragmentContainerView
-            android:id="@+id/pane_a"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/strip_mid"
-            layout="@layout/action_strip"
-            android:layout_width="52dp"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-
-        <androidx.fragment.app.FragmentContainerView
-            android:id="@+id/pane_b"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:visibility="gone" />
-
-        <include
-            android:id="@+id/strip_right"
-            layout="@layout/action_strip"
-            android:layout_width="52dp"
-            android:layout_height="match_parent" />
-    </com.twig.app.ui.PaneLayout>
+        android:layout_weight="1" />
 
     <!-- Clipboard bar (visible only when there is content): spans the whole window rather
          than living inside one pane, and the paste target is the **active pane's** current

@@ -52,6 +52,13 @@ class TransferBox(
         .create()
 
     init {
+        if (session.isDelete) {
+            pb.barFile.isIndeterminate = true
+            pb.tvTotalSize.visibility = android.view.View.GONE
+            (pb.tvSpeed.parent as android.view.View).visibility = android.view.View.GONE
+            (pb.ivDest.parent as android.view.View).visibility = android.view.View.GONE
+        }
+        if (session.isShare) (pb.ivDest.parent as android.view.View).visibility = android.view.View.GONE
         tb.tvTitle.setText(session.titleRes)
         pb.tvDest.text = session.destLabel
         pb.ivDest.setImageResource(session.destIcon)
@@ -74,13 +81,18 @@ class TransferBox(
         if (!alive()) return
         pb.tvFile.text =
             if (s.pendingConflict != null) ctx.getString(R.string.transfer_waiting) else s.fileName
+        if (s.isShare) {
+            pb.barFile.isIndeterminate = s.fileSize <= 0
+            pb.barTotal.isIndeterminate = s.plan == null || s.plan?.bytes == 0L
+        }
         pb.barFile.progress = s.fileProgress
         pb.barTotal.progress = s.totalProgress
         val plan = s.plan
         pb.tvDirs.text = if (plan == null) "…" else s.dirsLeft.toString()
         pb.tvFiles.text = if (plan == null) "…" else s.filesLeft.toString()
         pb.tvTotalSize.text =
-            if (plan == null) "…" else ctx.getString(R.string.copy_total_size, Format.size(plan.bytes))
+            if (plan == null) "…" else if (s.isShare && plan.bytes == 0L) Format.size(s.copiedBytes)
+            else ctx.getString(R.string.copy_total_size, Format.size(plan.bytes))
         pb.tvSpeed.text =
             if (s.speed > 1) ctx.getString(R.string.copy_speed, Format.size(s.speed.toLong())) else ""
         pb.tvEta.text = if (s.etaSeconds >= 0) formatEta(s.etaSeconds) else ""
@@ -97,6 +109,7 @@ class TransferBox(
     override fun onFinished(s: Transfers.Session) {
         onDetach()
         runCatching { dialog.dismiss() }
+        if (s.isShare) { ShareTransfers.attach(ctx); return }
         if (!alive()) return
         onFinished.invoke(s)
     }

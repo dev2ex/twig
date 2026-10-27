@@ -4,6 +4,47 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Playback time missing from some system notification headers (2026-10-26, issue #23)**:
+  the media seek bar's time labels come from MediaSession; a header stopwatch is a
+  separate native Notification chronometer. Set when to wall-clock time minus player
+  position and enable showWhen/usesChronometer only while playing. Pause/buffering
+  hides it, and resume rebases it; SystemUI owns ticking and decides whether to show
+  it. Do not rewrite titles, poll each second, or add custom RemoteViews. MusicEngine
+  forwards position discontinuities so seeks from the player UI, previous-track
+  restart and system controls immediately refresh both session position and timer.
+  MusicNotificationTimeTest covers native extras, pause/resume, seek/track reset,
+  absence of periodic notification updates and the real ExoPlayer seek event on
+  API 24, 30 and 34.
+
+- **Music volume swipes opened a laggy system panel (2026-10-25, issue #23)**:
+  cover swipes used FLAG_SHOW_UI and queried AudioManager on each movement. Match the
+  video player's in-player percentage overlay and use volume flags=0. Snapshot the
+  range/current volume at touch-down; write only when the target step changes. Keep
+  feedback visible during the swipe and dismiss 300 ms after release/cancel; a new
+  gesture cancels the previous timeout. Both music layouts provide the same overlay.
+  MusicVolumeGestureTest checks flags, repeated calls, hint timing and landscape,
+  alongside tap/lyrics/horizontal-swipe behavior.
+
+- **Quitting Twig left the music notification behind (2026-10-25)**: the app exit
+  path released `MusicEngine` but did not stop `MusicService`, unlike the music
+  player's exit. Route both through `MusicUi.exit`, which also closes music screens.
+  Service destruction explicitly removes the foreground notification and rejects
+  late notification updates from cover-loading callbacks. The notification's Exit
+  button follows Like in both legacy notification actions and MediaSession custom
+  actions; temporary tracks omit Like but retain Exit. Exit uses MusicUi.exit and
+  suppresses pending updates before releasing playback, then removes the notification
+  immediately. Standard transport Stop keeps its existing pause semantics.
+  MusicExitTest / MusicNotificationExitTest cover player release, screen/service exit,
+  both action paths and notification removal after delayed updates.
+
+- **History appeared unresponsive before opening the video player (2026-10-24)**:
+  connecting and statting the file in `PaneFragment` delayed activity launch. Start the player
+  immediately with the history title/path, resolve the connection and real metadata on IO
+  inside the activity, and hold its surface behind the resume gate. Do not derive resume keys
+  from the placeholder file: load progress only after stat supplies the real name and size.
+  Errors appear in the opened player; leaving cancels the pending load.
+  `HistoryPlayerLoadingTest` covers blocked metadata, resume/from-start, failure and exit.
+
 - **Fast lyric swipes could seek or toggle the cover (2026-10-16)**: classify both MOVE
   and UP with `SwipeGesture` before deciding to tap. `LyricsSwipeTest` covers releases
   without MOVE, vertical drags and cancellation.

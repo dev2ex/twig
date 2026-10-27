@@ -77,6 +77,45 @@ class WebsiteOrientationTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test fun `orientation choices use two columns with wrapping labels and native mutual exclusion`() {
+        val site = Website(name = "Example", url = "https://example.com")
+        WebsiteStore.save(app, site)
+        val controller = Robolectric.buildActivity(WebsiteActivity::class.java,
+            WebsiteActivity.intent(app, site.id)).setup()
+        try {
+            WebsiteDialogs.edit(controller.get(), site)
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val group = dialog.window!!.decorView.findViewWithTag<RadioGroup>(R.string.website_orientation)
+            val density = app.resources.displayMetrics.density
+            val first = group.getChildAt(0) as RadioButton
+            first.text = "Follow the system display orientation setting"
+            for (direction in listOf(View.LAYOUT_DIRECTION_LTR, View.LAYOUT_DIRECTION_RTL)) {
+                group.layoutDirection = direction
+                group.measure(View.MeasureSpec.makeMeasureSpec((280 * density).toInt(), View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                group.layout(0, 0, group.measuredWidth, group.measuredHeight)
+                val second = group.getChildAt(1)
+                val third = group.getChildAt(2)
+                val last = group.getChildAt(4) as RadioButton
+                assertEquals(first.top, second.top)
+                assertEquals(first.bottom, second.bottom)
+                assertEquals(first.bottom, third.top)
+                assertEquals(first.left, last.left)
+                assertEquals(group.height, last.bottom)
+                if (direction == View.LAYOUT_DIRECTION_LTR) assertTrue(first.right <= second.left)
+                else assertTrue(second.right <= first.left)
+                for (index in 0 until group.childCount) {
+                    val button = group.getChildAt(index) as RadioButton
+                    assertTrue(button.height >= (48 * density).toInt())
+                    button.performClick()
+                    assertEquals(1, (0 until group.childCount).count { (group.getChildAt(it) as RadioButton).isChecked })
+                }
+            }
+            dialog.dismiss()
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun `adding a website defaults to following the system`() {
         val site = Website(name = "Example", url = "https://example.com")
         WebsiteStore.save(app, site)

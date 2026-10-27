@@ -15,25 +15,22 @@
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
 
-    <LinearLayout
+    <include
+        android:id="@+id/browser"
+        layout="@layout/view_panes"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:baselineAligned="false">
+        android:layout_weight="1" />
 
-        <androidx.fragment.app.FragmentContainerView
-            android:id="@+id/pane"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/strip"
-            layout="@layout/action_strip"
-            android:layout_width="52dp"
-            android:layout_height="match_parent" />
-    </LinearLayout>
+    <EditText
+        android:id="@+id/text_filename"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:hint="@string/website_download_name"
+        android:inputType="text"
+        android:singleLine="true"
+        android:visibility="gone" />
 
     <!-- Bottom confirmation bar: the target directory is already shown in the pane's
              path bar, so only cancel/confirm are kept here. -->

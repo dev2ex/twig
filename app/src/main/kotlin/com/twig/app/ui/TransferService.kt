@@ -11,18 +11,22 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import com.twig.app.SharePreparation
 import com.twig.app.Format
 import com.twig.app.MainActivity
 import com.twig.app.R
+import com.twig.app.TrashStore
+import com.twig.app.TrashFileSystem
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.archive.ArchiveWriter
+import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Session state for background transfers (copy/move/compress), in-process singleton.
+ * Session state for background file operations (copy/move/compress/delete/share preparation), in-process singleton.
  *
  * Why this layer exists: the progress dialog used to own the whole job itself — engine
  * callbacks wrote straight to its View, and the job's lifecycle was tied to
@@ -43,13 +47,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * block it here explicitly (see the return value of [start]).
  */
 object Transfers {
+    const val ACTION_FINISHED = "com.twig.app.TRANSFER_FINISHED"
 
     /** What one transfer has to do. **Pure data** — the session outlives the screen that started it, so it can't capture a Fragment. */
     sealed class Work {
         abstract val items: List<XFile>
 
+        class Share(override val items: List<XFile>) : Work()
+
         internal class Download(val task: WebsiteDownloadTask, val dest: XFile) : Work() {
             override val items: List<XFile> = emptyList()
+        }
+
+        /** Confirmed trash decisions are kept intact; execution never falls back to permanent deletion. */
+        class Delete(val targets: List<TrashStore.Target>, val recycle: Boolean) : Work() {
+            override val items: List<XFile> = targets.map { it.file }
+        }
+
+        /** Only the entries confirmed by the user, including nested payload paths. */
+        class Purge(val targets: List<Pair<XFile, TrashFileSystem.Item>>) : Work() {
+            override val items: List<XFile> = targets.map { it.first }
         }
 
         class Copy(
@@ -118,6 +135,9 @@ object Transfers {
     ) {
         @Volatile var plan: CopyEngine.Plan? = plan0
         @Volatile var fileName = ""
+        @Volatile var fileSize = 0L
+        @Volatile var copiedBytes = 0L
+        @Volatile internal var preparedShare: SharePreparation.Prepared? = null
         @Volatile var fileProgress = 0 // 0..1000
         @Volatile var totalProgress = 0 // 0..1000
         @Volatile var dirsLeft = 0
@@ -129,6 +149,8 @@ object Transfers {
 
         /** Notification-bar refresh hook (installed by [TransferService]); even moments without a progress event (e.g. waiting on a conflict) need to refresh. */
         @Volatile internal var tick: (() -> Unit)? = null
+
+        internal val completion = CompletableDeferred<Unit>()
 
         val cancelled = AtomicBoolean(false)
 
@@ -144,6 +166,8 @@ object Transfers {
             pendingConflict?.answer(null) // If we're stuck on the conflict dialog, release it so the transfer thread sees the cancel flag
         }
 
+        val isShare: Boolean get() = work is Work.Share
+        val isDelete: Boolean get() = work is Work.Delete || work is Work.Purge
         val isCompress: Boolean get() = work is Work.Compress
     }
 
@@ -152,6 +176,10 @@ object Transfers {
 
     /** A session that's finished but hasn't been consumed by the UI yet (it finished while we were in the background); see [consumeFinished]. */
     @Volatile private var pendingResult: Session? = null
+    // Shares retain their prepared files until a resumed screen can hand them to the recipient.
+    private val pendingShares = java.util.ArrayDeque<Session>()
+    @Synchronized internal fun hasPendingShare(): Boolean = pendingShares.isNotEmpty()
+    @Synchronized internal fun consumeShare(): Session? = pendingShares.pollFirst()
 
     @Volatile var ui: Ui? = null
         private set
@@ -165,6 +193,7 @@ object Transfers {
     @Synchronized
     fun start(ctx: Context, session: Session): Boolean {
         if (active != null) return false
+        OperationFeedback.clear(ctx)
         active = session
         try {
             TransferService.start(ctx)
@@ -188,7 +217,7 @@ object Transfers {
         s.pendingConflict?.let { u.onConflict(s, it) }
     }
 
-    /** Take the "finished but UI not on stage" session; [MainActivity] wraps this up (refresh pane + toast) when it returns to the foreground. */
+    /** Take the "finished but UI not on stage" session; [MainActivity] wraps this up (refresh pane) when it returns to the foreground. */
     @Synchronized
     fun consumeFinished(): Session? = pendingResult.also { pendingResult = null }
 
@@ -197,7 +226,7 @@ object Transfers {
     // ★ Don't name this method `run`: in an anonymous inner class, `run { }` resolves to
     // the stdlib scope function and silently bypasses this one (same trap as renaming
     // NativeSmbClient.exec, see CLAUDE.md)
-    internal fun execute(ctx: Context, s: Session, onTick: () -> Unit) {
+    internal fun execute(ctx: Context, s: Session, onComplete: () -> Unit = {}, onTick: () -> Unit) {
         s.tick = onTick
         val listener = object : CopyEngine.ProgressListener {
             private var lastUi = 0L
@@ -207,6 +236,7 @@ object Transfers {
             override fun onFile(file: XFile) {
                 if (s.work is Work.Download) s.plan = CopyEngine.Plan(file.size, 1, 0)
                 s.fileName = file.name
+                s.fileSize = file.size
                 s.fileProgress = 0
                 post(s)
             }
@@ -216,6 +246,7 @@ object Transfers {
             }
 
             override fun onBytes(copiedTotal: Long, totalBytes: Long) {
+                s.copiedBytes = copiedTotal
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (now - lastUi < 200) return // Throttle to ~5 Hz: enough for speed averaging and UI refresh
                 val dt = (now - lastT) / 1000.0
@@ -242,6 +273,9 @@ object Transfers {
 
         val result = runCatching {
             val plan = s.plan
+                ?: s.work.takeIf { s.isDelete }?.let { w ->
+                    CopyEngine.Plan(0, w.items.count { !it.isDir }, w.items.count { it.isDir })
+                }
                 ?: runCatching { CopyEngine.plan(s.work.items) }.getOrNull()
                 ?: CopyEngine.Plan(0, 0, 0)
             s.plan = plan
@@ -250,6 +284,34 @@ object Transfers {
             post(s)
 
             when (val w = s.work) {
+                is Work.Share -> {
+                    var index = 0
+                    s.preparedShare = SharePreparation.prepare(ctx, w.items, s.cancelled::get) { p ->
+                        if (p.index != index) {
+                            index = p.index
+                            s.plan = CopyEngine.Plan(p.total, p.count, 0)
+                            s.filesLeft = p.count - p.index + 1
+                            listener.onFile(XFile("", "", false, p.fileTotal, displayName = p.name))
+                        }
+                        listener.onFileBytes(p.fileDone, p.fileTotal)
+                        listener.onBytes(p.done, p.total)
+                    }
+                }
+                is Work.Delete -> {
+                    val store = TrashStore(ctx.applicationContext)
+                    deleteItems(ctx, s, w.items, listener) { index ->
+                        val target = w.targets[index]
+                        if (w.recycle && target.volume != null) store.move(target)
+                        else FsRegistry.of(target.file).delete(target.file)
+                    }
+                }
+                is Work.Purge -> {
+                    val store = (FsRegistry.of("trash") as TrashFileSystem).store
+                    deleteItems(ctx, s, w.items, listener) { index ->
+                        val item = w.targets[index].second
+                        store.purgeItem(item.entry, item.relative)
+                    }
+                }
                 is Work.Download -> w.task.execute(ctx, w.dest, listener, isCancelled = { s.cancelled.get() })
                 is Work.Copy -> CopyEngine.transfer(
                     w.items, w.dest, w.move, listener,
@@ -291,7 +353,31 @@ object Transfers {
         }.map { }
 
         s.finished = result
-        finish(s)
+        finish(ctx, s, onComplete)
+    }
+
+    /** Count confirmed entries, leaving recursive and symlink handling to the owning backend. */
+    private fun deleteItems(
+        ctx: Context, s: Session, items: List<XFile>, listener: CopyEngine.ProgressListener,
+        delete: (Int) -> Unit,
+    ) {
+        var firstError: Throwable? = null
+        var failed = 0
+        for ((index, file) in items.withIndex()) {
+            if (s.cancelled.get()) break
+            listener.onFile(file)
+            runCatching { delete(index) }.exceptionOrNull()?.let {
+                if (firstError == null) firstError = it
+                failed++
+            }
+            listener.onItemDone(file.isDir)
+            s.totalProgress = ((index + 1L) * 1000 / items.size).toInt()
+            post(s)
+        }
+        if (failed > 0) throw java.io.IOException(
+            ctx.getString(R.string.compare_sync_delete_failed, failed) + "\n" +
+                firstError?.message.orEmpty(), firstError,
+        )
     }
 
     /** Conflict decision: transfer thread blocks; the UI (if attached) answers via dialog. */
@@ -313,17 +399,43 @@ object Transfers {
         main.post { if (active === s) ui?.onProgress(s) }
     }
 
-    private fun finish(s: Session) {
-        active = null
+    private fun finish(ctx: Context, s: Session, onComplete: () -> Unit) {
         main.post {
+            s.tick = null
+            active = null
             val u = ui
-            if (u != null) {
-                if (active == null) ui = null // A new session has already attached; don't steal its observer
-                u.onFinished(s)
-            } else {
-                // UI not on stage: keep the result, let MainActivity refresh the pane and toast when it returns to the foreground
-                pendingResult = s
+            ui = null
+            if (s.isShare) {
+                if (s.cancelled.get()) {
+                    s.preparedShare?.release()
+                    s.preparedShare = null
+                }
+                synchronized(this) { pendingShares.addLast(s) }
+            } else if (u == null) pendingResult = s
+            val error = s.finished?.exceptionOrNull()
+            val cancelled = s.cancelled.get() || error is ArchiveWriter.Cancelled
+            val message = when {
+                cancelled -> ctx.getString(R.string.dialog_cancel)
+                error != null -> error.message ?: ctx.getString(R.string.err_failed)
+                s.refused > 0 -> ctx.getString(R.string.msg_done_refused, s.refused)
+                else -> ctx.getString(R.string.msg_done)
             }
+            OperationFeedback.finished(
+                ctx, ctx.getString(when {
+                    s.isShare -> R.string.action_share
+                    s.isDelete -> s.titleRes
+                    error == null -> R.string.transfer_done
+                    else -> R.string.transfer_failed
+                }),
+                message, if (s.isDelete || error != null) message else s.destLabel,
+                cancelled = cancelled, openIntent = MainActivity.transferIntent(ctx),
+                showToast = !s.isShare || (error != null && !cancelled),
+                allowVibration = s.preparedShare?.cacheOnly != true,
+            )
+            onComplete()
+            u?.onFinished(s)
+            s.completion.complete(Unit)
+            if (u == null || s.isShare) ctx.sendBroadcast(Intent(ACTION_FINISHED).setPackage(ctx.packageName))
         }
     }
 }
@@ -367,10 +479,10 @@ class TransferService : Service() {
         val session = Transfers.active ?: run { stopSelf(); return START_NOT_STICKY }
         startForeground(NOTIF_ID, buildNotification(session))
         Thread({
-            Transfers.execute(this, session) { tick(session) }
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            doneNotification(session)?.let { nm.notify(DONE_ID, it) }
-            stopSelf()
+            Transfers.execute(this, session, onComplete = {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }) { tick(session) }
         }, "twig-transfer").start()
         return START_NOT_STICKY
     }
@@ -402,10 +514,10 @@ class TransferService : Service() {
             .setContentTitle(getString(s.titleRes))
             .setContentText(text)
             .setSubText(speed.ifEmpty { null })
-            .setSmallIcon(if (s.isCompress) R.drawable.ic_compress else R.drawable.ic_copy)
+            .setSmallIcon(when { s.isShare -> R.drawable.ic_share; s.isDelete -> R.drawable.ic_delete; s.isCompress -> R.drawable.ic_compress; else -> R.drawable.ic_copy })
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setProgress(1000, s.totalProgress, s.plan == null || (s.work is Transfers.Work.Download && s.plan?.bytes == 0L))
+            .setProgress(1000, s.totalProgress, s.plan == null || ((s.isShare || s.work is Transfers.Work.Download) && s.plan?.bytes == 0L))
             .setContentIntent(contentIntent())
             .addAction(
                 Notification.Action.Builder(
@@ -414,28 +526,6 @@ class TransferService : Service() {
                     cancelIntent(),
                 ).build(),
             )
-            .build()
-    }
-
-    /**
-     * Completion/failure wrap-up notification; if the UI is still on stage it toasts
-     * itself, no need to bother again. **No notification on cancel**: that's the user
-     * pressing it themselves, they already know the result, and another ping is just noise.
-     */
-    private fun doneNotification(s: Session): Notification? {
-        if (Transfers.ui != null) return null
-        if (s.cancelled.get()) return null
-        val r = s.finished ?: return null
-        val failed = r.isFailure && r.exceptionOrNull() !is ArchiveWriter.Cancelled
-        if (r.isFailure && !failed) return null // ArchiveWriter.Cancelled also counts as cancel
-        return baseBuilder()
-            .setContentTitle(
-                if (failed) getString(R.string.transfer_failed) else getString(R.string.transfer_done),
-            )
-            .setContentText(if (failed) r.exceptionOrNull()?.message.orEmpty() else s.destLabel)
-            .setSmallIcon(if (s.isCompress) R.drawable.ic_compress else R.drawable.ic_copy)
-            .setAutoCancel(true)
-            .setContentIntent(contentIntent())
             .build()
     }
 
@@ -457,7 +547,6 @@ class TransferService : Service() {
     companion object {
         private const val CHANNEL = "twig_transfer"
         private const val NOTIF_ID = 4301
-        private const val DONE_ID = 4302
         private const val ACTION_CANCEL = "com.twig.app.TRANSFER_CANCEL"
 
         fun start(ctx: Context) {

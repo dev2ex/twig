@@ -36,8 +36,8 @@
     <string name="sort_date">Datum</string>
     <string name="sort_reversed">Umgekehrt</string>
     <string name="sort_folders_by">Ordnerreihenfolge</string>
-    <string name="sort_date_old">Datum (älteste zuerst)</string>
-    <string name="sort_date_new">Datum (neueste zuerst)</string>
+    <string name="sort_date_old">Datum: alt → neu</string>
+    <string name="sort_date_new">Datum: neu → alt</string>
     <string name="density_compact">Kompakt</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Groß</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Ungültiges Stream-Token</string>
     <string name="transfer_channel">Dateiübertragungen</string>
     <string name="transfer_background">Im Hintergrund ausführen</string>
-    <string name="transfer_background_hint">Übertragung im Hintergrund — Benachrichtigung zum Zurückkehren antippen</string>
+    <string name="transfer_background_hint">Vorgang im Hintergrund — zum Zurückkehren auf die Benachrichtigung tippen</string>
     <string name="transfer_waiting">Warte auf Ihre Entscheidung…</string>
-    <string name="transfer_busy">Übertragung läuft bereits; nach Abschluss erneut versuchen</string>
+    <string name="transfer_busy">Ein Dateivorgang läuft bereits; nach Abschluss erneut versuchen</string>
     <string name="transfer_done">Übertragung abgeschlossen</string>
     <string name="transfer_failed">Übertragung fehlgeschlagen</string>
     <string name="cmd_channel">Remote-Befehle</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">%1$s die Nutzung erlauben:</string>
+    <string name="website_microphone">Mikrofon</string>
+    <string name="website_camera">Kamera</string>
+    <string name="website_permission_ask">Jedes Mal fragen</string>
+    <string name="website_permission_allow">Zulassen</string>
+    <string name="website_permission_deny">Blockieren</string>
+    <string name="website_permission_remember">Diese Entscheidung für diese Website merken</string>
+    <string name="website_location">Standort</string>
+    <string name="website_group_display">Anzeige und Symbolleiste</string>
+    <string name="website_group_browsing">Surfen und Bedienung</string>
+    <string name="website_group_privacy">Datenschutz und Hintergrund</string>
+    <string name="player_skip_head">Vorspann überspringen</string>
+    <string name="player_skip_tail">Abspann überspringen</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s gelöscht</string>
+    <string name="player_skip_invalid">Wähle einen Punkt zwischen Vor- und Abspann.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Stammeinträge anzeigen/ausblenden</string>
+    <string name="private_space">Privater Bereich</string>
+    <string name="private_space_create_failed">Privater Bereich konnte nicht erstellt werden</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Aktionshinweise</string>
+    <string name="settings_completion_vibration">Nach Abschluss vibrieren</string>
+    <string name="settings_completion_vibration_desc">Kopieren, Verschieben, Löschen, Packen und Entpacken</string>
+    <string name="settings_foreground_completion">Abschlussmeldungen im Vordergrund</string>
+    <string name="settings_foreground_completion_desc">Auch während der Nutzung von Twig benachrichtigen. Im Hintergrund und bei gesperrtem Bildschirm immer benachrichtigen.</string>
+
+    <string name="settings_exit_on_back">Mit Zurück beenden</string>
+    <string name="settings_exit_on_back_desc">Twig beenden, wenn Zurück den Hauptbildschirm schließt. Bei laufenden Aufgaben wird eine Bestätigung angefordert.</string>
+    <string name="share_text_filename">Geteilter Text.txt</string>
+    <string name="settings_toolbar_bottom">Symbolleiste unten</string>
+    <string name="settings_toolbar_bottom_desc">Die Symbolleiste des Dateibrowsers für eine einfachere Einhandbedienung nach unten verschieben</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Standard</string>
+    <string name="directory_view_selected">Gewählter Ordner</string>
+    <string name="directory_view_custom_sort">Eigene Sortierung</string>
+    <string name="directory_view_custom_view">Eigene Ansicht</string>
+    <string name="directory_view_reset">Standard verwenden</string>
+    <string name="directory_view_recursive">Auf Unterordner anwenden</string>
+    <string name="sort_name_az">Name: A → Z</string>
+    <string name="sort_name_za">Name: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Freigabe wird vorbereitet…</string>
+    <string name="share_prepare_failed">Dateien konnten nicht zur Freigabe vorbereitet werden.</string>
+    <string name="share_prepare_space">Nicht genügend Speicherplatz zur Vorbereitung der Freigabe.</string>
+    <string name="share_prepare_incomplete">Die Datei wurde geändert oder konnte nicht vollständig gelesen werden.</string>
 </resources>

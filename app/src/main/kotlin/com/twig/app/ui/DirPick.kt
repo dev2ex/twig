@@ -25,11 +25,11 @@ import kotlinx.coroutines.launch
  * (media servers, restic, 7z/RAR, git viewer, "Apps") can be entered but you cannot
  * write into them.
  */
-fun AppCompatActivity.enableOnWritableDir(pane: PaneFragment, button: View) {
+fun AppCompatActivity.enableOnWritableDir(pane: PaneFragment, button: View): kotlinx.coroutines.Job {
     // Start by laying it out as disabled, until the panel reports its first writable directory
     setEnabledDim(button, false)
     val vm = pane.viewModel
-    lifecycleScope.launch {
+    return lifecycleScope.launch {
         repeatOnLifecycle(Lifecycle.State.STARTED) {
             vm.state.collect { st -> setEnabledDim(button, st.currentDir?.isWritableDir() == true) }
         }

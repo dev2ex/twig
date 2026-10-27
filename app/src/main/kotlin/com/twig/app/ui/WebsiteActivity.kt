@@ -80,6 +80,12 @@ class WebsiteActivity : AppCompatActivity() {
     private var fullscreenLayer: FrameLayout? = null
     private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
     private val certificateRequests = mutableMapOf<SslErrorHandler, Job>()
+    private val mediaPermissions = WebsiteMediaPermissions(this,
+        bookmarkId = { if (!isBrowserPage() && ::localSite.isInitialized) localSite.id else null },
+        pageUrl = { if (::b.isInitialized) b.web.url else null })
+    private val locationPermissions = WebsiteLocationPermissions(this,
+        bookmarkId = { if (!isBrowserPage() && ::localSite.isInitialized) localSite.id else null },
+        pageUrl = { if (::b.isInitialized) b.web.url else null })
     private val downloads = WebsiteDownloads(this)
     private var upload: ValueCallback<Array<Uri>>? = null
     private val picker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -296,6 +302,10 @@ class WebsiteActivity : AppCompatActivity() {
         b.web.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
+            setGeolocationEnabled(true)
+            // Chromium latches gesture locks when media elements are created. Set before loading,
+            // so authorized camera previews and incoming WebRTC streams can actually play.
+            mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             allowContentAccess = false
             builtInZoomControls = true
@@ -332,6 +342,8 @@ class WebsiteActivity : AppCompatActivity() {
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                mediaPermissions.cancel()
+                locationPermissions.cancel()
                 pendingMainUrl = url
                 debugger.navigation(url)
                 customStyleApplied = false
@@ -387,6 +399,17 @@ class WebsiteActivity : AppCompatActivity() {
             }
         }
         b.web.webChromeClient = object : WebChromeClient() {
+            override fun onGeolocationPermissionsShowPrompt(origin: String, callback: android.webkit.GeolocationPermissions.Callback) =
+                locationPermissions.request(origin, callback)
+
+            override fun onGeolocationPermissionsHidePrompt() = locationPermissions.hidden()
+
+            override fun onPermissionRequest(request: android.webkit.PermissionRequest) =
+                mediaPermissions.request(request)
+
+            override fun onPermissionRequestCanceled(request: android.webkit.PermissionRequest) =
+                mediaPermissions.canceled(request)
+
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 debugger.console(message)
                 return true
@@ -462,6 +485,10 @@ class WebsiteActivity : AppCompatActivity() {
         val changedHeaders = saved.headers != site.headers
         val changedScript = saved.script != site.script
         val changedAuth = saved.basicAuthUsername != site.basicAuthUsername || saved.basicAuthPassword != site.basicAuthPassword
+        val revokedPermission = WebsiteCustomization.sameOrigin(site.url, b.web.url) &&
+            ((saved.microphonePermission != site.microphonePermission && saved.microphonePermission != com.twig.app.WebsitePermission.ALLOW) ||
+                (saved.cameraPermission != site.cameraPermission && saved.cameraPermission != com.twig.app.WebsitePermission.ALLOW) ||
+                (saved.locationPermission != site.locationPermission && saved.locationPermission != com.twig.app.WebsitePermission.ALLOW))
         if (saved.openFullscreen != site.openFullscreen) {
             immersiveFullscreen = saved.openFullscreen
             fullscreenFromToolbar = false
@@ -472,7 +499,16 @@ class WebsiteActivity : AppCompatActivity() {
         applyWebsiteOptions()
         when {
             changedUrl -> loadWebsite(site.url)
-            changedHeaders || changedAuth -> loadWebsite(b.web.url ?: site.url)
+            changedHeaders || changedAuth -> {
+                mediaPermissions.cancel()
+                locationPermissions.cancel()
+                loadWebsite(b.web.url ?: site.url)
+            }
+            revokedPermission -> {
+                mediaPermissions.cancel()
+                locationPermissions.cancel()
+                b.web.reload()
+            }
             changedDesktop || changedAgent || changedScript -> b.web.reload()
             else -> { applyPageOptions(); applyCustomStyle() }
         }
@@ -763,11 +799,13 @@ class WebsiteActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        mediaPermissions.pause()
+        locationPermissions.pause()
         if (::debugger.isInitialized) debugger.stopInspection()
         cancelCertificateRequests()
         if (::b.isInitialized) {
             // Keep opted-in WebViews running; their foreground service protects the host from cached-app freezing.
-            if (!::site.isInitialized || !site.allowBackgroundRunning) b.web.onPause()
+            if ((!::site.isInitialized || !site.allowBackgroundRunning) && !mediaPermissions.requestingAndroid && !locationPermissions.requestingAndroid) b.web.onPause()
             persistCookies()
         }
         super.onPause()
@@ -794,6 +832,8 @@ class WebsiteActivity : AppCompatActivity() {
         if (::b.isInitialized) {
             b.web.clearSslPreferences()
             b.web.onResume()
+            mediaPermissions.resume()
+            locationPermissions.resume()
         }
     }
 
@@ -825,12 +865,16 @@ class WebsiteActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
+        mediaPermissions.cancel()
+        locationPermissions.cancel()
         WebsiteRemoteDebug.stop(this)
         downloads.stop()
         super.onStop()
     }
 
     override fun onDestroy() {
+        mediaPermissions.cancel()
+        locationPermissions.cancel()
         WebsiteStore.preferences(this).unregisterOnSharedPreferenceChangeListener(globalSettingsListener)
         WebsiteBackground.release(this)
         WebsiteRemoteDebug.stop(this)

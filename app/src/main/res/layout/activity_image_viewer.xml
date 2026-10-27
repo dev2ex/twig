@@ -45,10 +45,47 @@
         android:paddingTop="4dp"
         android:paddingBottom="4dp">
 
+        <!-- Keep this slot when selection is unavailable so playback stays centered. -->
+        <FrameLayout
+            android:id="@+id/select_slot"
+            android:layout_width="48dp"
+            android:layout_height="48dp">
+
+            <androidx.appcompat.widget.AppCompatCheckBox
+                android:id="@+id/btn_select"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:minWidth="0dp"
+                android:padding="0dp"
+                app:buttonTint="@color/white"
+                android:contentDescription="@string/action_select" />
+        </FrameLayout>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/btn_shuffle"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_shuffle"
+            android:tint="@color/white"
+            android:contentDescription="@string/shuffle" />
+
         <ImageButton
             android:id="@+id/btn_prev"
-            android:layout_width="52dp"
-            android:layout_height="46dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_chevron_right"
             android:rotation="180"
@@ -57,42 +94,55 @@
 
         <ImageButton
             android:id="@+id/btn_play"
-            android:layout_width="52dp"
-            android:layout_height="46dp"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_play"
             android:tint="@color/white"
             android:contentDescription="@string/slideshow" />
 
         <ImageButton
-            android:id="@+id/btn_shuffle"
-            android:layout_width="52dp"
-            android:layout_height="46dp"
-            android:layout_marginEnd="16dp"
+            android:id="@+id/btn_next"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_shuffle"
+            android:src="@drawable/ic_chevron_right"
             android:tint="@color/white"
-            android:contentDescription="@string/shuffle" />
+            android:contentDescription="@null" />
 
         <ImageButton
             android:id="@+id/btn_fit"
-            android:layout_width="52dp"
-            android:layout_height="46dp"
-            android:layout_marginEnd="16dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_fit_rotate"
             android:tint="@color/white"
             android:contentDescription="@string/rotate_fit" />
 
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
         <ImageButton
-            android:id="@+id/btn_next"
-            android:layout_width="52dp"
-            android:layout_height="46dp"
+            android:id="@+id/btn_delete"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:minWidth="0dp"
+            android:padding="8dp"
+            android:scaleType="centerInside"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_chevron_right"
+            android:src="@drawable/ic_delete"
             android:tint="@color/white"
-            android:contentDescription="@null" />
+            android:contentDescription="@string/action_delete" />
     </LinearLayout>
 </FrameLayout>

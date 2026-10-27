@@ -36,8 +36,8 @@
     <string name="sort_date">Tanggal</string>
     <string name="sort_reversed">Terbalik</string>
     <string name="sort_folders_by">Urutan folder</string>
-    <string name="sort_date_old">Tanggal (terlama dahulu)</string>
-    <string name="sort_date_new">Tanggal (terbaru dahulu)</string>
+    <string name="sort_date_old">Tanggal: lama → baru</string>
+    <string name="sort_date_new">Tanggal: baru → lama</string>
     <string name="density_compact">Rapat</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Longgar</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Token aliran tidak valid</string>
     <string name="transfer_channel">Transfer file</string>
     <string name="transfer_background">Jalankan di latar belakang</string>
-    <string name="transfer_background_hint">Transfer di latar belakang — ketuk notifikasi untuk kembali</string>
+    <string name="transfer_background_hint">Operasi berjalan di latar belakang — ketuk notifikasi untuk kembali</string>
     <string name="transfer_waiting">Menunggu keputusan Anda…</string>
-    <string name="transfer_busy">Transfer sedang berjalan; coba setelah selesai</string>
+    <string name="transfer_busy">Operasi berkas sedang berjalan; coba setelah selesai</string>
     <string name="transfer_done">Transfer selesai</string>
     <string name="transfer_failed">Transfer gagal</string>
     <string name="cmd_channel">Perintah jarak jauh</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">Izinkan %1$s menggunakan:</string>
+    <string name="website_microphone">Mikrofon</string>
+    <string name="website_camera">Kamera</string>
+    <string name="website_permission_ask">Tanya setiap kali</string>
+    <string name="website_permission_allow">Izinkan</string>
+    <string name="website_permission_deny">Blokir</string>
+    <string name="website_permission_remember">Ingat keputusan ini untuk situs ini</string>
+    <string name="website_location">Lokasi</string>
+    <string name="website_group_display">Tampilan dan bilah alat</string>
+    <string name="website_group_browsing">Penjelajahan dan interaksi</string>
+    <string name="website_group_privacy">Privasi dan latar belakang</string>
+    <string name="player_skip_head">Lewati pembuka</string>
+    <string name="player_skip_tail">Lewati penutup</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s dihapus</string>
+    <string name="player_skip_invalid">Pilih titik di antara pembuka dan penutup.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Tampilkan/sembunyikan item akar</string>
+    <string name="private_space">Ruang pribadi</string>
+    <string name="private_space_create_failed">Tidak dapat membuat ruang pribadi</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Peringatan operasi</string>
+    <string name="settings_completion_vibration">Getar saat selesai</string>
+    <string name="settings_completion_vibration_desc">Salin, pindah, hapus, kompres dan ekstrak arsip</string>
+    <string name="settings_foreground_completion">Notifikasi selesai di latar depan</string>
+    <string name="settings_foreground_completion_desc">Beri notifikasi juga saat menggunakan Twig. Selalu beri notifikasi di latar belakang dan saat layar terkunci.</string>
+
+    <string name="settings_exit_on_back">Keluar saat Kembali</string>
+    <string name="settings_exit_on_back_desc">Keluar dari Twig saat tombol Kembali menutup layar utama. Minta konfirmasi jika ada tugas yang berjalan.</string>
+    <string name="share_text_filename">Teks dibagikan.txt</string>
+    <string name="settings_toolbar_bottom">Bilah alat di bawah</string>
+    <string name="settings_toolbar_bottom_desc">Pindahkan bilah alat penjelajah berkas ke bawah agar lebih mudah digunakan dengan satu tangan</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Default</string>
+    <string name="directory_view_selected">Folder terpilih</string>
+    <string name="directory_view_custom_sort">Urutan khusus</string>
+    <string name="directory_view_custom_view">Tampilan khusus</string>
+    <string name="directory_view_reset">Gunakan default</string>
+    <string name="directory_view_recursive">Terapkan ke subfolder</string>
+    <string name="sort_name_az">Nama: A → Z</string>
+    <string name="sort_name_za">Nama: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Menyiapkan berbagi…</string>
+    <string name="share_prepare_failed">Tidak dapat menyiapkan file untuk dibagikan.</string>
+    <string name="share_prepare_space">Ruang tidak cukup untuk menyiapkan file.</string>
+    <string name="share_prepare_incomplete">File berubah atau tidak dapat dibaca sepenuhnya.</string>
 </resources>

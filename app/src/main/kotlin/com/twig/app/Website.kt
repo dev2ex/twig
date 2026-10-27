@@ -37,7 +37,18 @@ data class Website(
     val basicAuthUsername: String = "",
     val basicAuthPassword: String = "",
     val blockScreenshots: Boolean = false,
+    val microphonePermission: WebsitePermission = WebsitePermission.ASK,
+    val cameraPermission: WebsitePermission = WebsitePermission.ASK,
+    val locationPermission: WebsitePermission = WebsitePermission.ASK,
 )
+
+enum class WebsitePermission(val key: String) {
+    ASK("ask"), ALLOW("allow"), DENY("deny");
+
+    companion object {
+        fun fromKey(key: String) = entries.firstOrNull { it.key == key } ?: ASK
+    }
+}
 
 enum class WebsiteOrientation(val key: String) {
     SYSTEM("system"), FREE("free"), LOCKED("locked"), LANDSCAPE("landscape"), PORTRAIT("portrait");
@@ -116,6 +127,9 @@ object WebsiteStore {
                     doubleTapToolbar = o.optBoolean("doubleTapToolbar", true),
                     allowBackgroundRunning = o.optBoolean("allowBackgroundRunning"),
                     blockScreenshots = o.optBoolean("blockScreenshots", false),
+                    microphonePermission = WebsitePermission.fromKey(o.optString("microphonePermission")),
+                    cameraPermission = WebsitePermission.fromKey(o.optString("cameraPermission")),
+                    locationPermission = WebsitePermission.fromKey(o.optString("locationPermission")),
                     hideStatusBar = o.optBoolean("hideStatusBar", fullscreen),
                     hideNavigationBar = o.optBoolean("hideNavigationBar", fullscreen),
                     disableTextSelection = o.optBoolean("disableTextSelection"),
@@ -173,6 +187,9 @@ object WebsiteStore {
                 .put("script", it.script).put("style", it.style).put("hiddenElements", it.hiddenElements).put("userAgent", it.userAgent)
                 .put("blockedRequests", it.blockedRequests)
                 .put("blockScreenshots", it.blockScreenshots)
+                .put("microphonePermission", it.microphonePermission.key)
+                .put("cameraPermission", it.cameraPermission.key)
+                .put("locationPermission", it.locationPermission.key)
                 .put("headers", sealSecret(it.headers))
                 .put("basicAuthUsername", sealSecret(it.basicAuthUsername))
                 .put("basicAuthPassword", sealSecret(it.basicAuthPassword)))

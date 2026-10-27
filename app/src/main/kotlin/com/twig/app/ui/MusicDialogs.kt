@@ -110,6 +110,6 @@ object MusicDialogs {
                 if (name.isNotEmpty()) onName(name)
             }
             .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+            .create().showNameInput(input)
     }
 }

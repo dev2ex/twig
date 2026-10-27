@@ -1,0 +1,1 @@
+Preview 3: music volume swipes now show an in-player percentage instead of the system panel, with fewer repeated volume calls. Fix crashes when repeatedly rotating the share destination picker for text, files or images. Image viewer playback controls stay centered, with selection and deletion separated at the sides.

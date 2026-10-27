@@ -65,7 +65,7 @@ object AppExit {
         runCatching { Transfers.active?.cancel() }
         runCatching { WebShare.stop(act) }
         runCatching { TermManager.closeAll() }
-        runCatching { MusicEngine.shutdown() }
+        runCatching { MusicUi.exit(act) }
         Secrets.lock()
         act.finishAffinity()
     }

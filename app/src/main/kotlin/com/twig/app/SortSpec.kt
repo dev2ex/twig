@@ -7,7 +7,7 @@ import com.twig.core.XFile
 enum class FileSortKey { NAME, SIZE, EXT, DATE }
 
 /** Folder sort keys (independent of file keys, X-plore style). */
-enum class FolderSortKey { NAME, DATE_OLD, DATE_NEW }
+enum class FolderSortKey { NAME, DATE_OLD, DATE_NEW, NAME_REVERSED }
 
 /**
  * Sort specification: folders always group first; files sort by [by] (+ [reversed]);
@@ -28,6 +28,7 @@ data class SortSpec(
         val fileCmp = if (reversed) fileBase.reversed() else fileBase
         val folderCmp: Comparator<XFile> = when (folderBy) {
             FolderSortKey.NAME -> compareBy { it.name.lowercase() }
+            FolderSortKey.NAME_REVERSED -> compareByDescending { it.name.lowercase() }
             FolderSortKey.DATE_OLD -> compareBy { dateOf(it) }
             FolderSortKey.DATE_NEW -> compareByDescending { dateOf(it) }
         }

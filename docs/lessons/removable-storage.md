@@ -4,7 +4,7 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
-**(★ 2026-08-26, `StorageVolumes`)** The entry points are the rows between "Internal storage" and
+**(★ 2026-08-26, `StorageVolumes`)** The entry points are the rows after "Internal storage" and
 "Root directory", sourced solely from `getStorageVolumes()` (plus one fallback derived from
 `getExternalFilesDirs`), with no new permissions.
 
@@ -46,3 +46,16 @@
 - Volume roots are treated like internal storage and the root directory, and are excluded from
   `currentSelection()` (so a whole card cannot be deleted by accident).
 
+- **Source icons are not hardware detection** (2026-10-24): `StorageVolume` does not expose
+  a public SD/USB transport flag. Explicit SD/USB descriptions choose the matching icon;
+  custom labels and UUIDs use the internal-storage icon. On the test device, `opi_root` is a real
+  SD card (`dumpsys mount`: `ADOPTABLE|SD`, `mmcblk1`) whose custom label uses that
+  fallback icon. Do not mistake the fallback for a USB identification, infer hardware from
+  a UUID, or turn a one-device label into a global SD rule.
+
+- **Register shortcut keys before walking the tree** (2026-10-24): Root is displayed
+  before removable volumes. An expanded `/storage` can therefore emit a volume before
+  its shortcut is drawn. Pre-register internal, root and all cached volume identities
+  before rendering rows, so nested volume rows always receive `NESTED_STORAGE_PREFIX`.
+  Otherwise the two entries have the same DiffUtil key merely because their order changed.
+  `StorageVolumesTest` covers the expanded-root case and the new top-level order.

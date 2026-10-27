@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -224,6 +225,17 @@ class SettingsActivity : AppCompatActivity() {
             set = { Prefs.setRowDivider(this, it) },
         )
 
+        switchRow(
+            getString(R.string.settings_toolbar_bottom), getString(R.string.settings_toolbar_bottom_desc),
+            get = { Prefs.toolbarAtBottom(this) },
+            set = { Prefs.setToolbarAtBottom(this, it) },
+        )
+        switchRow(
+            getString(R.string.settings_exit_on_back), getString(R.string.settings_exit_on_back_desc),
+            get = { Prefs.exitOnBack(this) },
+            set = { Prefs.setExitOnBack(this, it) },
+        )
+
         section(getString(R.string.settings_section_grid))
         choiceRow(
             getString(R.string.settings_grid_mode),
@@ -312,6 +324,23 @@ class SettingsActivity : AppCompatActivity() {
             subtitle.text = Format.size(0)
             Toast.makeText(this, R.string.msg_cache_cleared, Toast.LENGTH_SHORT).show()
         }
+
+        section(getString(R.string.settings_operation_notifications))
+        switchRow(
+            getString(R.string.settings_completion_vibration), getString(R.string.settings_completion_vibration_desc),
+            get = { Prefs.vibrateOnCompletion(this) }, set = { Prefs.setVibrateOnCompletion(this, it) },
+        )
+        switchRow(
+            getString(R.string.settings_foreground_completion), getString(R.string.settings_foreground_completion_desc),
+            get = { Prefs.foregroundCompletionNotifications(this) },
+            set = { on ->
+                Prefs.setForegroundCompletionNotifications(this, on)
+                if (on && Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                    android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 2)
+                }
+            },
+        )
 
         section(getString(R.string.trash_title))
         switchRow(getString(R.string.settings_trash_enabled), getString(R.string.settings_trash_enabled_desc),

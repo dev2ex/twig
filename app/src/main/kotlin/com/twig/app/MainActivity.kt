@@ -32,7 +32,6 @@ import com.twig.app.databinding.ActionStripBinding
 import com.twig.app.databinding.ActivityMainBinding
 import com.twig.app.databinding.DialogFtpBinding
 import com.twig.app.databinding.DialogSmbBinding
-import com.twig.app.databinding.DialogSortBinding
 import com.twig.app.databinding.DialogWebdavBinding
 import com.twig.app.ui.FileClipboard
 import com.twig.app.share.WebShare
@@ -242,9 +241,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         TwigApp.registerBaseFs(this) // Base sources (local / archive / SAF / apps / content://)
 
         uiSig = Prefs.uiSignature(this)
-        wireStrip(b.stripLeft)
-        wireStrip(b.stripMid)
-        wireStrip(b.stripRight)
+        wireStrip(b.browser.stripLeft)
+        wireStrip(b.browser.stripMid)
+        wireStrip(b.browser.stripRight)
         syncShareIcon()
         installClipboardBar()
         applyLayoutMode()
@@ -356,6 +355,10 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             )
             return
         }
+        if (Prefs.exitOnBack(this)) {
+            confirmExit()
+            return
+        }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
 
@@ -367,6 +370,8 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     override fun onResume() {
         super.onResume()
         ContextCompat.registerReceiver(this, volumeReceiver, volumeFilter(), ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(this, transferReceiver,
+            android.content.IntentFilter(com.twig.app.ui.Transfers.ACTION_FINISHED), ContextCompat.RECEIVER_NOT_EXPORTED)
         // After locking and switching back (or locking elsewhere) must re-enter — onCreate only handles cold start
         if (com.twig.app.secure.Secrets.locked(this)) {
             com.twig.app.ui.SecurityUi.gate(this) { }
@@ -378,12 +383,12 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             recreate()
             return
         }
-        // A transfer finished while the UI wasn't around: come back and catch up (clear selection / refresh both sides / announce result).
+        // A transfer finished while the UI wasn't around: come back and catch up (clear selection / refresh both sides).
         // Don't consume if the pane isn't ready — taken too early nothing will handle it, defer to next onResume
-        activePane()?.let { p -> com.twig.app.ui.Transfers.consumeFinished()?.let { p.finishTransfer(it) } }
+        consumeFinishedTransfer()
         invalidateOptionsMenu() // terminal sessions may have been added/removed in another Activity; refresh the entry's visibility
         val land = isLandscape()
-        for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) applyStripState(s, land)
+        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) applyStripState(s, land)
         // Sharing may have been turned off via the notification bar's "stop" button (the UI wasn't even present); sync once on returning to foreground
         syncShareIcon()
         WebShare.onStateChanged = { runOnUiThread { syncShareIcon() } }
@@ -393,11 +398,23 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     override fun onPause() {
-        b.panes.finishTransition()
+        b.browser.root.finishTransition()
         super.onPause()
         // Drop the callback: it captures this Activity, leaving it in place is a reference to an already-destroyed UI
         WebShare.onStateChanged = null
         runCatching { unregisterReceiver(volumeReceiver) }
+        runCatching { unregisterReceiver(transferReceiver) }
+    }
+
+    private fun consumeFinishedTransfer() {
+        com.twig.app.ui.ShareTransfers.attach(this)
+        activePane()?.takeIf { it.isReady() }?.let { pane ->
+            com.twig.app.ui.Transfers.consumeFinished()?.let { pane.finishTransfer(it) }
+        }
+    }
+
+    private val transferReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) = consumeFinishedTransfer()
     }
 
     /** Rescan removable volumes, refresh the volume row on both trees when something changed. One binder IPC, done on the main thread. */
@@ -519,7 +536,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
      */
     private fun syncShareIcon() {
         val res = if (WebShare.isRunning) R.drawable.ic_share_wifi_on else R.drawable.ic_share_wifi
-        for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) s.asShareIcon.setImageResource(res)
+        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) s.asShareIcon.setImageResource(res)
     }
 
     private fun applyStripState(s: ActionStripBinding, land: Boolean) {
@@ -596,19 +613,20 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     private fun applyLayoutMode(animateSwitch: Boolean = false) {
         val land = isLandscape()
-        b.paneA.visibility = View.VISIBLE
-        b.paneB.visibility = View.VISIBLE
-        b.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
-        b.stripLeft.root.visibility = View.GONE
-        b.stripRight.root.visibility = if (!land) View.VISIBLE else View.GONE
+        b.browser.paneA.visibility = View.VISIBLE
+        b.browser.paneB.visibility = View.VISIBLE
+        b.browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
+        b.browser.stripLeft.root.visibility = View.GONE
+        b.browser.stripRight.root.visibility = if (!land) View.VISIBLE else View.GONE
         // Landscape has no Toolbar (vertical space is precious); its right-side buttons move into the strip's top pinned row
         b.toolbar.visibility = if (land) View.GONE else View.VISIBLE
+        com.twig.app.ui.ToolbarPlacement.apply(this, b.toolbar, Prefs.toolbarAtBottom(this))
         // Landscape's height can't fit a full single column, so the strip becomes two columns (width doubles)
-        for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) {
+        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             applyStripColumns(s, land)
             applyStripState(s, land)
         }
-        b.panes.showPane(activeIndex, animateSwitch && !land)
+        b.browser.root.showPane(activeIndex, animateSwitch && !land)
         paneAt(0)?.setActive(activeIndex == 0)
         paneAt(1)?.setActive(activeIndex == 1)
         renderClipBar() // active pane changed, the paste target follows
@@ -620,7 +638,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         s.asGrid.dividers = on
         s.asTop.dividers = on
         val cols = if (land) 2 else 1
-        if (s.asGrid.columnCount != cols) s.asGrid.columnCount = cols
+        s.asGrid.setColumns(cols)
         val w = (STRIP_COL_DP * cols * resources.displayMetrics.density).toInt()
         val lp = s.root.layoutParams
         if (lp.width != w) {
@@ -752,7 +770,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         val pane = activePane()?.takeIf { it.isReady() }
         val actions = pane?.stripActions() ?: PaneFragment.StripActions()
         val compare = pane?.viewModel?.currentDir?.isDir == true
-        for (s in listOf(b.stripMid, b.stripLeft, b.stripRight)) {
+        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             setStripEnabled(s.asNewFolder, actions.create)
             setStripEnabled(s.asCopy, actions.copy)
             setStripEnabled(s.asCompress, actions.copy)
@@ -1114,23 +1132,10 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             icon = ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_music_note)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
-        // Swap to the other pane: current pane filled, target hollow, arrow points to the side you're switching to
-        menu.add(0, MENU_SWAP_PANE, 1, getString(R.string.menu_swap_pane)).apply {
-            icon = ContextCompat.getDrawable(
-                this@MainActivity,
-                if (activeIndex == 0) R.drawable.ic_pane_to_right else R.drawable.ic_pane_to_left,
-            )
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            actionView = androidx.appcompat.widget.AppCompatImageButton(
-                b.toolbar.context, null, androidx.appcompat.R.attr.actionButtonStyle,
-            ).apply {
-                setImageDrawable(icon)
-                contentDescription = getString(R.string.menu_swap_pane)
-                minimumWidth = (48 * resources.displayMetrics.density).toInt()
-                setOnClickListener { setActiveIndex(1 - activeIndex, animateSwitch = true) }
-                setOnLongClickListener { showCurrentDirInOtherPane(); true }
-            }
-        }
+        com.twig.app.ui.PaneSwitch.add(menu, b.toolbar, MENU_SWAP_PANE, activeIndex,
+            onSwitch = { setActiveIndex(1 - activeIndex, animateSwitch = true) },
+            onLongPress = { showCurrentDirInOtherPane() },
+        )
         return true
     }
 
@@ -1147,6 +1152,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         R.id.action_view_mode -> {
             showViewModeDialog(); true
+        }
+        R.id.action_root_items -> {
+            showRootItemsDialog(); true
         }
         R.id.action_thumbs -> {
             Prefs.setThumbs(this, !item.isChecked)
@@ -1185,6 +1193,40 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         else -> super.onOptionsItemSelected(item)
     }
 
+    private fun showRootItemsDialog() {
+        val items = RootItems.all
+        val checked = Array(2) { pane -> items.map { Prefs.rootItemVisible(this, pane, it.id) }.toBooleanArray() }
+        val content = com.twig.app.databinding.DialogRootItemsBinding.inflate(layoutInflater)
+        val metrics = resources.displayMetrics
+        val availableHeight = (resources.configuration.screenHeightDp - 200).coerceAtLeast(96) * metrics.density
+        content.itemsScroll.layoutParams.height = minOf(metrics.heightPixels * 0.55f, availableHeight).toInt()
+        items.forEachIndexed { index, item ->
+            val row = com.twig.app.databinding.ItemRootVisibilityBinding.inflate(layoutInflater, content.items, false)
+            row.root.tag = item.id
+            row.icon.setImageResource(item.icon)
+            row.label.setText(item.label)
+            listOf(row.left, row.right).forEachIndexed { pane, checkbox ->
+                checkbox.isChecked = checked[pane][index]
+                checkbox.contentDescription = getString(item.label) + " · " +
+                    getString(if (pane == 0) R.string.compare_side_left else R.string.compare_side_right)
+                checkbox.setOnCheckedChangeListener { _, on -> checked[pane][index] = on }
+                (if (pane == 0) row.leftCell else row.rightCell).setOnClickListener { checkbox.performClick() }
+            }
+            content.items.addView(row.root)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.action_root_items)
+            .setView(content.root)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                for (pane in 0..1) {
+                    items.forEachIndexed { index, item -> Prefs.setRootItemVisible(this, pane, item.id, checked[pane][index]) }
+                    paneAt(pane)?.viewModel?.refreshRootItems()
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun pinMusicShortcut() {
         if (!ShortcutManagerCompat.isRequestPinShortcutSupported(this)) {
             Toast.makeText(this, R.string.music_pin_shortcut_unsupported, Toast.LENGTH_SHORT).show()
@@ -1202,67 +1244,21 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun showSortDialog() {
-        val d = DialogSortBinding.inflate(layoutInflater)
-        val cur = SortSpec.load(this)
-        d.rgBy.check(
-            when (cur.by) {
-                FileSortKey.NAME -> R.id.rb_name
-                FileSortKey.SIZE -> R.id.rb_size
-                FileSortKey.EXT -> R.id.rb_ext
-                FileSortKey.DATE -> R.id.rb_date
-            },
-        )
-        d.cbReversed.isChecked = cur.reversed
-        d.rgFolder.check(
-            when (cur.folderBy) {
-                FolderSortKey.NAME -> R.id.rf_name
-                FolderSortKey.DATE_OLD -> R.id.rf_date_old
-                FolderSortKey.DATE_NEW -> R.id.rf_date_new
-            },
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_sort)
-            .setView(d.root)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                val spec = SortSpec(
-                    by = when (d.rgBy.checkedRadioButtonId) {
-                        R.id.rb_size -> FileSortKey.SIZE
-                        R.id.rb_ext -> FileSortKey.EXT
-                        R.id.rb_date -> FileSortKey.DATE
-                        else -> FileSortKey.NAME
-                    },
-                    reversed = d.cbReversed.isChecked,
-                    folderBy = when (d.rgFolder.checkedRadioButtonId) {
-                        R.id.rf_date_old -> FolderSortKey.DATE_OLD
-                        R.id.rf_date_new -> FolderSortKey.DATE_NEW
-                        else -> FolderSortKey.NAME
-                    },
-                )
-                SortSpec.save(this, spec)
-                paneAt(0)?.viewModel?.setSort(spec)
-                paneAt(1)?.viewModel?.setSort(spec)
-            }
-            .show()
+        com.twig.app.ui.SortDialog.show(this, activePane()?.viewModel?.currentDir,
+            parentOf = { activePane()?.viewModel?.directoryViewParent(it) }) {
+            paneAt(0)?.refreshSortAndView()
+            paneAt(1)?.refreshSortAndView()
+            uiSig = Prefs.uiSignature(this)
+        }
     }
 
-    /** Quick view-mode switch: three grid states (independent of the thumbnail switch; details on the settings page). */
     private fun showViewModeDialog() {
-        val labels = arrayOf(
-            getString(R.string.view_mode_grid_off),
-            getString(R.string.view_mode_grid_media),
-            getString(R.string.view_mode_grid_all),
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_view_mode)
-            .setSingleChoiceItems(labels, Prefs.thumbsGrid(this).coerceIn(0, 2)) { dlg, which ->
-                Prefs.setThumbsGrid(this, which)
-                dlg.dismiss()
-                uiSig = Prefs.uiSignature(this)
-                recreate()
-            }
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+        com.twig.app.ui.SortDialog.showView(this, activePane()?.viewModel?.currentDir,
+            parentOf = { activePane()?.viewModel?.directoryViewParent(it) }) {
+            paneAt(0)?.refreshSortAndView()
+            paneAt(1)?.refreshSortAndView()
+            uiSig = Prefs.uiSignature(this)
+        }
     }
 
     private fun showThemeDialog() {

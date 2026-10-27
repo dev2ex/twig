@@ -164,7 +164,7 @@ object ShareDialogs {
 
     /**
      * Path shown on the "specify directory" row, written the same way as the recent
-     * location / path bar (`scheme:/server name/path`, see [formatLocationPath]);
+     * location / path bar (`scheme://server name/path`, see [formatLocationPath]);
      * for local it's just the absolute path.
      *
      * We use the alias version rather than `formatRawLocationPath`: this row tells

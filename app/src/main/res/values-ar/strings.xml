@@ -36,8 +36,8 @@
     <string name="sort_date">التاريخ</string>
     <string name="sort_reversed">عكس الترتيب</string>
     <string name="sort_folders_by">ترتيب المجلدات</string>
-    <string name="sort_date_old">التاريخ (الأقدم أولا)</string>
-    <string name="sort_date_new">التاريخ (الأحدث أولا)</string>
+    <string name="sort_date_old">التاريخ: الأقدم → الأحدث</string>
+    <string name="sort_date_new">التاريخ: الأحدث → الأقدم</string>
     <string name="density_compact">مضغوط</string>
     <string name="density_normal">عادي</string>
     <string name="density_large">متباعد</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">رمز التدفق غير صالح</string>
     <string name="transfer_channel">نقل الملفات</string>
     <string name="transfer_background">تشغيل في الخلفية</string>
-    <string name="transfer_background_hint">النقل في الخلفية؛ اضغط الإشعار للعودة</string>
+    <string name="transfer_background_hint">العملية جارية في الخلفية؛ اضغط الإشعار للعودة</string>
     <string name="transfer_waiting">بانتظار قرارك…</string>
-    <string name="transfer_busy">يوجد نقل جارٍ؛ حاول بعد انتهائه</string>
+    <string name="transfer_busy">توجد عملية ملفات جارية؛ حاول بعد انتهائها</string>
     <string name="transfer_done">اكتمل النقل</string>
     <string name="transfer_failed">فشل النقل</string>
     <string name="cmd_channel">أوامر بعيدة</string>
@@ -1073,4 +1073,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">السماح لـ %1$s باستخدام:</string>
+    <string name="website_microphone">الميكروفون</string>
+    <string name="website_camera">الكاميرا</string>
+    <string name="website_permission_ask">السؤال في كل مرة</string>
+    <string name="website_permission_allow">السماح</string>
+    <string name="website_permission_deny">حظر</string>
+    <string name="website_permission_remember">تذكر هذا القرار لهذا الموقع</string>
+    <string name="website_location">الموقع</string>
+    <string name="website_group_display">العرض وشريط الأدوات</string>
+    <string name="website_group_browsing">التصفح والتفاعل</string>
+    <string name="website_group_privacy">الخصوصية والعمل في الخلفية</string>
+    <string name="player_skip_head">تخطي المقدمة</string>
+    <string name="player_skip_tail">تخطي النهاية</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">تم مسح %1$s</string>
+    <string name="player_skip_invalid">اختر موضعًا بين المقدمة والنهاية.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">إظهار/إخفاء عناصر الجذر</string>
+    <string name="private_space">مساحة خاصة</string>
+    <string name="private_space_create_failed">تعذر إنشاء المساحة الخاصة</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">تنبيهات العمليات</string>
+    <string name="settings_completion_vibration">الاهتزاز عند الانتهاء</string>
+    <string name="settings_completion_vibration_desc">النسخ والنقل والحذف وضغط الأرشيفات واستخراجها</string>
+    <string name="settings_foreground_completion">إشعارات الاكتمال أثناء استخدام التطبيق</string>
+    <string name="settings_foreground_completion_desc">الإشعار أيضًا أثناء استخدام Twig. الإشعار دائمًا في الخلفية وعند قفل الشاشة.</string>
+
+    <string name="settings_exit_on_back">الخروج عند الرجوع</string>
+    <string name="settings_exit_on_back_desc">الخروج من Twig عندما يغلق زر الرجوع الشاشة الرئيسية، مع طلب التأكيد إذا كانت هناك مهام قيد التشغيل.</string>
+    <string name="share_text_filename">نص مشارك.txt</string>
+    <string name="settings_toolbar_bottom">شريط الأدوات في الأسفل</string>
+    <string name="settings_toolbar_bottom_desc">نقل شريط أدوات متصفح الملفات إلى الأسفل لتسهيل الاستخدام بيد واحدة</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">الافتراضي</string>
+    <string name="directory_view_selected">المجلد المحدد</string>
+    <string name="directory_view_custom_sort">ترتيب مخصص</string>
+    <string name="directory_view_custom_view">عرض مخصص</string>
+    <string name="directory_view_reset">استخدام الإعدادات الافتراضية</string>
+    <string name="directory_view_recursive">تطبيق على المجلدات الفرعية</string>
+    <string name="sort_name_az">الاسم: A → Z</string>
+    <string name="sort_name_za">الاسم: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">جارٍ التحضير للمشاركة…</string>
+    <string name="share_prepare_failed">تعذر تحضير الملفات للمشاركة.</string>
+    <string name="share_prepare_space">لا توجد مساحة كافية لتحضير الملفات.</string>
+    <string name="share_prepare_incomplete">تغير الملف أو تعذرت قراءته بالكامل.</string>
 </resources>

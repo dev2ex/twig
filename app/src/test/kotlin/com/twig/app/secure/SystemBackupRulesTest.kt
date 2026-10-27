@@ -34,6 +34,7 @@ class SystemBackupRulesTest {
             "file" to "keys/",
             "file" to ".ssh/",
             "root" to "app_webview/",
+            "root" to "private_space/",
         )
         assertTrue("Legacy backup includes credentials", legacy.containsAll(sensitive))
         for (channel in listOf("cloud-backup", "device-transfer")) {

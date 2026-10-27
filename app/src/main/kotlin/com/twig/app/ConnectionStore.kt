@@ -91,7 +91,7 @@ data class SavedConnection(
     /**
      * Short server name used in the path bar / recent locations: custom name preferred,
      * otherwise only the address itself — these places already have a type prefix in
-     * front (`sftp:/…`), so repeating [label]'s scheme header would be redundant.
+     * front (`sftp://…`), so repeating [label]'s scheme header would be redundant.
      */
     fun shortLabel(): String = name.ifEmpty { rawShortLabel() }
 

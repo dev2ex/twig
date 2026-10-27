@@ -66,7 +66,7 @@ class FileAdapter(
     private val onInfoTab: (PaneViewModel.InfoNode, Int) -> Unit,
     private val onInfoHash: (PaneViewModel.InfoNode) -> Unit,
     private val thumbs: Boolean = false,
-    private val gridMode: Int = 0,
+    var gridMode: Int = 0,
     private val gridNames: Boolean = true,
     /** Text size tier (0/1/2), independent of [density]; defaults to follow row height, see `Prefs.textSize`. */
     private val textSize: Int = density,
@@ -126,10 +126,10 @@ class FileAdapter(
 
     private fun isCell(n: PaneViewModel.Node): Boolean = when (n) {
         is PaneViewModel.WebsiteNode -> gridMode == 2
-        is PaneViewModel.FileNode -> gridMode > 0 &&
-            n.label == null && !n.file.isDir && !n.expandable &&
-            !n.file.scheme.startsWith("git") &&
-            (gridMode == 2 || Thumbs.canThumb(n.file))
+        is PaneViewModel.FileNode -> (if (n.gridMode >= 0) n.gridMode else gridMode).let { mode ->
+            mode > 0 && n.label == null && !n.file.isDir && !n.expandable &&
+                !n.file.scheme.startsWith("git") && (mode == 2 || Thumbs.canThumb(n.file))
+        }
         else -> false
     }
 
@@ -992,10 +992,12 @@ class FileAdapter(
             // here we only handle what this row itself should look like.
             val dpi = ctx.resources.displayMetrics.density
             when {
-                // Root row with a label: an internal storage one is ic_storage, but when the chooser is locked to a particular server
-                // this row represents that server and should use its source-type icon (same set as the path bar / recents /
-                // copy-target rows, see FileIcons.sourceIconRes)
-                node.label != null -> b.icon.setImageResource(FileIcons.sourceIconRes(file.scheme))
+                // Labeled roots distinguish internal storage, / and removable media.
+                // A picker locked to a server still uses that server's source icon.
+                node.label != null -> b.icon.setImageResource(
+                    if (file.scheme == "file" && file.path == com.twig.app.PrivateSpace.directory(b.root.context).path)
+                        R.drawable.ic_private_space else FileIcons.storageRootIconRes(file),
+                )
                 file.scheme.startsWith("git") && file.path == "/" ->
                     b.icon.setImageResource(R.drawable.ic_git)
                 file.isDir -> {
@@ -1070,7 +1072,9 @@ class FileAdapter(
                     "cmp" -> R.drawable.ic_compare_fav
                     "lan", "nfs" -> R.drawable.ic_lan
                     "ftp" -> R.drawable.ic_ftp
-                    "dav", "s3" -> R.drawable.ic_cloud
+                    "dav" -> R.drawable.ic_webdav
+                    "s3" -> R.drawable.ic_s3
+                    "saf" -> R.drawable.ic_document_tree
                     // The group id "media" is shared by Jellyfin / Emby (the other two names exist only as defensive aliases), so
                     // here we use the neutral monitor icon — the play button with the official colours is on each
                     // server's own row below; the shapes differ so they won't be confused with Emby's green triangle

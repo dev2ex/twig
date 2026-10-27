@@ -21,6 +21,8 @@ import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -69,7 +71,7 @@ class ImageViewerActivity : AppCompatActivity() {
     private var prefetching = false              // prefetching the next image
     private var scanDone = true                  // whether the slideshow's recursive scan has finished (always true in fixed-list mode)
     private var wantAutoPlay = false              // slideshow mode: start playing automatically once an image is ready
-    private var canSelect = true                 // "Select" entry (hidden when opened from external content:// with no tree to sync)
+    private var canSelect = true                 // Only same-directory browsing can sync selection back to the tree
 
     /** Images ticked in the viewer (deduped by path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
     private val picked = LinkedHashMap<String, XFile>()
@@ -97,6 +99,30 @@ class ImageViewerActivity : AppCompatActivity() {
         b = ActivityImageViewerBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        val controlsPadding = b.controls.paddingBottom
+        val controlSlots = listOf(b.selectSlot, b.btnShuffle, b.btnPrev, b.btnPlay, b.btnNext, b.btnFit, b.btnDelete)
+        var controlsInsets = Insets.NONE
+        fun fitControls() {
+            val density = resources.displayMetrics.density
+            val side = maxOf(controlsInsets.left, controlsInsets.right) + (8 * density).roundToInt()
+            b.controls.setPadding(side, b.controls.paddingTop, side, controlsPadding + controlsInsets.bottom)
+            if (b.root.width == 0) return
+            // Equal side slots and flexible gaps keep the five middle buttons centered.
+            // Shrink all seven slots together when the window cannot fit 48dp buttons.
+            val buttonWidth = minOf((48 * density).roundToInt(), ((b.root.width - side * 2) / 7).coerceAtLeast(0))
+            controlSlots.forEach { button ->
+                if (button.layoutParams.width != buttonWidth) {
+                    button.layoutParams = button.layoutParams.apply { width = buttonWidth }
+                }
+            }
+        }
+        b.root.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> fitControls() }
+        ViewCompat.setOnApplyWindowInsetsListener(b.root) { _, insets ->
+            controlsInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            fitControls()
+            insets
+        }
+
         b.toolbar.setNavigationOnClickListener { finish() }
         b.toolbar.menu.add(R.string.action_more).apply {
             setIcon(R.drawable.ic_more_vert)
@@ -115,10 +141,20 @@ class ImageViewerActivity : AppCompatActivity() {
         autoFit = Prefs.imageAutoFit(this)
         b.btnFit.alpha = if (autoFit) 1f else 0.5f
         b.btnFit.setOnClickListener { scheduleHide(); toggleAutoFit() }
+        b.btnSelect.setOnClickListener {
+            scheduleHide()
+            if (order.isNotEmpty()) togglePick(images[current])
+        }
+        b.btnDelete.setOnClickListener {
+            if (order.isNotEmpty()) confirmDelete(images[current])
+        }
         scheduleHide() // floating bar is visible by default, auto-hides after 3 seconds of inactivity
 
-        canSelect = intent.getBooleanExtra(EXTRA_ALLOW_SELECT, true)
-        when (intent.getIntExtra(EXTRA_MODE, MODE_FIXED)) {
+        val mode = intent.getIntExtra(EXTRA_MODE, MODE_FIXED)
+        canSelect = mode == MODE_FIXED && intent.getBooleanExtra(EXTRA_ALLOW_SELECT, true)
+        b.btnSelect.visibility = if (canSelect) View.VISIBLE else View.INVISIBLE
+        b.btnDelete.visibility = if (mode == MODE_SCAN) View.INVISIBLE else View.VISIBLE
+        when (mode) {
             MODE_SCAN -> {
                 val scheme = intent.getStringExtra(EXTRA_SCHEME) ?: return finish()
                 val rootPath = intent.getStringExtra(EXTRA_ROOT_PATH) ?: return finish()
@@ -349,6 +385,7 @@ class ImageViewerActivity : AppCompatActivity() {
      *  during shuffle the sequence number jumps around, but it reflects this image's actual position in the directory. */
     private fun updateTitle() {
         val f = images.getOrNull(current) ?: return
+        b.btnSelect.isChecked = picked.containsKey(f.path)
         b.toolbar.title = "${current + 1}/${images.size}  ${f.name}"
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(f.name))
     }
@@ -386,12 +423,16 @@ class ImageViewerActivity : AppCompatActivity() {
 
     /** Tick / untick the current image; result is published to [pendingResult] as it changes, picked up by the file panel when it returns to the foreground. */
     private fun togglePick(file: XFile) {
+        if (!canSelect) return
         if (picked.remove(file.path) == null) picked[file.path] = file
+        b.btnSelect.isChecked = picked.containsKey(file.path)
         toast(getString(R.string.title_selected_count, picked.size))
         publishResult()
     }
 
     private fun confirmDelete(file: XFile) {
+        if (playing) stop()
+        handler.removeCallbacks(hideControls)
         DeleteUi.confirm(this, this, listOf(file), onDismiss = { scheduleHide() }) { success ->
             if (success) {
                 val idx = images.indexOfFirst { it.path == file.path && it.scheme == file.scheme }

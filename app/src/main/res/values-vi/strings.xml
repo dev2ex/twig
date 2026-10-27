@@ -36,8 +36,8 @@
     <string name="sort_date">Ngày</string>
     <string name="sort_reversed">Đảo thứ tự</string>
     <string name="sort_folders_by">Thứ tự thư mục</string>
-    <string name="sort_date_old">Ngày (cũ trước)</string>
-    <string name="sort_date_new">Ngày (mới trước)</string>
+    <string name="sort_date_old">Ngày: cũ → mới</string>
+    <string name="sort_date_new">Ngày: mới → cũ</string>
     <string name="density_compact">Gọn</string>
     <string name="density_normal">Bình thường</string>
     <string name="density_large">Thoáng</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Mã luồng không hợp lệ</string>
     <string name="transfer_channel">Truyền tệp</string>
     <string name="transfer_background">Chạy nền</string>
-    <string name="transfer_background_hint">Đang truyền nền; chạm thông báo để quay lại</string>
+    <string name="transfer_background_hint">Đang chạy nền; chạm thông báo để quay lại</string>
     <string name="transfer_waiting">Đang chờ quyết định…</string>
-    <string name="transfer_busy">Đang có lượt truyền; thử lại khi xong</string>
+    <string name="transfer_busy">Đang có thao tác tệp; thử lại khi hoàn tất</string>
     <string name="transfer_done">Truyền hoàn tất</string>
     <string name="transfer_failed">Truyền thất bại</string>
     <string name="cmd_channel">Lệnh từ xa</string>
@@ -1068,4 +1068,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">Cho phép %1$s sử dụng:</string>
+    <string name="website_microphone">Micrô</string>
+    <string name="website_camera">Máy ảnh</string>
+    <string name="website_permission_ask">Hỏi mỗi lần</string>
+    <string name="website_permission_allow">Cho phép</string>
+    <string name="website_permission_deny">Chặn</string>
+    <string name="website_permission_remember">Ghi nhớ quyết định cho trang web này</string>
+    <string name="website_location">Vị trí</string>
+    <string name="website_group_display">Hiển thị và thanh công cụ</string>
+    <string name="website_group_browsing">Duyệt web và tương tác</string>
+    <string name="website_group_privacy">Quyền riêng tư và chạy nền</string>
+    <string name="player_skip_head">Bỏ qua mở đầu</string>
+    <string name="player_skip_tail">Bỏ qua kết thúc</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">Đã xóa %1$s</string>
+    <string name="player_skip_invalid">Chọn một điểm giữa phần mở đầu và kết thúc.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Hiện/ẩn mục gốc</string>
+    <string name="private_space">Không gian riêng tư</string>
+    <string name="private_space_create_failed">Không thể tạo không gian riêng tư</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Thông báo thao tác</string>
+    <string name="settings_completion_vibration">Rung khi hoàn tất</string>
+    <string name="settings_completion_vibration_desc">Sao chép, di chuyển, xóa, nén và giải nén</string>
+    <string name="settings_foreground_completion">Thông báo hoàn tất khi đang dùng ứng dụng</string>
+    <string name="settings_foreground_completion_desc">Cũng thông báo khi đang dùng Twig. Luôn thông báo khi chạy nền hoặc màn hình bị khóa.</string>
+
+    <string name="settings_exit_on_back">Thoát khi nhấn Quay lại</string>
+    <string name="settings_exit_on_back_desc">Thoát Twig khi nút Quay lại đóng màn hình chính. Yêu cầu xác nhận nếu có tác vụ đang chạy.</string>
+    <string name="share_text_filename">Văn bản được chia sẻ.txt</string>
+    <string name="settings_toolbar_bottom">Thanh công cụ ở dưới</string>
+    <string name="settings_toolbar_bottom_desc">Chuyển thanh công cụ của trình duyệt tệp xuống dưới để dễ sử dụng bằng một tay</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Mặc định</string>
+    <string name="directory_view_selected">Thư mục đã chọn</string>
+    <string name="directory_view_custom_sort">Sắp xếp tùy chỉnh</string>
+    <string name="directory_view_custom_view">Chế độ xem tùy chỉnh</string>
+    <string name="directory_view_reset">Dùng mặc định</string>
+    <string name="directory_view_recursive">Áp dụng cho thư mục con</string>
+    <string name="sort_name_az">Tên: A → Z</string>
+    <string name="sort_name_za">Tên: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Đang chuẩn bị chia sẻ…</string>
+    <string name="share_prepare_failed">Không thể chuẩn bị tệp để chia sẻ.</string>
+    <string name="share_prepare_space">Không đủ dung lượng để chuẩn bị tệp.</string>
+    <string name="share_prepare_incomplete">Tệp đã thay đổi hoặc không thể đọc đầy đủ.</string>
 </resources>

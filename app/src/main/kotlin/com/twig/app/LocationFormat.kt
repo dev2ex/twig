@@ -1,8 +1,8 @@
 package com.twig.app
 
 /**
- * Display format for a network location: `type:/server/path` (e.g. `smb:/pi/docs/photos`),
- * same as the path bar / recent locations ([com.twig.app.ui.PaneFragment]'s `historyLabel`).
+ * Display format for a network location: `type://server/path` (e.g. `smb://pi/docs/photos`),
+ * shared by the path bar, recent locations and directory settings.
  * The server portion uses the alias ([SavedConnection.shortLabel], custom name preferred).
  * When [connLabel] is empty (local), returns the absolute path directly. When [conn] is null
  * the corresponding connection has been deleted — fall back to the frozen connLabel prefix,
@@ -11,8 +11,8 @@ package com.twig.app
 fun formatLocationPath(connLabel: String, path: String, conn: SavedConnection?): String {
     if (connLabel.isEmpty()) return path
     val type = conn?.type ?: connLabel.substringBefore("://")
-    val name = conn?.shortLabel() ?: connLabel
-    return "$type:/$name" + if (path.startsWith("/")) path else "/$path"
+    val name = conn?.shortLabel() ?: connLabel.substringAfter("://")
+    return "$type://$name" + if (path.startsWith("/")) path else "/$path"
 }
 
 /**
@@ -25,7 +25,7 @@ fun formatRawLocationPath(connLabel: String, path: String, conn: SavedConnection
     if (connLabel.isEmpty()) return path
     val type = conn?.type ?: connLabel.substringBefore("://")
     val addr = conn?.rawShortLabel() ?: connLabel.substringAfter("://")
-    return "$type:/$addr" + if (path.startsWith("/")) path else "/$path"
+    return "$type://$addr" + if (path.startsWith("/")) path else "/$path"
 }
 
 /**

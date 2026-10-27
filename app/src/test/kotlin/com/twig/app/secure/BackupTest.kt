@@ -4,8 +4,12 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.twig.app.ConnectionStore
+import com.twig.app.DirectoryView
+import com.twig.app.DirectoryViewStore
 import com.twig.app.Prefs
 import com.twig.app.SavedConnection
+import com.twig.app.SortSpec
+import com.twig.core.XFile
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -69,12 +73,24 @@ class BackupTest {
     private fun wipeAll() {
         listOf(
             "twig_connections", "twig_prefs", "twig_archive_pw", "twig_restic_pw",
-            "twig_share", "twig_favorites", "twig_secure",
+            "twig_share", "twig_favorites", "twig_secure", DirectoryViewStore.FILE,
         ).forEach { ctx.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit() }
     }
 
     private fun export(pw: CharArray?): ByteArray =
         ByteArrayOutputStream().also { Backup.export(ctx, it, pw) }.toByteArray()
+
+    @Test
+    fun `directory sorting and view overrides survive backup on another device`() {
+        val dir = XFile("file", "/storage/emulated/0/Pictures", isDir = true)
+        val view = DirectoryView(SortSpec(reversed = true), 2, sortRecursive = true, viewRecursive = true)
+        DirectoryViewStore.save(ctx, dir, view)
+        val raw = export(null)
+        freshDevice()
+        assertTrue(DirectoryViewStore.load(ctx).isEmpty())
+        Backup.import(ctx, raw, null)
+        assertEquals(view, DirectoryViewStore.get(DirectoryViewStore.load(ctx), dir))
+    }
 
     /** Switching devices: the config is entirely gone, and the DEK is a fresh one too. */
     private fun freshDevice() {

@@ -1,5 +1,10 @@
 package com.twig.app.ui
 
+import android.content.Context
+import android.media.AudioManager
+import android.view.MotionEvent
+import android.view.ViewConfiguration
+import kotlin.math.roundToInt
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -49,6 +54,7 @@ class MusicPlayerActivity : AppCompatActivity() {
     private var tint = MusicTint.of(Color.parseColor("#1A1A1A")) // foreground layer color, derived from bgTone
     private lateinit var plDrawer: PlaylistDrawer
     private val finisher: () -> Unit = { finish() }
+    private val hideVolumeHint = Runnable { b.tvGesture.visibility = View.GONE }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -84,6 +90,7 @@ class MusicPlayerActivity : AppCompatActivity() {
         b = ActivityMusicPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
         setupImmersive()
+        volumeControlStream = AudioManager.STREAM_MUSIC
         b.bgBlur.setBackgroundColor(fallbackBg()) // paint a solid color first to avoid a black flash before the blur appears
         requestNotifPermission()
         wireViews()
@@ -120,6 +127,7 @@ class MusicPlayerActivity : AppCompatActivity() {
      *  live in the singleton, so re-inflating views doesn't disturb playback. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        handler.removeCallbacks(hideVolumeHint)
         b = ActivityMusicPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
         setupImmersive()
@@ -147,6 +155,10 @@ class MusicPlayerActivity : AppCompatActivity() {
         b.btnNext.setOnClickListener { MusicEngine.next() }
         b.btnPrev.setOnClickListener { MusicEngine.prev() }
         b.btnShuffle.setOnClickListener { MusicEngine.toggleShuffle() }
+        b.btnShuffle.setOnLongClickListener {
+            MusicUi.exit(this)
+            true
+        }
         b.btnRepeat.setOnClickListener { MusicEngine.cycleRepeat() }
         b.btnQueue.setOnClickListener { MusicEngine.queueId.takeIf { it.isNotEmpty() }?.let { PlaylistActivity.start(this, it) } }
         b.btnFav.setOnClickListener { toggleFav() }
@@ -218,24 +230,63 @@ class MusicPlayerActivity : AppCompatActivity() {
         if (hasFocus) applyFullscreen() // the system may restore the status bar after a switch; re-apply
     }
 
-    /** Swipe left/right on the cover to skip tracks; single-tap toggles cover ↔ lyrics. */
+    /** Cover: horizontal swipes skip tracks, vertical drags adjust media volume. Lyrics keep scrolling. */
     private fun setupCenterGestures() {
-        val detector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: android.view.MotionEvent): Boolean = true // must consume DOWN for subsequent MOVE/UP/fling to arrive
-            override fun onSingleTapUp(e: android.view.MotionEvent): Boolean { toggleView(); return true }
-            override fun onFling(
-                e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float,
-            ): Boolean {
-                val dx = e2.x - (e1?.x ?: return false)
-                if (kotlin.math.abs(dx) > kotlin.math.abs(e2.y - e1.y) && kotlin.math.abs(dx) > dp(48)) {
-                    if (dx < 0) MusicEngine.next() else MusicEngine.prev()
-                    return true
-                }
-                return false
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+        var startX = 0f
+        var startY = 0f
+        var startVolume = 0
+        var maxVolume = 0
+        var lastVolume = 0
+        var axis = SwipeGesture.UNDECIDED
+        var downAt = 0L
+        fun adjustVolume(y: Float) {
+            val delta = (startY - y) / b.centerArea.height.coerceAtLeast(1) * maxVolume
+            val volume = (startVolume + delta.roundToInt()).coerceIn(0, maxVolume)
+            if (volume != lastVolume) {
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
+                lastVolume = volume
             }
-        })
-        // When lyrics are showing, hand them to LyricsView (scroll/tap); when cover is showing, gestures apply
-        b.centerArea.setOnTouchListener { _, ev -> if (showingLyrics) false else detector.onTouchEvent(ev) }
+            val hint = getString(R.string.player_volume, if (maxVolume > 0) volume * 100 / maxVolume else 0)
+            if (b.tvGesture.text != hint) b.tvGesture.text = hint
+            b.tvGesture.visibility = View.VISIBLE
+        }
+        b.centerArea.setOnTouchListener { _, ev ->
+            if (showingLyrics && !isLandscape()) return@setOnTouchListener false
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = ev.x
+                    startY = ev.y
+                    downAt = ev.eventTime
+                    handler.removeCallbacks(hideVolumeHint)
+                    b.tvGesture.visibility = View.GONE
+                    maxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(0)
+                    startVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC).coerceIn(0, maxVolume)
+                    lastVolume = startVolume
+                    axis = SwipeGesture.UNDECIDED
+                }
+                MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                    if (axis == SwipeGesture.UNDECIDED) axis = SwipeGesture.axis(ev.x - startX, ev.y - startY, slop)
+                    if (axis == SwipeGesture.VERTICAL) adjustVolume(ev.y)
+                    if (ev.actionMasked == MotionEvent.ACTION_UP) {
+                        if (axis == SwipeGesture.VERTICAL) handler.postDelayed(hideVolumeHint, 300)
+                        when (axis) {
+                            SwipeGesture.HORIZONTAL -> if (kotlin.math.abs(ev.x - startX) > dp(48)) {
+                                if (ev.x < startX) MusicEngine.next() else MusicEngine.prev()
+                            }
+                            SwipeGesture.UNDECIDED -> if (ev.eventTime - downAt < ViewConfiguration.getLongPressTimeout()) toggleView()
+                        }
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    axis = SwipeGesture.UNDECIDED
+                    handler.removeCallbacks(hideVolumeHint)
+                    handler.postDelayed(hideVolumeHint, 300)
+                }
+            }
+            true
+        }
     }
 
     override fun onResume() {
@@ -252,6 +303,8 @@ class MusicPlayerActivity : AppCompatActivity() {
         super.onPause()
         MusicEngine.removeListener(listener)
         handler.removeCallbacks(ticker)
+        handler.removeCallbacks(hideVolumeHint)
+        b.tvGesture.visibility = View.GONE
         MusicEngine.saveResume()
     }
 
@@ -483,6 +536,7 @@ class MusicPlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        handler.removeCallbacks(hideVolumeHint)
         MusicUi.unregister(finisher)
     }
 

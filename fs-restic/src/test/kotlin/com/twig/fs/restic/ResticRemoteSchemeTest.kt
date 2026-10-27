@@ -27,6 +27,7 @@ class ResticRemoteSchemeTest {
         override fun list(dir: XFile) =
             local.list(XFile("file", dir.path, true)).map { it.copy(scheme = "remote") }
         override fun openInput(file: XFile): InputStream = local.openInput(XFile("file", file.path, false))
+        override fun openRandom(file: XFile) = local.openRandom(file.copy(scheme = "file"))
         override fun openOutput(file: XFile, append: Boolean): OutputStream = throw UnsupportedOperationException()
     }
 

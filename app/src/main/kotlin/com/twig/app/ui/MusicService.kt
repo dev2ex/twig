@@ -36,10 +36,13 @@ class MusicService : Service() {
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "twig-music-notif").apply { isDaemon = true } }
     private var cover: Bitmap? = null
     private var coverForId: String? = null
+    private val main = Handler(android.os.Looper.getMainLooper())
+    private var destroyed = false
 
     private val listener = object : MusicEngine.Listener {
         override fun onTrackChanged(index: Int, track: PlaylistTrack?) { updateCoverThenNotify() }
         override fun onPlayStateChanged(playing: Boolean) { pushNotification() }
+        override fun onPositionChanged() { pushNotification() }
         override fun onModeChanged() { pushNotification() }
         override fun onFavChanged() { pushNotification() } // player page / list page changed favorite, the heart switches to filled too
         override fun onEnded() {
@@ -66,10 +69,13 @@ class MusicService : Service() {
                 override fun onPause() { MusicEngine.pause(); pushNotification() }
                 override fun onSkipToNext() { MusicEngine.next() }
                 override fun onSkipToPrevious() { MusicEngine.prev() }
-                override fun onSeekTo(pos: Long) { MusicEngine.seekTo(pos); pushNotification() }
+                override fun onSeekTo(pos: Long) { MusicEngine.seekTo(pos) }
                 override fun onStop() { MusicEngine.stopPlayback(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 override fun onCustomAction(action: String, extras: android.os.Bundle?) {
-                    if (action == ACTION_FAV) toggleFav()
+                    when (action) {
+                        ACTION_FAV -> toggleFav()
+                        ACTION_EXIT -> exitPlayer()
+                    }
                 }
             })
             isActive = true
@@ -83,6 +89,7 @@ class MusicService : Service() {
             ACTION_NEXT -> MusicEngine.next()
             ACTION_PREV -> MusicEngine.prev()
             ACTION_FAV -> toggleFav()
+            ACTION_EXIT -> { exitPlayer(); return START_NOT_STICKY }
             ACTION_STOP -> { MusicEngine.stopPlayback(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY }
         }
         // must startForeground within 5s
@@ -92,7 +99,11 @@ class MusicService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        main.removeCallbacksAndMessages(null)
         MusicEngine.removeListener(listener)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        nm.cancel(NOTIF_ID)
         session.isActive = false
         session.release()
         io.shutdownNow()
@@ -111,15 +122,31 @@ class MusicService : Service() {
         pushNotification() // push a cover-less version first
         io.execute {
             val bmp = runCatching { Thumbs.audioCover(file, 512) }.getOrNull()
-            cover = bmp
-            coverForId = track.id
-            Handler(mainLooper).post { pushNotification() }
+            main.post {
+                if (!destroyed && MusicEngine.currentTrack()?.id == track.id) {
+                    cover = bmp
+                    coverForId = track.id
+                    pushNotification()
+                }
+            }
         }
     }
 
     private fun pushNotification() {
+        if (destroyed) return
         updateSession()
         runCatching { nm.notify(NOTIF_ID, buildNotification()) }
+    }
+
+    /** Match the player menu / long-press Shuffle exit, including open music screens. */
+    private fun exitPlayer() {
+        // Releasing the player can dispatch state changes before onDestroy runs.
+        destroyed = true
+        main.removeCallbacksAndMessages(null)
+        MusicUi.exit(this)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        nm.cancel(NOTIF_ID)
+        stopSelf()
     }
 
     /** Notification heart: add/remove the current track from "favorites" and broadcast so the
@@ -152,7 +179,7 @@ class MusicService : Service() {
             PlaybackState.Builder()
                 // ★ From Android 13, the media control buttons in the notification are taken by
                 // the system from the standard actions + custom actions of PlaybackState;
-                // Notification.Action only works on older systems — the heart needs to be on both sides.
+                // Notification.Action only works on older systems — add Like and Exit to both paths.
                 .also { builder -> if (track?.temporary != true) builder.addCustomAction(
                     PlaybackState.CustomAction.Builder(
                         ACTION_FAV,
@@ -160,6 +187,9 @@ class MusicService : Service() {
                         if (fav) R.drawable.ic_heart_filled_notif else R.drawable.ic_heart_notif,
                     ).build(),
                 ) }
+                .addCustomAction(
+                    PlaybackState.CustomAction.Builder(ACTION_EXIT, getString(R.string.music_exit), R.drawable.ic_close_notif).build(),
+                )
                 .setActions(
                     PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or
                         PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_SKIP_TO_NEXT or
@@ -190,6 +220,10 @@ class MusicService : Service() {
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(playing)
             .setOnlyAlertOnce(true)
+            // Native header timer; SystemUI owns ticking and decides whether to display it.
+            .setWhen(if (playing) System.currentTimeMillis() - MusicEngine.positionMs().coerceAtLeast(0L) else 0L)
+            .setShowWhen(playing)
+            .setUsesChronometer(playing)
         cover?.let { builder.setLargeIcon(it) }
         builder.addAction(action(R.drawable.ic_skip_prev, "prev", ACTION_PREV, 1))
         builder.addAction(
@@ -206,9 +240,10 @@ class MusicService : Service() {
                 4,
             ),
         )
+        builder.addAction(action(R.drawable.ic_close_notif, getString(R.string.music_exit), ACTION_EXIT, 5))
         builder.style = Notification.MediaStyle()
             .setMediaSession(session.sessionToken)
-            .setShowActionsInCompactView(0, 1, 2) // when collapsed only keep prev/play/next; the heart is in the expanded state
+            .setShowActionsInCompactView(0, 1, 2) // when collapsed only keep prev/play/next; Like/Exit appear when expanded
         return builder.build()
     }
 
@@ -228,6 +263,7 @@ class MusicService : Service() {
         private const val ACTION_PREV = "com.twig.app.music.PREV"
         private const val ACTION_STOP = "com.twig.app.music.STOP"
         private const val ACTION_FAV = "com.twig.app.music.FAV"
+        private const val ACTION_EXIT = "com.twig.app.music.EXIT"
 
         @UnstableApi
         fun start(ctx: Context) {

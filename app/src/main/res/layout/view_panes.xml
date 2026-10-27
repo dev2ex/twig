@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.twig.app.ui.PaneLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:id="@+id/panes"
+        android:background="@color/surface">
+
+        <include
+            android:id="@+id/strip_left"
+            layout="@layout/action_strip"
+            android:layout_width="52dp"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/pane_a"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <include
+            android:id="@+id/strip_mid"
+            layout="@layout/action_strip"
+            android:layout_width="52dp"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
+        <androidx.fragment.app.FragmentContainerView
+            android:id="@+id/pane_b"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:visibility="gone" />
+
+        <include
+            android:id="@+id/strip_right"
+            layout="@layout/action_strip"
+            android:layout_width="52dp"
+            android:layout_height="match_parent" />
+    </com.twig.app.ui.PaneLayout>

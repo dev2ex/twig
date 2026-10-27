@@ -67,6 +67,23 @@ class RootDirectoryBrowsingTest {
         .single { it.file.path == path }
     private fun paths() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().map { it.file.path }
 
+    @Test fun `local observer refresh selects the parent when the current directory disappears`() = runTest(dispatcher) {
+        failing.remove("/")
+        dirs["/"] = listOf("custom")
+        dirs["/custom"] = listOf("nested")
+        dirs["/custom/nested"] = emptyList()
+        vm.toggle(row("/")); advanceUntilIdle()
+        vm.toggle(row("/custom")); advanceUntilIdle()
+        vm.toggle(row("/custom/nested")); advanceUntilIdle()
+        val parent = row("/custom")
+        dirs["/custom"] = emptyList()
+        dirs.remove("/custom/nested")
+        vm.refreshLocal(); advanceUntilIdle()
+        assertEquals(parent.file, vm.currentDir)
+        assertEquals(parent.key, vm.state.value.currentKey)
+        assertEquals(vm.currentDir, vm.state.value.currentDir)
+    }
+
     @Test fun `unreadable root exposes real readable directories and their contents`() = runTest(dispatcher) {
         vm.toggle(row("/")); advanceUntilIdle()
         assertEquals(listOf("/", "/system"), paths())
@@ -84,7 +101,10 @@ class RootDirectoryBrowsingTest {
         dirs["/"] = listOf("custom")
         vm.toggle(row("/")); advanceUntilIdle()
         assertEquals(listOf("/", "/custom"), paths())
-        assertTrue(probed.isEmpty())
+        // The app-owned path may be checked for its navigation hint, but no
+        // generic root shortcuts are probed when the root has a real listing.
+        val own = ApplicationProvider.getApplicationContext<Application>().applicationInfo.dataDir
+        assertTrue(probed.all { it == own })
     }
 
     @Test fun `empty root listing also permits direct navigation to known readable directories`() = runTest(dispatcher) {

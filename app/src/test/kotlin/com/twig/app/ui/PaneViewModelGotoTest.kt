@@ -168,6 +168,11 @@ class PaneViewModelGotoTest {
         val err = vm.state.value.error
         assertNotNull("a missing path must be reported", err)
         assertTrue("should name the failing segment, was: $err", err!!.contains("nope"))
+        vm.refreshTree()
+        assertEquals(err, vm.state.value.error)
+        vm.dismissError()
+        vm.refreshTree()
+        assertNull(vm.state.value.error)
     }
 
     /** A file in the middle of the path is not a folder to descend into. */

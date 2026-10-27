@@ -36,8 +36,8 @@
     <string name="sort_date">Fecha</string>
     <string name="sort_reversed">Inverso</string>
     <string name="sort_folders_by">Orden de carpetas</string>
-    <string name="sort_date_old">Fecha (más antiguos primero)</string>
-    <string name="sort_date_new">Fecha (más recientes primero)</string>
+    <string name="sort_date_old">Fecha: antigua → reciente</string>
+    <string name="sort_date_new">Fecha: reciente → antigua</string>
     <string name="density_compact">Compacta</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Amplia</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">Token de flujo no válido</string>
     <string name="transfer_channel">Transferencias de archivos</string>
     <string name="transfer_background">Ejecutar en segundo plano</string>
-    <string name="transfer_background_hint">Transferencia en segundo plano; toca la notificación para volver</string>
+    <string name="transfer_background_hint">Operación en segundo plano; toca la notificación para volver</string>
     <string name="transfer_waiting">Esperando tu decisión…</string>
-    <string name="transfer_busy">Ya hay una transferencia; espera a que termine</string>
+    <string name="transfer_busy">Ya hay una operación de archivos en curso; espera a que termine</string>
     <string name="transfer_done">Transferencia completada</string>
     <string name="transfer_failed">Transferencia fallida</string>
     <string name="cmd_channel">Comandos remotos</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">Permitir que %1$s use:</string>
+    <string name="website_microphone">Micrófono</string>
+    <string name="website_camera">Cámara</string>
+    <string name="website_permission_ask">Preguntar siempre</string>
+    <string name="website_permission_allow">Permitir</string>
+    <string name="website_permission_deny">Bloquear</string>
+    <string name="website_permission_remember">Recordar esta decisión para este sitio</string>
+    <string name="website_location">Ubicación</string>
+    <string name="website_group_display">Pantalla y barra de herramientas</string>
+    <string name="website_group_browsing">Navegación e interacción</string>
+    <string name="website_group_privacy">Privacidad y segundo plano</string>
+    <string name="player_skip_head">Saltar introducción</string>
+    <string name="player_skip_tail">Saltar créditos</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s borrado</string>
+    <string name="player_skip_invalid">Elige un punto entre la introducción y los créditos.</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">Mostrar/ocultar elementos raíz</string>
+    <string name="private_space">Espacio privado</string>
+    <string name="private_space_create_failed">No se pudo crear el espacio privado</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">Avisos de operaciones</string>
+    <string name="settings_completion_vibration">Vibrar al finalizar</string>
+    <string name="settings_completion_vibration_desc">Copiar, mover, eliminar, comprimir y extraer</string>
+    <string name="settings_foreground_completion">Notificaciones al finalizar en primer plano</string>
+    <string name="settings_foreground_completion_desc">Notificar también al usar Twig. En segundo plano y con la pantalla bloqueada siempre se notifica.</string>
+
+    <string name="settings_exit_on_back">Salir al volver atrás</string>
+    <string name="settings_exit_on_back_desc">Salir de Twig cuando Atrás cierre la pantalla principal. Pedir confirmación si hay tareas en curso.</string>
+    <string name="share_text_filename">Texto compartido.txt</string>
+    <string name="settings_toolbar_bottom">Barra de herramientas abajo</string>
+    <string name="settings_toolbar_bottom_desc">Mover la barra de herramientas del explorador de archivos abajo para facilitar el uso con una mano</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">Predeterminado</string>
+    <string name="directory_view_selected">Carpeta seleccionada</string>
+    <string name="directory_view_custom_sort">Orden personalizado</string>
+    <string name="directory_view_custom_view">Vista personalizada</string>
+    <string name="directory_view_reset">Usar valores predeterminados</string>
+    <string name="directory_view_recursive">Aplicar a subcarpetas</string>
+    <string name="sort_name_az">Nombre: A → Z</string>
+    <string name="sort_name_za">Nombre: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">Preparando para compartir…</string>
+    <string name="share_prepare_failed">No se pudieron preparar los archivos para compartir.</string>
+    <string name="share_prepare_space">No hay espacio suficiente para preparar los archivos.</string>
+    <string name="share_prepare_incomplete">El archivo cambió o no se pudo leer por completo.</string>
 </resources>

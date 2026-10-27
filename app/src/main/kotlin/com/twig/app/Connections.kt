@@ -40,7 +40,7 @@ object Connections {
      * **this pane** has expanded: copy / archive confirmation dialogs show the **other**
      * pane's destination directory, so looking up our own map necessarily misses, and
      * the server name disappears — paths degrade to `sftp:/backup` instead of matching
-     * the recent-location entry `sftp:/nas/backup`.
+     * the recent-location entry `sftp://nas/backup`.
      */
     fun ofScheme(scheme: String): SavedConnection? = byScheme[scheme]
 

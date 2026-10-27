@@ -36,8 +36,8 @@
     <string name="sort_date">तारीख</string>
     <string name="sort_reversed">उल्टा क्रम</string>
     <string name="sort_folders_by">फ़ोल्डर का क्रम</string>
-    <string name="sort_date_old">तारीख (पुराने पहले)</string>
-    <string name="sort_date_new">तारीख (नए पहले)</string>
+    <string name="sort_date_old">तारीख: पुरानी → नई</string>
+    <string name="sort_date_new">तारीख: नई → पुरानी</string>
     <string name="density_compact">सघन</string>
     <string name="density_normal">सामान्य</string>
     <string name="density_large">खुला</string>
@@ -608,9 +608,9 @@
     <string name="stream_bad_token">अमान्य स्ट्रीम टोकन</string>
     <string name="transfer_channel">फ़ाइल स्थानांतरण</string>
     <string name="transfer_background">पृष्ठभूमि में चलाएँ</string>
-    <string name="transfer_background_hint">पृष्ठभूमि में स्थानांतरण; लौटने के लिए सूचना पर टैप करें</string>
+    <string name="transfer_background_hint">पृष्ठभूमि में कार्य जारी है; लौटने के लिए सूचना पर टैप करें</string>
     <string name="transfer_waiting">आपके निर्णय की प्रतीक्षा…</string>
-    <string name="transfer_busy">एक स्थानांतरण चल रहा है; समाप्त होने पर फिर कोशिश करें</string>
+    <string name="transfer_busy">फ़ाइल कार्य पहले से चल रहा है; समाप्त होने पर फिर कोशिश करें</string>
     <string name="transfer_done">स्थानांतरण पूरा</string>
     <string name="transfer_failed">स्थानांतरण विफल</string>
     <string name="cmd_channel">दूरस्थ कमांड</string>
@@ -1069,4 +1069,54 @@
     <string name="nfs_version">NFS version (3 or 4)</string>
     <string name="nfs_uid">UID (default 65534)</string>
     <string name="nfs_gid">GID (default 65534)</string>
+    <string name="website_media_permission">%1$s को इस्तेमाल करने दें:</string>
+    <string name="website_microphone">माइक्रोफ़ोन</string>
+    <string name="website_camera">कैमरा</string>
+    <string name="website_permission_ask">हर बार पूछें</string>
+    <string name="website_permission_allow">अनुमति दें</string>
+    <string name="website_permission_deny">ब्लॉक करें</string>
+    <string name="website_permission_remember">इस वेबसाइट के लिए यह निर्णय याद रखें</string>
+    <string name="website_location">स्थान</string>
+    <string name="website_group_display">डिस्प्ले और टूलबार</string>
+    <string name="website_group_browsing">ब्राउज़िंग और इंटरैक्शन</string>
+    <string name="website_group_privacy">गोपनीयता और बैकग्राउंड</string>
+    <string name="player_skip_head">शुरुआत छोड़ें</string>
+    <string name="player_skip_tail">अंत छोड़ें</string>
+    <string name="player_skip_marked">%1$s: %2$s</string>
+    <string name="player_skip_cleared">%1$s मिटाया गया</string>
+    <string name="player_skip_invalid">शुरुआत और अंत के बीच का समय चुनें।</string>
+
+    <!-- Top-level tree visibility and app-private files. -->
+    <string name="action_root_items">रूट आइटम दिखाएँ/छिपाएँ</string>
+    <string name="private_space">निजी स्थान</string>
+    <string name="private_space_create_failed">निजी स्थान नहीं बनाया जा सका</string>
+
+    <!-- Completion feedback. -->
+    <string name="settings_operation_notifications">कार्य सूचनाएँ</string>
+    <string name="settings_completion_vibration">पूरा होने पर कंपन</string>
+    <string name="settings_completion_vibration_desc">कॉपी, स्थानांतरण, हटाना, संपीड़न और निष्कर्षण</string>
+    <string name="settings_foreground_completion">ऐप खुला होने पर पूर्णता सूचना</string>
+    <string name="settings_foreground_completion_desc">Twig इस्तेमाल करते समय भी सूचना दें। पृष्ठभूमि और लॉक स्क्रीन पर हमेशा सूचना दें।</string>
+
+    <string name="settings_exit_on_back">वापस जाने पर बाहर निकलें</string>
+    <string name="settings_exit_on_back_desc">वापस बटन से मुख्य स्क्रीन बंद होने पर Twig से बाहर निकलें। कार्य चल रहे हों तो पुष्टि माँगें।</string>
+    <string name="share_text_filename">साझा पाठ.txt</string>
+    <string name="settings_toolbar_bottom">टूलबार नीचे रखें</string>
+    <string name="settings_toolbar_bottom_desc">एक हाथ से आसानी से उपयोग करने के लिए फ़ाइल ब्राउज़र का टूलबार नीचे रखें</string>
+
+    <!-- Default and directory-specific file-tree settings. -->
+    <string name="directory_view_default">डिफ़ॉल्ट</string>
+    <string name="directory_view_selected">चुना हुआ फ़ोल्डर</string>
+    <string name="directory_view_custom_sort">कस्टम क्रम</string>
+    <string name="directory_view_custom_view">कस्टम दृश्य</string>
+    <string name="directory_view_reset">डिफ़ॉल्ट इस्तेमाल करें</string>
+    <string name="directory_view_recursive">सबफ़ोल्डर पर लागू करें</string>
+    <string name="sort_name_az">नाम: A → Z</string>
+    <string name="sort_name_za">नाम: Z → A</string>
+
+    <!-- Preparing files for system sharing -->
+    <string name="share_preparing">साझा करने की तैयारी…</string>
+    <string name="share_prepare_failed">साझा करने के लिए फ़ाइलें तैयार नहीं हो सकीं।</string>
+    <string name="share_prepare_space">फ़ाइलें तैयार करने के लिए पर्याप्त जगह नहीं है।</string>
+    <string name="share_prepare_incomplete">फ़ाइल बदल गई है या पूरी तरह पढ़ी नहीं जा सकी।</string>
 </resources>

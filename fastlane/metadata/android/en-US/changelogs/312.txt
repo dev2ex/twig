@@ -1,0 +1,1 @@
+Preview 4: customize sorting and list/grid views per folder, optionally applying them to subfolders. Add reverse folder name sorting. Music notifications gain a native playback timer and an Exit action after Like. After deleting or moving the selected directory, select its parent so the other pane cannot keep targeting the removed directory.

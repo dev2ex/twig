@@ -70,11 +70,7 @@ internal class WebsiteDownloads(private val activity: AppCompatActivity) {
         if (current.size > 0) form.addView(TextView(activity).apply { text = Format.size(current.size) })
         form.addView(TextView(activity).apply {
             tag = R.string.compress_save_to
-            text = activity.getString(R.string.compress_save_to) + "\n" + when (current.destination.scheme) {
-                "file" -> current.destination.path
-                "saf" -> current.destination.name
-                else -> "${Format.schemeLabel(current.destination.scheme)}:${current.destination.path}"
-            }
+            text = activity.getString(R.string.compress_save_to) + "\n" + Format.pathLabel(current.destination)
             setPadding(0, padding / 2, 0, padding / 2)
         })
         val dialog = AlertDialog.Builder(activity)

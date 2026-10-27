@@ -205,7 +205,7 @@ class PlaylistDrawer(
                 }
             }
             .setNegativeButton(R.string.dialog_cancel, null)
-            .show()
+            .create().showNameInput(input)
     }
 
     private fun confirmDelete(pl: Playlist) {

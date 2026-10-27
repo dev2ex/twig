@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.twig.app.R
 import com.twig.app.Website
 import com.twig.app.WebsiteStore
+import com.twig.app.WebsitePermission
 import com.twig.app.WebsiteOrientation
 import com.twig.app.secure.Secrets
 
@@ -35,10 +36,56 @@ object WebsiteDialogs {
     private fun editForm(ctx: Context, site: Website? = null, defaults: Boolean = false,
         initial: Website = site ?: if (defaults) WebsiteStore.defaults(ctx) else WebsiteStore.newSite(ctx),
         onDefaultsSaved: (() -> Unit)? = null) {
-        val padding = (20 * ctx.resources.displayMetrics.density).toInt()
+        fun dp(value: Int) = (value * ctx.resources.displayMetrics.density).toInt()
+        val padding = dp(20)
         val form = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(padding, 0, padding, 0)
+            setPadding(padding, dp(12), padding, 0)
+        }
+        fun section(label: Int) = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(View(ctx).apply { setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider)) },
+                LinearLayout.LayoutParams(-1, dp(1).coerceAtLeast(1)).apply {
+                    topMargin = dp(8); bottomMargin = dp(8)
+                })
+            addView(TextView(ctx).apply {
+                setText(label)
+                setTextColor(ContextCompat.getColor(ctx, R.color.action_text))
+                setTypeface(typeface, Typeface.BOLD)
+                textSize = 14f
+                setPaddingRelative(dp(6), 0, dp(6), dp(4))
+            })
+            form.addView(this)
+        }
+        fun pair(parent: LinearLayout, first: CheckBox, second: CheckBox) {
+            parent.removeView(first)
+            parent.removeView(second)
+            val row = object : LinearLayout(ctx) {
+                // Keep equal columns during the initial AT_MOST pass, as in batch rename.
+                override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                    if (View.MeasureSpec.getMode(widthSpec) != View.MeasureSpec.UNSPECIFIED) {
+                        val width = (View.MeasureSpec.getSize(widthSpec) - paddingLeft - paddingRight).coerceAtLeast(0)
+                        first.layoutParams.width = when {
+                            first.visibility == View.GONE -> 0
+                            second.visibility == View.GONE -> width
+                            else -> width / 2
+                        }
+                        second.layoutParams.width = if (second.visibility == View.GONE) 0
+                            else width - first.layoutParams.width
+                    }
+                    super.onMeasure(widthSpec, heightSpec)
+                }
+            }.apply { isBaselineAligned = false }
+            row.addView(first, LinearLayout.LayoutParams(0, -1))
+            row.addView(second, LinearLayout.LayoutParams(0, -1))
+            parent.addView(row)
+        }
+        fun fieldLabel(parent: LinearLayout, label: Int) = TextView(ctx).apply {
+            setText(label)
+            textSize = 13f
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+            setPaddingRelative(dp(6), dp(10), dp(6), dp(2))
+            parent.addView(this)
         }
         val name = EditText(ctx).apply {
             hint = ctx.getString(R.string.website_name)
@@ -53,13 +100,13 @@ object WebsiteDialogs {
         }
         form.addView(name)
         form.addView(url)
-        form.addView(TextView(ctx).apply { setText(R.string.website_basic_auth) })
+        val authSection = section(R.string.website_basic_auth)
         val authUsername = EditText(ctx).apply {
             tag = R.string.website_basic_auth_username
             hint = ctx.getString(R.string.website_basic_auth_username)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setSingleLine()
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             setText(site?.basicAuthUsername.orEmpty())
         }
         val authPassword = EditText(ctx).apply {
@@ -67,34 +114,79 @@ object WebsiteDialogs {
             hint = ctx.getString(R.string.website_basic_auth_password)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             setText(site?.basicAuthPassword.orEmpty())
         }
-        form.addView(authUsername)
-        form.addView(authPassword)
-        fun option(label: Int, checked: Boolean) = CheckBox(ctx).apply {
+        authSection.addView(authUsername)
+        authSection.addView(authPassword)
+        fun option(parent: LinearLayout, label: Int, checked: Boolean) = CheckBox(ctx).apply {
             tag = label // Identify each option within the scrollable form.
             setText(label)
+            textSize = 14f
+            minHeight = dp(48)
             isChecked = checked
-            form.addView(this)
+            parent.addView(this)
         }
-        val openFullscreen = option(R.string.website_open_fullscreen, initial.openFullscreen)
-        val fullscreen = option(R.string.website_fullscreen, initial.fullscreen)
-        val doubleTap = option(R.string.website_double_tap_toolbar, initial.doubleTapToolbar)
-        val blockScreenshots = option(R.string.website_block_screenshots,
-            initial.blockScreenshots)
-        val backgroundRunning = option(R.string.website_allow_background_running, site?.allowBackgroundRunning ?: false).apply {
+        val displaySection = section(R.string.website_group_display)
+        val openFullscreen = option(displaySection, R.string.website_open_fullscreen, initial.openFullscreen)
+        val fullscreen = option(displaySection, R.string.website_fullscreen, initial.fullscreen)
+        val statusBar = option(displaySection, R.string.website_hide_status_bar, initial.hideStatusBar)
+        val navigationBar = option(displaySection, R.string.website_hide_navigation_bar, initial.hideNavigationBar)
+        pair(displaySection, openFullscreen, fullscreen)
+        pair(displaySection, statusBar, navigationBar)
+        val doubleTap = option(displaySection, R.string.website_double_tap_toolbar, initial.doubleTapToolbar)
+        val browsingSection = section(R.string.website_group_browsing)
+        val desktop = option(browsingSection, R.string.website_desktop_site, site?.desktopSite ?: false)
+        val pullToRefresh = option(browsingSection, R.string.website_pull_to_refresh, initial.pullToRefresh)
+        val selection = option(browsingSection, R.string.website_disable_text_selection, initial.disableTextSelection)
+        val scrollAxis = option(browsingSection, R.string.website_lock_scroll_axis, initial.lockScrollAxis)
+        pair(browsingSection, desktop, pullToRefresh)
+        pair(browsingSection, selection, scrollAxis)
+        val privacySection = section(R.string.website_group_privacy)
+        val blockScreenshots = option(privacySection, R.string.website_block_screenshots, initial.blockScreenshots)
+        val backgroundRunning = option(privacySection, R.string.website_allow_background_running,
+            site?.allowBackgroundRunning ?: false).apply {
             text = ctx.getString(R.string.website_allow_background_running_hint,
                 ctx.getString(R.string.website_allow_background_running))
         }
-        val statusBar = option(R.string.website_hide_status_bar, initial.hideStatusBar)
-        val navigationBar = option(R.string.website_hide_navigation_bar, initial.hideNavigationBar)
-        val pullToRefresh = option(R.string.website_pull_to_refresh, initial.pullToRefresh)
-        val selection = option(R.string.website_disable_text_selection, initial.disableTextSelection)
-        val scrollAxis = option(R.string.website_lock_scroll_axis, initial.lockScrollAxis)
-        val desktop = option(R.string.website_desktop_site, site?.desktopSite ?: false)
-        form.addView(TextView(ctx).apply { setText(R.string.website_orientation) })
-        val orientation = RadioGroup(ctx).apply {
+        val orientationSection = section(R.string.website_orientation)
+        val orientation = object : RadioGroup(ctx) {
+            private var rowHeights = IntArray(0)
+
+            override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                val width = if (View.MeasureSpec.getMode(widthSpec) == View.MeasureSpec.UNSPECIFIED)
+                    dp(280) else View.MeasureSpec.getSize(widthSpec)
+                val available = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+                rowHeights = IntArray((childCount + 1) / 2)
+                for (index in 0 until childCount) {
+                    val cellWidth = if (index % 2 == 0) available / 2 else available - available / 2
+                    val child = getChildAt(index)
+                    child.measure(View.MeasureSpec.makeMeasureSpec(cellWidth, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                    rowHeights[index / 2] = maxOf(rowHeights[index / 2], child.measuredHeight)
+                }
+                for (index in 0 until childCount) {
+                    val child = getChildAt(index)
+                    child.measure(View.MeasureSpec.makeMeasureSpec(child.measuredWidth, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(rowHeights[index / 2], View.MeasureSpec.EXACTLY))
+                }
+                setMeasuredDimension(View.resolveSize(width, widthSpec),
+                    View.resolveSize(paddingTop + rowHeights.sum() + paddingBottom, heightSpec))
+            }
+
+            override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+                var rowTop = paddingTop
+                val available = (width - paddingLeft - paddingRight).coerceAtLeast(0)
+                for (index in 0 until childCount) {
+                    val child = getChildAt(index)
+                    val offset = if (index % 2 == 0) 0 else available / 2
+                    val childLeft = if (layoutDirection == View.LAYOUT_DIRECTION_RTL)
+                        width - paddingRight - offset - child.measuredWidth else paddingLeft + offset
+                    child.layout(childLeft, rowTop, childLeft + child.measuredWidth, rowTop + rowHeights[index / 2])
+                    if (index % 2 == 1) rowTop += rowHeights[index / 2]
+                }
+            }
+        }.apply {
             tag = R.string.website_orientation
             val labels = listOf(
                 WebsiteOrientation.SYSTEM to R.string.website_orientation_system,
@@ -107,11 +199,14 @@ object WebsiteDialogs {
                 id = View.generateViewId()
                 tag = mode
                 setText(label)
+                textSize = 14f
+                minHeight = dp(48)
+                setPaddingRelative(0, dp(4), dp(4), dp(4))
             })
             val selected = site?.orientation ?: WebsiteOrientation.SYSTEM
             check(findViewWithTag<RadioButton>(selected).id)
         }
-        form.addView(orientation)
+        orientationSection.addView(orientation)
         val advanced = LinearLayout(ctx).apply {
             this.orientation = LinearLayout.VERTICAL
             tag = "website_advanced_fields"
@@ -130,6 +225,7 @@ object WebsiteDialogs {
             ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, background, true)
             setBackgroundResource(background.resourceId)
             isFocusable = true
+            setPaddingRelative(dp(6), 0, dp(6), 0)
         }
         fun expandAdvanced(show: Boolean) {
             if (!show && advanced.hasFocus()) {
@@ -145,9 +241,26 @@ object WebsiteDialogs {
         form.addView(advancedHeader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             (48 * ctx.resources.displayMetrics.density).toInt()))
         form.addView(advanced)
+        val permissionFields = LinearLayout(ctx).apply {
+            this.orientation = LinearLayout.VERTICAL
+            visibility = if (defaults) View.GONE else View.VISIBLE
+            advanced.addView(this)
+        }
+        fun permission(label: Int, value: WebsitePermission) = android.widget.Spinner(ctx).apply {
+            tag = label
+            fieldLabel(permissionFields, label)
+            adapter = android.widget.ArrayAdapter(ctx, android.R.layout.simple_spinner_dropdown_item,
+                listOf(R.string.website_permission_ask, R.string.website_permission_allow,
+                    R.string.website_permission_deny).map { ctx.getString(it) })
+            setSelection(value.ordinal)
+            permissionFields.addView(this)
+        }
+        val microphone = permission(R.string.website_microphone, initial.microphonePermission)
+        val camera = permission(R.string.website_camera, initial.cameraPermission)
+        val location = permission(R.string.website_location, initial.locationPermission)
         fun field(label: Int, hint: Int, value: String, multiline: Boolean = false) = EditText(ctx).apply {
             tag = label
-            advanced.addView(TextView(ctx).apply { setText(label) })
+            fieldLabel(advanced, label)
             this.hint = ctx.getString(hint)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
                 (if (multiline) InputType.TYPE_TEXT_FLAG_MULTI_LINE else 0)
@@ -158,11 +271,16 @@ object WebsiteDialogs {
                 typeface = Typeface.MONOSPACE
                 textSize = 13f
             } else setSingleLine()
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            if (android.os.Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             setText(value)
             advanced.addView(this)
         }
-        advanced.addView(TextView(ctx).apply { setText(R.string.website_global_settings_hint) })
+        advanced.addView(TextView(ctx).apply {
+            setText(R.string.website_global_settings_hint)
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+            textSize = 12f
+            setPaddingRelative(dp(6), dp(16), dp(6), dp(4))
+        })
         val userAgent = field(R.string.website_user_agent,
             if (defaults) R.string.website_user_agent_hint else R.string.website_user_agent_global_hint, initial.userAgent)
         val headers = field(R.string.website_headers, R.string.website_headers_hint, site?.headers.orEmpty(), true)
@@ -170,15 +288,16 @@ object WebsiteDialogs {
         val style = field(R.string.website_style, R.string.website_style_hint, initial.style, true)
         val hidden = field(R.string.website_hidden_elements, R.string.website_hidden_elements_hint, initial.hiddenElements, true)
         val blocked = field(R.string.website_blocked_requests, R.string.website_blocked_requests_hint, initial.blockedRequests, true)
-        advanced.addView(TextView(ctx).apply { setText(R.string.website_custom_scope) })
+        advanced.addView(TextView(ctx).apply {
+            setText(R.string.website_custom_scope)
+            setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+            textSize = 12f
+            setPaddingRelative(dp(6), dp(12), dp(6), dp(4))
+        })
         if (defaults) {
             // Keep one editor and validation path for both per-site and default settings.
-            val sharedOptions = setOf(openFullscreen, fullscreen, statusBar, navigationBar,
-                pullToRefresh, selection, scrollAxis, blockScreenshots, doubleTap)
-            for (index in 0 until form.indexOfChild(advancedHeader)) {
-                val view = form.getChildAt(index)
-                if (view !in sharedOptions) view.visibility = View.GONE
-            }
+            listOf(name, url, authSection, desktop, backgroundRunning, orientationSection)
+                .forEach { it.visibility = View.GONE }
             headers.visibility = View.GONE
             advanced.getChildAt(advanced.indexOfChild(headers) - 1).visibility = View.GONE
             expandAdvanced(true)
@@ -254,6 +373,9 @@ object WebsiteDialogs {
                     name = label, url = validatedAddress, fullscreen = fullscreen.isChecked, doubleTapToolbar = doubleTap.isChecked,
                     openFullscreen = openFullscreen.isChecked, allowBackgroundRunning = backgroundRunning.isChecked,
                     blockScreenshots = blockScreenshots.isChecked,
+                    microphonePermission = WebsitePermission.entries[microphone.selectedItemPosition],
+                    cameraPermission = WebsitePermission.entries[camera.selectedItemPosition],
+                    locationPermission = WebsitePermission.entries[location.selectedItemPosition],
                     hideStatusBar = statusBar.isChecked, hideNavigationBar = navigationBar.isChecked,
                     pullToRefresh = pullToRefresh.isChecked, disableTextSelection = selection.isChecked,
                     lockScrollAxis = scrollAxis.isChecked, desktopSite = desktop.isChecked,
@@ -263,8 +385,11 @@ object WebsiteDialogs {
                     script = script.text.toString(), style = style.text.toString(), hiddenElements = hidden.text.toString(),
                     blockedRequests = blocked.text.toString(),
                 )
+                val originChanged = site != null && !WebsiteCustomization.sameOrigin(site.url, saved.url)
                 try {
-                    WebsiteStore.save(ctx, saved)
+                    WebsiteStore.save(ctx, if (originChanged) saved.copy(
+                        microphonePermission = WebsitePermission.ASK, cameraPermission = WebsitePermission.ASK,
+                        locationPermission = WebsitePermission.ASK) else saved)
                 } catch (_: Secrets.KeyUnavailable) {
                     if (saved.basicAuthUsername.isNotEmpty() || saved.basicAuthPassword.isNotEmpty()) {
                         authPassword.error = ctx.getString(R.string.backup_locked)

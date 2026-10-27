@@ -12,6 +12,34 @@
         android:paddingTop="8dp"
         android:paddingBottom="8dp">
 
+        <RadioGroup
+            android:id="@+id/rg_scope"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <RadioButton android:id="@+id/scope_default" android:layout_width="0dp"
+                android:layout_weight="1" android:layout_height="wrap_content"
+                android:text="@string/directory_view_default" />
+            <RadioButton android:id="@+id/scope_directory" android:layout_width="0dp"
+                android:layout_weight="1" android:layout_height="wrap_content"
+                android:text="@string/directory_view_selected" />
+        </RadioGroup>
+
+        <TextView android:id="@+id/directory_path" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:textIsSelectable="true"
+            android:textColor="@color/text_secondary" />
+
+        <CheckBox android:id="@+id/cb_custom_sort" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/directory_view_custom_sort" />
+
+        <CheckBox android:id="@+id/cb_custom_view" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/directory_view_custom_view" />
+
+        <CheckBox android:id="@+id/cb_recursive" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:text="@string/directory_view_recursive" />
+
+        <LinearLayout android:id="@+id/sort_options" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -61,11 +89,32 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
             <RadioButton android:id="@+id/rf_name" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="@string/sort_name" />
+                android:layout_height="wrap_content" android:text="@string/sort_name_az" />
+            <RadioButton android:id="@+id/rf_name_reversed" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/sort_name_za" />
             <RadioButton android:id="@+id/rf_date_old" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/sort_date_old" />
             <RadioButton android:id="@+id/rf_date_new" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/sort_date_new" />
         </RadioGroup>
+
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/view_options" android:layout_width="match_parent"
+            android:layout_height="wrap_content" android:orientation="vertical">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/action_view_mode" android:textColor="@color/primary"
+            android:textStyle="bold" android:paddingTop="6dp" android:paddingBottom="4dp" />
+
+        <RadioGroup android:id="@+id/rg_view" android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <RadioButton android:id="@+id/view_list" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/view_mode_grid_off" />
+            <RadioButton android:id="@+id/view_media" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/view_mode_grid_media" />
+            <RadioButton android:id="@+id/view_all" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/view_mode_grid_all" />
+        </RadioGroup>
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

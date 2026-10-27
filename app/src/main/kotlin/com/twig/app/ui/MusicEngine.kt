@@ -36,6 +36,7 @@ object MusicEngine {
     interface Listener {
         fun onTrackChanged(index: Int, track: PlaylistTrack?) {}
         fun onPlayStateChanged(playing: Boolean) {}
+        fun onPositionChanged() {}
         fun onModeChanged() {}
         fun onQueueChanged() {}
         /** The current track's "favorite" state was changed (player page heart, list page menu, or notification heart — anywhere). */
@@ -98,6 +99,11 @@ object MusicEngine {
         p.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 listeners.forEach { it.onPlayStateChanged(isPlaying) }
+            }
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int,
+            ) {
+                listeners.forEach { it.onPositionChanged() }
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val i = p.currentMediaItemIndex

@@ -38,6 +38,21 @@ class StripGrid @JvmOverloads constructor(
             }
         }
 
+    /** Strip buttons use automatic positions and equal-width columns in both orientations. */
+    fun setColumns(columns: Int) {
+        if (columnCount == columns) return
+        // GridLayout writes assigned indices back into its child specs during layout.
+        // Reset them before reducing the column count, including specs of hidden buttons.
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            child.layoutParams = (child.layoutParams as LayoutParams).apply {
+                rowSpec = spec(UNDEFINED)
+                columnSpec = spec(UNDEFINED, FILL, 1f)
+            }
+        }
+        columnCount = columns
+    }
+
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
         if (!dividers) return

@@ -95,23 +95,18 @@ object Format {
     fun schemeLabel(scheme: String): String =
         SCHEME_TYPES.firstOrNull { scheme.startsWith(it) } ?: scheme
 
-    /**
-     * `type:/server/path` — same format as the pane's path bar. The server name uses
-     * the user's label; non-server sources (zip / git / restic…) have no server name,
-     * don't insert an extra slash.
-     *
-     * `PaneFragment` has another copy: that one prefers the local pane VM's reverse
-     * lookup, so it can recognise a server the other pane hasn't expanded yet. Callers
-     * that don't need that layer (the comparison page, text compare) can use this one.
-     */
-    fun pathLabel(f: com.twig.core.XFile): String = when {
+    /** Shared path display; callers with a pane can supply its connection lookup. */
+    fun pathLabel(
+        f: com.twig.core.XFile,
+        conn: SavedConnection? = Connections.ofScheme(f.scheme),
+    ): String = when {
         f.scheme == "file" -> f.path
         f.scheme == "saf" -> f.name
+        conn != null -> formatLocationPath(conn.label(), f.path, conn)
         else -> {
-            val server = Connections.ofScheme(f.scheme)?.shortLabel().orEmpty()
+            // Virtual sources have a path but no server authority.
             val path = if (f.path.startsWith("/")) f.path else "/${f.path}"
-            val head = schemeLabel(f.scheme)
-            if (server.isEmpty()) "$head:$path" else "$head:/$server$path"
+            "${schemeLabel(f.scheme)}:$path"
         }
     }
 }
