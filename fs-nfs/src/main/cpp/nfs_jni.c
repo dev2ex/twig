@@ -128,12 +128,14 @@ JNIEXPORT jlongArray JNICALL JNI(nStat)(JNIEnv *env, jobject self, jlong handle,
     if (out) (*env)->SetLongArrayRegion(env, out, 0, 3, values);
     return out;
 }
-JNIEXPORT void JNICALL JNI(nOpen)(JNIEnv *env, jobject self, jlong handle, jbyteArray path, jboolean write) {
+JNIEXPORT void JNICALL JNI(nOpen)(JNIEnv *env, jobject self, jlong handle, jbyteArray path, jboolean write, jboolean append) {
     struct session *s = session(handle);
     char *p = text(env, path);
     if (!p) return;
-    int result = write ? nfs_creat(s->nfs, p, 0666, &s->file)
-                       : nfs_open(s->nfs, p, O_RDONLY, &s->file);
+    // Append opens without truncation. Kotlin obtains the offset via fstat on this handle.
+    int result = !write ? nfs_open(s->nfs, p, O_RDONLY, &s->file)
+               : append ? nfs_open2(s->nfs, p, O_WRONLY | O_CREAT, 0666, &s->file)
+                        : nfs_creat(s->nfs, p, 0666, &s->file);
     free(p);
     if (result < 0) fail(env, s);
 }

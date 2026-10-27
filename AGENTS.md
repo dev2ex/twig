@@ -350,7 +350,7 @@ each write `= null`.
   directory); repeated failures identify the next entry independently. `TransferCheckpoint` belongs
   to that operation in memory only; there is no task history or persisted queue. Completed roots/files are skipped on retry; owned UUID
   `.twigpart` siblings retain partial bytes until retry, success, cancellation or dismissal.
-  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3);
+  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3, NFSv3/v4);
   other destinations use `SafeWrite` and restart incomplete files. Resume requires known source
   size and modification time. Original targets survive interrupted writes; only a complete
   temporary file can replace them. A moving retry must still finish a failed source deletion.

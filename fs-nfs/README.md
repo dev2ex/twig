@@ -9,7 +9,7 @@ The upstream source files are unmodified. TLS, Kerberos, NFSv4.2, examples,
 utilities and tests are disabled in the parent CMake configuration.
 
 This evaluation supports NFSv3 and NFSv4.0 with AUTH_SYS (numeric UID/GID),
-listing, stat, streaming reads/writes, positional reads, mkdir, rename and deletion.
+listing, stat, streaming reads/writes, append, positional reads, mkdir, rename and deletion.
 Specify an export path explicitly; export discovery is not included. Servers must
 permit unprivileged source ports (Linux exports: insecure). No root is needed.
 Each open stream owns its context; the metadata context is serialized.
@@ -26,6 +26,12 @@ Stream length comes from the opened file handle, so a concurrent rename or path
 replacement cannot substitute another file's size. Native error messages use
 ordinary UTF-8 decoding, including paths with supplementary Unicode characters.
 
+The backend opts into `ResumableWrite`: failed copies can retry their owned partial
+files without truncating the bytes already written. Append opens without truncation
+and obtains its starting offset from the opened handle, ignoring stale listing sizes.
+The shared copy engine supplies failed-target display, manual retries and skip-and-continue;
+mutations and active stream writes are still never replayed automatically.
+
 ## Connection recovery regression
 
 Build the JNI source for the host (with the matching libnfs static library and
@@ -37,5 +43,9 @@ Run `TWIG_NFS_NATIVE_DIR=/path/to/host-jni TWIG_NFS_FAULT_PROXY=true
 ./gradlew :fs-nfs:testReleaseUnitTest --tests '*NfsRecoveryLiveTest*'` (on one line).
 This drops live TCP sockets and temporarily refuses new connections, covering
 automatic read recovery, offline errors, recovery after the network returns,
-mutation non-replay and a fresh mount. Ordinary round trips remain opt-in via
-`TWIG_NFS_TEST_HOST` and `TWIG_NFS_TEST_EXPORT`.
+mutation non-replay, failed write/close propagation, manual append after recovery,
+and a fresh mount. Ordinary round trips remain opt-in via
+`TWIG_NFS_TEST_HOST` and `TWIG_NFS_TEST_EXPORT`. `NfsTransferLiveTest` also exercises
+NFSv3/v4 copies with an injected source error: original-target protection, exact
+partial bytes, retry reads beginning at the saved offset, and skipping a broken
+source while moving the next file.

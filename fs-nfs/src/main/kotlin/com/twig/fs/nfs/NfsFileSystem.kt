@@ -2,6 +2,7 @@ package com.twig.fs.nfs
 
 import com.twig.core.FileSystem
 import com.twig.core.FsException
+import com.twig.core.ResumableWrite
 import com.twig.core.RandomSource
 import com.twig.core.XFile
 import java.io.InputStream
@@ -16,7 +17,7 @@ class NfsFileSystem(
     private val gid: Int = 65534,
     override val scheme: String = "nfs",
     private val port: Int = NfsEndpoint.DEFAULT_PORT,
-) : FileSystem {
+) : FileSystem, ResumableWrite {
     init { require(port in 1..65535) { "NFS port must be between 1 and 65535" } }
     override val displayName = "NFS (${NfsEndpoint(host, port).authority()}:$export)"
     private var metadata: NativeNfsClient? = null
@@ -58,9 +59,9 @@ class NfsFileSystem(
         c.stat(path)?.let { entry(path, it[0], it[1], it[2]) }
     }
     override fun exists(file: XFile) = exec(retryRead = true) { it.stat(file.path, follow = false) != null }
-    private fun opened(file: XFile, write: Boolean): NativeNfsClient {
+    private fun opened(file: XFile, write: Boolean, append: Boolean = false): NativeNfsClient {
         val c = client()
-        try { c.open(file.path, write); return c }
+        try { c.open(file.path, write, append); return c }
         catch (e: Throwable) { runCatching { c.close() }; throw e }
     }
     override fun openInput(file: XFile): InputStream {
@@ -95,12 +96,16 @@ class NfsFileSystem(
             @Synchronized override fun close() = c.close()
         }
     }
+    override fun appendPartial(file: XFile): OutputStream = openOutput(file, append = true)
+
     override fun openOutput(file: XFile, append: Boolean): OutputStream {
-        if (append) throw FsException("NFS evaluation does not support append")
         requireEntry(file)
-        val c = opened(file, write = true)
+        val c = opened(file, write = true, append = append)
+        // Query this handle, not the path: append must preserve the opened file's prefix.
+        val start = try { if (append) c.size() else 0L }
+        catch (e: Throwable) { runCatching { c.close() }; throw e }
         return object : OutputStream() {
-            private var position = 0L
+            private var position = start
             override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
             @Synchronized override fun write(b: ByteArray, off: Int, len: Int) {
                 bounds(b, off, len)

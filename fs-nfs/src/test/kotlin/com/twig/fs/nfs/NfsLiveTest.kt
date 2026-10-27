@@ -36,8 +36,15 @@ class NfsLiveTest {
                 assertEquals(0, source.readAt(0, bytes, 0, 0))
                 assertEquals(-1, source.readAt(payload.size.toLong(), bytes, 0, 1))
             }
-            try { fs.openOutput(listed, append = true); fail("Append must not truncate") }
-            catch (_: FsException) { }
+            // Append must preserve the prefix, including when the caller's size is stale.
+            val appended = byteArrayOf(12, 34, 56)
+            fs.appendPartial(listed.copy(size = 1)).use { it.write(appended) }
+            assertArrayEquals(payload + appended, fs.openInput(listed).use { it.readBytes() })
+            fs.openOutput(listed, false).use { it.write(payload) }
+            val created = fs.createFile(dir, "append-new.bin")
+            fs.openOutput(created, true).use { it.write(appended) }
+            assertArrayEquals(appended, fs.openInput(created).use { it.readBytes() })
+            fs.delete(created)
             val other = fs.createFile(dir, "existing.bin")
             fs.openOutput(other, false).use { it.write(byteArrayOf(7)) }
             try { fs.rename(listed, other.name); fail("Rename must not overwrite") }

@@ -12,7 +12,7 @@ internal class NativeNfsClient(host: String, export: String, version: Int, uid: 
     private fun alive(): Long = handle.takeIf { it != 0L } ?: throw FsException("NFS connection is closed")
     fun list(path: String): Array<NfsEntry> = nList(alive(), path.utf8())
     fun stat(path: String, follow: Boolean = true): LongArray? = nStat(alive(), path.utf8(), follow)
-    fun open(path: String, write: Boolean) = nOpen(alive(), path.utf8(), write)
+    fun open(path: String, write: Boolean, append: Boolean = false) = nOpen(alive(), path.utf8(), write, append)
     fun size(): Long = nSize(alive())
     fun read(position: Long, bytes: ByteArray, offset: Int, length: Int): Int =
         nRead(alive(), position, bytes, offset, length)
@@ -30,7 +30,7 @@ internal class NativeNfsClient(host: String, export: String, version: Int, uid: 
     private external fun nDisconnect(handle: Long)
     private external fun nList(handle: Long, path: ByteArray): Array<NfsEntry>
     private external fun nStat(handle: Long, path: ByteArray, follow: Boolean): LongArray?
-    private external fun nOpen(handle: Long, path: ByteArray, write: Boolean)
+    private external fun nOpen(handle: Long, path: ByteArray, write: Boolean, append: Boolean)
     private external fun nSize(handle: Long): Long
     private external fun nRead(handle: Long, position: Long, bytes: ByteArray, offset: Int, length: Int): Int
     private external fun nWrite(handle: Long, position: Long, bytes: ByteArray, offset: Int, length: Int)

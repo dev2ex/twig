@@ -44,6 +44,32 @@ class NfsRecoveryLiveTest {
         }
     }
 
+    @Test fun failedWriteAndCloseDoNotReplayAndThePartialCanResumeAfterRecovery() {
+        assumeTrue(System.getenv("TWIG_NFS_FAULT_PROXY") == "true")
+        val fs = NfsFileSystem("127.0.0.1", "/export", version = 4)
+        command("ONLINE")
+        val directory = fs.mkdir(fs.root(), "twig-write-recovery-${System.nanoTime()}")
+        val file = fs.createFile(directory, "partial.bin")
+        val prefix = ByteArray(320_123) { (it * 17).toByte() }
+        val suffix = ByteArray(480_000) { (it * 31).toByte() }
+        val output = fs.openOutput(file)
+        try {
+            output.write(prefix)
+            command("OFFLINE")
+            assertThrows(FsException::class.java) { output.write(suffix) }
+            // A close/commit failure must reach CopyEngine rather than marking this file complete.
+            assertThrows(FsException::class.java) { output.close() }
+            command("ONLINE")
+            assertEquals(prefix.size.toLong(), fs.stat(file.path)!!.size)
+            fs.appendPartial(file.copy(size = 1)).use { it.write(suffix) }
+            assertArrayEquals(prefix + suffix, fs.openInput(file).use { it.readBytes() })
+        } finally {
+            command("ONLINE")
+            runCatching { output.close() }
+            try { fs.delete(directory) } finally { fs.disconnect() }
+        }
+    }
+
     private fun command(value: String) {
         Socket("127.0.0.1", 32049).use { socket ->
             socket.soTimeout = 5000
