@@ -1,9 +1,11 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#90CAF9"
+    <path android:fillColor="@color/folder"
         android:pathData="M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z" />
-    <path android:fillColor="#0D47A1"
-        android:fillType="evenOdd"
-        android:pathData="M11,8H13V12H16L12,16L8,12H11Z M7,16H9V17H15V16H17V18.5H7Z" />
+    <group android:pivotX="20.5000" android:pivotY="19.8125"
+        android:scaleX="1.32" android:scaleY="1.32">
+        <path android:fillColor="@color/folder_badge_download" android:fillType="evenOdd"
+            android:pathData="M16.25,13H19.25V17H22L17.75,21.5L13.5,17H16.25Z" />
+    </group>
 </vector>

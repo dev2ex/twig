@@ -45,4 +45,12 @@
     <!-- PDF text selection: translucent fill plus solid drag handles -->
     <color name="pdf_selection">#553F51B5</color>
     <color name="pdf_handle">#FF3F51B5</color>
+
+    <!-- Saturated directory badges share the same palette across themes. -->
+    <color name="folder_badge_download">#1B93F5</color>
+    <color name="folder_badge_music">#C850E3</color>
+    <color name="folder_badge_pictures">#42CB4F</color>
+    <color name="folder_badge_dcim">#06C6B2</color>
+    <color name="folder_badge_movies">#FF4E59</color>
+    <color name="folder_badge_documents">#65AED1</color>
 </resources>
