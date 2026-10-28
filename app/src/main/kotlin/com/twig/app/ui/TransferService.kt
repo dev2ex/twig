@@ -53,7 +53,9 @@ object Transfers {
     sealed class Work {
         abstract val items: List<XFile>
 
-        class Share(override val items: List<XFile>) : Work()
+        class Share(override val items: List<XFile>, val pickerId: String? = null) : Work() {
+            var abandoned = false
+        }
 
         internal class Download(val task: WebsiteDownloadTask, val dest: XFile) : Work() {
             override val items: List<XFile> = emptyList()
@@ -181,7 +183,31 @@ object Transfers {
     // Shares retain their prepared files until a resumed screen can hand them to the recipient.
     private val pendingShares = java.util.ArrayDeque<Session>()
     @Synchronized internal fun hasPendingShare(): Boolean = pendingShares.isNotEmpty()
-    @Synchronized internal fun consumeShare(): Session? = pendingShares.pollFirst()
+    @Synchronized internal fun consumeShare(pickerId: String? = null): Session? {
+        val iterator = pendingShares.iterator()
+        while (iterator.hasNext()) {
+            val session = iterator.next()
+            if ((session.work as Work.Share).pickerId == pickerId) {
+                iterator.remove()
+                return session
+            }
+        }
+        return null
+    }
+
+    /** A picker result belongs to its original caller, even while another Twig screen resumes. */
+    @Synchronized internal fun abandonPickerShare(pickerId: String) {
+        active?.takeIf { (it.work as? Work.Share)?.pickerId == pickerId }?.let {
+            (it.work as Work.Share).abandoned = true
+            it.cancel()
+        }
+        var session = consumeShare(pickerId)
+        while (session != null) {
+            session.preparedShare?.release()
+            session.preparedShare = null
+            session = consumeShare(pickerId)
+        }
+    }
 
     @Volatile var ui: Ui? = null
         private set
@@ -441,7 +467,7 @@ object Transfers {
                     s.preparedShare?.release()
                     s.preparedShare = null
                 }
-                synchronized(this) { pendingShares.addLast(s) }
+                synchronized(this) { if (!(s.work as Work.Share).abandoned) pendingShares.addLast(s) }
             } else if (u == null) pendingResult = s
             val error = s.finished?.exceptionOrNull()
             val cancelled = s.cancelled.get() || error is ArchiveWriter.Cancelled

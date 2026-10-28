@@ -304,6 +304,11 @@ each write `= null`.
   the success toast; notification and vibration follow ordinary operation preferences,
   except an entirely cached share does not vibrate.
   Preparation errors still show a toast.
+  External `ACTION_GET_CONTENT` selections in `PickerActivity` use the same preparation
+  policy before returning granted URIs to the caller. Each picker owns its result by a
+  saved ID: other resumed screens cannot consume it or launch a share chooser. Finishing
+  the picker cancels its preparation and releases unclaimed results; internal imports
+  and path/directory selections keep their existing streaming/path behavior.
   Completed files are reused by scheme/path/name/size/mtime when size and time are
   known; partial files are removed on failure/cancellation. Cache hits refresh the
   24-hour idle retention, and the next preparation prunes expired files except those

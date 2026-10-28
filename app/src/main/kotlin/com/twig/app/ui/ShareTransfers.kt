@@ -40,20 +40,22 @@ class ShareTransfers : Fragment() {
         if (handedOff || !isResumed || host.isFinishing || Secrets.locked(host) ||
             !(host.getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive ||
             (host.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked) return
-        var completed = Transfers.consumeShare()
+        val pickerId = (host as? PickerActivity)?.sharePickerId
+        var completed = Transfers.consumeShare(pickerId)
         while (completed != null) {
             box?.detach()
             val prepared = completed.preparedShare
             try {
                 if (!completed.cancelled.get() && completed.finished?.isSuccess == true && prepared != null) {
                     handedOff = true
-                    OpenFiles.sharePrepared(host, prepared.files)
+                    if (pickerId != null) host.deliverPrepared(prepared.files)
+                    else OpenFiles.sharePrepared(host, prepared.files)
                 }
             } catch (e: Exception) {
                 Toast.makeText(host, getString(R.string.share_failed, e.message.orEmpty()), Toast.LENGTH_LONG).show()
             } finally { prepared?.release(); completed.preparedShare = null }
             if (handedOff) break
-            completed = Transfers.consumeShare()
+            completed = Transfers.consumeShare(pickerId)
         }
         val session = Transfers.active?.takeIf { it.isShare }
         if (session != null && !background && box == null && Transfers.ui == null) {
@@ -77,7 +79,7 @@ class ShareTransfers : Fragment() {
         }
         fun start(context: Context, files: List<XFile>) {
             val activity = host(context)
-            val session = Transfers.Session(Transfers.Work.Share(files), R.string.share_preparing,
+            val session = Transfers.Session(Transfers.Work.Share(files, (activity as? PickerActivity)?.sharePickerId), R.string.share_preparing,
                 activity.getString(R.string.action_share), R.drawable.ic_share, null)
             if (!Transfers.start(activity.applicationContext, session)) {
                 Toast.makeText(activity, R.string.transfer_busy, Toast.LENGTH_SHORT).show()

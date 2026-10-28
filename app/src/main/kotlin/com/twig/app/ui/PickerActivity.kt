@@ -15,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.twig.app.OpenFiles
 import com.twig.app.R
 import com.twig.app.SavedConnection
 import com.twig.app.StreamProvider
@@ -33,7 +34,8 @@ import com.twig.core.XFile
  * - **External**: when another app sends `ACTION_GET_CONTENT`, list Twig in the chooser. The
  *   returned URI carries `FLAG_GRANT_READ_URI_PERMISSION`, the system grants the caller a
  *   temporary read permission on return (StreamProvider is `exported=false`, only reachable via
- *   this grant).
+ *   this grant). Large or unknown-size remote selections are prepared locally with transfer
+ *   progress before returning; internal callers keep streaming.
  *
  * Single-select: tapping a file returns it; with `EXTRA_ALLOW_MULTIPLE` it becomes "check a few,
  * then confirm"; multiple results go into ClipData as per the convention.
@@ -43,6 +45,8 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
     protected lateinit var b: ActivityPickerBinding
     private var allowMultiple = false
     private var pickDir = false
+    internal var sharePickerId: String = java.util.UUID.randomUUID().toString()
+        private set
 
     /**
      * true = return the selected file's scheme+path instead of content://. For use cases like
@@ -73,6 +77,7 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sharePickerId = savedInstanceState?.getString("sharePickerId") ?: sharePickerId
         allowMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
         returnPath = intent.getBooleanExtra(EXTRA_RETURN_PATH, false)
         pickDir = intent.getBooleanExtra(EXTRA_PICK_DIR, false)
@@ -110,6 +115,21 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         b.btnConfirm.setOnClickListener { if (pickDir) confirmDir() else confirmMultiple() }
 
         SecurityUi.gate(this) { ensurePermissionThenInit() }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("sharePickerId", sharePickerId)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        ShareTransfers.attach(this)
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) Transfers.abandonPickerShare(sharePickerId)
+        super.onDestroy()
     }
 
     protected fun pane(): PaneFragment? =
@@ -201,6 +221,14 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
             finish()
             return
         }
+        if (intent.action == Intent.ACTION_GET_CONTENT && OpenFiles.needsSharePreparation(files)) {
+            ShareTransfers.start(this, files)
+            return
+        }
+        deliverPrepared(files)
+    }
+
+    internal fun deliverPrepared(files: List<XFile>) {
         val uris = files.map { StreamProvider.uriFor(this, it) }
         val data = Intent().apply {
             if (uris.size == 1) {
