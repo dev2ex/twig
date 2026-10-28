@@ -17,19 +17,38 @@ import com.twig.core.XFile
 object MusicDialogs {
 
     fun showInfo(activity: Activity, file: XFile, titleRes: Int = R.string.music_info) {
+        showInfo(activity, titleRes, file.name) { file }
+    }
+
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun showInfo(activity: Activity, track: PlaylistTrack) {
+        showInfo(activity, R.string.music_info, track.name) { MusicEngine.resolveFile(activity.applicationContext, track) }
+    }
+
+    private fun showInfo(activity: Activity, titleRes: Int, name: String, resolve: () -> XFile?) {
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(titleRes)
+            .setMessage(R.string.info_loading)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+        val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+        dialog.setOnDismissListener { closed.set(true) }
+        fun render(details: FileInfo.Details) = details.sections.joinToString("\n\n") { s ->
+            s.title + "\n" + if (s.loading) activity.getString(R.string.info_loading)
+            else s.rows.joinToString("\n") { "  ${it.first}: ${it.second}" }
+        }
+        fun update(message: String) = activity.runOnUiThread {
+            if (!activity.isFinishing && !activity.isDestroyed && dialog.isShowing) dialog.setMessage(message)
+        }
         Thread {
-            val details = runCatching { FileInfo.load(activity, file) }.getOrNull()
-            val msg = details?.sections?.joinToString("\n\n") { s ->
-                s.title + "\n" + s.rows.joinToString("\n") { "  ${it.first}: ${it.second}" }
-            } ?: file.name
-            activity.runOnUiThread {
-                if (activity.isFinishing) return@runOnUiThread
-                AlertDialog.Builder(activity)
-                    .setTitle(titleRes)
-                    .setMessage(msg)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show()
+            val file = runCatching(resolve).getOrNull()
+            if (closed.get()) return@Thread
+            if (file != null) {
+                // Show listing information before the selected file's full media probe finishes.
+                runCatching { FileInfo.initial(activity, file) }.getOrNull()?.let { update(render(it)) }
             }
+            val details = file?.let { runCatching { FileInfo.load(activity, it) }.getOrNull() }
+            update(details?.let(::render) ?: file?.name ?: activity.getString(R.string.music_export_source_missing, name))
         }.apply { isDaemon = true }.start()
     }
 
@@ -65,6 +84,13 @@ object MusicDialogs {
         // Only works for saved connections (ofScheme is a process-wide reverse lookup; if it can
         // play, it has been ensured); media servers excluded for the reason above
         else -> com.twig.app.Connections.ofScheme(file.scheme)?.isMediaServer() == false
+    }
+
+    /** Menu availability comes from the saved source, not background metadata progress. */
+    fun canLocate(ctx: Context, track: PlaylistTrack): Boolean = when (track.kind) {
+        "local" -> true
+        "conn" -> com.twig.app.Connections.find(ctx, track.connLabel)?.isMediaServer() == false
+        else -> false
     }
 
     /**

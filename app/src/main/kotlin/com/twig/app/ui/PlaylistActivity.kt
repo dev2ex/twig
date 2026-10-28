@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
@@ -28,6 +29,9 @@ import com.twig.app.databinding.ActivityPlaylistBinding
 import com.twig.app.databinding.ItemTrackBinding
 import com.twig.core.XFile
 import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Playlist page: lists tracks (number / cover / title / artist / duration); tap a row to play; overflow menu for management. */
 @UnstableApi
@@ -475,8 +479,7 @@ class PlaylistActivity : TwigActivity() {
         items += getString(R.string.music_info) to { showInfo(track) }
         if (!track.temporary) items += getString(R.string.music_send_to) to { MusicDialogs.sendToPlaylist(this, listOf(track)) }
         items += getString(R.string.music_share) to { share(track) }
-        val file = synchronized(files) { files[track.id] }
-        if (file != null && MusicDialogs.canLocate(file)) {
+        if (MusicDialogs.canLocate(this, track)) {
             items += getString(R.string.music_locate) to { locate(track) }
         }
         val favLabel = if (PlaylistStore.isFav(this, track.id)) {
@@ -498,18 +501,27 @@ class PlaylistActivity : TwigActivity() {
     }
 
     private fun showInfo(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.showInfo(this, f)
+        MusicDialogs.showInfo(this, track)
     }
 
     private fun share(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.share(this, f)
+        withTrackFile(track) { MusicDialogs.share(this, it) }
     }
 
     private fun locate(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.locateInFileManager(this, f)
+        withTrackFile(track) { MusicDialogs.locateInFileManager(this, it) }
+    }
+
+    /** A direct action must not wait behind every earlier track's metadata read. */
+    private fun withTrackFile(track: PlaylistTrack, action: (XFile) -> Unit) {
+        val cached = synchronized(files) { files[track.id] }
+        if (cached != null) { action(cached); return }
+        lifecycleScope.launch {
+            val file = withContext(Dispatchers.IO) { MusicEngine.resolveFile(applicationContext, track) }
+            if (file != null) action(file)
+            else android.widget.Toast.makeText(this@PlaylistActivity,
+                getString(R.string.music_export_source_missing, track.name), android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     /** [h:]mm:ss — the hour part appears only for material an hour or longer. */

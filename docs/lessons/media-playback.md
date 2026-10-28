@@ -4,6 +4,18 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Playlist actions silently failed before background metadata reached their row**
+  (2026-10-29). After importing many songs, Track info and Share returned immediately
+  when the activity's resolved-file cache had no entry; Locate was omitted altogether.
+  The apparent dependency on tags was really a dependency on a single worker that
+  resolves one file, reads its tags, then advances to the next file. Resolve a selected
+  track independently for direct actions, and derive Locate availability from its saved
+  source identity. Do not queue these actions behind metadata backfill. Track info opens
+  immediately, shows listing information before the media probe, and updates only the
+  original still-open dialog. Closing it must not allow a late result to reopen it.
+  `PlaylistMenuLoadingTest` blocks the entire backfill executor while exercising info,
+  sharing and locating, including missing sources and dismissal during a slow read.
+
 - **Playback time missing from some system notification headers (2026-10-26, issue #23)**:
   the media seek bar's time labels come from MediaSession; a header stopwatch is a
   separate native Notification chronometer. Set when to wall-clock time minus player
