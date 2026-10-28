@@ -216,6 +216,11 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             }
         }
 
+    private val favoriteSortTouch = com.twig.app.ui.FavoriteSortTouch()
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
+        favoriteSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Prefs.rememberLocation(this)) activeIndex = Prefs.activePane(this)

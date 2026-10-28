@@ -1202,4 +1202,5 @@
     <string name="transfer_skip_failed">Skip this item</string>
     <string name="root_drag_to_reorder">Drag to reorder</string>
     <string name="root_reorder_hint">Drag the handles to reorder both panes.</string>
+    <string name="action_sort_favorites">Reorder favorites</string>
 </resources>

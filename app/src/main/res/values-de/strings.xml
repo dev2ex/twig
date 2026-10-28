@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">Dateien konnten nicht zur Freigabe vorbereitet werden.</string>
     <string name="share_prepare_space">Nicht genügend Speicherplatz zur Vorbereitung der Freigabe.</string>
     <string name="share_prepare_incomplete">Die Datei wurde geändert oder konnte nicht vollständig gelesen werden.</string>
+    <string name="root_drag_to_reorder">Zum Sortieren ziehen</string>
+    <string name="root_reorder_hint">Ziehe die Griffe, um die Stammeinträge in beiden Bereichen zu sortieren.</string>
+    <string name="action_sort_favorites">Favoriten sortieren</string>
 </resources>

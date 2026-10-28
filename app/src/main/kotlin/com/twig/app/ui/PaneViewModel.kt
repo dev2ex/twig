@@ -172,6 +172,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val depth: Int,
         val expanded: Boolean,
         val connecting: Boolean,
+        val reordering: Boolean = false,
     ) : Node {
         override val key: String get() = "fav:${fav.id}"
     }
@@ -2474,6 +2475,38 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var favoriteSortOrder: List<String>? = null
+    val sortingFavorites: Boolean get() = favoriteSortOrder != null
+
+    fun setSortingFavorites(enabled: Boolean) {
+        if (enabled) {
+            favoriteSortOrder = FavoritesStore.all(getApplication()).map { it.id }
+            expanded.add("g:fav")
+        } else {
+            saveFavoriteOrder()
+            favoriteSortOrder = null
+        }
+        rebuild()
+    }
+
+    /** Move only after the adapter has caught up with the preceding tree update. */
+    fun moveFavorite(source: String, target: String, displayedIds: List<String>): Boolean {
+        if (!sortingFavorites) return false
+        val ids = state.value.rows.filterIsInstance<FavoriteNode>().map { it.fav.id }
+        if (ids != displayedIds) return false
+        val from = ids.indexOf(source)
+        val to = ids.indexOf(target)
+        if (from < 0 || to < 0 || from == to) return false
+        favoriteSortOrder = ids.toMutableList().apply { add(to, removeAt(from)) }
+        rebuild()
+        return true
+    }
+
+    /** Persist on drop; ordinary directory expansion never writes ordering. */
+    fun saveFavoriteOrder() {
+        favoriteSortOrder?.let { FavoritesStore.reorder(getApplication(), it) }
+    }
+
     fun addFavorite(fav: Favorite) {
         FavoritesStore.add(getApplication(), fav)
         expanded.add("g:fav")
@@ -2543,6 +2576,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * dialog to retry).
      */
     fun toggleFavorite(node: FavoriteNode, password: String?, onResult: (Boolean, String?) -> Unit) {
+        if (sortingFavorites) return
         val key = node.key
         currentKey = key
         claimExpand(key)
@@ -3207,7 +3241,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rows += ActionNode("add_saf", str(R.string.action_add_saf))
             }
             "fav" -> {
-                val favs = FavoritesStore.all(app)
+                val saved = FavoritesStore.all(app)
+                val order = favoriteSortOrder
+                val favs = if (order == null) saved else {
+                    val byId = saved.associateBy { it.id }
+                    (order + saved.map { it.id }).distinct().mapNotNull { byId[it] }
+                }
                 if (favs.isEmpty()) rows += ActionNode("fav_hint", str(R.string.fav_hint))
                 else {
                     val conns = ConnectionStore.all(app).associateBy { it.label() }
@@ -3260,7 +3299,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             "restic" -> conns[fav.repoConnLabel]
             else -> null
         }
-        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp, connecting = busy(key))
+        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp && !sortingFavorites,
+            connecting = busy(key) && !sortingFavorites, reordering = sortingFavorites)
+        if (sortingFavorites) return // Keep cached expansion state; only hide children while handles are shown.
         // Info cards / search results hang under it like a regular directory row (key based on the actual directory the favorite points at).
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) {

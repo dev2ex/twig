@@ -1156,4 +1156,5 @@
     <string name="transfer_skip_failed">跳过此项</string>
     <string name="root_drag_to_reorder">拖动排序</string>
     <string name="root_reorder_hint">拖动把手调整两栏的根项目顺序。</string>
+    <string name="action_sort_favorites">排序收藏项</string>
 </resources>

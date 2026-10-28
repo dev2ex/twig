@@ -30,6 +30,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.AppsFileSystem
 import com.twig.app.AndroidDataAccess
@@ -285,6 +286,30 @@ class PaneFragment : Fragment() {
         }
         b.list.layoutManager = glm
         b.list.adapter = adapter
+        val favoriteDrag = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+            override fun isLongPressDragEnabled() = false
+            override fun getMovementFlags(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int {
+                val node = adapter.currentList.getOrNull(holder.bindingAdapterPosition)
+                return if (node is PaneViewModel.FavoriteNode && node.reordering)
+                    makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) else 0
+            }
+            override fun canDropOver(rv: RecyclerView, current: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean =
+                adapter.currentList.getOrNull(target.bindingAdapterPosition) is PaneViewModel.FavoriteNode
+            override fun onMove(rv: RecyclerView, source: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                val from = adapter.currentList.getOrNull(source.bindingAdapterPosition) as? PaneViewModel.FavoriteNode ?: return false
+                val to = adapter.currentList.getOrNull(target.bindingAdapterPosition) as? PaneViewModel.FavoriteNode ?: return false
+                return viewModel.moveFavorite(from.fav.id, to.fav.id,
+                    adapter.currentList.filterIsInstance<PaneViewModel.FavoriteNode>().map { it.fav.id })
+            }
+            override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) = Unit
+            override fun clearView(rv: RecyclerView, holder: RecyclerView.ViewHolder) {
+                super.clearView(rv, holder)
+                viewModel.saveFavoriteOrder()
+                host?.refreshTrees()
+            }
+        })
+        favoriteDrag.attachToRecyclerView(b.list)
+        adapter.onFavoriteDrag = { favoriteDrag.startDrag(it) }
         b.list.itemAnimator = null // The tree changes instantly on tap; item animations would make the highlight frame drift through the transition.
         if (Prefs.rowDivider(requireContext())) b.list.addItemDecoration(RowDivider(requireContext()))
         b.list.addItemDecoration(CurrentDirFrame(requireContext()))
@@ -365,7 +390,7 @@ class PaneFragment : Fragment() {
                 // User input takes priority over restoring the old scroll position.
                 pendingScrollToCurrent = false
             },
-            onSwipe = { dx -> host?.onPaneSwipe(dx) },
+            onSwipe = { dx -> if (!viewModel.sortingFavorites) host?.onPaneSwipe(dx) },
         ))
     }
 
@@ -858,8 +883,32 @@ class PaneFragment : Fragment() {
         render(viewModel.state.value) // Restore path bar / empty state.
     }
 
-    /** Back-key routing: inside the treemap, go up a level first, then exit treemap at the root; outside the treemap, don't consume it. */
+    internal fun isFavoriteDragHandleAt(screenX: Float, screenY: Float): Boolean {
+        val list = _b?.list ?: return false
+        val bounds = android.graphics.Rect()
+        for (index in 0 until list.childCount) {
+            val child = list.getChildAt(index)
+            val position = list.getChildViewHolder(child).bindingAdapterPosition
+            val node = adapter.currentList.getOrNull(position) as? PaneViewModel.FavoriteNode ?: continue
+            if (!node.reordering) continue
+            val handle = child.findViewById<View>(R.id.indicator) ?: continue
+            if (handle.getGlobalVisibleRect(bounds) && bounds.contains(screenX.toInt(), screenY.toInt())) return true
+        }
+        return false
+    }
+
+    internal fun finishFavoriteSorting() {
+        if (!viewModel.sortingFavorites) return
+        viewModel.setSortingFavorites(false)
+        host?.refreshTrees()
+    }
+
+    /** Back first finishes favorite reordering; in the treemap it goes up or returns to the tree. */
     fun handleBack(): Boolean {
+        if (viewModel.sortingFavorites) {
+            finishFavoriteSorting()
+            return true
+        }
         if (!mapMode) return false
         if (mapStack.size > 1) {
             mapStack.removeAt(mapStack.size - 1)
@@ -1751,7 +1800,14 @@ class PaneFragment : Fragment() {
             is PaneViewModel.FileNode -> longClickFile(node)
             is PaneViewModel.ServerNode -> serverMenu(node)
             is PaneViewModel.FavoriteNode -> favoriteMenu(node)
-            is PaneViewModel.GroupNode -> if (node.id == "websites") {
+            is PaneViewModel.GroupNode -> if (node.id == "fav") {
+                val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.action_sort_favorites), R.drawable.ic_sort) {
+                    viewModel.setSortingFavorites(true)
+                    host?.refreshTrees()
+                }
+                showActionMenu(requireContext(), node.label, actions)
+            } else if (node.id == "websites") {
                 val actions = ArrayList<MenuAct>()
                 actions.item(getString(R.string.website_defaults), R.drawable.ic_edit) {
                     WebsiteDialogs.defaults(requireContext())

@@ -73,6 +73,8 @@ class FileAdapter(
     private val onInfo: (PaneViewModel.FileNode) -> Unit = {},
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
+    var onFavoriteDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
+
     private val rowH = intArrayOf(36, 44, 54)[density]
     private val iconDp = rowIconDp(density)
     private val thumbDp = intArrayOf(40, 48, 56)[density]
@@ -830,6 +832,19 @@ class FileAdapter(
             b.infoToggle.visibility = if (node is PaneViewModel.FileNode) View.VISIBLE else View.INVISIBLE
             b.infoToggle.setOnClickListener(null)
             b.root.setOnTouchListener(null)
+            b.indicator.setOnTouchListener(null)
+            b.indicator.contentDescription = null
+            val sortingFavorite = node is PaneViewModel.FavoriteNode && node.reordering
+            val indicatorPadding = if (sortingFavorite) (4 * dpi).toInt() else 0
+            b.indicator.setPadding(indicatorPadding, indicatorPadding, indicatorPadding, indicatorPadding)
+            val indicatorWidth = ((if (sortingFavorite) 32 else 16) * dpi).toInt()
+            val indicatorHeight = if (sortingFavorite) ViewGroup.LayoutParams.MATCH_PARENT else (16 * dpi).toInt()
+            val indicatorLayout = b.indicator.layoutParams
+            if (indicatorLayout.width != indicatorWidth || indicatorLayout.height != indicatorHeight) {
+                indicatorLayout.width = indicatorWidth
+                indicatorLayout.height = indicatorHeight
+                b.indicator.layoutParams = indicatorLayout
+            }
 
             when (node) {
                 is PaneViewModel.FileNode -> bindFile(node)
@@ -909,8 +924,20 @@ class FileAdapter(
                 bindSelection(node)
                 b.check.setOnClickListener { toggleChildrenSelection(node) }
             }
-            b.root.setOnClickListener { onClick(node) }
-            b.root.setOnLongClickListener { onLongClick(node); true }
+            if (node.reordering) {
+                b.indicator.visibility = View.VISIBLE
+                b.indicator.setImageResource(R.drawable.ic_drag_handle)
+                b.indicator.contentDescription = ctx.getString(R.string.root_drag_to_reorder)
+                b.indicator.setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) onFavoriteDrag?.invoke(this)
+                    false
+                }
+                b.root.setOnClickListener(null)
+                b.root.setOnLongClickListener(null)
+            } else {
+                b.root.setOnClickListener { onClick(node) }
+                b.root.setOnLongClickListener { onLongClick(node); true }
+            }
         }
 
         /** Compare-favorite row: not expandable, click jumps straight to the compare page; no selection state (not an object that can be copied or deleted).
@@ -1118,7 +1145,7 @@ class FileAdapter(
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
             b.root.setOnLongClickListener {
-                if (node.id == "websites") { onLongClick(node); true } else false
+                if (node.id == "websites" || node.id == "fav") { onLongClick(node); true } else false
             }
         }
 

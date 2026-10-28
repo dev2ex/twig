@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">Paylaşılacak dosyalar hazırlanamadı.</string>
     <string name="share_prepare_space">Dosyaları hazırlamak için yeterli alan yok.</string>
     <string name="share_prepare_incomplete">Dosya değişti veya tamamen okunamadı.</string>
+    <string name="root_drag_to_reorder">Sıralamak için sürükleyin</string>
+    <string name="root_reorder_hint">Her iki bölmenin kök öğelerini sıralamak için tutamaçları sürükleyin.</string>
+    <string name="action_sort_favorites">Favorileri sırala</string>
 </resources>

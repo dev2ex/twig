@@ -93,6 +93,13 @@ object FavoritesStore {
 
     fun contains(ctx: Context, id: String): Boolean = all(ctx).any { it.id == id }
 
+    /** Reorder current entries without overwriting edits or restoring removed favorites. */
+    fun reorder(ctx: Context, ids: List<String>) {
+        val current = all(ctx)
+        val byId = current.associateBy { it.id }
+        persist(ctx, (ids + current.map { it.id }).distinct().mapNotNull { byId[it] })
+    }
+
     private fun persist(ctx: Context, list: List<Favorite>) {
         val arr = JSONArray()
         list.forEach { arr.put(it.toJson()) }

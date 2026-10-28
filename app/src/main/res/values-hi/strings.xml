@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">साझा करने के लिए फ़ाइलें तैयार नहीं हो सकीं।</string>
     <string name="share_prepare_space">फ़ाइलें तैयार करने के लिए पर्याप्त जगह नहीं है।</string>
     <string name="share_prepare_incomplete">फ़ाइल बदल गई है या पूरी तरह पढ़ी नहीं जा सकी।</string>
+    <string name="root_drag_to_reorder">क्रम बदलने के लिए खींचें</string>
+    <string name="root_reorder_hint">दोनों पैनल के रूट आइटम का क्रम बदलने के लिए हैंडल खींचें।</string>
+    <string name="action_sort_favorites">पसंदीदा का क्रम बदलें</string>
 </resources>

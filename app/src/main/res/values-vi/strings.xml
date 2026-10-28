@@ -1118,4 +1118,7 @@
     <string name="share_prepare_failed">Không thể chuẩn bị tệp để chia sẻ.</string>
     <string name="share_prepare_space">Không đủ dung lượng để chuẩn bị tệp.</string>
     <string name="share_prepare_incomplete">Tệp đã thay đổi hoặc không thể đọc đầy đủ.</string>
+    <string name="root_drag_to_reorder">Kéo để sắp xếp lại</string>
+    <string name="root_reorder_hint">Kéo tay cầm để sắp xếp lại các mục gốc của cả hai ngăn.</string>
+    <string name="action_sort_favorites">Sắp xếp mục yêu thích</string>
 </resources>

@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">No se pudieron preparar los archivos para compartir.</string>
     <string name="share_prepare_space">No hay espacio suficiente para preparar los archivos.</string>
     <string name="share_prepare_incomplete">El archivo cambió o no se pudo leer por completo.</string>
+    <string name="root_drag_to_reorder">Arrastrar para reordenar</string>
+    <string name="root_reorder_hint">Arrastra los controles para reordenar los elementos raíz de ambos paneles.</string>
+    <string name="action_sort_favorites">Ordenar favoritos</string>
 </resources>

@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">共有するファイルを準備できませんでした。</string>
     <string name="share_prepare_space">共有するファイルを準備する空き容量がありません。</string>
     <string name="share_prepare_incomplete">ファイルが変更されたか、完全に読み取れませんでした。</string>
+    <string name="root_drag_to_reorder">ドラッグして並べ替え</string>
+    <string name="root_reorder_hint">ハンドルをドラッグして両ペインのルート項目を並べ替えます。</string>
+    <string name="action_sort_favorites">お気に入りを並べ替え</string>
 </resources>

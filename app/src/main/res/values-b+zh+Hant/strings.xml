@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">無法準備要分享的檔案。</string>
     <string name="share_prepare_space">空間不足，無法準備要分享的檔案。</string>
     <string name="share_prepare_incomplete">檔案已變更或未能完整讀取。</string>
+    <string name="root_drag_to_reorder">拖動排序</string>
+    <string name="root_reorder_hint">拖動把手調整兩欄的根項目順序。</string>
+    <string name="action_sort_favorites">排序收藏項</string>
 </resources>

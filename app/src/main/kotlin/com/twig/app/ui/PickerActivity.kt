@@ -78,6 +78,11 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
             }
         }
 
+    private val favoriteSortTouch = FavoriteSortTouch()
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
+        favoriteSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sharePickerId = savedInstanceState?.getString("sharePickerId") ?: sharePickerId

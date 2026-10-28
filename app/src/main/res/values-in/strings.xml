@@ -1119,4 +1119,7 @@
     <string name="share_prepare_failed">Tidak dapat menyiapkan file untuk dibagikan.</string>
     <string name="share_prepare_space">Ruang tidak cukup untuk menyiapkan file.</string>
     <string name="share_prepare_incomplete">File berubah atau tidak dapat dibaca sepenuhnya.</string>
+    <string name="root_drag_to_reorder">Seret untuk mengurutkan</string>
+    <string name="root_reorder_hint">Seret pegangan untuk mengurutkan item akar di kedua panel.</string>
+    <string name="action_sort_favorites">Urutkan favorit</string>
 </resources>
