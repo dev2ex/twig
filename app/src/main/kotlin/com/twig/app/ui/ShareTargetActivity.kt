@@ -42,7 +42,7 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
     private lateinit var incoming: List<IncomingItem>
     private var incomingText: String? = null
     private lateinit var shareFs: ShareSourceFileSystem
-    private var activeIndex = 0
+    private lateinit var browser: PickerBrowser
     private var directoryObserver: kotlinx.coroutines.Job? = null
 
     private val manageAllFilesLauncher =
@@ -67,7 +67,6 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        activeIndex = savedInstanceState?.getInt(STATE_PANE) ?: 0
         incoming = resolveIncoming(intent)
         incomingText = sharedText(intent)
         if (incoming.isEmpty() && incomingText == null) {
@@ -94,31 +93,8 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         com.twig.app.TwigApp.registerBaseFs(this)
         shareFs = FsRegistry.of(ShareSourceFileSystem.SCHEME) as ShareSourceFileSystem
 
-        for (strip in listOf(b.browser.stripLeft, b.browser.stripMid, b.browser.stripRight)) {
-            strip.sizeIconsLikeRows(this)
-            strip.asCompress.visibility = View.GONE
-            strip.asShare.visibility = View.GONE
-            strip.asCopy.visibility = View.GONE
-            strip.asMove.visibility = View.GONE
-            strip.asRename.visibility = View.GONE
-            strip.asDelete.visibility = View.GONE
-            strip.asCompare.visibility = View.GONE
-            strip.asMap.visibility = View.GONE
-            strip.asUp.setOnClickListener { pane()?.actionUp() }
-            strip.asRefresh.setOnClickListener { pane()?.actionRefresh() }
-            strip.asNewFolder.setOnClickListener { pane()?.actionNewFolder() }
-            strip.asSort.setOnClickListener {
-                SortDialog.show(this, pane()?.viewModel?.currentDir,
-                    parentOf = { pane()?.viewModel?.directoryViewParent(it) }) {
-                    for (i in 0..1) paneAt(i)?.refreshSortAndView()
-                }
-            }
-            strip.asSearch.setOnClickListener { pane()?.actionSearch() }
-            strip.asHistory.setOnClickListener { pane()?.actionHistory() }
-        }
-        PaneSwitch.add(b.toolbar.menu, b.toolbar, MENU_SWITCH, activeIndex,
-            onSwitch = { switchPane(1 - activeIndex, animate = true) },
-        )
+        browser = PickerBrowser(this, b.toolbar, b.browser, savedInstanceState,
+            tag = { "share_pane_$it" }, onPaneChanged = { observeCurrentDir() })
 
         b.btnCancel.setOnClickListener { finish() }
         b.btnConfirm.setOnClickListener { onConfirm() }
@@ -126,52 +102,18 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         SecurityUi.gate(this) { ensurePermissionThenInit() }
     }
 
-    private fun paneAt(index: Int): PaneFragment? =
-        supportFragmentManager.findFragmentByTag("share_pane_$index") as? PaneFragment
-
-    private fun pane(): PaneFragment? = paneAt(activeIndex)
+    private fun pane(): PaneFragment? = browser.pane
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putInt(STATE_PANE, activeIndex)
+        if (::browser.isInitialized) browser.saveState(outState)
         super.onSaveInstanceState(outState)
     }
 
-    private fun initPaneIfNeeded() {
-        if (paneAt(0) == null) {
-            supportFragmentManager.beginTransaction()
-                .add(R.id.pane_a, PaneFragment.newInstance(0), "share_pane_0")
-                .add(R.id.pane_b, PaneFragment.newInstance(1), "share_pane_1")
-                .commitNow() // Commit synchronously — the very next lines read viewModel and observe currentDir.
-        }
-        switchPane(activeIndex)
-    }
-
-    private fun isLandscape() = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-
-    private fun switchPane(index: Int, animate: Boolean = false) {
-        activeIndex = index
-        val land = isLandscape()
-        b.browser.paneA.visibility = View.VISIBLE
-        b.browser.paneB.visibility = View.VISIBLE
-        b.browser.stripLeft.root.visibility = View.GONE
-        b.browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
-        b.browser.stripRight.root.visibility = if (land) View.GONE else View.VISIBLE
-        for (strip in listOf(b.browser.stripLeft, b.browser.stripMid, b.browser.stripRight)) {
-            strip.asGrid.setColumns(if (land) 2 else 1)
-            strip.asGrid.dividers = com.twig.app.Prefs.rowDivider(this)
-            strip.root.layoutParams = strip.root.layoutParams.apply {
-                width = ((if (land) 104 else 52) * resources.displayMetrics.density).toInt()
-            }
-        }
-        for (i in 0..1) paneAt(i)?.setActive(i == activeIndex)
-        b.browser.root.showPane(activeIndex, animate && !land)
-        PaneSwitch.update(b.toolbar.menu.findItem(MENU_SWITCH), b.toolbar, activeIndex)
-        observeCurrentDir()
-    }
+    private fun initPaneIfNeeded() = browser.initPanes()
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        switchPane(activeIndex)
+        browser.switchPane(browser.activeIndex)
         fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
     }
 
@@ -199,7 +141,7 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
 
     // ---- PaneFragment.Host: one visible destination pane at a time ----
 
-    override fun siblingOf(self: PaneFragment): PaneFragment? = paneAt(1 - self.paneIndex)
+    override fun siblingOf(self: PaneFragment): PaneFragment? = browser.paneAt(1 - self.paneIndex)
 
     override fun onAddServer(type: String) {
         if (type == "saf") {
@@ -216,15 +158,11 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
         Toast.makeText(this, getString(R.string.share_add_server_hint), Toast.LENGTH_SHORT).show()
     }
 
-    override fun onPaneTouched(self: PaneFragment) {
-        if (isLandscape() && self.paneIndex != activeIndex) switchPane(self.paneIndex)
-    }
-    override fun onPaneSwipe(velocityX: Float) {
-        if (!isLandscape()) switchPane(if (velocityX < 0) 1 else 0, animate = true)
-    }
-    override fun refreshTrees() { for (i in 0..1) paneAt(i)?.viewModel?.refreshTree() }
-    override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == activeIndex
-    override fun focusPane(pane: PaneFragment) = switchPane(pane.paneIndex)
+    override fun onPaneTouched(self: PaneFragment) = browser.onPaneTouched(self)
+    override fun onPaneSwipe(velocityX: Float) = browser.onPaneSwipe(velocityX)
+    override fun refreshTrees() = browser.refreshTrees()
+    override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == browser.activeIndex
+    override fun focusPane(pane: PaneFragment) = browser.switchPane(pane.paneIndex)
 
     // ---- Confirm: copy to the currently selected directory ----
 
@@ -374,9 +312,6 @@ class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     companion object {
-        private const val MENU_SWITCH = 2
-        private const val STATE_PANE = "share_active_pane"
-
         /** Attachments take precedence over captions. Never reinterpret a rejected URI as text. */
         internal fun sharedText(intent: Intent): String? {
             if (intent.action != Intent.ACTION_SEND || intent.hasExtra(Intent.EXTRA_STREAM)) return null

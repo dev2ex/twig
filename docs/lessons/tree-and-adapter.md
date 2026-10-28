@@ -4,6 +4,16 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **File picking lacked the destination picker's pane switch and navigation actions
+  (2026-10-28)**: `PickerActivity` still used a single-pane layout and configured its
+  strip separately. Both pickers now use `view_panes.xml` and `PickerBrowser` for pane
+  state, switching, strip visibility and action routing. Keep confirmation tied to the
+  active pane, replacing directory/shortcut observers on each switch; inactive panes
+  must not change the current confirmation state. Locked-source selections apply the
+  same restriction to both panes with distinct pane indices. `PickerBrowserTest`
+  covers action parity, independent roots, switching/recreation, measured rotations,
+  directory confirmation, source restrictions and shortcut observers.
+
 - **Moving/deleting the selected directory left a hidden transfer destination (2026-10-26)**:
   refreshed rows dropped the source directory but currentKey/currentDir kept its old
   path, so the other pane could still copy or move into it. Before replacing a

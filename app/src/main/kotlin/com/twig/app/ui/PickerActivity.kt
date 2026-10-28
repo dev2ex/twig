@@ -43,6 +43,9 @@ import com.twig.core.XFile
 open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
 
     protected lateinit var b: ActivityPickerBinding
+    private lateinit var browser: PickerBrowser
+    private lateinit var fullscreenLayout: StatusBarFullscreen
+    private var directoryObserver: kotlinx.coroutines.Job? = null
     private var allowMultiple = false
     private var pickDir = false
     internal var sharePickerId: String = java.util.UUID.randomUUID().toString()
@@ -84,6 +87,9 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
 
         b = ActivityPickerBinding.inflate(layoutInflater)
         setContentView(b.root)
+        fullscreenLayout = StatusBarFullscreen(this, b.root)
+        fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+        ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
         b.toolbar.title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.picker_title)
         b.toolbar.setNavigationOnClickListener { cancel() }
         b.tvSummary.text = getString(
@@ -96,18 +102,19 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
 
         TwigApp.registerBaseFs(this)
 
-        // File-picking scenarios don't need modification actions, only navigation
-        b.strip.sizeIconsLikeRows(this)
-        b.strip.asSort.visibility = View.GONE
-        b.strip.asCopy.visibility = View.GONE
-        b.strip.asMove.visibility = View.GONE
-        b.strip.asRename.visibility = View.GONE
-        b.strip.asDelete.visibility = View.GONE
-        b.strip.asCompare.visibility = View.GONE
-        b.strip.asMap.visibility = View.GONE
-        b.strip.asNewFolder.visibility = View.GONE
-        b.strip.asUp.setOnClickListener { pane()?.actionUp() }
-        b.strip.asRefresh.setOnClickListener { pane()?.actionRefresh() }
+        browser = PickerBrowser(this, b.toolbar, b.browser, savedInstanceState,
+            tag = { if (it == 0) PANE_TAG else "${PANE_TAG}_$it" },
+            createPane = { index ->
+                val lock = intent.getStringExtra(EXTRA_START_SCHEME)
+                if (lock == null) PaneFragment.newInstance(index)
+                else PaneFragment.locked(lock, intent.getStringExtra(EXTRA_START_PATH).orEmpty(),
+                    intent.getStringExtra(EXTRA_START_LABEL), index)
+            },
+            onPaneChanged = {
+                directoryObserver?.cancel()
+                if (pickDir) directoryObserver = pane()?.let { enableOnWritableDir(it, b.btnConfirm) }
+                onPaneReady()
+            })
 
         b.btnCancel.setOnClickListener { cancel() }
         // Single-select returns on file tap; "Confirm" only matters for multi-select and directory-pick
@@ -120,10 +127,13 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString("sharePickerId", sharePickerId)
+        browser.saveState(outState)
     }
 
     override fun onResume() {
         super.onResume()
+        if (::b.isInitialized) ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
+        if (::fullscreenLayout.isInitialized) fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
         ShareTransfers.attach(this)
     }
 
@@ -132,31 +142,24 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         super.onDestroy()
     }
 
-    protected fun pane(): PaneFragment? =
-        supportFragmentManager.findFragmentByTag(PANE_TAG) as? PaneFragment
+    protected fun pane(): PaneFragment? = browser.pane
 
-    private fun initPaneIfNeeded() {
-        if (supportFragmentManager.findFragmentByTag(PANE_TAG) != null) {
-            onPaneReady()
-            return
-        }
-        val lock = intent.getStringExtra(EXTRA_START_SCHEME)
-        // When a source is specified, use a locked panel: the tree only contains that server,
-        // so other places aren't even visible or selectable
-        val fragment = if (lock != null) {
-            PaneFragment.locked(
-                lock,
-                intent.getStringExtra(EXTRA_START_PATH).orEmpty(),
-                intent.getStringExtra(EXTRA_START_LABEL),
-            )
-        } else {
-            PaneFragment.newInstance(0)
-        }
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.pane, fragment, PANE_TAG)
-            .commitNow() // synchronous commit; we need the viewModel immediately below
-        if (pickDir) pane()?.let { enableOnWritableDir(it, b.btnConfirm) }
-        onPaneReady()
+    private fun initPaneIfNeeded() = browser.initPanes()
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        browser.switchPane(browser.activeIndex)
+        fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::fullscreenLayout.isInitialized) fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::b.isInitialized) b.browser.root.finishTransition()
     }
 
     protected open fun onPaneReady() {}
@@ -256,9 +259,9 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         if (pane()?.handleBack() != true) cancel()
     }
 
-    // ---- PaneFragment.Host: single pane; the other callbacks are meaningless ----
+    // ---- PaneFragment.Host: actions follow the active pane ----
 
-    override fun siblingOf(self: PaneFragment): PaneFragment? = null
+    override fun siblingOf(self: PaneFragment): PaneFragment? = browser.paneAt(1 - self.paneIndex)
 
     override fun onAddServer(type: String) {
         if (type == "saf") {
@@ -275,11 +278,11 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         Toast.makeText(this, getString(R.string.share_add_server_hint), Toast.LENGTH_SHORT).show()
     }
 
-    override fun onPaneTouched(self: PaneFragment) {}
-    override fun onPaneSwipe(velocityX: Float) {}
-    override fun refreshTrees() { pane()?.viewModel?.refreshTree() }
-    override fun isPaneActive(self: PaneFragment): Boolean = true
-    override fun focusPane(pane: PaneFragment) {}
+    override fun onPaneTouched(self: PaneFragment) = browser.onPaneTouched(self)
+    override fun onPaneSwipe(velocityX: Float) = browser.onPaneSwipe(velocityX)
+    override fun refreshTrees() = browser.refreshTrees()
+    override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == browser.activeIndex
+    override fun focusPane(pane: PaneFragment) = browser.switchPane(pane.paneIndex)
 
     // ---- Storage permissions (same decision logic as MainActivity / ShareTargetActivity) ----
 

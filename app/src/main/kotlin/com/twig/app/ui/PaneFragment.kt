@@ -2809,9 +2809,9 @@ class PaneFragment : Fragment() {
          * Locked to a single source (for picker use): the tree has only [scheme] as its root,
          * and opens already expanded to [startPath].
          */
-        fun locked(scheme: String, startPath: String, label: String?) = PaneFragment().apply {
+        fun locked(scheme: String, startPath: String, label: String?, index: Int = 0) = PaneFragment().apply {
             arguments = Bundle().apply {
-                putInt(ARG_INDEX, 0)
+                putInt(ARG_INDEX, index)
                 putString(ARG_LOCK_SCHEME, scheme)
                 putString(ARG_LOCK_PATH, startPath)
                 putString(ARG_LOCK_LABEL, label)

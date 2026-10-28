@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 /** ACTION_CREATE_SHORTCUT returns an action to the launcher, including gesture editors. */
 open class CreateShortcutActivity : PickerActivity() {
     protected open val command = false
+    private var selectionObserver: kotlinx.coroutines.Job? = null
 
     override val shortcutResult: ((ShortcutInfoCompat) -> Unit) = { shortcut ->
         // Legacy launchers execute the returned Intent themselves. Use an exported,
@@ -52,7 +53,9 @@ open class CreateShortcutActivity : PickerActivity() {
     }
 
     override fun onPaneReady() {
-        lifecycleScope.launch {
+        selectionObserver?.cancel()
+        updateSelection()
+        selectionObserver = lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 pane()?.viewModel?.state?.collect { updateSelection() }
             }

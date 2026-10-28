@@ -15,25 +15,12 @@
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
 
-    <LinearLayout
+    <include
+        android:id="@+id/browser"
+        layout="@layout/view_panes"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="horizontal"
-        android:baselineAligned="false">
-
-        <androidx.fragment.app.FragmentContainerView
-            android:id="@+id/pane"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1" />
-
-        <include
-            android:id="@+id/strip"
-            layout="@layout/action_strip"
-            android:layout_width="52dp"
-            android:layout_height="match_parent" />
-    </LinearLayout>
+        android:layout_weight="1" />
 
     <!-- Bottom bar: hint + cancel/confirm (in single-select mode tapping a file returns
              immediately; "Confirm" is only for multi-select) -->
