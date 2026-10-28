@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Scegli un punto tra introduzione e titoli di coda.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Mostra/nascondi elementi radice</string>
+    <string name="action_root_items">Impostazioni elementi radice</string>
     <string name="private_space">Spazio privato</string>
     <string name="private_space_create_failed">Impossibile creare lo spazio privato</string>
 

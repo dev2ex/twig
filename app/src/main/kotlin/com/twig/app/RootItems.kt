@@ -18,4 +18,11 @@ object RootItems {
         Item("websites", R.string.group_websites, R.drawable.ic_website),
         Item("apps", R.string.apps_root, R.drawable.ic_file_apk),
     )
+
+    private val byId = all.associateBy { it.id }
+
+    /** Ignore stale/duplicate ids and append roots introduced after the saved order. */
+    fun ordered(ids: List<String>): List<Item> {
+        return (ids + all.map { it.id }).distinct().mapNotNull { byId[it] }
+    }
 }

@@ -1158,7 +1158,7 @@
     <string name="player_skip_invalid">Choose a point between the opening and ending.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Show/hide root items</string>
+    <string name="action_root_items">Root item settings</string>
     <string name="private_space">Private space</string>
     <string name="private_space_create_failed">Could not create Private space</string>
 
@@ -1200,4 +1200,6 @@
     <string name="transfer_retry_detail">Retry only unfinished items. Completed files are skipped; partial files resume when supported.</string>
     <string name="transfer_failed_target">Target: %1$s</string>
     <string name="transfer_skip_failed">Skip this item</string>
+    <string name="root_drag_to_reorder">Drag to reorder</string>
+    <string name="root_reorder_hint">Drag the handles to reorder both panes.</string>
 </resources>

@@ -1177,37 +1177,9 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     private fun showRootItemsDialog() {
-        val items = RootItems.all
-        val checked = Array(2) { pane -> items.map { Prefs.rootItemVisible(this, pane, it.id) }.toBooleanArray() }
-        val content = com.twig.app.databinding.DialogRootItemsBinding.inflate(layoutInflater)
-        val metrics = resources.displayMetrics
-        val availableHeight = (resources.configuration.screenHeightDp - 200).coerceAtLeast(96) * metrics.density
-        content.itemsScroll.layoutParams.height = minOf(metrics.heightPixels * 0.55f, availableHeight).toInt()
-        items.forEachIndexed { index, item ->
-            val row = com.twig.app.databinding.ItemRootVisibilityBinding.inflate(layoutInflater, content.items, false)
-            row.root.tag = item.id
-            row.icon.setImageResource(item.icon)
-            row.label.setText(item.label)
-            listOf(row.left, row.right).forEachIndexed { pane, checkbox ->
-                checkbox.isChecked = checked[pane][index]
-                checkbox.contentDescription = getString(item.label) + " · " +
-                    getString(if (pane == 0) R.string.compare_side_left else R.string.compare_side_right)
-                checkbox.setOnCheckedChangeListener { _, on -> checked[pane][index] = on }
-                (if (pane == 0) row.leftCell else row.rightCell).setOnClickListener { checkbox.performClick() }
-            }
-            content.items.addView(row.root)
+        com.twig.app.ui.RootItemsDialog.show(this) {
+            for (pane in 0..1) paneAt(pane)?.viewModel?.refreshRootItems()
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_root_items)
-            .setView(content.root)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                for (pane in 0..1) {
-                    items.forEachIndexed { index, item -> Prefs.setRootItemVisible(this, pane, item.id, checked[pane][index]) }
-                    paneAt(pane)?.viewModel?.refreshRootItems()
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
     private fun pinMusicShortcut() {

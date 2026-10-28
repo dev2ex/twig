@@ -1118,7 +1118,7 @@
     <string name="player_skip_invalid">请选择片头与片尾之间的时间点。</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">显示/隐藏根节点</string>
+    <string name="action_root_items">根节点设置</string>
     <string name="private_space">私有空间</string>
     <string name="private_space_create_failed">无法创建私有空间</string>
 
@@ -1154,4 +1154,6 @@
     <string name="transfer_retry_detail">仅重试未完成项。已完成文件会跳过，支持续传的文件从断点继续。</string>
     <string name="transfer_failed_target">目标地址：%1$s</string>
     <string name="transfer_skip_failed">跳过此项</string>
+    <string name="root_drag_to_reorder">拖动排序</string>
+    <string name="root_reorder_hint">拖动把手调整两栏的根项目顺序。</string>
 </resources>

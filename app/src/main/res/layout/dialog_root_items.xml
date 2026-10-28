@@ -6,6 +6,9 @@
     android:paddingStart="16dp"
     android:paddingEnd="16dp">
 
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingTop="8dp" android:text="@string/root_reorder_hint" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="40dp"
@@ -17,10 +20,6 @@
             android:gravity="center" android:text="@string/compare_side_right" />
     </LinearLayout>
 
-    <ScrollView android:id="@+id/items_scroll"
-        android:layout_width="match_parent" android:layout_height="wrap_content">
-        <LinearLayout android:id="@+id/items"
-            android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/items"
+        android:layout_width="match_parent" android:layout_height="wrap_content" />
 </LinearLayout>

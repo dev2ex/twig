@@ -1086,7 +1086,7 @@
     <string name="player_skip_invalid">Chọn một điểm giữa phần mở đầu và kết thúc.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Hiện/ẩn mục gốc</string>
+    <string name="action_root_items">Cài đặt mục gốc</string>
     <string name="private_space">Không gian riêng tư</string>
     <string name="private_space_create_failed">Không thể tạo không gian riêng tư</string>
 

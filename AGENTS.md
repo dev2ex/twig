@@ -170,7 +170,8 @@ each write `= null`.
   Internal `scheme:path` keys remain separate from display text.
 - Private space: `PrivateSpace` uses `applicationInfo.dataDir/private_space` through
   the ordinary local filesystem. The main menu's root-item visibility choices are
-  stored per pane in one dialog with left/right columns; Private space defaults
+  stored per pane in one dialog with left/right columns. Dragging its handles saves a
+  shared order for configurable roots; fixed entries retain their slots. Private space defaults
   visible; an explicit hidden choice is retained. Its files are excluded from all
   system backup/transfer channels, and
   configuration-only `.twigbak` never includes them. Known ancestors of Twig's data

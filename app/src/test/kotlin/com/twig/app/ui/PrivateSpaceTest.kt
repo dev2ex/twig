@@ -150,8 +150,9 @@ class PrivateSpaceTest {
             MainActivity::class.java.getDeclaredMethod("showRootItemsDialog").apply { isAccessible = true }
                 .invoke(controller.get())
             val dialog = ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
-            val row = dialog.findViewById<android.view.ViewGroup>(com.twig.app.R.id.items)!!
-                .findViewWithTag<android.view.View>("private")
+            val list = dialog.findViewById<androidx.recyclerview.widget.RecyclerView>(com.twig.app.R.id.items)!!
+            layoutRootList(list)
+            val row = list.findViewWithTag<android.view.View>("private")
             assertNotNull(row.findViewById<android.widget.ImageView>(com.twig.app.R.id.icon).drawable)
             val left = row.findViewById<android.widget.CheckBox>(com.twig.app.R.id.left)
             val right = row.findViewById<android.widget.CheckBox>(com.twig.app.R.id.right)
@@ -166,6 +167,93 @@ class PrivateSpaceTest {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             assertFalse(Prefs.rootItemVisible(app, 0, "private"))
             assertTrue(Prefs.rootItemVisible(app, 1, "private"))
+        } finally {
+            controller.stop().destroy()
+        }
+    }
+
+    private fun layoutRootList(list: androidx.recyclerview.widget.RecyclerView) {
+        val exact = android.view.View.MeasureSpec.EXACTLY
+        list.measure(android.view.View.MeasureSpec.makeMeasureSpec(900, exact),
+            android.view.View.MeasureSpec.makeMeasureSpec(1400, exact))
+        list.layout(0, 0, 900, 1400)
+    }
+
+    @Test fun `saved order discards stale duplicates and includes new roots once`() {
+        app.getSharedPreferences("twig_prefs", 0).edit()
+            .putString("root_item_order", "apps,removed,apps,private").commit()
+        val ids = Prefs.rootItemOrder(app).map { it.id }
+        assertEquals(listOf("apps", "private"), ids.take(2))
+        assertEquals(RootItems.all.map { it.id }.toSet(), ids.toSet())
+        assertEquals(RootItems.all.size, ids.size)
+    }
+
+    @Test fun `reordering keeps expanded subtrees selection and fixed roots in place`() = runTest(dispatcher) {
+        val file = File(PrivateSpace.directory(app).apply { mkdirs() }, "reorder.txt").apply { writeText("test") }
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        vm.bootstrap()
+        val privateRow = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .first { it.file.path == file.parent }
+        vm.toggle(privateRow)
+        advanceUntilIdle()
+        val selected = vm.currentDir
+        val before = vm.state.value.rows.filter { it.depth == 0 }.map { it.key }
+        Prefs.setRootItemOrder(app, listOf("private", "apps", "fav"))
+        vm.refreshRootItems()
+        val rows = vm.state.value.rows
+        assertEquals(privateRow.key, rows.first().key)
+        assertEquals(file.path, (rows[1] as PaneViewModel.FileNode).file.path)
+        assertEquals(selected, vm.currentDir)
+        assertTrue((rows.first() as PaneViewModel.FileNode).expanded)
+        val after = rows.filter { it.depth == 0 }.map { it.key }
+        val internal = before.first { it.startsWith("f:file:") && it != privateRow.key && it != "f:file:/" }
+        assertEquals(before.indexOf(internal), after.indexOf(internal))
+        assertEquals("g:fav", after[before.indexOf(privateRow.key)])
+    }
+
+    @Test
+    @Config(sdk = [28])
+    fun `dialog drag saves by identity only on confirmation and cancel leaves preferences alone`() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).create().start()
+        try {
+            fun moveAndToggle(dialog: androidx.appcompat.app.AlertDialog) {
+                val list = dialog.findViewById<androidx.recyclerview.widget.RecyclerView>(com.twig.app.R.id.items)!!
+                layoutRootList(list)
+                val source = list.findViewHolderForAdapterPosition(0)!!
+                val target = list.findViewHolderForAdapterPosition(2)!!
+                source.itemView.findViewById<android.widget.CheckBox>(com.twig.app.R.id.left).performClick()
+                val helper = (0 until list.itemDecorationCount).map { list.getItemDecorationAt(it) }
+                    .filterIsInstance<androidx.recyclerview.widget.ItemTouchHelper>().single()
+                val callback = androidx.recyclerview.widget.ItemTouchHelper::class.java.getDeclaredField("mCallback")
+                    .apply { isAccessible = true }.get(helper) as androidx.recyclerview.widget.ItemTouchHelper.Callback
+                assertTrue(callback.onMove(list, source, target))
+                layoutRootList(list)
+                assertEquals("fav", list.findViewHolderForAdapterPosition(2)!!.itemView.tag)
+            }
+            val canceled = RootItemsDialog.show(controller.get()) { fail("Cancel must not save") }
+            moveAndToggle(canceled)
+            canceled.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(RootItems.all, Prefs.rootItemOrder(app))
+            assertTrue(Prefs.rootItemVisible(app, 0, "fav"))
+            var saved = false
+            val confirmed = RootItemsDialog.show(controller.get()) { saved = true }
+            moveAndToggle(confirmed)
+            confirmed.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertTrue(saved)
+            assertEquals(listOf("root", "private", "fav"), Prefs.rootItemOrder(app).take(3).map { it.id })
+            assertFalse(Prefs.rootItemVisible(app, 0, "fav"))
+            assertTrue(Prefs.rootItemVisible(app, 1, "fav"))
+            assertTrue(Prefs.rootItemVisible(app, 0, "private"))
+            val reopened = RootItemsDialog.show(controller.get()) { }
+            val list = reopened.findViewById<androidx.recyclerview.widget.RecyclerView>(com.twig.app.R.id.items)!!
+            layoutRootList(list)
+            val fav = list.findViewHolderForAdapterPosition(2)!!.itemView
+            assertEquals("fav", fav.tag)
+            assertFalse(fav.findViewById<android.widget.CheckBox>(com.twig.app.R.id.left).isChecked)
+            assertTrue(fav.findViewById<android.widget.CheckBox>(com.twig.app.R.id.right).isChecked)
+            reopened.dismiss()
         } finally {
             controller.stop().destroy()
         }

@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Wähle einen Punkt zwischen Vor- und Abspann.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Stammeinträge anzeigen/ausblenden</string>
+    <string name="action_root_items">Einstellungen für Stammeinträge</string>
     <string name="private_space">Privater Bereich</string>
     <string name="private_space_create_failed">Privater Bereich konnte nicht erstellt werden</string>
 

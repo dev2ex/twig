@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">शुरुआत और अंत के बीच का समय चुनें।</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">रूट आइटम दिखाएँ/छिपाएँ</string>
+    <string name="action_root_items">रूट आइटम सेटिंग</string>
     <string name="private_space">निजी स्थान</string>
     <string name="private_space_create_failed">निजी स्थान नहीं बनाया जा सका</string>
 

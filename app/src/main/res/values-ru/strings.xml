@@ -1123,7 +1123,7 @@
     <string name="player_skip_invalid">Выберите точку между вступлением и концовкой.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Показать/скрыть элементы корня</string>
+    <string name="action_root_items">Настройки элементов корня</string>
     <string name="private_space">Личное пространство</string>
     <string name="private_space_create_failed">Не удалось создать Личное пространство</string>
 

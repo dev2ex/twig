@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Choisissez un point entre les génériques de début et de fin.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Afficher/masquer les éléments racine</string>
+    <string name="action_root_items">Paramètres des éléments racine</string>
     <string name="private_space">Espace privé</string>
     <string name="private_space_create_failed">Impossible de créer l’espace privé</string>
 

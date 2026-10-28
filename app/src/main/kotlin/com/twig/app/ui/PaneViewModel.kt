@@ -2954,7 +2954,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val ext = Environment.getExternalStorageDirectory().absolutePath
             val volumes = StorageVolumes.cached(getApplication())
             // Register all shortcut identities before rendering any expanded subtree:
-            // Root now precedes volume shortcuts, whose paths may also appear below it.
+            // Their paths may also appear below another root, regardless of root order.
             storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
             if (rootVisible("root")) storageShortcutKeys.add(fileKey(XFile("file", "/", isDir = true)))
             volumes.forEach { storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true))) }
@@ -2962,38 +2962,36 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (rootVisible("private")) storageShortcutKeys.add(fileKey(privateDir))
             // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
             externalMount?.let { addFile(rows, it, 0, externalLabel, keyPrefix = EXTERNAL_KEY_PREFIX) }
-            addGroup(rows, "fav", str(R.string.group_fav))
-            // Saved comparisons have no dedicated empty state — if none were ever saved, don't show the group at all (saves space).
+            val orderedRoots = Prefs.rootItemOrder(getApplication()).iterator()
+            // Only configurable roots trade places. Fixed entries retain their slots,
+            // and each moved root is rendered together with its expanded subtree.
+            fun addNextRoot() {
+                val item = orderedRoots.next()
+                if (!rootVisible(item.id)) return
+                when (item.id) {
+                    "root" -> addFile(rows, XFile("file", "/", isDir = true), 0,
+                        str(R.string.group_root), capacity("/"))
+                    "private" -> addFile(rows, privateDir, 0, str(R.string.private_space))
+                    "apps" -> addFile(rows, XFile(AppsFileSystem.SCHEME, "/", isDir = true, canWrite = false),
+                        0, str(R.string.apps_root))
+                    else -> addGroup(rows, item.id, str(item.label))
+                }
+            }
+            addNextRoot()
             if (CompareStore.all(getApplication()).isNotEmpty()) {
                 addGroup(rows, "cmp", str(R.string.compare_saved))
             }
             addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
-            if (rootVisible("root")) addFile(rows, XFile("file", "/", isDir = true), 0, str(R.string.group_root), capacity("/"))
-            // Keep built-in locations together, followed by removable volumes. Use the
-            // cached list: rebuild runs on every render, so it must not rescan storage.
+            addNextRoot()
             for (v in volumes) {
                 addFile(rows, XFile("file", v.path, isDir = true), 0, v.label, capacity(v.path))
             }
-            if (rootVisible("private")) addFile(rows, privateDir, 0, str(R.string.private_space))
+            addNextRoot()
             if (trashEnabled && (!trashPresenceLoaded ||
                     children[fileKey(XFile("trash", "/", isDir = true))]?.isNotEmpty() != false || trashNotices.isNotEmpty())) {
                 addFile(rows, XFile("trash", "/", isDir = true, canWrite = false), 0, str(R.string.trash_title))
             }
-            addGroup(rows, "lan", str(R.string.group_lan))
-            addGroup(rows, "ftp", str(R.string.group_ftp))
-            addGroup(rows, "sftp", str(R.string.group_sftp))
-            addGroup(rows, "dav", str(R.string.group_webdav))
-            addGroup(rows, "s3", str(R.string.group_s3))
-            addGroup(rows, "media", str(R.string.group_media))
-            addGroup(rows, "saf", str(R.string.group_saf))
-            addGroup(rows, "websites", str(R.string.group_websites))
-            // Apps management: virtual read-only source, like a storage node it's an in-place expandable tree (installed / system).
-            if (rootVisible("apps")) addFile(
-                rows,
-                XFile(AppsFileSystem.SCHEME, "/", isDir = true, canWrite = false),
-                0,
-                str(R.string.apps_root),
-            )
+            while (orderedRoots.hasNext()) addNextRoot()
         }
         selectionInfo?.let { info ->
             val index = rows.indexOfFirst { it.key == info.anchor }

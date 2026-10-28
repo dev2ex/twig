@@ -53,6 +53,13 @@ object Prefs {
         sp(ctx).edit().putBoolean("root_item_${pane}_$id", visible).apply()
     }
 
+    fun rootItemOrder(ctx: Context): List<RootItems.Item> =
+        RootItems.ordered(sp(ctx).getString("root_item_order", null)?.split(',').orEmpty())
+
+    fun setRootItemOrder(ctx: Context, ids: List<String>) {
+        sp(ctx).edit().putString("root_item_order", RootItems.ordered(ids).joinToString(",") { it.id }).apply()
+    }
+
     /** 0=system region, 1=yy-MM-dd, 2=dd.MM.yy, 3=MM/dd/yy. */
     fun dateFormat(ctx: Context): Int = sp(ctx).getInt("date_format", 0).coerceIn(0, 3)
 

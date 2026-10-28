@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Açılış ile kapanış arasında bir nokta seçin.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Kök öğeleri göster/gizle</string>
+    <string name="action_root_items">Kök öğesi ayarları</string>
     <string name="private_space">Özel alan</string>
     <string name="private_space_create_failed">Özel alan oluşturulamadı</string>
 

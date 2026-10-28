@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Escolha um ponto entre a abertura e os créditos.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Mostrar/ocultar itens da raiz</string>
+    <string name="action_root_items">Configurações dos itens da raiz</string>
     <string name="private_space">Espaço privado</string>
     <string name="private_space_create_failed">Não foi possível criar o espaço privado</string>
 

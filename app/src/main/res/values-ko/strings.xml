@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">오프닝과 엔딩 사이의 지점을 선택하세요.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">루트 항목 표시/숨기기</string>
+    <string name="action_root_items">루트 항목 설정</string>
     <string name="private_space">비공개 공간</string>
     <string name="private_space_create_failed">비공개 공간을 만들 수 없습니다</string>
 

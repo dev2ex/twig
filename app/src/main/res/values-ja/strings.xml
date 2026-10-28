@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">オープニングとエンディングの間の位置を選んでください。</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">ルート項目の表示/非表示</string>
+    <string name="action_root_items">ルート項目の設定</string>
     <string name="private_space">プライベート領域</string>
     <string name="private_space_create_failed">プライベート領域を作成できませんでした</string>
 

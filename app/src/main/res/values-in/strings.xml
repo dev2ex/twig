@@ -1087,7 +1087,7 @@
     <string name="player_skip_invalid">Pilih titik di antara pembuka dan penutup.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Tampilkan/sembunyikan item akar</string>
+    <string name="action_root_items">Pengaturan item akar</string>
     <string name="private_space">Ruang pribadi</string>
     <string name="private_space_create_failed">Tidak dapat membuat ruang pribadi</string>
 
