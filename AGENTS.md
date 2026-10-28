@@ -682,7 +682,8 @@ add its symptom here.
 - **[Trash and deletion](docs/lessons/trash.md)** — sync the recovery record before moving,
   never replace a failed trash move with permanent deletion, preserve offline/corrupt
   entries, and purge symlinks without following them.
-  *Explains*: how to recover interrupted moves and why Robolectric needs real lstat semantics.
+  *Explains*: how to recover interrupted moves, why Robolectric needs real lstat semantics,
+  and Android 11 FUSE rejecting no-replace moves with EINVAL.
 - **[Removable storage](docs/lessons/removable-storage.md)** — `getStorageVolumes()` does
   return invisible volumes, the event channels do not fire for them (the foreground UI
   polls), filter by `isPrimary` rather than `isRemovable`, and `/mnt/media_rw` needs

@@ -24,12 +24,27 @@ public class TrashMoves {
         start.countDown();
         int first=x.get(), second=y.get();
         if((first==0)==(second==0) || Files.exists(a)==Files.exists(b)) throw new AssertionError("race did not preserve losing source");
-        System.out.println("PASS: atomic collision refusal, UTF-8 supplementary filenames, concurrent destination creation (one winner; losing source retained)");
+        System.out.println("PASS: collision refusal, UTF-8 supplementary filenames, concurrent destination creation (one winner; losing source retained)");
       } finally { pool.shutdownNow(); }
       Path folder=Files.createDirectory(dir.resolve("folder")), restored=dir.resolve("restored");
       Files.writeString(folder.resolve("inside"),"keep");
+      Path occupied=Files.createDirectory(dir.resolve("occupied"));
+      if(move(folder,occupied)==0 || !Files.exists(folder.resolve("inside"))) throw new AssertionError("overwrote existing empty directory");
+      Files.delete(occupied);
+      Path impossible=folder.resolve("child");
+      if(move(folder,impossible)==0 || Files.exists(impossible) || !Files.exists(folder.resolve("inside"))) throw new AssertionError("failed directory move left reservation or lost source");
       if(move(folder,restored)!=0 || !Files.readString(restored.resolve("inside")).equals("keep")) throw new AssertionError("directory move failed");
+      if(move(restored,folder)!=0 || !Files.readString(folder.resolve("inside")).equals("keep")) throw new AssertionError("directory restore failed");
+      if(move(folder,restored)!=0) throw new AssertionError("second directory move failed");
       Files.delete(restored.resolve("inside"));Files.delete(restored);
+      Path broken=dir.resolve("broken"), movedLink=dir.resolve("moved-link");
+      Files.createSymbolicLink(broken,Path.of("missing"));
+      if(move(dest,broken)==0 || !Files.isSymbolicLink(broken) || !Files.exists(dest)) throw new AssertionError("overwrote dangling symlink");
+      if(move(broken,movedLink)!=0 || !Files.readSymbolicLink(movedLink).equals(Path.of("missing"))) throw new AssertionError("symlink move failed");
+      Files.delete(movedLink);
+      Path missingTarget=dir.resolve("missing-target");
+      if(move(dir.resolve("absent"),missingTarget)==0 || Files.exists(missingTarget)) throw new AssertionError("missing source left reservation");
+      System.out.println("PASS: directories and restore, empty-directory and symlink conflicts, failed-move cleanup, symlink payload");
     } finally {
       try(var files=Files.list(dir)){ for(Path p:files.toList()) Files.delete(p); }
       Files.delete(dir);
