@@ -378,7 +378,11 @@ class TextViewerActivity : TwigActivity() {
     }
 
     private fun applyLineNumbersVisibility() {
-        b.lineNumbers.visibility = if (Prefs.viewerLineNumbers(this)) View.VISIBLE else View.GONE
+        val showLineNumbers = Prefs.viewerLineNumbers(this)
+        b.lineNumbers.visibility = if (showLineNumbers) View.VISIBLE else View.GONE
+        // The gutter already leaves 8dp after the numbers; avoid stacking the body's inset on it.
+        val startPadding = if (showLineNumbers) 0 else (12 * resources.displayMetrics.density).toInt()
+        b.content.setPaddingRelative(startPadding, b.content.paddingTop, b.content.paddingEnd, b.content.paddingBottom)
         refreshLineNumbers()
         applyWrap() // the gutter taking/releasing width shifts where wrap kicks in
     }
