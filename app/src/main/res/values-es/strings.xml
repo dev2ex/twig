@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">Ordenar sitios web</string>
     <string name="conn_section_login">Inicio de sesión</string>
     <string name="conn_section_options">Opciones</string>
+    <string name="music_import_playlist">Importar desde archivo de lista</string>
+    <string name="music_import_directory">Importar desde carpeta (recursivo)</string>
+    <string name="music_importing">Importando música…</string>
+    <string name="music_import_progress">%1$d pistas · %2$s</string>
+    <string name="music_import_done">Se añadieron %1$d pistas</string>
+    <string name="music_import_failed">No se pudo importar la música: %1$s</string>
+    <string name="music_import_playlist_only">Elige una lista M3U o M3U8</string>
+    <string name="music_import_source_unsupported">Esta fuente no se puede guardar en una lista</string>
 </resources>

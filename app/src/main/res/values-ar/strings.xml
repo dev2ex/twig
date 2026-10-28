@@ -1129,4 +1129,12 @@
     <string name="action_sort_websites">إعادة ترتيب المواقع</string>
     <string name="conn_section_login">تسجيل الدخول</string>
     <string name="conn_section_options">الخيارات</string>
+    <string name="music_import_playlist">استيراد من ملف قائمة تشغيل</string>
+    <string name="music_import_directory">استيراد من مجلد ومجلداته الفرعية</string>
+    <string name="music_importing">جارٍ استيراد الموسيقى…</string>
+    <string name="music_import_progress">%1$d مقاطع · %2$s</string>
+    <string name="music_import_done">تمت إضافة %1$d مقاطع</string>
+    <string name="music_import_failed">تعذر استيراد الموسيقى: %1$s</string>
+    <string name="music_import_playlist_only">اختر قائمة تشغيل M3U أو M3U8</string>
+    <string name="music_import_source_unsupported">لا يمكن حفظ هذا المصدر في قائمة تشغيل</string>
 </resources>

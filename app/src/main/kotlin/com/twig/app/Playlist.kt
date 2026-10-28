@@ -153,7 +153,7 @@ data class Playlist(
     }
 }
 
-/** Playlist persistence (SharedPreferences + JSON, same pattern as [FavoritesStore]). */
+/** Playlist persistence. Serialize read/modify/write operations with background metadata/resume saves. */
 object PlaylistStore {
     private const val FILE = "twig_playlists"
     private const val KEY = "list"
@@ -178,6 +178,7 @@ object PlaylistStore {
      *  reconstructed from [R.string.playlist_favorites] on every read so a locale change
      *  takes effect immediately; the persisted record therefore carries no `name` field
      *  for this id (see [Playlist.toJson]). */
+    @Synchronized
     fun fav(ctx: Context): Playlist {
         val name = ctx.getString(R.string.playlist_favorites)
         val existing = get(ctx, Playlist.FAV)
@@ -185,6 +186,7 @@ object PlaylistStore {
         return existing.copy(name = name)
     }
 
+    @Synchronized
     fun save(ctx: Context, pl: Playlist) {
         if (pl.id == Playlist.TEMP) { temporaryQueue = pl; return }
         if (pl.temporary) return
@@ -194,6 +196,7 @@ object PlaylistStore {
         persist(ctx, list)
     }
 
+    @Synchronized
     fun create(ctx: Context, name: String, tracks: List<PlaylistTrack> = emptyList()): Playlist {
         val pl = Playlist(Playlist.newId(), name, tracks)
         save(ctx, pl)
@@ -206,6 +209,7 @@ object PlaylistStore {
      * user input) and the original `now` entry is removed — the next audio open
      * rebuilds an empty `now`. Returns the resulting list, or null if not found.
      */
+    @Synchronized
     fun rename(ctx: Context, id: String, name: String): Playlist? {
         val pl = get(ctx, id) ?: return null
         if (pl.temporary) return null
@@ -220,12 +224,14 @@ object PlaylistStore {
         }
     }
 
+    @Synchronized
     fun delete(ctx: Context, id: String) {
         if (id == Playlist.FAV || id == Playlist.NOW || id == Playlist.TEMP) return // special lists cannot be deleted
         persist(ctx, all(ctx).filter { it.id != id })
     }
 
     /** Replaces the "Now playing" contents (called when an audio file in a directory is tapped). */
+    @Synchronized
     fun setNow(ctx: Context, name: String, tracks: List<PlaylistTrack>): Playlist {
         val pl = Playlist(if (tracks.any { it.temporary }) Playlist.TEMP else Playlist.NOW, name, tracks)
         if (!pl.temporary) clearTemporary()
@@ -233,14 +239,16 @@ object PlaylistStore {
         return pl
     }
 
+    @Synchronized
     fun addTracks(ctx: Context, id: String, tracks: List<PlaylistTrack>): Playlist? {
         val pl = get(ctx, id) ?: return null
         if (pl.temporary) return null
         val existing = pl.tracks.map { it.id }.toHashSet()
-        val merged = pl.tracks + tracks.filter { !it.temporary && it.id !in existing }
+        val merged = pl.tracks + tracks.filter { !it.temporary && existing.add(it.id) }
         return pl.copy(tracks = merged).also { save(ctx, it) }
     }
 
+    @Synchronized
     fun removeTrack(ctx: Context, id: String, trackId: String): Playlist? {
         val pl = get(ctx, id) ?: return null
         return pl.copy(tracks = pl.tracks.filter { it.id != trackId }).also { save(ctx, it) }
@@ -248,6 +256,7 @@ object PlaylistStore {
 
     /** Heart button: adds/removes a track in "Favorites". Returns whether it's now a
      * favorite (state after the operation). */
+    @Synchronized
     fun toggleFav(ctx: Context, track: PlaylistTrack): Boolean {
         if (track.temporary) return false
         val f = fav(ctx)
@@ -263,6 +272,7 @@ object PlaylistStore {
 
     /** Called by the background MMR after metadata backfill: writes back (matched by
      * track.id; only persists if content changed). */
+    @Synchronized
     fun updateTrackMeta(ctx: Context, id: String, track: PlaylistTrack) {
         val pl = get(ctx, id) ?: return
         var changed = false
@@ -272,6 +282,7 @@ object PlaylistStore {
 
     /** Finds the correct index in pl.tracks (the original unfiltered list) by track
      * id, then persists it for [Playlist.lastIndex]. */
+    @Synchronized
     fun saveResume(ctx: Context, id: String, trackId: String, posMs: Long) {
         val pl = get(ctx, id) ?: return
         val idx = pl.tracks.indexOfFirst { it.id == trackId }.coerceAtLeast(0)

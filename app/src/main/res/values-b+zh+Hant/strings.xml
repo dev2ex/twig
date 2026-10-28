@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">排序網站</string>
     <string name="conn_section_login">登入資訊</string>
     <string name="conn_section_options">更多選項</string>
+    <string name="music_import_playlist">從播放清單檔案匯入</string>
+    <string name="music_import_directory">從目錄匯入（遞迴）</string>
+    <string name="music_importing">正在匯入音樂…</string>
+    <string name="music_import_progress">%1$d 首 · %2$s</string>
+    <string name="music_import_done">已新增 %1$d 首歌曲</string>
+    <string name="music_import_failed">匯入音樂失敗：%1$s</string>
+    <string name="music_import_playlist_only">請選擇 M3U 或 M3U8 播放清單</string>
+    <string name="music_import_source_unsupported">此來源無法儲存至播放清單</string>
 </resources>

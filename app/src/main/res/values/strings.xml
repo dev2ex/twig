@@ -1206,4 +1206,12 @@
     <string name="action_sort_websites">Reorder websites</string>
     <string name="conn_section_login">Sign-in</string>
     <string name="conn_section_options">Options</string>
+    <string name="music_import_playlist">Import from playlist file</string>
+    <string name="music_import_directory">Import from directory (recursive)</string>
+    <string name="music_importing">Importing music…</string>
+    <string name="music_import_progress">%1$d tracks · %2$s</string>
+    <string name="music_import_done">%1$d tracks added</string>
+    <string name="music_import_failed">Could not import music: %1$s</string>
+    <string name="music_import_playlist_only">Choose an M3U or M3U8 playlist</string>
+    <string name="music_import_source_unsupported">This source cannot be saved in a playlist</string>
 </resources>

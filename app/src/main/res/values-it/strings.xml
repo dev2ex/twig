@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">Riordina siti web</string>
     <string name="conn_section_login">Accesso</string>
     <string name="conn_section_options">Opzioni</string>
+    <string name="music_import_playlist">Importa da file playlist</string>
+    <string name="music_import_directory">Importa da cartella (ricorsivo)</string>
+    <string name="music_importing">Importazione musica…</string>
+    <string name="music_import_progress">%1$d brani · %2$s</string>
+    <string name="music_import_done">%1$d brani aggiunti</string>
+    <string name="music_import_failed">Impossibile importare la musica: %1$s</string>
+    <string name="music_import_playlist_only">Scegli una playlist M3U o M3U8</string>
+    <string name="music_import_source_unsupported">Questa sorgente non può essere salvata in una playlist</string>
 </resources>

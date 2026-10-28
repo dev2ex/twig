@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">ウェブサイトを並べ替え</string>
     <string name="conn_section_login">ログイン情報</string>
     <string name="conn_section_options">オプション</string>
+    <string name="music_import_playlist">プレイリストファイルから取り込み</string>
+    <string name="music_import_directory">フォルダーから取り込み（再帰）</string>
+    <string name="music_importing">音楽を取り込み中…</string>
+    <string name="music_import_progress">%1$d 曲 · %2$s</string>
+    <string name="music_import_done">%1$d 曲を追加しました</string>
+    <string name="music_import_failed">音楽を取り込めませんでした：%1$s</string>
+    <string name="music_import_playlist_only">M3U または M3U8 プレイリストを選択してください</string>
+    <string name="music_import_source_unsupported">このソースはプレイリストに保存できません</string>
 </resources>

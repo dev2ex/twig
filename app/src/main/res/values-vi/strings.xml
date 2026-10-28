@@ -1124,4 +1124,12 @@
     <string name="action_sort_websites">Sắp xếp trang web</string>
     <string name="conn_section_login">Đăng nhập</string>
     <string name="conn_section_options">Tùy chọn</string>
+    <string name="music_import_playlist">Nhập từ tệp danh sách phát</string>
+    <string name="music_import_directory">Nhập từ thư mục (đệ quy)</string>
+    <string name="music_importing">Đang nhập nhạc…</string>
+    <string name="music_import_progress">%1$d bài · %2$s</string>
+    <string name="music_import_done">Đã thêm %1$d bài</string>
+    <string name="music_import_failed">Không thể nhập nhạc: %1$s</string>
+    <string name="music_import_playlist_only">Chọn danh sách phát M3U hoặc M3U8</string>
+    <string name="music_import_source_unsupported">Không thể lưu nguồn này vào danh sách phát</string>
 </resources>

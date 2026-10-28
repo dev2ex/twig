@@ -1161,4 +1161,12 @@
     <string name="action_sort_websites">Упорядочить сайты</string>
     <string name="conn_section_login">Вход</string>
     <string name="conn_section_options">Параметры</string>
+    <string name="music_import_playlist">Импорт из файла плейлиста</string>
+    <string name="music_import_directory">Импорт из папки (рекурсивно)</string>
+    <string name="music_importing">Импорт музыки…</string>
+    <string name="music_import_progress">%1$d треков · %2$s</string>
+    <string name="music_import_done">Добавлено треков: %1$d</string>
+    <string name="music_import_failed">Не удалось импортировать музыку: %1$s</string>
+    <string name="music_import_playlist_only">Выберите плейлист M3U или M3U8</string>
+    <string name="music_import_source_unsupported">Этот источник нельзя сохранить в плейлисте</string>
 </resources>

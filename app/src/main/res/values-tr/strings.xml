@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">Web sitelerini sırala</string>
     <string name="conn_section_login">Oturum açma</string>
     <string name="conn_section_options">Seçenekler</string>
+    <string name="music_import_playlist">Çalma listesi dosyasından aktar</string>
+    <string name="music_import_directory">Klasörden aktar (alt klasörlerle)</string>
+    <string name="music_importing">Müzik aktarılıyor…</string>
+    <string name="music_import_progress">%1$d parça · %2$s</string>
+    <string name="music_import_done">%1$d parça eklendi</string>
+    <string name="music_import_failed">Müzik aktarılamadı: %1$s</string>
+    <string name="music_import_playlist_only">M3U veya M3U8 çalma listesi seçin</string>
+    <string name="music_import_source_unsupported">Bu kaynak çalma listesine kaydedilemez</string>
 </resources>

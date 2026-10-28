@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">वेबसाइटों का क्रम बदलें</string>
     <string name="conn_section_login">साइन इन</string>
     <string name="conn_section_options">विकल्प</string>
+    <string name="music_import_playlist">प्लेलिस्ट फ़ाइल से आयात करें</string>
+    <string name="music_import_directory">फ़ोल्डर से आयात करें (पुनरावर्ती)</string>
+    <string name="music_importing">संगीत आयात हो रहा है…</string>
+    <string name="music_import_progress">%1$d ट्रैक · %2$s</string>
+    <string name="music_import_done">%1$d ट्रैक जोड़े गए</string>
+    <string name="music_import_failed">संगीत आयात नहीं हो सका: %1$s</string>
+    <string name="music_import_playlist_only">M3U या M3U8 प्लेलिस्ट चुनें</string>
+    <string name="music_import_source_unsupported">इस स्रोत को प्लेलिस्ट में सहेजा नहीं जा सकता</string>
 </resources>

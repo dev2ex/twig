@@ -10,6 +10,8 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.ViewModelProvider
 import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
@@ -50,6 +52,14 @@ class PlaylistActivity : TwigActivity() {
     private lateinit var searchItem: MenuItem
     private var manualSortItem: MenuItem? = null
     private val attemptedTrackNumbers = HashSet<String>()
+    private val importer by lazy { ViewModelProvider(this)[PlaylistImportModel::class.java] }
+    private var importProgress: AlertDialog? = null
+    private val playlistPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) importPicked(result.data, directory = false)
+    }
+    private val directoryPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) importPicked(result.data, directory = true)
+    }
 
     /** When the list page is open, the queue auto-advances: highlight / blur / scroll position all
      *  follow along (previously only refreshed once in onResume, so if you stayed on the page and
@@ -97,6 +107,16 @@ class PlaylistActivity : TwigActivity() {
             setOnMenuItemClickListener { toggleSearch(); true }
         }
         b.toolbar.menu.add(R.string.sort_by).setOnMenuItemClickListener { showSortDialog(); true }
+        if (playlistId != Playlist.TEMP) {
+            b.toolbar.menu.add(R.string.music_import_playlist).setOnMenuItemClickListener {
+                playlistPicker.launch(PickerActivity.pathIntentAny(this, getString(R.string.music_import_playlist)))
+                true
+            }
+            b.toolbar.menu.add(R.string.music_import_directory).setOnMenuItemClickListener {
+                directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory)))
+                true
+            }
+        }
         manualSortItem = b.toolbar.menu.add(R.string.music_manual_sort).apply {
             isCheckable = true
             setOnMenuItemClickListener {
@@ -126,9 +146,44 @@ class PlaylistActivity : TwigActivity() {
         b.list.itemAnimator = null
         applyTint() // cover not out yet: derive a palette from fallbackBg first, so the pure-white placeholder in XML doesn't show through
         reload()
+        importer.state.observe(this) { state ->
+            if (state.busy) {
+                if (importProgress == null) {
+                    importProgress = AlertDialog.Builder(this)
+                        .setTitle(R.string.music_importing)
+                        .setMessage("")
+                        .setNegativeButton(R.string.dialog_cancel) { _, _ -> importer.cancel() }
+                        .create().apply {
+                            setCanceledOnTouchOutside(false)
+                            setOnCancelListener { importer.cancel() }
+                            show()
+                        }
+                }
+                importProgress?.setMessage(getString(R.string.music_import_progress, state.count, state.path))
+            } else {
+                importProgress?.dismiss()
+                importProgress = null
+                if (state.added != null || state.error != null) {
+                    if (state.added != null) { reload(); plDrawer.reload() }
+                    val message = state.added?.let { getString(R.string.music_import_done, it) }
+                        ?: getString(R.string.music_import_failed, state.error.orEmpty())
+                    android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+                    importer.consumed()
+                }
+            }
+        }
+    }
+
+    private fun importPicked(data: Intent?, directory: Boolean) {
+        val scheme = data?.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME) ?: return
+        val path = data.getStringExtra(PickerActivity.EXTRA_PICKED_PATH) ?: return
+        val name = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME)
+        importer.start(playlistId, XFile(scheme, path, isDir = directory, displayName = name), directory)
     }
 
     override fun onDestroy() {
+        importProgress?.dismiss()
+        importProgress = null
         super.onDestroy()
         MusicUi.unregister(finisher)
     }

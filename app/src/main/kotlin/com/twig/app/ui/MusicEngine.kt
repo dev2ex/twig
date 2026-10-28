@@ -357,6 +357,36 @@ object MusicEngine {
         listeners.forEach { it.onQueueChanged() }
     }
 
+    /** Append imported tracks without reopening the playing source or changing its position. */
+    fun appendToQueue(ctx: Context, id: String) {
+        if (queueId != id && !loadingQueue) return
+        val generation = loadGeneration
+        val appCtx = ctx.applicationContext
+        val existing = tracks.map { it.id }.toHashSet()
+        io.execute {
+            val playlist = PlaylistStore.get(appCtx, id) ?: return@execute
+            if (playlist.temporary) return@execute
+            val added = playlist.tracks.filter { it.id !in existing }.mapNotNull { t ->
+                resolve(appCtx, t)?.let { t to it }
+            }
+            main.post {
+                if (generation != loadGeneration || queueId != id) return@post
+                val p = player ?: return@post
+                val latest = PlaylistStore.get(appCtx, id) ?: return@post
+                val wanted = latest.tracks.map { it.id }.toHashSet()
+                val queued = tracks.map { it.id }.toHashSet()
+                val fresh = added.filter { it.first.id in wanted && queued.add(it.first.id) }
+                if (fresh.isEmpty()) return@post
+                tracks = tracks + fresh.map { it.first }
+                files = files + fresh.map { it.second }
+                p.addMediaSources(fresh.map { MediaSources.lazy(it.second) })
+                errorSkips = 0
+                reorderQueue(latest)
+                listeners.forEach { it.onQueueChanged() }
+            }
+        }
+    }
+
     /** Match the stored list order while preserving the playing item and its position. */
     fun reorderQueue(playlist: Playlist) {
         if (queueId != playlist.id) return

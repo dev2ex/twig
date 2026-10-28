@@ -481,7 +481,8 @@ all work the same way.
   media server. Tap a timed lyric to seek to that line; the waveform also acts as
   a seek bar.
 - **Playlist management** with favourites, name/metadata search, sorting, manual
-  drag-to-reorder, shuffle and repeat. Export saved playlists as `.m3u8` files.
+  drag-to-reorder, shuffle and repeat. Append tracks from M3U/M3U8 files or recursively
+  from a directory, with duplicate tracks skipped. Export saved playlists as `.m3u8` files.
 - **Background playback** with notification, lock-screen and headset/Bluetooth
   controls. The notification includes Like and Exit, and a native playback timer where
   the system displays it. The last queue can be restored when reopening the player.

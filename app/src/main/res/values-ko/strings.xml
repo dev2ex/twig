@@ -1125,4 +1125,12 @@
     <string name="action_sort_websites">웹사이트 순서 변경</string>
     <string name="conn_section_login">로그인 정보</string>
     <string name="conn_section_options">옵션</string>
+    <string name="music_import_playlist">재생목록 파일에서 가져오기</string>
+    <string name="music_import_directory">폴더에서 가져오기 (하위 폴더 포함)</string>
+    <string name="music_importing">음악을 가져오는 중…</string>
+    <string name="music_import_progress">%1$d곡 · %2$s</string>
+    <string name="music_import_done">%1$d곡 추가됨</string>
+    <string name="music_import_failed">음악을 가져올 수 없습니다: %1$s</string>
+    <string name="music_import_playlist_only">M3U 또는 M3U8 재생목록을 선택하세요</string>
+    <string name="music_import_source_unsupported">이 소스는 재생목록에 저장할 수 없습니다</string>
 </resources>
