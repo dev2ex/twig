@@ -246,6 +246,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         wireStrip(b.browser.stripRight)
         syncShareIcon()
         installClipboardBar()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WebShare.running.collect { syncShareIcon() }
+            }
+        }
         applyLayoutMode()
         applyFullscreen()
 
@@ -391,7 +396,6 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) applyStripState(s, land)
         // Sharing may have been turned off via the notification bar's "stop" button (the UI wasn't even present); sync once on returning to foreground
         syncShareIcon()
-        WebShare.onStateChanged = { runOnUiThread { syncShareIcon() } }
         // SD cards / USB drives are usually inserted/removed while the app isn't in the foreground; rescan on return — only refresh the tree if something changed
         rescanVolumes()
         pollVolumes()
@@ -400,8 +404,6 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     override fun onPause() {
         b.browser.root.finishTransition()
         super.onPause()
-        // Drop the callback: it captures this Activity, leaving it in place is a reference to an already-destroyed UI
-        WebShare.onStateChanged = null
         runCatching { unregisterReceiver(volumeReceiver) }
         runCatching { unregisterReceiver(transferReceiver) }
     }
@@ -491,7 +493,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         s.asHistory.setOnLongClickListener { activePane()?.actionHistory(continueWatching = true); true }
         s.asShare.setOnLongClickListener {
-            ShareDialogs.startBackground(this, activePane()?.viewModel?.currentDir); true
+            ShareDialogs.toggleBackground(this, activePane()?.viewModel?.currentDir); true
         }
         s.asTerm.setOnLongClickListener { activePane()?.actionTerminal(); true }
         s.asMusic.setOnLongClickListener { openMusicPlaying(); true }

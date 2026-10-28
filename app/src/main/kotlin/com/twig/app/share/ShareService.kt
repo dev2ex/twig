@@ -13,6 +13,8 @@ import android.os.IBinder
 import android.os.PowerManager
 import com.twig.app.MainActivity
 import com.twig.app.R
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * In-process singleton for the share session: the HTTP server, the discovery
@@ -47,8 +49,8 @@ object WebShare {
 
     val isRunning: Boolean get() = session != null
 
-    /** Notify the UI to refresh when the state changes (if the share dialog is open). */
-    @Volatile var onStateChanged: (() -> Unit)? = null
+    private val runningState = MutableStateFlow(false)
+    val running = runningState.asStateFlow()
 
     private var wifiLock: WifiManager.WifiLock? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -83,7 +85,7 @@ object WebShare {
             stop(app) // if the foreground service cannot start, roll back the whole thing; never leave a bare service running with no notification to back it
             throw e
         }
-        onStateChanged?.invoke()
+        runningState.value = true
     }
 
     @Synchronized
@@ -95,7 +97,7 @@ object WebShare {
         releaseWake()
         releaseWifi()
         runCatching { ctx.applicationContext.stopService(Intent(ctx.applicationContext, ShareService::class.java)) }
-        onStateChanged?.invoke()
+        runningState.value = false
     }
 
     // ---- The three layers of staying alive ----

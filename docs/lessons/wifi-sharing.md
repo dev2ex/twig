@@ -108,3 +108,18 @@
   upload go through `SafeWrite` (temp sibling, then swap). WebDAV MOVE/COPY refuse overlapping
   paths (`MOVE /a/b → /a` deleted `/a` first) and set an existing destination aside
   (`.twigold`) until the operation succeeded.
+
+- **The Wi-Fi long-press shortcut is a toggle** (2026-10-28, issue #35).
+  `ShareDialogs.toggleBackground` starts with the current directory and saved options,
+  without opening a dialog. Repeating it while sharing calls the existing `WebShare.stop`
+  and shows the existing stopped toast. Stop must release the server/locks and notify the
+  UI through the ordinary service path, while preserving saved configuration for restart.
+  `ShareBackgroundTest` covers start/stop/restart, saved options, toast feedback, no dialog,
+  and rebinding the stopped listener's port.
+
+- **Sharing icons observe state per activity** (2026-10-28). A single global
+  `onStateChanged` callback could be cleared by another MainActivity's `onPause`,
+  leaving the visible activity's icon off while sharing was running. `WebShare.running`
+  is a StateFlow collected while each activity is started; pausing or destroying one
+  activity cannot remove another's subscription. `ShareIconTest` reproduces the old
+  failure with overlapping activities and checks all three strips on start and stop.

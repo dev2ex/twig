@@ -210,10 +210,11 @@ object ShareDialogs {
         )
     }
 
-    /** Start the service: the connection may need re-establishment, the bind may fail — the whole thing goes on an IO thread, and the result is delivered back on the main thread. */
-    fun startBackground(act: AppCompatActivity, dir: XFile?) {
+    /** Long-press shortcut: stop an active share, otherwise start with saved options without a dialog. */
+    fun toggleBackground(act: AppCompatActivity, dir: XFile?) {
         if (WebShare.session != null) {
-            Toast.makeText(act, act.getString(R.string.share_notif_title, WebShare.session?.primaryUrl().orEmpty()), Toast.LENGTH_SHORT).show()
+            WebShare.stop(act.applicationContext)
+            Toast.makeText(act, R.string.share_stopped, Toast.LENGTH_SHORT).show()
             return
         }
         val saved = ShareStore.load(act)

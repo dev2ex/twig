@@ -26,7 +26,7 @@ import java.net.ServerSocket
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class ShareBackgroundTest {
-    @Test fun `background shortcut shares current directory with saved options and a toast`() {
+    @Test fun `background shortcut starts stops and restarts sharing with saved options and toasts`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val host = Robolectric.buildActivity(TrashUiTest.Host::class.java).setup()
         val directory = File(app.cacheDir, "share-background").apply { mkdirs() }
@@ -34,8 +34,9 @@ class ShareBackgroundTest {
         FsRegistry.register(LocalFileSystem())
         ShareStore.save(app, ShareConfig(ShareScope.AllSources, port = port, readOnly = false, deviceName = "My Twig"))
         val previous = ShadowDialog.getLatestDialog()
+        ShadowToast.reset()
         try {
-            ShareDialogs.startBackground(host.get(), XFile("file", directory.path, true))
+            ShareDialogs.toggleBackground(host.get(), XFile("file", directory.path, true))
             val deadline = System.nanoTime() + 5_000_000_000
             while (ShadowToast.getTextOfLatestToast() == null && System.nanoTime() < deadline) {
                 shadowOf(Looper.getMainLooper()).idle()
@@ -48,8 +49,26 @@ class ShareBackgroundTest {
             assertEquals("My Twig", session.cfg.deviceName)
             assertEquals(app.getString(R.string.share_notif_title, session.primaryUrl()), ShadowToast.getTextOfLatestToast())
             assertSame(previous, ShadowDialog.getLatestDialog())
-            ShareDialogs.startBackground(host.get(), null)
-            assertSame(session, WebShare.session)
+            val saved = ShareStore.load(app)
+            ShareDialogs.toggleBackground(host.get(), null)
+            assertNull(WebShare.session)
+            assertEquals(app.getString(R.string.share_stopped), ShadowToast.getTextOfLatestToast())
+            assertEquals(saved, ShareStore.load(app))
+            assertSame(previous, ShadowDialog.getLatestDialog())
+            // The stop path must close the listener, not just change the visible state.
+            ServerSocket(port).use { assertTrue(it.isBound) }
+            ShadowToast.reset()
+            ShareDialogs.toggleBackground(host.get(), null)
+            val restartDeadline = System.nanoTime() + 5_000_000_000
+            while (ShadowToast.getTextOfLatestToast() == null && System.nanoTime() < restartDeadline) {
+                shadowOf(Looper.getMainLooper()).idle()
+                Thread.sleep(10)
+            }
+            val restarted = requireNotNull(WebShare.session)
+            assertNotSame(session, restarted)
+            assertEquals(saved, restarted.cfg)
+            assertEquals(app.getString(R.string.share_notif_title, restarted.primaryUrl()), ShadowToast.getTextOfLatestToast())
+            assertSame(previous, ShadowDialog.getLatestDialog())
         } finally {
             WebShare.stop(app)
             app.getSharedPreferences(ShareStore.FILE, 0).edit().clear().commit()
