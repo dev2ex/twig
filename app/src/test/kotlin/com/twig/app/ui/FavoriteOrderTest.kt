@@ -34,6 +34,9 @@ class FavoriteOrderTest {
     private val favorites = listOf("a", "b", "c").map { Favorite(it, "local", "/$it") }
 
     @Before fun setup() {
+        // AndroidX caches the Application across Robolectric test sandboxes.
+        org.robolectric.util.ReflectionHelpers.setStaticField(
+            androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory::class.java, "_instance", null)
         app.getSharedPreferences("twig_favorites", 0).edit().clear().commit()
         favorites.forEach { FavoritesStore.add(app, it) }
         app.getSharedPreferences("twig_prefs", 0).edit().clear().commit()
@@ -88,14 +91,18 @@ class FavoriteOrderTest {
                 android.view.View.MeasureSpec.makeMeasureSpec(1920, android.view.View.MeasureSpec.EXACTLY))
             decor.layout(0, 0, 1080, 1920)
             val favoritePosition = adapter.currentList.indexOfFirst { it is PaneViewModel.FavoriteNode }
+            list.scrollToPosition(favoritePosition)
+            list.measure(android.view.View.MeasureSpec.makeMeasureSpec(900, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(1400, android.view.View.MeasureSpec.EXACTLY))
+            list.layout(0, 0, 900, 1400)
             val handle = list.findViewHolderForAdapterPosition(favoritePosition)!!.itemView
                 .findViewById<android.view.View>(com.twig.app.R.id.indicator)
             val handleBounds = android.graphics.Rect()
             assertTrue(handle.getGlobalVisibleRect(handleBounds))
             val handleX = handleBounds.exactCenterX()
             val handleY = handleBounds.exactCenterY()
-            assertTrue(pane.isFavoriteDragHandleAt(handleX, handleY))
-            val handleTouch = FavoriteSortTouch()
+            assertTrue(pane.isItemDragHandleAt(handleX, handleY))
+            val handleTouch = InlineSortTouch()
             for (action in listOf(android.view.MotionEvent.ACTION_DOWN, android.view.MotionEvent.ACTION_UP)) {
                 val event = android.view.MotionEvent.obtain(0, 10, action, handleX, handleY, 0)
                 handleTouch.dispatch(activity, event) { false }
@@ -123,7 +130,7 @@ class FavoriteOrderTest {
             touch(android.view.MotionEvent.ACTION_DOWN, 0f, 0f)
             touch(android.view.MotionEvent.ACTION_UP, 0f, 0f)
             assertFalse(pane.viewModel.sortingFavorites)
-            pane.viewModel.setSortingFavorites(true)
+            pane.viewModel.startItemSorting("fav")
             assertTrue(pane.handleBack())
             assertFalse(pane.viewModel.sortingFavorites)
         } finally { controller.stop().destroy() }
@@ -135,7 +142,7 @@ class FavoriteOrderTest {
         var clicked = 0
         var dragged = 0
         val adapter = FileAdapter(1, { clicked++ }, {}, {}, { _, _ -> }, {})
-        adapter.onFavoriteDrag = { dragged++ }
+        adapter.onItemDrag = { dragged++ }
         val node = PaneViewModel.FavoriteNode(favorites[0], null, 1, false, false, reordering = true)
         adapter.submitList(listOf(node))
         val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
@@ -177,19 +184,19 @@ class FavoriteOrderTest {
         advanceUntilIdle()
         assertTrue(vm.state.value.rows.any { it is PaneViewModel.FileNode && it.file.path == child.path })
         val savedIds = FavoritesStore.all(app).map { it.id }
-        vm.setSortingFavorites(true)
+        vm.startItemSorting("fav")
         assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().all { it.reordering && !it.expanded })
         assertFalse(vm.state.value.rows.any { it is PaneViewModel.FileNode && it.file.path == child.path })
-        assertTrue(vm.moveFavorite(favorite.id, favorites[0].id, savedIds))
+        assertTrue(vm.moveSortedItem("fav:${favorite.id}", "fav:${favorites[0].id}", savedIds.map { "fav:$it" }))
         assertEquals(savedIds, FavoritesStore.all(app).map { it.id })
         assertFalse("Ignore callbacks from an adapter still displaying the preceding order",
-            vm.moveFavorite(favorite.id, favorites[1].id, savedIds))
-        vm.saveFavoriteOrder()
+            vm.moveSortedItem("fav:${favorite.id}", "fav:${favorites[1].id}", savedIds.map { "fav:$it" }))
+        vm.saveItemOrder()
         assertEquals(favorite.id, FavoritesStore.all(app).first().id)
         val sibling = PaneViewModel(app).apply { io = dispatcher; paneIndex = 1 }
         sibling.bootstrap()
         assertEquals(favorite.id, sibling.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().first().fav.id)
-        vm.setSortingFavorites(false)
+        vm.finishItemSorting()
         assertFalse(vm.sortingFavorites)
         assertTrue(vm.state.value.rows.any { it is PaneViewModel.FileNode && it.file.path == child.path })
         assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().none { it.reordering })

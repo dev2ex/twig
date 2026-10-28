@@ -1122,4 +1122,5 @@
     <string name="root_drag_to_reorder">Seret untuk mengurutkan</string>
     <string name="root_reorder_hint">Seret pegangan untuk mengurutkan item akar di kedua panel.</string>
     <string name="action_sort_favorites">Urutkan favorit</string>
+    <string name="action_sort_websites">Urutkan situs web</string>
 </resources>

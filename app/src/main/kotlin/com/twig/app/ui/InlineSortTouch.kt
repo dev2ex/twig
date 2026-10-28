@@ -6,7 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import kotlin.math.abs
 
 /** A tap outside a handle ends sorting; scrolling and an active drag leave it alone. */
-internal class FavoriteSortTouch {
+internal class InlineSortTouch {
     private var candidates = emptyList<PaneFragment>()
     private var downX = 0f
     private var downY = 0f
@@ -17,7 +17,7 @@ internal class FavoriteSortTouch {
                 downX = event.rawX
                 downY = event.rawY
                 candidates = activity.supportFragmentManager.fragments.filterIsInstance<PaneFragment>()
-                    .filter { it.viewModel.sortingFavorites && !it.isFavoriteDragHandleAt(downX, downY) }
+                    .filter { it.viewModel.sortingItems && !it.isItemDragHandleAt(downX, downY) }
             }
             MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
                 val slop = ViewConfiguration.get(activity).scaledTouchSlop
@@ -30,7 +30,7 @@ internal class FavoriteSortTouch {
         // Finish after the existing click dispatch so a disabled sorting row cannot
         // unexpectedly expand under the finger as its chevron comes back.
         val handled = dispatch()
-        finish.forEach { it.finishFavoriteSorting() }
+        finish.forEach { it.finishInlineSorting() }
         return handled || finish.isNotEmpty()
     }
 }

@@ -1122,4 +1122,5 @@
     <string name="root_drag_to_reorder">Arrastrar para reordenar</string>
     <string name="root_reorder_hint">Arrastra los controles para reordenar los elementos raíz de ambos paneles.</string>
     <string name="action_sort_favorites">Ordenar favoritos</string>
+    <string name="action_sort_websites">Ordenar sitios web</string>
 </resources>

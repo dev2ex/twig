@@ -73,7 +73,7 @@ class FileAdapter(
     private val onInfo: (PaneViewModel.FileNode) -> Unit = {},
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
-    var onFavoriteDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
+    var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
 
     private val rowH = intArrayOf(36, 44, 54)[density]
     private val iconDp = rowIconDp(density)
@@ -127,7 +127,7 @@ class FileAdapter(
             currentList[position] !is PaneViewModel.InfoNode && !isCell(currentList[position])
 
     private fun isCell(n: PaneViewModel.Node): Boolean = when (n) {
-        is PaneViewModel.WebsiteNode -> gridMode == 2
+        is PaneViewModel.WebsiteNode -> gridMode == 2 && !n.reordering
         is PaneViewModel.FileNode -> (if (n.gridMode >= 0) n.gridMode else gridMode).let { mode ->
             mode > 0 && n.label == null && !n.file.isDir && !n.expandable &&
                 !n.file.scheme.startsWith("git") && (mode == 2 || Thumbs.canThumb(n.file))
@@ -834,11 +834,11 @@ class FileAdapter(
             b.root.setOnTouchListener(null)
             b.indicator.setOnTouchListener(null)
             b.indicator.contentDescription = null
-            val sortingFavorite = node is PaneViewModel.FavoriteNode && node.reordering
-            val indicatorPadding = if (sortingFavorite) (4 * dpi).toInt() else 0
+            val sortingItem = node.reordering
+            val indicatorPadding = if (sortingItem) (4 * dpi).toInt() else 0
             b.indicator.setPadding(indicatorPadding, indicatorPadding, indicatorPadding, indicatorPadding)
-            val indicatorWidth = ((if (sortingFavorite) 32 else 16) * dpi).toInt()
-            val indicatorHeight = if (sortingFavorite) ViewGroup.LayoutParams.MATCH_PARENT else (16 * dpi).toInt()
+            val indicatorWidth = ((if (sortingItem) 32 else 16) * dpi).toInt()
+            val indicatorHeight = if (sortingItem) ViewGroup.LayoutParams.MATCH_PARENT else (16 * dpi).toInt()
             val indicatorLayout = b.indicator.layoutParams
             if (indicatorLayout.width != indicatorWidth || indicatorLayout.height != indicatorHeight) {
                 indicatorLayout.width = indicatorWidth
@@ -924,12 +924,16 @@ class FileAdapter(
                 bindSelection(node)
                 b.check.setOnClickListener { toggleChildrenSelection(node) }
             }
+            bindItemActions(node)
+        }
+
+        private fun bindItemActions(node: PaneViewModel.Node) {
             if (node.reordering) {
                 b.indicator.visibility = View.VISIBLE
                 b.indicator.setImageResource(R.drawable.ic_drag_handle)
-                b.indicator.contentDescription = ctx.getString(R.string.root_drag_to_reorder)
+                b.indicator.contentDescription = b.root.context.getString(R.string.root_drag_to_reorder)
                 b.indicator.setOnTouchListener { _, event ->
-                    if (event.actionMasked == MotionEvent.ACTION_DOWN) onFavoriteDrag?.invoke(this)
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) onItemDrag?.invoke(this)
                     false
                 }
                 b.root.setOnClickListener(null)
@@ -1180,8 +1184,7 @@ class FileAdapter(
             WebsiteIcons.bind(b.icon, node.site)
             setIndicator(null)
             b.check.visibility = View.GONE
-            b.root.setOnClickListener { onClick(node) }
-            b.root.setOnLongClickListener { onLongClick(node); true }
+            bindItemActions(node)
         }
 
         private fun bindAction(node: PaneViewModel.ActionNode) {

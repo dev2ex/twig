@@ -1121,4 +1121,5 @@
     <string name="root_drag_to_reorder">Kéo để sắp xếp lại</string>
     <string name="root_reorder_hint">Kéo tay cầm để sắp xếp lại các mục gốc của cả hai ngăn.</string>
     <string name="action_sort_favorites">Sắp xếp mục yêu thích</string>
+    <string name="action_sort_websites">Sắp xếp trang web</string>
 </resources>

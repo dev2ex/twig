@@ -1126,4 +1126,5 @@
     <string name="root_drag_to_reorder">اسحب لإعادة الترتيب</string>
     <string name="root_reorder_hint">اسحب المقابض لإعادة ترتيب عناصر الجذر في كلتا اللوحتين.</string>
     <string name="action_sort_favorites">إعادة ترتيب المفضلة</string>
+    <string name="action_sort_websites">إعادة ترتيب المواقع</string>
 </resources>

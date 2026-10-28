@@ -99,6 +99,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     sealed interface Node {
         val key: String
         val depth: Int
+        val reordering: Boolean get() = false
     }
 
     /** Real file/directory (also including the storage top-level nodes, SAF tree roots, archives). */
@@ -149,7 +150,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val key: String get() = "s:${conn.label()}"
     }
 
-    data class WebsiteNode(val site: com.twig.app.Website) : Node {
+    data class WebsiteNode(val site: com.twig.app.Website, override val reordering: Boolean = false) : Node {
         override val depth: Int get() = 1
         override val key: String get() = "website:${site.id}"
     }
@@ -172,7 +173,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val depth: Int,
         val expanded: Boolean,
         val connecting: Boolean,
-        val reordering: Boolean = false,
+        override val reordering: Boolean = false,
     ) : Node {
         override val key: String get() = "fav:${fav.id}"
     }
@@ -2476,35 +2477,47 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var favoriteSortOrder: List<String>? = null
+    private var websiteSortOrder: List<String>? = null
     val sortingFavorites: Boolean get() = favoriteSortOrder != null
+    val sortingWebsites: Boolean get() = websiteSortOrder != null
+    val sortingItems: Boolean get() = sortingFavorites || sortingWebsites
 
-    fun setSortingFavorites(enabled: Boolean) {
-        if (enabled) {
-            favoriteSortOrder = FavoritesStore.all(getApplication()).map { it.id }
-            expanded.add("g:fav")
-        } else {
-            saveFavoriteOrder()
-            favoriteSortOrder = null
-        }
+    fun startItemSorting(group: String) {
+        require(group == "fav" || group == "websites")
+        saveItemOrder()
+        favoriteSortOrder = if (group == "fav") FavoritesStore.all(getApplication()).map { it.id } else null
+        websiteSortOrder = if (group == "websites") com.twig.app.WebsiteStore.all(getApplication()).map { it.id } else null
+        expanded.add("g:$group")
+        rebuild()
+    }
+
+    fun finishItemSorting() {
+        saveItemOrder()
+        favoriteSortOrder = null
+        websiteSortOrder = null
         rebuild()
     }
 
     /** Move only after the adapter has caught up with the preceding tree update. */
-    fun moveFavorite(source: String, target: String, displayedIds: List<String>): Boolean {
-        if (!sortingFavorites) return false
-        val ids = state.value.rows.filterIsInstance<FavoriteNode>().map { it.fav.id }
-        if (ids != displayedIds) return false
-        val from = ids.indexOf(source)
-        val to = ids.indexOf(target)
+    fun moveSortedItem(source: String, target: String, displayedKeys: List<String>): Boolean {
+        if (!sortingItems) return false
+        val nodes = state.value.rows.filter { it.reordering }
+        val keys = nodes.map { it.key }
+        if (keys != displayedKeys) return false
+        val from = keys.indexOf(source)
+        val to = keys.indexOf(target)
         if (from < 0 || to < 0 || from == to) return false
-        favoriteSortOrder = ids.toMutableList().apply { add(to, removeAt(from)) }
+        val moved = nodes.toMutableList().apply { add(to, removeAt(from)) }
+        if (sortingFavorites) favoriteSortOrder = moved.filterIsInstance<FavoriteNode>().map { it.fav.id }
+        else websiteSortOrder = moved.filterIsInstance<WebsiteNode>().map { it.site.id }
         rebuild()
         return true
     }
 
     /** Persist on drop; ordinary directory expansion never writes ordering. */
-    fun saveFavoriteOrder() {
+    fun saveItemOrder() {
         favoriteSortOrder?.let { FavoritesStore.reorder(getApplication(), it) }
+        websiteSortOrder?.let { com.twig.app.WebsiteStore.reorder(getApplication(), it) }
     }
 
     fun addFavorite(fav: Favorite) {
@@ -3233,7 +3246,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rows += ActionNode("add_emby", str(R.string.action_add_emby))
             }
             "websites" -> {
-                com.twig.app.WebsiteStore.all(app).forEach { rows += WebsiteNode(it) }
+                val saved = com.twig.app.WebsiteStore.all(app)
+                val order = websiteSortOrder
+                val sites = if (order == null) saved else {
+                    val byId = saved.associateBy { it.id }
+                    (order + saved.map { it.id }).distinct().mapNotNull { byId[it] }
+                }
+                sites.forEach { rows += WebsiteNode(it, reordering = sortingWebsites) }
                 rows += ActionNode("add_website", str(R.string.website_add))
             }
             "saf" -> {

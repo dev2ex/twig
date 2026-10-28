@@ -151,8 +151,9 @@ each write `= null`.
   The tree always expands/collapses **in place**, it never "enters" a directory.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
-  Favorites keep their stored order. Long-pressing the Favorites heading offers inline
-  reordering: chevrons become drag handles, children are temporarily hidden, and drops
+  Favorites and websites keep their stored order. Long-pressing either heading offers
+  inline reordering with drag handles; favorite children are temporarily hidden, websites
+  temporarily use list rows even in grid mode, and drops
   save the order for both panes. A tap outside the drag handles or Back restores normal
   expansion; scrolling leaves sorting active.
   `SortDialog` provides separate sorting and view dialogs, each with defaults or overrides

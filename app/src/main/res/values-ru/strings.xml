@@ -1158,4 +1158,5 @@
     <string name="root_drag_to_reorder">Перетащите для изменения порядка</string>
     <string name="root_reorder_hint">Перетаскивайте маркеры, чтобы изменить порядок элементов корня в обеих панелях.</string>
     <string name="action_sort_favorites">Упорядочить избранное</string>
+    <string name="action_sort_websites">Упорядочить сайты</string>
 </resources>

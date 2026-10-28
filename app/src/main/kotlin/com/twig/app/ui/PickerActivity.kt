@@ -78,10 +78,10 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
             }
         }
 
-    private val favoriteSortTouch = FavoriteSortTouch()
+    private val inlineSortTouch = InlineSortTouch()
 
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
-        favoriteSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
+        inlineSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

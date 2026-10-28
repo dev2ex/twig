@@ -286,30 +286,30 @@ class PaneFragment : Fragment() {
         }
         b.list.layoutManager = glm
         b.list.adapter = adapter
-        val favoriteDrag = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+        val itemDrag = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
             override fun isLongPressDragEnabled() = false
             override fun getMovementFlags(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int {
                 val node = adapter.currentList.getOrNull(holder.bindingAdapterPosition)
-                return if (node is PaneViewModel.FavoriteNode && node.reordering)
+                return if (node?.reordering == true)
                     makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) else 0
             }
             override fun canDropOver(rv: RecyclerView, current: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean =
-                adapter.currentList.getOrNull(target.bindingAdapterPosition) is PaneViewModel.FavoriteNode
+                adapter.currentList.getOrNull(target.bindingAdapterPosition)?.reordering == true
             override fun onMove(rv: RecyclerView, source: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
-                val from = adapter.currentList.getOrNull(source.bindingAdapterPosition) as? PaneViewModel.FavoriteNode ?: return false
-                val to = adapter.currentList.getOrNull(target.bindingAdapterPosition) as? PaneViewModel.FavoriteNode ?: return false
-                return viewModel.moveFavorite(from.fav.id, to.fav.id,
-                    adapter.currentList.filterIsInstance<PaneViewModel.FavoriteNode>().map { it.fav.id })
+                val from = adapter.currentList.getOrNull(source.bindingAdapterPosition) ?: return false
+                val to = adapter.currentList.getOrNull(target.bindingAdapterPosition) ?: return false
+                return viewModel.moveSortedItem(from.key, to.key,
+                    adapter.currentList.filter { it.reordering }.map { it.key })
             }
             override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) = Unit
             override fun clearView(rv: RecyclerView, holder: RecyclerView.ViewHolder) {
                 super.clearView(rv, holder)
-                viewModel.saveFavoriteOrder()
+                viewModel.saveItemOrder()
                 host?.refreshTrees()
             }
         })
-        favoriteDrag.attachToRecyclerView(b.list)
-        adapter.onFavoriteDrag = { favoriteDrag.startDrag(it) }
+        itemDrag.attachToRecyclerView(b.list)
+        adapter.onItemDrag = { itemDrag.startDrag(it) }
         b.list.itemAnimator = null // The tree changes instantly on tap; item animations would make the highlight frame drift through the transition.
         if (Prefs.rowDivider(requireContext())) b.list.addItemDecoration(RowDivider(requireContext()))
         b.list.addItemDecoration(CurrentDirFrame(requireContext()))
@@ -390,7 +390,7 @@ class PaneFragment : Fragment() {
                 // User input takes priority over restoring the old scroll position.
                 pendingScrollToCurrent = false
             },
-            onSwipe = { dx -> if (!viewModel.sortingFavorites) host?.onPaneSwipe(dx) },
+            onSwipe = { dx -> if (!viewModel.sortingItems) host?.onPaneSwipe(dx) },
         ))
     }
 
@@ -883,13 +883,13 @@ class PaneFragment : Fragment() {
         render(viewModel.state.value) // Restore path bar / empty state.
     }
 
-    internal fun isFavoriteDragHandleAt(screenX: Float, screenY: Float): Boolean {
+    internal fun isItemDragHandleAt(screenX: Float, screenY: Float): Boolean {
         val list = _b?.list ?: return false
         val bounds = android.graphics.Rect()
         for (index in 0 until list.childCount) {
             val child = list.getChildAt(index)
             val position = list.getChildViewHolder(child).bindingAdapterPosition
-            val node = adapter.currentList.getOrNull(position) as? PaneViewModel.FavoriteNode ?: continue
+            val node = adapter.currentList.getOrNull(position) ?: continue
             if (!node.reordering) continue
             val handle = child.findViewById<View>(R.id.indicator) ?: continue
             if (handle.getGlobalVisibleRect(bounds) && bounds.contains(screenX.toInt(), screenY.toInt())) return true
@@ -897,16 +897,16 @@ class PaneFragment : Fragment() {
         return false
     }
 
-    internal fun finishFavoriteSorting() {
-        if (!viewModel.sortingFavorites) return
-        viewModel.setSortingFavorites(false)
+    internal fun finishInlineSorting() {
+        if (!viewModel.sortingItems) return
+        viewModel.finishItemSorting()
         host?.refreshTrees()
     }
 
-    /** Back first finishes favorite reordering; in the treemap it goes up or returns to the tree. */
+    /** Back first finishes inline reordering; in the treemap it goes up or returns to the tree. */
     fun handleBack(): Boolean {
-        if (viewModel.sortingFavorites) {
-            finishFavoriteSorting()
+        if (viewModel.sortingItems) {
+            finishInlineSorting()
             return true
         }
         if (!mapMode) return false
@@ -1803,7 +1803,7 @@ class PaneFragment : Fragment() {
             is PaneViewModel.GroupNode -> if (node.id == "fav") {
                 val actions = ArrayList<MenuAct>()
                 actions.item(getString(R.string.action_sort_favorites), R.drawable.ic_sort) {
-                    viewModel.setSortingFavorites(true)
+                    viewModel.startItemSorting("fav")
                     host?.refreshTrees()
                 }
                 showActionMenu(requireContext(), node.label, actions)
@@ -1811,6 +1811,10 @@ class PaneFragment : Fragment() {
                 val actions = ArrayList<MenuAct>()
                 actions.item(getString(R.string.website_defaults), R.drawable.ic_edit) {
                     WebsiteDialogs.defaults(requireContext())
+                }
+                actions.item(getString(R.string.action_sort_websites), R.drawable.ic_sort) {
+                    viewModel.startItemSorting("websites")
+                    host?.refreshTrees()
                 }
                 showActionMenu(requireContext(), node.label, actions)
             }
