@@ -726,7 +726,8 @@ add its symptom here.
   *Explains*: website music stopping after backgrounding and resuming when the page returns.
 - **[Text handling and editing](docs/lessons/text-handling.md)** — one decoding entry
   point (`TextCodec`), where order is priority; write back in the encoding the file was
-  read with and never silently substitute `?`.
+  read with and never silently substitute `?`; cap highlighting by longest line as well
+  as file size to avoid minified-code measurement ANRs.
   *Explains*: mojibake in subtitles but not in the viewer, another program showing garbage
   after you edited one line, an invisible caret, a caret sitting on the last character.
 - **[Other backends and odds and ends](docs/lessons/other-backends.md)** — launcher

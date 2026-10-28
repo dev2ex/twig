@@ -182,7 +182,7 @@ class TextViewerActivity : TwigActivity() {
             isVisible = false // we only know whether editing is allowed after loading completes
             setOnMenuItemClickListener { enterEdit(); true }
         }
-        saveMenuItem = b.toolbar.menu.add(R.string.viewer_save).apply {
+        saveMenuItem = b.toolbar.menu.add(0, R.id.viewer_save, 0, R.string.viewer_save).apply {
             setIcon(R.drawable.ic_save)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             isVisible = false
@@ -572,6 +572,9 @@ class TextViewerActivity : TwigActivity() {
         // the Preview toggle is gone (see [enterEdit]).
         editMenuItem?.isVisible = canEdit && !editMode
         saveMenuItem?.isVisible = editMode
+        if (editMode) {
+            ToolbarLongPress.bind(b.toolbar, actions = mapOf(R.id.viewer_save to { save(exitAfter = true) }))
+        }
         // Search yields to editing: hit offsets get scrambled by edits
         searchMenuItem?.isVisible = !editMode
         externalResourcesMenuItem?.isVisible = previewMode
@@ -636,7 +639,7 @@ class TextViewerActivity : TwigActivity() {
                     updateTitle()
                     if (isCode && !liveHighlight) relight() // large files don't rescan while typing, catch up after save
                     toast(getString(R.string.viewer_saved))
-                    if (exitAfter) exitEdit() // save triggered by back key prompt: should leave after saving
+                    if (exitAfter) exitEdit()
                 },
                 onFailure = { showSaveError(it) },
             )
@@ -689,7 +692,6 @@ class TextViewerActivity : TwigActivity() {
             return
         }
         val text = ed.toString()
-        if (text.length > CodeHighlighter.MAX_HIGHLIGHT) return
         val gen = ++hlGen
         lifecycleScope.launch {
             val toks = withContext(Dispatchers.Default) { CodeHighlighter.tokenize(text, l) }

@@ -375,6 +375,8 @@ object CodeHighlighter {
 
     /** Lexical scan producing a token table (can be computed offline; re-colored on theme change). */
     fun tokenize(text: String, lang: Lang): List<Token> {
+        // Minified files can spend seconds measuring thousands of style runs in one line.
+        if (!canHighlight(text)) return emptyList()
         if (lang.xml) return tokenizeXml(text)
         if (lang.markdown) return tokenizeMarkdown(text)
         val out = ArrayList<Token>(minOf(text.length / 16, MAX_TOKENS))
@@ -705,8 +707,20 @@ object CodeHighlighter {
         }
     }
 
+    private fun canHighlight(text: String): Boolean {
+        if (text.length > MAX_HIGHLIGHT) return false
+        var lineLength = 0
+        for (c in text) {
+            if (c == '\n' || c == '\r') lineLength = 0
+            else if (++lineLength > MAX_HIGHLIGHT_LINE) return false
+        }
+        return true
+    }
+
     /** Past this size, do not highlight (too many spans make TextView layout janky). */
     const val MAX_HIGHLIGHT = 512 * 1024
+    /** Bound style-run measurement cost even when a minified file is below the size cap. */
+    private const val MAX_HIGHLIGHT_LINE = 8 * 1024
 
     /**
      * Upper bound for "recolor while typing" during editing; much stricter than
