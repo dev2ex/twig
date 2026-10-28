@@ -78,6 +78,8 @@ object FileIcons {
     fun directoryIconRes(file: XFile): Int? {
         if (!file.isDir || (file.scheme != "file" && file.scheme != "saf")) return null
         return when (file.name.lowercase(java.util.Locale.ROOT)) {
+            "android" -> R.drawable.ic_folder_android
+            "recordings" -> R.drawable.ic_folder_recordings
             "dcim" -> R.drawable.ic_folder_dcim
             "download", "downloads" -> R.drawable.ic_folder_download
             "picture", "pictures" -> R.drawable.ic_folder_pictures
