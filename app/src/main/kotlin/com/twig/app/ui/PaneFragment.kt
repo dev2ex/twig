@@ -1837,14 +1837,22 @@ class PaneFragment : Fragment() {
     /** Deleted entries remain read-only; inspection and export use their virtual source. */
     private fun trashFileActions(node: PaneViewModel.FileNode): List<MenuAct> {
         val file = node.file
-        if (file.path == "/") return if (!adapter.hasChildren(node)) emptyList() else listOf(MenuAct(
-            getString(R.string.action_select_all),
-            R.drawable.ic_sel_check,
-        ) { adapter.toggleChildrenSelection(node) })
         val actions = ArrayList<MenuAct>()
+        if (file.path == "/") {
+            if (adapter.hasChildren(node)) {
+                actions.item(getString(R.string.action_select_all), R.drawable.ic_sel_check) { adapter.toggleChildrenSelection(node) }
+            }
+            actions.item(getString(R.string.action_refresh_thumb), R.drawable.ic_file_image) { refreshThumb(listOf(file)) }
+            return actions
+        }
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
         actions.item(getString(R.string.action_select), R.drawable.ic_sel_check) { adapter.toggleSelection(node) }
         if (!file.canRead) return actions // A deleted symlink can be inspected/restored, never followed.
+        if (file.isDir || Thumbs.canThumb(file)) {
+            actions.item(getString(R.string.action_refresh_thumb), R.drawable.ic_file_image) {
+                refreshThumb(listOf(file))
+            }
+        }
         if (file.isDir) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(file) }
