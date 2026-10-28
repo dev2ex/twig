@@ -126,6 +126,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val directoryCount: DirectoryCounts.Count? = null,
         /** Effective view of the containing directory; -1 uses the adapter default for virtual rows. */
         val gridMode: Int = -1,
+        /** Synthetic children are independent of the directory's visible file count. */
+        val hasVirtualChildren: Boolean = false,
     ) : Node {
         override val key: String get() = keyPrefix + fileKey(file)
     }
@@ -515,7 +517,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun rememberCounts(key: String, list: List<XFile>) {
-        if (Prefs.folderCounts(getApplication())) keyFile[key]?.let { DirectoryCounts.remember(it, list) }
+        keyFile[key]?.let { file ->
+            if (file.scheme == "file" || Prefs.folderCounts(getApplication())) DirectoryCounts.remember(file, list)
+        }
     }
 
     /** Change the sort: re-sort all cached children and rebuild. */
@@ -3049,8 +3053,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
             label, capacity, busy(key), rowPrefix,
-            if (Prefs.folderCounts(getApplication())) DirectoryCounts.known(file, showHidden) else null,
+            if (file.scheme == "file" || Prefs.folderCounts(getApplication())) DirectoryCounts.known(file, showHidden) else null,
             gridMode,
+            hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
+                resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )
         addAttachments(rows, file, depth)
         if (exp) {

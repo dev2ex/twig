@@ -288,6 +288,7 @@ class FileAdapter(
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         (holder.itemView as? InfoCardLayout)?.resetPage()
         holder.itemView.findViewById<View>(R.id.folderCounts)?.setTag(R.id.directory_count, null)
+        holder.itemView.findViewById<View>(R.id.indicator)?.setTag(R.id.directory_count, null)
         holder.itemView.findViewById<View>(R.id.meta)?.setTag(R.id.size_probe, null)
         super.onViewRecycled(holder)
     }
@@ -805,6 +806,7 @@ class FileAdapter(
             b.folderCounts.visibility = View.GONE
             b.folderCounts.contentDescription = null
             b.folderCounts.setTag(R.id.directory_count, null)
+            b.indicator.setTag(R.id.directory_count, null)
             b.meta.setTag(R.id.size_probe, null)
             b.rowContent.setPaddingRelative(
                 ((2 + node.depth * 14) * dpi).toInt(), 0, 0, 0,
@@ -985,10 +987,6 @@ class FileAdapter(
                 },
             )
             val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
-            if (!storageRoot && Prefs.folderCounts(ctx) && DirectoryCounts.supports(file)) {
-                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::setCounts)
-                if (!node.loading) DirectoryCounts.request(b.folderCounts, file, Prefs.showHidden(ctx), ::setCounts)
-            }
             // A source that cannot report a size in its listing (media server photos) is asked
             // for this row's, in the background; the answer rewrites this row's meta line only.
             if (node.capacity == null) {
@@ -1062,6 +1060,24 @@ class FileAdapter(
             if (node.loading) {
                 b.progress.visibility = View.VISIBLE
                 setIndicator(null)
+            }
+
+            val showCounts = !storageRoot && Prefs.folderCounts(ctx) && DirectoryCounts.supports(file)
+            val localDirectory = file.scheme == "file" && file.isDir
+            if (showCounts || localDirectory) {
+                fun applyCount(count: DirectoryCounts.Count) {
+                    if (showCounts) setCounts(count)
+                    // Keep the row clickable as a destination even when there is nothing to expand.
+                    // Synthetic children (search, Git, access hints) must keep their indicator.
+                    if (localDirectory && !node.loading && !node.hasVirtualChildren) {
+                        setIndicator(if (node.expandable && (count.directories > 0 || count.files > 0))
+                            node.expanded else null)
+                    }
+                }
+                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::applyCount)
+                if (!node.loading) DirectoryCounts.request(
+                    if (showCounts) b.folderCounts else b.indicator,
+                    file, Prefs.showHidden(ctx), ::applyCount)
             }
 
             // Top-level storage nodes don't take part in multi-select; ordinary entries show a grey checkbox

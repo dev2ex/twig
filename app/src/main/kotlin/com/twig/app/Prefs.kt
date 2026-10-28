@@ -440,7 +440,7 @@ object Prefs {
 
     fun setFolderCounts(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("folder_counts", on).apply()
-        if (!on) com.twig.app.ui.DirectoryCounts.clear()
+        // Local empty-folder indicators share this cache even when counts are hidden.
     }
 
     /** Show hidden files (dotfiles and dot-directories), default off. */

@@ -120,6 +120,17 @@
   do not hide then show during reset. Press-delay changes did not fix this.
   `PropertiesButtonTest` covers count updates rebinding a pressed or released button.
 
+- **Empty local folders hide their expand indicator (2026-10-28, issue #41)**:
+  local (`file`) directory rows request `DirectoryCounts` even with item counts off.
+  One result updates both the indicator and optional counts; expansion/refresh also
+  populates the cache regardless of that setting. Turning counts off must not clear
+  this shared cache. Hidden entries follow the display setting. Unknown/failed reads
+  retain the arrow, and search/Git/restic/access-hint children keep it even with zero
+  visible files. Empty rows remain clickable destinations. Remote and archive rows
+  retain their existing indicators. Both callback owner views are invalidated on bind
+  and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
+  setting toggles, failures, recycled rows and ordinary listing/refresh reuse.
+
 - **Folder counts are optional direct-child counts, limited to local and SMB sources**
   (`DirectoryCounts`, 2026-10-15). The metadata line starts with monochrome folder/file
   outline icons and separate numbers; date/time stays at the end. Two equal-width text-scaled
