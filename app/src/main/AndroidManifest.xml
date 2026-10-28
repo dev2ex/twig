@@ -171,6 +171,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity="com.twig.app.terminal"
+            android:icon="@drawable/ic_shortcut_terminal"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:label="@string/terminal_menu" />
@@ -306,6 +307,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="false"
             android:taskAffinity="${applicationId}.website"
+            android:icon="@drawable/ic_website"
             android:documentLaunchMode="intoExisting"
             android:windowSoftInputMode="adjustResize" />
 

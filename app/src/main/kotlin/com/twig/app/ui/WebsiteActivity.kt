@@ -1,6 +1,7 @@
 package com.twig.app.ui
 
 import android.annotation.SuppressLint
+import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -58,6 +59,9 @@ class WebsiteActivity : TwigActivity() {
     private lateinit var b: ActivityWebsiteBinding
     private lateinit var site: Website
     private lateinit var localSite: Website
+    private var taskIconIdentity: Pair<String, String>? = null
+    private var taskIcon: Bitmap? = null
+    private val defaultTaskIcon by lazy { requireNotNull(ShortcutIcons.of(this, R.drawable.ic_website).bitmap) }
     private val globalSettingsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "defaults" && ::site.isInitialized && !Secrets.locked(this)) {
             applyWebsiteIntent()
@@ -417,6 +421,14 @@ class WebsiteActivity : TwigActivity() {
 
             override fun onReceivedIcon(view: WebView, icon: Bitmap) {
                 WebsiteIcons.received(this@WebsiteActivity, site, view.url, icon)
+                if (WebsiteIcons.matchesPage(site, view.url) && !icon.isRecycled) {
+                    // Bound the bitmap passed across processes, including for temporary pages.
+                    val scale = minOf(1f, 256f / maxOf(icon.width, icon.height))
+                    taskIcon = if (scale == 1f) icon else Bitmap.createScaledBitmap(icon,
+                        (icon.width * scale).toInt().coerceAtLeast(1),
+                        (icon.height * scale).toInt().coerceAtLeast(1), true)
+                    updateTaskDescription()
+                }
             }
 
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
@@ -623,6 +635,27 @@ class WebsiteActivity : TwigActivity() {
         callback?.onCustomViewHidden()
     }
 
+    @Suppress("DEPRECATION")
+    private fun updateTaskDescription() {
+        setTaskDescription(ActivityManager.TaskDescription(site.name, taskIcon ?: defaultTaskIcon))
+    }
+
+    private fun syncTaskDescription() {
+        val identity = site.id to site.url
+        if (taskIconIdentity != identity) {
+            taskIconIdentity = identity
+            taskIcon = WebsiteIcons.cached(site)
+            WebsiteIcons.load(this, site) { icon ->
+                // A new favicon or edited bookmark may have superseded this disk read.
+                if (!isDestroyed && !isFinishing && taskIconIdentity == identity && taskIcon == null && icon != null) {
+                    taskIcon = icon
+                    updateTaskDescription()
+                }
+            }
+        }
+        updateTaskDescription()
+    }
+
     private fun applyWebsiteOptions() {
         val orientation = when (site.orientation) {
             WebsiteOrientation.SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_USER
@@ -635,6 +668,7 @@ class WebsiteActivity : TwigActivity() {
         if (requestedOrientation != orientation) requestedOrientation = orientation
         title = site.name
         b.toolbar.title = site.name
+        syncTaskDescription()
         b.toolbar.visibility = if (toolbarVisibleOverride ?: !(site.fullscreen || immersiveFullscreen)) View.VISIBLE else View.GONE
         b.web.doubleTapToolbar = site.doubleTapToolbar
         b.web.pullToRefresh = site.pullToRefresh

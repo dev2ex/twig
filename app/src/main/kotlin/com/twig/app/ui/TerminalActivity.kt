@@ -1296,7 +1296,8 @@ class TerminalActivity : TwigActivity() {
         b.terminal.post { maybeShowIme() }
         scheduleSizeSync() // attach will change this session's local emulator size to the current view size
         @Suppress("DEPRECATION")
-        setTaskDescription(ActivityManager.TaskDescription("SSH · ${t.title}"))
+        setTaskDescription(ActivityManager.TaskDescription("${getString(R.string.terminal_menu)} · ${t.title}",
+            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap))
         refreshSessions()
     }
 
