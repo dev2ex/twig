@@ -323,7 +323,7 @@ object Thumbs {
     /** Pre-check whether this file has any chance of generating successfully; network-source PDFs inevitably fail (require a real, locally random-accessible file), not worth queuing in the background thread pool — otherwise they'd block behind slower network image downloads in the same pool, just queueing pointlessly. Videos obey the "generate thumbnails for network files" toggle (just like images, going over the network means real bandwidth), unlike PDFs which are fundamentally unable to do it. */
     private fun eligible(ctx: Context, raw: XFile): Boolean {
         val file = typed(raw)
-        val localish = file.scheme == "file" || file.scheme == "saf"
+        val localish = file.scheme == "file" || file.scheme == "saf" || file.scheme == "trash"
         return when {
             // ★ Covers are NOT constrained by the "generate thumbnails for network
             // files" toggle — same reasoning as reading the EXIF embedded image for
@@ -589,7 +589,14 @@ object Thumbs {
         null
     }
 
-    private fun genFallback(ctx: Context, raw: XFile): Bitmap? = genByType(ctx, typed(raw))
+    private fun genFallback(ctx: Context, raw: XFile): Bitmap? {
+        // Resolve on the worker only. The old location may now contain an unrelated file;
+        // decode the validated payload, keeping the original name and cache identity.
+        val source = if (raw.scheme == "trash") {
+            (FsRegistry.of(raw) as com.twig.app.TrashFileSystem).thumbnailSource(typed(raw))
+        } else raw
+        return genByType(ctx, typed(source))
+    }
 
     private fun genByType(ctx: Context, file: XFile): Bitmap? = when {
         OpenFiles.isImage(file) -> genImage(ctx, file)
