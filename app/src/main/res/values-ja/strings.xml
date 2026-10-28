@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">ハンドルをドラッグして両ペインのルート項目を並べ替えます。</string>
     <string name="action_sort_favorites">お気に入りを並べ替え</string>
     <string name="action_sort_websites">ウェブサイトを並べ替え</string>
+    <string name="conn_section_login">ログイン情報</string>
+    <string name="conn_section_options">オプション</string>
 </resources>

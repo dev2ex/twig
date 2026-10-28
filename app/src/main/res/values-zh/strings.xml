@@ -1158,4 +1158,6 @@
     <string name="root_reorder_hint">拖动把手调整两栏的根项目顺序。</string>
     <string name="action_sort_favorites">排序收藏项</string>
     <string name="action_sort_websites">排序网站</string>
+    <string name="conn_section_login">登录信息</string>
+    <string name="conn_section_options">更多选项</string>
 </resources>

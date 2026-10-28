@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Ziehe die Griffe, um die Stammeinträge in beiden Bereichen zu sortieren.</string>
     <string name="action_sort_favorites">Favoriten sortieren</string>
     <string name="action_sort_websites">Websites sortieren</string>
+    <string name="conn_section_login">Anmeldung</string>
+    <string name="conn_section_options">Optionen</string>
 </resources>

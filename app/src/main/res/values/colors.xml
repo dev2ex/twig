@@ -5,6 +5,7 @@
     <color name="accent">#66BB6A</color>
     <color name="palette_bg">#FAFAFA</color>
     <color name="palette_surface">#FFFFFF</color>
+    <color name="palette_dialog">#FFFFFF</color>
     <color name="text_primary">#212121</color>
     <color name="text_secondary">#757575</color>
     <!-- The file size on a tree row (that segment only, applied as a span — see FileAdapter.fileMeta):

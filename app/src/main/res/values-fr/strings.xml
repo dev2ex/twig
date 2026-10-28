@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Faites glisser les poignées pour réorganiser les éléments racine des deux volets.</string>
     <string name="action_sort_favorites">Réorganiser les favoris</string>
     <string name="action_sort_websites">Réorganiser les sites web</string>
+    <string name="conn_section_login">Connexion</string>
+    <string name="conn_section_options">Options</string>
 </resources>

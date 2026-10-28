@@ -1122,4 +1122,6 @@
     <string name="root_reorder_hint">Kéo tay cầm để sắp xếp lại các mục gốc của cả hai ngăn.</string>
     <string name="action_sort_favorites">Sắp xếp mục yêu thích</string>
     <string name="action_sort_websites">Sắp xếp trang web</string>
+    <string name="conn_section_login">Đăng nhập</string>
+    <string name="conn_section_options">Tùy chọn</string>
 </resources>

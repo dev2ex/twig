@@ -44,16 +44,12 @@ object WebsiteDialogs {
         }
         fun section(label: Int) = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            addView(View(ctx).apply { setBackgroundColor(ContextCompat.getColor(ctx, R.color.divider)) },
-                LinearLayout.LayoutParams(-1, dp(1).coerceAtLeast(1)).apply {
-                    topMargin = dp(8); bottomMargin = dp(8)
-                })
             addView(TextView(ctx).apply {
                 setText(label)
                 setTextColor(ContextCompat.getColor(ctx, R.color.action_text))
                 setTypeface(typeface, Typeface.BOLD)
                 textSize = 14f
-                setPaddingRelative(dp(6), 0, dp(6), dp(4))
+                setPaddingRelative(dp(6), dp(10), dp(6), dp(2))
             })
             form.addView(this)
         }
@@ -83,7 +79,7 @@ object WebsiteDialogs {
         fun fieldLabel(parent: LinearLayout, label: Int) = TextView(ctx).apply {
             setText(label)
             textSize = 13f
-            setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
+            setTextColor(ContextCompat.getColor(ctx, R.color.action_text))
             setPaddingRelative(dp(6), dp(10), dp(6), dp(2))
             parent.addView(this)
         }
@@ -215,7 +211,7 @@ object WebsiteDialogs {
         val advancedHeader = TextView(ctx).apply {
             tag = R.string.website_advanced
             setText(R.string.website_advanced)
-            setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
+            setTextColor(ContextCompat.getColor(ctx, R.color.action_text))
             textSize = 15f
             setTypeface(typeface, Typeface.BOLD)
             gravity = android.view.Gravity.CENTER_VERTICAL

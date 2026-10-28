@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Her iki bölmenin kök öğelerini sıralamak için tutamaçları sürükleyin.</string>
     <string name="action_sort_favorites">Favorileri sırala</string>
     <string name="action_sort_websites">Web sitelerini sırala</string>
+    <string name="conn_section_login">Oturum açma</string>
+    <string name="conn_section_options">Seçenekler</string>
 </resources>

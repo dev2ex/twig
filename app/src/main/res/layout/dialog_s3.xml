@@ -1,69 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- More fields than other connection types (endpoint / key pair / region / bucket / addressing style); won't fit on small screens, so wrapped in ScrollView -->
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
-
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
-
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="0dp"
+        android:focusableInTouchMode="true">
         <EditText
             android:id="@+id/et_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/conn_name"
             android:inputType="text"
-            android:importantForAutofill="no" />
-
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/conn_name" />
         <EditText
             android:id="@+id/et_endpoint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/s3_endpoint"
             android:inputType="textUri"
-            android:importantForAutofill="no" />
-
-        <EditText
-            android:id="@+id/et_key"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/s3_access_key"
-            android:inputType="text"
-            android:importantForAutofill="no" />
-
-        <EditText
-            android:id="@+id/et_secret"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/s3_secret_key"
-            android:inputType="textPassword"
-            android:importantForAutofill="no" />
-
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/s3_endpoint" />
         <EditText
             android:id="@+id/et_bucket"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/s3_bucket"
             android:inputType="text"
-            android:importantForAutofill="no" />
-
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/s3_bucket" />
+        <TextView
+            android:text="@string/conn_section_login"
+            style="@style/ConnectionSection" />
+        <EditText
+            android:id="@+id/et_key"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/s3_access_key" />
+        <EditText
+            android:id="@+id/et_secret"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textPassword"
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/s3_secret_key" />
+        <TextView
+            android:text="@string/conn_section_options"
+            style="@style/ConnectionSection" />
         <EditText
             android:id="@+id/et_region"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="@string/s3_region"
             android:inputType="text"
-            android:importantForAutofill="no" />
-
+            android:importantForAutofill="no"
+            style="@style/ConnectionField"
+            android:hint="@string/s3_region" />
         <CheckBox
             android:id="@+id/cb_path_style"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:checked="true"
-            android:text="@string/s3_path_style" />
+            android:text="@string/s3_path_style"
+            android:minHeight="48dp" />
     </LinearLayout>
 </ScrollView>

@@ -1204,4 +1204,6 @@
     <string name="root_reorder_hint">Drag the handles to reorder both panes.</string>
     <string name="action_sort_favorites">Reorder favorites</string>
     <string name="action_sort_websites">Reorder websites</string>
+    <string name="conn_section_login">Sign-in</string>
+    <string name="conn_section_options">Options</string>
 </resources>

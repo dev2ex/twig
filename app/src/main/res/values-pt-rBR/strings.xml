@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Arraste as alças para reordenar os itens da raiz nos dois painéis.</string>
     <string name="action_sort_favorites">Reordenar favoritos</string>
     <string name="action_sort_websites">Reordenar sites</string>
+    <string name="conn_section_login">Login</string>
+    <string name="conn_section_options">Opções</string>
 </resources>

@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">拖動把手調整兩欄的根項目順序。</string>
     <string name="action_sort_favorites">排序收藏項</string>
     <string name="action_sort_websites">排序網站</string>
+    <string name="conn_section_login">登入資訊</string>
+    <string name="conn_section_options">更多選項</string>
 </resources>

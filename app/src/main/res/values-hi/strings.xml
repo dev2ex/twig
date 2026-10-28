@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">दोनों पैनल के रूट आइटम का क्रम बदलने के लिए हैंडल खींचें।</string>
     <string name="action_sort_favorites">पसंदीदा का क्रम बदलें</string>
     <string name="action_sort_websites">वेबसाइटों का क्रम बदलें</string>
+    <string name="conn_section_login">साइन इन</string>
+    <string name="conn_section_options">विकल्प</string>
 </resources>

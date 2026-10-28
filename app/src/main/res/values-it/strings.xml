@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Trascina le maniglie per riordinare gli elementi radice di entrambi i pannelli.</string>
     <string name="action_sort_favorites">Riordina preferiti</string>
     <string name="action_sort_websites">Riordina siti web</string>
+    <string name="conn_section_login">Accesso</string>
+    <string name="conn_section_options">Opzioni</string>
 </resources>

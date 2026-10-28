@@ -14,6 +14,12 @@
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryDark">?attr/twigPrimaryDark</item>
         <item name="colorAccent">@color/accent</item>
+        <item name="android:textColorPrimary">@color/twig_text_primary</item>
+        <item name="android:editTextStyle">@style/TwigEditText</item>
+        <item name="editTextStyle">@style/TwigEditText</item>
+        <!-- Floating dialogs sit slightly above the surface in the dark palette. -->
+        <item name="android:colorBackgroundFloating">@color/palette_dialog</item>
+        <item name="colorBackgroundFloating">@color/palette_dialog</item>
         <item name="android:windowBackground">?attr/twigBg</item>
         <item name="android:statusBarColor">?attr/twigToolbar</item>
     </style>

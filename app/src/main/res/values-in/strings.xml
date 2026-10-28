@@ -1123,4 +1123,6 @@
     <string name="root_reorder_hint">Seret pegangan untuk mengurutkan item akar di kedua panel.</string>
     <string name="action_sort_favorites">Urutkan favorit</string>
     <string name="action_sort_websites">Urutkan situs web</string>
+    <string name="conn_section_login">Masuk</string>
+    <string name="conn_section_options">Opsi</string>
 </resources>

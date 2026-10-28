@@ -1159,4 +1159,6 @@
     <string name="root_reorder_hint">Перетаскивайте маркеры, чтобы изменить порядок элементов корня в обеих панелях.</string>
     <string name="action_sort_favorites">Упорядочить избранное</string>
     <string name="action_sort_websites">Упорядочить сайты</string>
+    <string name="conn_section_login">Вход</string>
+    <string name="conn_section_options">Параметры</string>
 </resources>
