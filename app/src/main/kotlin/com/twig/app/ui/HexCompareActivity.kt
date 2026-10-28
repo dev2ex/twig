@@ -13,7 +13,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.Format
@@ -51,7 +51,7 @@ import kotlin.math.roundToInt
  * [HexSource]'s random-access chunks, so a 10 GB pair still renders the screen you're looking at
  * without waiting for the scan.
  */
-class HexCompareActivity : AppCompatActivity() {
+class HexCompareActivity : TwigActivity() {
 
     private lateinit var b: ActivityHexCompareBinding
     private lateinit var paneA: HexPane

@@ -13,7 +13,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import com.twig.app.Format
 import com.twig.app.R
@@ -33,7 +33,7 @@ import com.twig.core.isWritableDir
  * destination directory. Plain text uses a self-contained UTF-8 source with an
  * editable filename and follows the same transfer and conflict handling.
  */
-class ShareTargetActivity : AppCompatActivity(), PaneFragment.Host {
+class ShareTargetActivity : TwigActivity(), PaneFragment.Host {
 
     private data class IncomingItem(val uri: Uri, val name: String, val size: Long)
 

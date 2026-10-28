@@ -184,6 +184,7 @@
     <string name="theme_system">Follow system</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="theme_oled">Black (OLED)</string>
     <string name="conn_connect">Connect</string>
     <string name="conn_delete">Delete</string>
     <string name="no_saved_connections">No saved connections</string>

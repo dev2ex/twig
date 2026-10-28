@@ -13,7 +13,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import com.twig.app.OpenFiles
 import com.twig.app.R
@@ -40,7 +40,7 @@ import com.twig.core.XFile
  * Single-select: tapping a file returns it; with `EXTRA_ALLOW_MULTIPLE` it becomes "check a few,
  * then confirm"; multiple results go into ClipData as per the convention.
  */
-open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
+open class PickerActivity : TwigActivity(), PaneFragment.Host {
 
     protected lateinit var b: ActivityPickerBinding
     private lateinit var browser: PickerBrowser

@@ -22,7 +22,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.view.GravityCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -40,7 +40,7 @@ import java.util.concurrent.Executors
 
 /** Main music player UI (UI shell; state all in [MusicEngine]/[MusicService]; onDestroy does not release the player). */
 @UnstableApi
-class MusicPlayerActivity : AppCompatActivity() {
+class MusicPlayerActivity : TwigActivity() {
     companion object {
         const val EXTRA_AUTO_PLAY = "auto_play"
     }

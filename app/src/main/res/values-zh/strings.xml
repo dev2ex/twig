@@ -168,6 +168,7 @@
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
+    <string name="theme_oled">纯黑（OLED）</string>
     <string name="conn_connect">连接</string>
     <string name="conn_delete">删除</string>
     <string name="no_saved_connections">暂无已保存连接</string>

@@ -26,7 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import com.termux.terminal.KeyHandler
 import com.termux.terminal.TermBridge
@@ -215,7 +215,7 @@ object TermManager {
  * to queue keypresses, with a bridge thread carrying them to SSH. Sessions live in [TermManager], switched via the top dropdown;
  * Activity lives in its own task stack, so users can swap back and forth with the file manager without losing the session.
  */
-class TerminalActivity : AppCompatActivity() {
+class TerminalActivity : TwigActivity() {
 
     private lateinit var b: ActivityTerminalBinding
     private lateinit var fullscreenLayout: StatusBarFullscreen

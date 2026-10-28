@@ -401,7 +401,7 @@ class PaneFragment : Fragment() {
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
         v.alpha = if (active) 1f else 0.5f
-        v.setBackgroundResource(if (active) R.color.path_bar_active else R.color.path_bar)
+        v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
     }
 
     private fun updateSelectionCount() {

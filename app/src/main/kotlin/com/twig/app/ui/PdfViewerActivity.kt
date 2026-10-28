@@ -14,7 +14,7 @@ import android.view.MenuItem
 import android.view.inputmethod.InputMethodManager
 import android.view.View
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.Prefs
@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
  * must therefore keep the external-app fallback for everything else — see
  * [com.twig.app.OpenFiles.canViewPdf].
  */
-class PdfViewerActivity : AppCompatActivity() {
+class PdfViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityPdfViewerBinding
     private lateinit var file: XFile

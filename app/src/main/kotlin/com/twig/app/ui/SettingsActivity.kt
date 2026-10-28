@@ -16,7 +16,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
@@ -35,7 +35,7 @@ import rikka.shizuku.Shizuku
  * effect immediately; MainActivity auto-recreates when it returns to the foreground
  * if [Prefs.uiSignature] changes.
  */
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : TwigActivity() {
 
     private lateinit var list: LinearLayout
     private val dp get() = resources.displayMetrics.density

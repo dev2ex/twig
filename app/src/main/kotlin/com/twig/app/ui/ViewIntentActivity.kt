@@ -1,6 +1,6 @@
 package com.twig.app.ui
 
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import android.os.Bundle
 import android.net.Uri
 import android.widget.Toast
@@ -25,7 +25,7 @@ import java.io.File
  * stack still has our UI, the grant is still valid; once it lands in a new stack
  * the viewer may SecurityException on the first read.
  */
-class ViewIntentActivity : AppCompatActivity() {
+class ViewIntentActivity : TwigActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

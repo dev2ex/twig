@@ -19,7 +19,6 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.ShortcutInfoCompat
@@ -52,7 +51,7 @@ import kotlinx.coroutines.launch
  *   right pane → left column), swipe horizontally to switch panes;
  * - Landscape: two panes side-by-side, action strip in the middle, touch determines the active pane.
  */
-class MainActivity : AppCompatActivity(), PaneFragment.Host {
+class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private lateinit var b: ActivityMainBinding
     private var activeIndex = 0
@@ -1254,11 +1253,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,
             AppCompatDelegate.MODE_NIGHT_NO,
             AppCompatDelegate.MODE_NIGHT_YES,
+            AppTheme.MODE_OLED,
         )
         val labels = arrayOf(
             getString(R.string.theme_system),
             getString(R.string.theme_light),
             getString(R.string.theme_dark),
+            getString(R.string.theme_oled),
         )
         val current = modes.indexOf(Prefs.themeMode(this)).coerceAtLeast(0)
         AlertDialog.Builder(this)

@@ -335,6 +335,11 @@ each write `= null`.
 - Security: `secure/Secrets` (two-layer Keystore/master-password encryption of sensitive
   fields) + `secure/Backup` (`.twigbak` config backup) + `ui/SecurityUi` (dialogs).
   See [docs/lessons/security.md](docs/lessons/security.md).
+- Themes: AppCompat screens and transparent relays inherit `TwigActivity`, which selects
+  the complete theme before `super.onCreate`. `AppTheme` lifecycle callbacks only track
+  screens for theme changes; do not apply palettes or patch window colors there.
+  OLED has separate opaque and translucent styles. Keep its window background as a
+  resource reference: older `PhoneWindow` versions cannot use an inline color there.
 - Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
   view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
   `ToolbarPlacement` moves the existing browser toolbar below content and matches

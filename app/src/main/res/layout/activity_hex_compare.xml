@@ -17,7 +17,7 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         android:elevation="4dp"
         app:titleTextAppearance="@style/CompactToolbarTitle"
         app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
@@ -33,7 +33,7 @@
         android:layout_height="44dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@color/bar">
+        android:background="?attr/twigBar">
 
         <TextView
             android:id="@+id/diff_status"
@@ -100,7 +100,7 @@
                     android:id="@+id/info_a"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@color/path_bar_active"
+                    android:background="?attr/twigPathBarActive"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:paddingTop="4dp"
@@ -121,7 +121,7 @@
                 android:id="@+id/divider"
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:background="@color/divider" />
+                android:background="?attr/twigDivider" />
 
             <LinearLayout
                 android:id="@+id/side_b"
@@ -134,7 +134,7 @@
                     android:id="@+id/info_b"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@color/path_bar"
+                    android:background="?attr/twigPathBar"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:paddingTop="4dp"

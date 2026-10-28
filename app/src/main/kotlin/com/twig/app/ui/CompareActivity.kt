@@ -10,7 +10,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -49,7 +49,7 @@ import kotlinx.coroutines.withContext
  * the main thread: the scan coroutine only emits immutable incremental events, matching
  * the "only gather data, building the table is the collector's job" rule from [scanDirStat].
  */
-class CompareActivity : AppCompatActivity() {
+class CompareActivity : TwigActivity() {
 
     /** A node of the result tree. [key] is the path relative to the roots on both sides; the root has the empty string. */
     private class Node(
@@ -1129,8 +1129,8 @@ class CompareActivity : AppCompatActivity() {
         // ★ In light themes path_bar_active and path_bar have the same color value, so
         // background alone cannot distinguish them — the main UI's PaneFragment.setActive
         // also uses alpha to separate them, and we do the same here.
-        b.pathBarLeft.setBackgroundResource(if (s == 0) R.color.path_bar_active else R.color.path_bar)
-        b.pathBarRight.setBackgroundResource(if (s == 1) R.color.path_bar_active else R.color.path_bar)
+        b.pathBarLeft.setBackgroundColor(ContextCompat.getColor(this, if (s == 0) R.color.path_bar_active else R.color.path_bar))
+        b.pathBarRight.setBackgroundColor(ContextCompat.getColor(this, if (s == 1) R.color.path_bar_active else R.color.path_bar))
         b.pathBarLeft.alpha = if (s == 0) 1f else 0.5f
         b.pathBarRight.alpha = if (s == 1) 1f else 0.5f
         itemSwap?.icon = tinted(

@@ -566,12 +566,14 @@ object Prefs {
         return id
     }
 
-    /** Theme mode, value is AppCompatDelegate.MODE_NIGHT_*; default follow system. */
+    /** Theme choice: AppCompatDelegate.MODE_NIGHT_* or AppTheme.MODE_OLED. */
     fun themeMode(ctx: Context): Int =
         sp(ctx).getInt(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 
     fun setThemeMode(ctx: Context, mode: Int) {
+        val previous = themeMode(ctx)
+        if (previous == mode) return
         sp(ctx).edit().putInt(KEY_THEME, mode).apply()
-        AppCompatDelegate.setDefaultNightMode(mode)
+        AppTheme.change(ctx, previous, mode)
     }
 }

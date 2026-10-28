@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.Connections
 import com.twig.app.ConnectionStore
@@ -44,7 +44,7 @@ import kotlinx.coroutines.withContext
  * exactly "opens the file browser first, then jumps to the file" (MainActivity flashes on
  * screen underneath) and "back from the viewer goes to the file browser" instead of exiting.
  */
-class OpenShortcutActivity : AppCompatActivity() {
+class OpenShortcutActivity : TwigActivity() {
 
     companion object {
         private const val EXTRA_SCHEME = "scheme"

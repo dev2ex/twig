@@ -10,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:titleTextAppearance="@style/CompactToolbarTitle"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_up" />
 
@@ -20,7 +20,7 @@
         android:layout_height="44dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@color/bar"
+        android:background="?attr/twigBar"
         android:visibility="gone">
 
         <!-- Two interpretations: text and HEX, switched by a tap; both search the same byte stream -->

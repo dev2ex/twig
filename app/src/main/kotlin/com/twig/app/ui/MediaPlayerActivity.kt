@@ -30,7 +30,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -84,7 +84,7 @@ import kotlinx.coroutines.withContext
  *   [RandomSource] (SMB native pread).
  */
 @UnstableApi
-class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
+class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     private lateinit var b: ActivityMediaPlayerBinding
     private lateinit var file: XFile

@@ -25,7 +25,7 @@ import android.webkit.WebViewClient
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -68,7 +68,7 @@ import java.nio.charset.Charset
  * can't represent a newly-typed character (e.g. emoji inside GBK), the save fails; that's when we ask the user whether
  * to convert to UTF-8.
  */
-class TextViewerActivity : AppCompatActivity() {
+class TextViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityTextViewerBinding
     private var raw: String = ""

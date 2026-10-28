@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="52dp"
     android:layout_height="match_parent"
-    android:background="@color/bar"
+    android:background="?attr/twigBar"
     android:orientation="vertical">
 
     <!-- Top fixed area: when the Toolbar is hidden in landscape, the buttons that were
@@ -46,7 +46,7 @@
         android:id="@+id/as_top_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/divider"
+        android:background="?attr/twigDivider"
         android:visibility="gone" />
 
     <ScrollView

@@ -9,7 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -31,7 +31,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Git repository viewer: changes (staged / unstaged / untracked) and commit history, read-only. */
-class GitActivity : AppCompatActivity() {
+class GitActivity : TwigActivity() {
 
     private lateinit var b: ActivityGitBinding
     private var repo: GitRepo? = null

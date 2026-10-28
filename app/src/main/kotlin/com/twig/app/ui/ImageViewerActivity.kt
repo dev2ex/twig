@@ -20,7 +20,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -56,7 +56,7 @@ import kotlin.math.roundToInt
  *   ([pendingImages] is passed within the process), to avoid thousands of images' path / filename arrays
  *   blowing past the binder 1MB single-transaction limit (TransactionTooLargeException).
  */
-class ImageViewerActivity : AppCompatActivity() {
+class ImageViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityImageViewerBinding
 

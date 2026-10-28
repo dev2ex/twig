@@ -302,7 +302,7 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:orientation="vertical"
-        android:background="@color/surface">
+        android:background="?attr/twigSurface">
 
         <TextView
             android:layout_width="match_parent"
@@ -312,7 +312,7 @@
             android:textColor="@color/text_primary"
             android:textSize="18sp"
             android:textStyle="bold"
-            android:background="@color/bar" />
+            android:background="?attr/twigBar" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/drawerList"

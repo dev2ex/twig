@@ -2,11 +2,45 @@
 <resources>
     <!-- Based on AppCompat DayNight (follows system / manual dark, no Material library) -->
     <style name="Theme.Twig" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="twigBg">@color/palette_bg</item>
+        <item name="twigSurface">@color/palette_surface</item>
+        <item name="twigBar">@color/palette_bar</item>
+        <item name="twigToolbar">@color/palette_toolbar</item>
+        <item name="twigPrimaryDark">@color/palette_primary_dark</item>
+        <item name="twigDivider">@color/palette_divider</item>
+        <item name="twigPathBarActive">@color/palette_path_bar_active</item>
+        <item name="twigPathBar">@color/palette_path_bar</item>
+        <item name="twigPdfBackdrop">@color/palette_pdf_backdrop</item>
         <item name="colorPrimary">@color/primary</item>
-        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorPrimaryDark">?attr/twigPrimaryDark</item>
         <item name="colorAccent">@color/accent</item>
-        <item name="android:windowBackground">@color/bg</item>
-        <item name="android:statusBarColor">@color/toolbar</item>
+        <item name="android:windowBackground">?attr/twigBg</item>
+        <item name="android:statusBarColor">?attr/twigToolbar</item>
+    </style>
+
+    <!-- OLED keeps large surfaces unlit; muted borders and the active path retain hierarchy. -->
+    <style name="Theme.Twig.Oled" parent="Theme.Twig">
+        <!-- Older PhoneWindow versions require a resource reference for the window background. -->
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="twigBg">#000000</item>
+        <item name="twigSurface">#000000</item>
+        <item name="twigBar">#000000</item>
+        <item name="twigToolbar">#000000</item>
+        <item name="twigPrimaryDark">#000000</item>
+        <item name="twigDivider">#202020</item>
+        <item name="twigPathBarActive">#242424</item>
+        <item name="twigPathBar">#000000</item>
+        <item name="twigPdfBackdrop">#000000</item>
+        <item name="android:colorBackground">#000000</item>
+        <item name="android:colorBackgroundFloating">#000000</item>
+        <item name="colorBackgroundFloating">#000000</item>
+    </style>
+
+    <style name="Theme.Twig.Oled.Translucent" parent="Theme.Twig.Oled">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 
     <!-- Side action column item: icon + small label, X-plore style -->
@@ -15,7 +49,7 @@
         They don't display anything themselves, but **need to be able to pop up the unlock dialog** — AppCompat's AlertDialog requires
         the host to be an AppCompat theme; the platform's Theme.Translucent doesn't satisfy it, and it crashes the moment a dialog is shown.
     -->
-    <style name="Theme.Twig.Translucent" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <style name="Theme.Twig.Translucent" parent="Theme.Twig">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>

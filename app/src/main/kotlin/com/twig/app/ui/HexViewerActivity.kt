@@ -13,7 +13,7 @@ import android.view.View
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
@@ -49,7 +49,7 @@ import kotlin.math.roundToInt
  *  - The colour scheme is shared with the text viewer's [CodeHighlighter.THEMES], switchable from the menu;
  *    font size is adjustable via two-finger pinch and stored in [Prefs.hexTextSize].
  */
-class HexViewerActivity : AppCompatActivity() {
+class HexViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityHexViewerBinding
     private lateinit var file: XFile

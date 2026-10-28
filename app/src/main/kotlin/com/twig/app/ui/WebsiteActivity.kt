@@ -32,7 +32,7 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.view.ViewCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.core.view.WindowCompat
@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 import java.io.ByteArrayInputStream
 
 /** Shares WebView's persistent website data across tree entries and launcher shortcuts. */
-class WebsiteActivity : AppCompatActivity() {
+class WebsiteActivity : TwigActivity() {
     private lateinit var b: ActivityWebsiteBinding
     private lateinit var site: Website
     private lateinit var localSite: Website

@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/surface">
+    android:background="?attr/twigSurface">
 
     <!-- Current directory path bar: source-type icon + path (network sources include the server name);
          the active pane is highlighted, the inactive one is dimmed; background colors are switched by PaneFragment.setActive -->
@@ -11,7 +11,7 @@
         android:id="@+id/path_bar"
         android:layout_width="match_parent"
         android:layout_height="30dp"
-        android:background="@color/path_bar_active"
+        android:background="?attr/twigPathBarActive"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingStart="8dp"

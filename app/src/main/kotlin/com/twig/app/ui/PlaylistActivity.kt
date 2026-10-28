@@ -10,7 +10,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -29,7 +29,7 @@ import java.util.concurrent.Executors
 
 /** Playlist page: lists tracks (number / cover / title / artist / duration); tap a row to play; overflow menu for management. */
 @UnstableApi
-class PlaylistActivity : AppCompatActivity() {
+class PlaylistActivity : TwigActivity() {
 
     private lateinit var b: ActivityPlaylistBinding
     private lateinit var playlistId: String

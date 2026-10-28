@@ -2,7 +2,6 @@ package com.twig.app
 
 import android.app.Application
 import android.content.Context
-import androidx.appcompat.app.AppCompatDelegate
 import com.twig.core.FsRegistry
 import com.twig.fs.archive.SevenZFileSystem
 import com.twig.fs.archive.SingleFileSystem
@@ -16,7 +15,7 @@ class TwigApp : Application() {
         super.onCreate()
         registerActivityLifecycleCallbacks(ServerCertificateTrust)
         registerActivityLifecycleCallbacks(com.twig.app.ui.OperationFeedback)
-        AppCompatDelegate.setDefaultNightMode(Prefs.themeMode(this))
+        AppTheme.install(this)
         // Read the decoding priority list once into memory: subtitle / lyrics
         // callers don't carry a Context.
         // Also inject it into the core-fs hook — the media server's lyrics come

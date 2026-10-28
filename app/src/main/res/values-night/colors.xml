@@ -2,24 +2,24 @@
 <resources>
     <!-- Dark theme: only overrides the colors that change with the theme; brand green is kept -->
     <color name="primary">#2E7D32</color>
-    <color name="primary_dark">#102A12</color>
+    <color name="palette_primary_dark">#102A12</color>
     <color name="accent">#66BB6A</color>
-    <color name="bg">#121212</color>
-    <color name="surface">#1E1E1E</color>
+    <color name="palette_bg">#121212</color>
+    <color name="palette_surface">#1E1E1E</color>
     <color name="text_primary">#E6E6E6</color>
     <color name="text_secondary">#9E9E9E</color>
     <color name="row_meta">#C6C6C6</color>
-    <color name="divider">#333333</color>
+    <color name="palette_divider">#333333</color>
     <color name="selected">#1B3A1E</color>
     <color name="folder">#FBC02D</color>
     <color name="white">#FFFFFF</color>
-    <color name="bar">#262626</color>
-    <color name="toolbar">#1C1C1C</color>
+    <color name="palette_bar">#262626</color>
+    <color name="palette_toolbar">#1C1C1C</color>
     <color name="action_text">#66BB6A</color>
     <!-- Active pane path bar: dark theme uses a neutral gray (no brand green), brightened so it is clearly distinct from the pane background;
          inactive is close to the bar's background color -->
-    <color name="path_bar_active">#3D3D3D</color>
-    <color name="path_bar">#262626</color>
+    <color name="palette_path_bar_active">#3D3D3D</color>
+    <color name="palette_path_bar">#262626</color>
     <color name="cmp_diff">#FFB74D</color>
     <color name="cmp_diff_bg">#33FF8F00</color>
     <color name="cmp_only">#64B5F6</color>
@@ -30,5 +30,5 @@
     <color name="menu_icon_danger">#EF5350</color>
     <color name="media_dir">#C4C7C5</color>
     <!-- PDF reader backdrop: a white page has to separate from it, so it cannot be surface/bg -->
-    <color name="pdf_backdrop">#0D0D0D</color>
+    <color name="palette_pdf_backdrop">#0D0D0D</color>
 </resources>

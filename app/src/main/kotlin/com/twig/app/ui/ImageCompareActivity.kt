@@ -9,7 +9,7 @@ import android.os.Bundle
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.Format
@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  * In portrait we stack top and bottom rather than side by side: the horizontal gesture stays free for image
  * panning, without competing with "switch sides"; half-screen-wide photos would also be unreadable.
  */
-class ImageCompareActivity : AppCompatActivity() {
+class ImageCompareActivity : TwigActivity() {
 
     private lateinit var b: ActivityImageCompareBinding
     private var fileA: XFile? = null

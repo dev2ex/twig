@@ -10,7 +10,7 @@
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         app:titleTextColor="@color/white"
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up">
@@ -20,7 +20,7 @@
             android:id="@+id/session_spinner"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:popupBackground="@color/toolbar" />
+            android:popupBackground="?attr/twigToolbar" />
     </androidx.appcompat.widget.Toolbar>
 
     <!-- Outer wrapper around the terminal: freezes the terminal view's size when the
