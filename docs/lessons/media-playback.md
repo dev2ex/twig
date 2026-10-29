@@ -16,6 +16,15 @@
   `PlaylistMenuLoadingTest` blocks the entire backfill executor while exercising info,
   sharing and locating, including missing sources and dismissal during a slow read.
 
+- **Imported tracks disappeared from the live queue during a playlist switch
+  (2026-10-29 review)**: append captured existing track IDs while a replacement queue
+  was still loading. Those IDs belonged to the previous queue, so a newly imported
+  track shared with that queue was excluded before the new queue replaced it. Skip
+  that early deduplication while loading, then deduplicate against the installed
+  target queue in the main-thread callback. Keep generation and playlist checks so
+  exit or another switch cannot revive stale work. `PlaylistImportQueueTest` holds
+  the queue worker while switching and importing a track from the previous queue.
+
 - **Playback time missing from some system notification headers (2026-10-26, issue #23)**:
   the media seek bar's time labels come from MediaSession; a header stopwatch is a
   separate native Notification chronometer. Set when to wall-clock time minus player

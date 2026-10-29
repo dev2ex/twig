@@ -640,7 +640,8 @@ add its symptom here.
   never matches); AVI needs its samples repaired before any decoder sees them — MP3 is a byte
   stream to be cut back into frames (with a double-sync check), and MPEG-4 arrives in coding
   order, sometimes two VOPs to a chunk, sometimes as 1-byte stuffing; episode queues come from
-  the backend first, file names second.
+  the backend first, file names second. Imported songs missing from the live queue
+  during a playlist switch come from deduplicating against the previous queue.
   *Explains*: playlist info/share doing nothing before metadata loads, music notifications lingering after app exit, history video taps appearing unresponsive before the player opens, fast lyric swipes
   seeking or toggling the cover, properties stuck loading on a damaged MKV, an AVI that plays as 300 ms of audio, no sound on a TrueHD Blu-ray, "m2ts
   seeks slowly", black AVI thumbnails, "half my AVIs open at 13 seconds and then freeze",
@@ -745,7 +746,8 @@ add its symptom here.
   DiffUtil pick the wrong row; for async expansion the later tap wins, and "do not
   accordionExpand" ≠ "do not expand"; writes are gated by `isMutable()` /
   `isWritableDir()` at six entry points; selection changes use payloads, never
-  `notifyDataSetChanged`.
+  `notifyDataSetChanged`. Source-directory imports require read access; reusing the
+  writable-destination gate makes read-only music directories impossible to select.
   *Explains*: a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
   spinner that never stops, the whole list flickering when you tick a box, collapsing
   Apps / Installed crashing after an app APK was opened as an archive and restored,

@@ -14,6 +14,15 @@
   covers action parity, independent roots, switching/recreation, measured rotations,
   directory confirmation, source restrictions and shortcut observers.
 
+- **Directory imports could not select readable, read-only sources (2026-10-29
+  review)**: music import reused the directory picker's save-destination intent,
+  whose confirmation requires write access. Directory picking now defaults to
+  writable destinations, with an explicit readable-source mode for imports.
+  Both modes share the active-pane observer and disabled-button handling;
+  importing must not weaken destination checks for backups or playlist exports.
+  `PickerBrowserTest` checks read-only selection, unreadable/non-directory rejection
+  and pane switching; `PlaylistImportUiTest` checks the import intent's access mode.
+
 - **Moving/deleting the selected directory left a hidden transfer destination (2026-10-26)**:
   refreshed rows dropped the source directory but currentKey/currentDir kept its old
   path, so the other pane could still copy or move into it. Before replacing a

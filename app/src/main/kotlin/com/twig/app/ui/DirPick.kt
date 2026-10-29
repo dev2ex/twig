@@ -6,6 +6,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.twig.core.isWritableDir
+import com.twig.core.XFile
 import kotlinx.coroutines.launch
 
 /**
@@ -25,13 +26,21 @@ import kotlinx.coroutines.launch
  * (media servers, restic, 7z/RAR, git viewer, "Apps") can be entered but you cannot
  * write into them.
  */
-fun AppCompatActivity.enableOnWritableDir(pane: PaneFragment, button: View): kotlinx.coroutines.Job {
-    // Start by laying it out as disabled, until the panel reports its first writable directory
+fun AppCompatActivity.enableOnWritableDir(pane: PaneFragment, button: View): kotlinx.coroutines.Job =
+    enableOnDirectory(pane, button) { it.isWritableDir() }
+
+/** Source selection needs read access, including directories on read-only backends. */
+fun AppCompatActivity.enableOnReadableDir(pane: PaneFragment, button: View): kotlinx.coroutines.Job =
+    enableOnDirectory(pane, button) { it.isDir && it.canRead }
+
+private fun AppCompatActivity.enableOnDirectory(
+    pane: PaneFragment, button: View, accepts: (XFile) -> Boolean,
+): kotlinx.coroutines.Job {
     setEnabledDim(button, false)
     val vm = pane.viewModel
     return lifecycleScope.launch {
         repeatOnLifecycle(Lifecycle.State.STARTED) {
-            vm.state.collect { st -> setEnabledDim(button, st.currentDir?.isWritableDir() == true) }
+            vm.state.collect { st -> setEnabledDim(button, st.currentDir?.let(accepts) == true) }
         }
     }
 }

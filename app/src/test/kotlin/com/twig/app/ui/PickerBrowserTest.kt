@@ -169,6 +169,44 @@ class PickerBrowserTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test fun `source directory picker accepts read only directories while destinations require writing`() {
+        for (requireWritable in listOf(true, false)) {
+            val controller = Robolectric.buildActivity(PickerActivity::class.java,
+                PickerActivity.dirIntent(app, null, requireWritable = requireWritable)).setup()
+            try {
+                val activity = controller.get()
+                val left = pane(activity, 0)
+                val right = pane(activity, 1)
+                val confirm = activity.findViewById<View>(R.id.btn_confirm)
+                val dir = XFile("file", app.cacheDir.path, true, canRead = true, canWrite = false)
+                fun select(file: XFile?) {
+                    left.viewModel.currentDir = file
+                    left.viewModel.refreshTree()
+                    shadowOf(Looper.getMainLooper()).idle()
+                }
+                select(dir)
+                assertEquals(!requireWritable, confirm.isEnabled)
+                if (!requireWritable) {
+                    select(dir.copy(canRead = false))
+                    assertFalse(confirm.isEnabled)
+                    select(dir.copy(isDir = false))
+                    assertFalse(confirm.isEnabled)
+                    select(null)
+                    assertFalse(confirm.isEnabled)
+                    select(dir)
+                    activity.focusPane(right)
+                    shadowOf(Looper.getMainLooper()).idle()
+                    assertFalse(confirm.isEnabled)
+                    activity.focusPane(left)
+                    shadowOf(Looper.getMainLooper()).idle()
+                    assertTrue(confirm.isEnabled)
+                    confirm.performClick()
+                    assertEquals(dir.path, shadowOf(activity).resultIntent.getStringExtra(PickerActivity.EXTRA_PICKED_PATH))
+                }
+            } finally { controller.pause().stop().destroy() }
+        }
+    }
+
     @Test fun `shortcut confirmation observes the active pane after repeated switches`() {
         val controller = Robolectric.buildActivity(CreateCommandShortcutActivity::class.java).setup()
         try {

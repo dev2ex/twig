@@ -362,7 +362,9 @@ object MusicEngine {
         if (queueId != id && !loadingQueue) return
         val generation = loadGeneration
         val appCtx = ctx.applicationContext
-        val existing = tracks.map { it.id }.toHashSet()
+        // A pending load replaces tracks with its own snapshot. Only deduplicate against
+        // the installed queue when no replacement is pending; the main callback checks again.
+        val existing = if (loadingQueue) emptySet() else tracks.map { it.id }.toHashSet()
         io.execute {
             val playlist = PlaylistStore.get(appCtx, id) ?: return@execute
             if (playlist.temporary) return@execute

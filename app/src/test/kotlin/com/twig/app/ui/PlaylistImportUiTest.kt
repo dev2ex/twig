@@ -89,6 +89,7 @@ class PlaylistImportUiTest {
                     val request = shadowOf(destination.get()).nextStartedActivityForResult
                     assertEquals(PickerActivity::class.java.name, request.intent.component!!.className)
                     assertEquals(directory, request.intent.getBooleanExtra("pick_dir", false))
+                    if (directory) assertFalse(request.intent.getBooleanExtra("require_writable_dir", true))
                     destination.recreate()
                     assertNull(shadowOf(destination.get()).nextStartedActivityForResult)
                     assertTrue(destination.get().activityResultRegistry.dispatchResult(request.requestCode, Activity.RESULT_CANCELED, null))

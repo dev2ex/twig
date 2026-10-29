@@ -208,7 +208,7 @@ class PlaylistActivity : TwigActivity() {
     }
 
     private fun launchImport(directory: Boolean) {
-        if (directory) directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory)))
+        if (directory) directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory), requireWritable = false))
         else playlistPicker.launch(PickerActivity.pathIntentAny(this, getString(R.string.music_import_playlist)))
     }
 

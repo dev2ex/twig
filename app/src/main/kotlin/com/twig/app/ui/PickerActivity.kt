@@ -117,7 +117,10 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
             },
             onPaneChanged = {
                 directoryObserver?.cancel()
-                if (pickDir) directoryObserver = pane()?.let { enableOnWritableDir(it, b.btnConfirm) }
+                if (pickDir) directoryObserver = pane()?.let {
+                    if (intent.getBooleanExtra(EXTRA_REQUIRE_WRITABLE_DIR, true)) enableOnWritableDir(it, b.btnConfirm)
+                    else enableOnReadableDir(it, b.btnConfirm)
+                }
                 onPaneReady()
             })
 
@@ -197,8 +200,7 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
      * tap adds a step. Same idea as [ShareTargetActivity]'s "copy to here".
      */
     private fun confirmDir() {
-        // The button is gated by enableOnWritableDir, can't be tapped on a non-writable dir —
-        // this is just a fallback
+        // The directory observer gates confirmation according to this picker's access mode.
         val dir = pane()?.viewModel?.currentDir ?: return
         deliver(listOf(dir))
     }
@@ -349,6 +351,7 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
         private const val EXTRA_START_PATH = "start_path"
         private const val EXTRA_START_LABEL = "start_label"
         private const val EXTRA_PICK_DIR = "pick_dir"
+        private const val EXTRA_REQUIRE_WRITABLE_DIR = "require_writable_dir"
         const val EXTRA_PICKED_SCHEME = "picked_scheme"
         const val EXTRA_PICKED_PATH = "picked_path"
         const val EXTRA_PICKED_NAME = "picked_name"
@@ -389,10 +392,12 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
          * Doesn't lock the source — this way "where to save" matches what's reachable on the
          * tree, so backups can land directly on SMB/WebDAV without first saving locally and
          * copying.
+         * Source imports set [requireWritable] to false to allow readable, read-only directories.
          */
-        fun dirIntent(ctx: Context, title: String?): Intent =
+        fun dirIntent(ctx: Context, title: String?, requireWritable: Boolean = true): Intent =
             intent(ctx, title)
                 .putExtra(EXTRA_RETURN_PATH, true)
                 .putExtra(EXTRA_PICK_DIR, true)
+                .putExtra(EXTRA_REQUIRE_WRITABLE_DIR, requireWritable)
     }
 }

@@ -76,6 +76,25 @@ class PlaylistImportQueueTest {
         assertEquals("", MusicEngine.queueId)
     }
 
+    @Test fun `import during queue switch keeps tracks shared with previous queue`() {
+        queue()
+        val next = PlaylistStore.create(app, "Next", listOf(second))
+        val executor = MusicEngine::class.java.getDeclaredField("io").apply { isAccessible = true }
+            .get(MusicEngine) as ExecutorService
+        val gate = java.util.concurrent.CountDownLatch(1)
+        executor.execute { check(gate.await(5, TimeUnit.SECONDS)) }
+        try {
+            MusicEngine.play(app, next, 0, autoPlay = false)
+            PlaylistStore.addTracks(app, next.id, listOf(first))
+            MusicEngine.appendToQueue(app, next.id)
+        } finally { gate.countDown() }
+        drain()
+        assertEquals(next.id, MusicEngine.queueId)
+        assertEquals(2, MusicEngine.trackCount())
+        assertEquals(listOf(second.id, first.id), (0 until MusicEngine.trackCount()).map { MusicEngine.trackAt(it)!!.id })
+        assertFalse(MusicEngine.ensurePlayer(app).playWhenReady)
+    }
+
     @Test fun `append cannot reintroduce a track removed while resolving`() {
         val playlist = queue()
         val player = MusicEngine.ensurePlayer(app)
