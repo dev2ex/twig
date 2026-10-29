@@ -7,6 +7,7 @@ import com.twig.core.XFile
 import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.Response
@@ -499,6 +500,7 @@ class SftpFileSystem(
                     isDir = info.isDirectory,
                     size = if (info.isDirectory) 0L else info.attributes.size,
                     lastModified = info.attributes.mtime * 1000L,
+                    unixMode = info.attributes.takeIf { it.has(FileAttributes.Flag.MODE) }?.mode?.mask,
                 )
             }
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
@@ -512,6 +514,7 @@ class SftpFileSystem(
             isDir = attrs.type == FileMode.Type.DIRECTORY,
             size = if (attrs.type == FileMode.Type.DIRECTORY) 0L else attrs.size,
             lastModified = attrs.mtime * 1000L,
+            unixMode = attrs.takeIf { it.has(FileAttributes.Flag.MODE) }?.mode?.mask,
         )
     }
 

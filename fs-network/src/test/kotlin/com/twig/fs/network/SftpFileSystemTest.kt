@@ -2,6 +2,7 @@ package com.twig.fs.network
 
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
+import com.twig.core.UnixPermissions
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory
@@ -23,6 +24,8 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.atomic.AtomicInteger
 
 class SftpFileSystemTest {
@@ -184,6 +187,20 @@ class SftpFileSystemTest {
         assertTrue("mtime should be filled in", f.lastModified > 0)
         assertTrue(fs.stat("/sub")!!.isDir)
         assertNull(fs.stat("/nope.txt"))
+    }
+
+    @Test
+    fun listingAndStatCarryUnixPermissions() {
+        val file = File(home, "a.txt").apply { writeText("hello") }
+        val dir = File(home, "sub").apply { mkdirs() }
+        Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-r-----"))
+        Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString("rwxr-x---"))
+
+        val listed = fs.list(fs.root()).associateBy { it.name }
+        for ((name, permissions) in mapOf("a.txt" to "rw-r-----", "sub" to "rwxr-x---")) {
+            assertEquals(permissions, UnixPermissions.symbolic(listed.getValue(name).unixMode!!))
+            assertEquals(permissions, UnixPermissions.symbolic(fs.stat("/$name")!!.unixMode!!))
+        }
     }
 
     // ---- retries (2026-09-17 review) ----
