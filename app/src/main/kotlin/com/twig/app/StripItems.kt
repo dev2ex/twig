@@ -20,6 +20,7 @@ object StripItems {
         Item("search", R.id.as_search, R.string.strip_search, R.drawable.ic_search),
         Item("history", R.id.as_history, R.string.strip_history, R.drawable.ic_history),
         Item("share", R.id.as_share, R.string.strip_share, R.drawable.ic_share_wifi),
+        Item("exit", R.id.as_exit, R.string.action_exit, R.drawable.ic_exit, visibleByDefault = false),
     )
     private val byId = all.associateBy { it.id }
 

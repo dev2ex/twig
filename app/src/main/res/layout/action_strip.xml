@@ -157,6 +157,11 @@
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_share" />
         </LinearLayout>
+        <LinearLayout android:id="@+id/as_exit" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_exit"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/action_exit" />
+        </LinearLayout>
     </com.twig.app.ui.StripGrid>
     </ScrollView>
 </LinearLayout>

@@ -94,7 +94,7 @@ class StripGridTest {
             strip.asGrid.setColumns(1)
             layout(strip.asGrid, 1)
             assertEquals(View.VISIBLE, strip.asDelete.visibility)
-            assertSame(strip.asShare, strip.asGrid.getChildAt(0))
+            assertSame(strip.asExit, strip.asGrid.getChildAt(0))
         } finally {
             prefs.edit().clear().commit()
         }
@@ -108,11 +108,14 @@ class StripGridTest {
             val strip = ActionStripBinding.inflate(LayoutInflater.from(ContextThemeWrapper(app, R.style.Theme_Twig)))
             strip.asGrid.applyItems()
             assertEquals(View.GONE, strip.asInfo.visibility)
+            assertEquals(View.GONE, strip.asExit.visibility)
+            assertEquals("exit", com.twig.app.Prefs.stripItemOrder(app).last().id)
             assertEquals(View.VISIBLE, strip.asCopy.visibility)
             val ids = com.twig.app.StripItems.all.map { it.id }
             com.twig.app.Prefs.setStripItems(app, ids, ids.toSet())
             strip.asGrid.applyItems()
             assertEquals(View.VISIBLE, strip.asInfo.visibility)
+            assertEquals(View.VISIBLE, strip.asExit.visibility)
         } finally {
             prefs.edit().clear().commit()
         }

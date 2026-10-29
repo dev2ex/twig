@@ -354,7 +354,8 @@ each write `= null`.
   pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
   Properties defaults to hidden and toggles the current/checked items; long-press
   requests the second page after metadata finishes loading, falling back to Basic
-  for one-page cards.
+  for one-page cards. Quit is appended to the default action order and hidden by
+  default; tapping uses the menu confirmation policy, while holding quits immediately.
 - Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
   view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
   `ToolbarPlacement` moves the existing browser toolbar below content and matches

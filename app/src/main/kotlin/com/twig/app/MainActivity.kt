@@ -475,6 +475,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private fun wireStrip(s: ActionStripBinding) {
         s.sizeIconsLikeRows(this)
+        s.asExit.setOnClickListener { confirmExit() }
+        s.asExit.setOnLongClickListener { com.twig.app.ui.AppExit.quit(this); true }
         s.asInfo.setOnClickListener { activePane()?.actionInfo() }
         s.asInfo.setOnLongClickListener { activePane()?.actionInfo(secondTab = true); true }
         s.asUp.setOnClickListener { activePane()?.actionUp() }
