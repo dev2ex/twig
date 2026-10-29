@@ -203,6 +203,62 @@ class SftpFileSystemTest {
         }
     }
 
+    @Test
+    fun symbolicLinksKeepTheirIdentityAndFollowTargetsForBrowsingAndReading() {
+        File(home, "target.txt").writeText("payload")
+        File(home, "target-dir").mkdirs()
+        File(home, "target-dir/keep.txt").writeText("keep")
+        Files.createSymbolicLink(File(home, "file-link").toPath(), Path.of("target.txt"))
+        Files.createSymbolicLink(File(home, "dir-link").toPath(), Path.of("target-dir"))
+        Files.createSymbolicLink(File(home, "broken-link").toPath(), Path.of("missing.txt"))
+
+        val listed = fs.list(fs.root()).associateBy { it.name }
+        for (name in listOf("file-link", "dir-link", "broken-link")) {
+            val entry = listed.getValue(name)
+            assertTrue(entry.isSymbolicLink)
+            assertEquals(0xA000, entry.unixMode!! and 0xF000)
+            assertEquals(entry, fs.stat("/$name"))
+        }
+        assertEquals("target.txt", listed.getValue("file-link").linkTarget)
+        assertEquals(7L, listed.getValue("file-link").size)
+        assertEquals("payload", fs.openInput(listed.getValue("file-link")).bufferedReader().use { it.readText() })
+        assertTrue(listed.getValue("dir-link").isDir)
+        assertEquals(listOf("keep.txt"), fs.list(listed.getValue("dir-link")).map { it.name })
+        assertEquals("missing.txt", listed.getValue("broken-link").linkTarget)
+        assertFalse(listed.getValue("broken-link").isDir)
+        assertEquals(-1L, listed.getValue("broken-link").size)
+        assertTrue(fs.exists(listed.getValue("broken-link")))
+        assertFalse(listed.getValue("target.txt").isSymbolicLink)
+
+        // Deletion must be safe even for callers holding a navigation stub without link metadata.
+        fs.delete(XFile("sftp", "/dir-link", isDir = true))
+        assertEquals("keep", File(home, "target-dir/keep.txt").readText())
+        assertNull(fs.stat("/dir-link"))
+        val renamed = fs.rename(listed.getValue("broken-link"), "renamed-link")
+        assertNull(fs.stat("/broken-link"))
+        assertTrue(fs.exists(renamed))
+        assertEquals("missing.txt", fs.stat("/renamed-link")!!.linkTarget)
+        fs.delete(renamed)
+        assertNull(fs.stat("/renamed-link"))
+    }
+
+    @Test
+    fun rootedConnectionPreservesRawLinkTargets() {
+        File(home, "srv").mkdirs()
+        File(home, "srv/target.txt").writeText("data")
+        Files.createSymbolicLink(File(home, "srv/link").toPath(), Path.of("target.txt"))
+        val sub = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "srv"))
+        try {
+            val link = sub.list(sub.root()).single { it.name == "link" }
+            assertEquals("/link", link.path)
+            assertEquals("target.txt", link.linkTarget)
+            assertEquals(4L, link.size)
+            assertEquals(link, sub.stat("/link"))
+        } finally {
+            sub.disconnect()
+        }
+    }
+
     // ---- retries (2026-09-17 review) ----
 
     /** A server's "no such file" is an answer, not a dropped connection: no reconnect, no second try. */
