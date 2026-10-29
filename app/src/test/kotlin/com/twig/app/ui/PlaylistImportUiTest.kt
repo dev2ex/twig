@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import androidx.appcompat.view.menu.MenuBuilder
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
@@ -31,6 +32,8 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowDialog
+import org.robolectric.util.ReflectionHelpers
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -54,10 +57,125 @@ class PlaylistImportUiTest {
     private fun open(id: String) = Robolectric.buildActivity(PlaylistActivity::class.java,
         Intent(app, PlaylistActivity::class.java).putExtra("playlist_id", id)).setup()
     private fun pick(activity: PlaylistActivity, title: Int) = run {
+        clickMenu(activity, title)
+        shadowOf(activity).nextStartedActivityForResult
+    }
+    private fun clickMenu(activity: PlaylistActivity, title: Int) {
         val menu = activity.findViewById<Toolbar>(R.id.toolbar).menu as MenuBuilder
         val item = (0 until menu.size()).map(menu::getItem).single { it.title == activity.getString(title) }
         assertTrue(menu.performItemAction(item, 0))
-        shadowOf(activity).nextStartedActivityForResult
+    }
+
+    @Test fun `drawer import opens the selected list and launches its picker only once`() {
+        val shown = PlaylistStore.create(app, "Shown")
+        val selected = PlaylistStore.create(app, "Selected")
+        val controller = open(shown.id)
+        try {
+            for (directory in listOf(false, true)) {
+                val activity = controller.get()
+                val drawer = ReflectionHelpers.getField<PlaylistDrawer>(activity, "plDrawer")
+                ReflectionHelpers.callInstanceMethod<Unit>(drawer, "rowMenu",
+                    ReflectionHelpers.ClassParameter.from(Playlist::class.java, selected))
+                val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+                val label = activity.getString(if (directory) R.string.music_import_directory else R.string.music_import_playlist)
+                val index = (0 until dialog.listView.adapter.count).single { dialog.listView.adapter.getItem(it).toString() == label }
+                dialog.listView.performItemClick(null, index, index.toLong())
+                val intent = shadowOf(activity).nextStartedActivity
+                shadowOf(activity).nextStartedActivityForResult // consume the shadow's matching startActivity record
+                assertEquals(PlaylistActivity::class.java.name, intent.component!!.className)
+                assertEquals(selected.id, intent.getStringExtra("playlist_id"))
+                val destination = Robolectric.buildActivity(PlaylistActivity::class.java, intent).setup()
+                try {
+                    val request = shadowOf(destination.get()).nextStartedActivityForResult
+                    assertEquals(PickerActivity::class.java.name, request.intent.component!!.className)
+                    assertEquals(directory, request.intent.getBooleanExtra("pick_dir", false))
+                    destination.recreate()
+                    assertNull(shadowOf(destination.get()).nextStartedActivityForResult)
+                    assertTrue(destination.get().activityResultRegistry.dispatchResult(request.requestCode, Activity.RESULT_CANCELED, null))
+                } finally { destination.pause().stop().destroy() }
+            }
+            assertEquals(shown, PlaylistStore.get(app, shown.id))
+            assertEquals(selected, PlaylistStore.get(app, selected.id))
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun `drawer importing into the open list reuses its existing picker`() {
+        val list = PlaylistStore.create(app, "Current")
+        val controller = open(list.id)
+        try {
+            val activity = controller.get()
+            val drawer = ReflectionHelpers.getField<PlaylistDrawer>(activity, "plDrawer")
+            ReflectionHelpers.callInstanceMethod<Unit>(drawer, "rowMenu",
+                ReflectionHelpers.ClassParameter.from(Playlist::class.java, list))
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val label = activity.getString(R.string.music_import_directory)
+            val index = (0 until dialog.listView.adapter.count).single { dialog.listView.adapter.getItem(it).toString() == label }
+            dialog.listView.performItemClick(null, index, index.toLong())
+            val request = shadowOf(activity).nextStartedActivityForResult
+            assertEquals(PickerActivity::class.java.name, request.intent.component!!.className)
+            assertTrue(request.intent.getBooleanExtra("pick_dir", false))
+            shadowOf(activity).receiveResult(request.intent, Activity.RESULT_CANCELED, null)
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun `toolbar export retains its destination playlist through recreation`() {
+        val list = PlaylistStore.create(app, "Export")
+        val controller = open(list.id)
+        try {
+            val request = pick(controller.get(), R.string.music_export)
+            assertTrue(request.intent.getBooleanExtra("pick_dir", false))
+            val pending = ViewModelProvider(controller.get())[PlaylistDrawer.ExportState::class.java]
+            assertEquals(list.id, pending.id)
+            controller.recreate()
+            assertEquals(list.id, ViewModelProvider(controller.get())[PlaylistDrawer.ExportState::class.java].id)
+            assertTrue(controller.get().activityResultRegistry.dispatchResult(request.requestCode, Activity.RESULT_CANCELED, null))
+            assertNull(pending.id)
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun `saving Now Playing updates the open list identity and rename action across recreation`() {
+        val now = PlaylistStore.setNow(app, "Now", emptyList())
+        val controller = open(now.id)
+        try {
+            val activity = controller.get()
+            clickMenu(activity, R.string.music_save)
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            fun input(view: android.view.View): android.widget.EditText? {
+                if (view is android.widget.EditText) return view
+                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) input(view.getChildAt(i))?.let { return it }
+                return null
+            }
+            input(dialog.window!!.decorView)!!.setText("Saved mix")
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            shadowOf(android.os.Looper.getMainLooper()).idle()
+            val saved = PlaylistStore.all(app).single { it.name == "Saved mix" }
+            assertNotEquals(Playlist.NOW, saved.id)
+            assertNull(PlaylistStore.get(app, Playlist.NOW))
+            assertEquals(saved.id, activity.intent.getStringExtra("playlist_id"))
+            assertEquals("Saved mix", activity.findViewById<android.widget.TextView>(R.id.plTitle).text.toString())
+            controller.recreate()
+            assertFalse(controller.get().isFinishing)
+            clickMenu(controller.get(), R.string.music_rename)
+            (ShadowDialog.getLatestDialog() as AlertDialog).dismiss()
+            pick(controller.get(), R.string.music_export)
+            assertEquals(saved.id, ViewModelProvider(controller.get())[PlaylistDrawer.ExportState::class.java].id)
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun `favorites can export and resume but cannot rename`() {
+        val favorites = PlaylistStore.fav(app)
+        val controller = open(favorites.id)
+        try {
+            val activity = controller.get()
+            val menu = activity.findViewById<Toolbar>(R.id.toolbar).menu
+            val titles = (0 until menu.size()).map { menu.getItem(it).title.toString() }
+            assertTrue(activity.getString(R.string.music_export) in titles)
+            assertTrue(activity.getString(R.string.music_resume) in titles)
+            assertFalse(activity.getString(R.string.music_rename) in titles)
+            assertFalse(activity.getString(R.string.music_save) in titles)
+            clickMenu(activity, R.string.music_resume)
+            assertFalse(MusicEngine.loadingQueue)
+        } finally { controller.pause().stop().destroy() }
     }
 
     @Test fun `both import actions use Twig path pickers without preparing external shares`() {

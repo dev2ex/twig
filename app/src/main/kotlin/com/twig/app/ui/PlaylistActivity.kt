@@ -55,6 +55,7 @@ class PlaylistActivity : TwigActivity() {
     private lateinit var dragHelper: ItemTouchHelper
     private lateinit var searchItem: MenuItem
     private var manualSortItem: MenuItem? = null
+    private var renameItem: MenuItem? = null
     private val attemptedTrackNumbers = HashSet<String>()
     private val importer by lazy { ViewModelProvider(this)[PlaylistImportModel::class.java] }
     private var importProgress: AlertDialog? = null
@@ -81,11 +82,22 @@ class PlaylistActivity : TwigActivity() {
         super.onCreate(savedInstanceState)
         b = ActivityPlaylistBinding.inflate(layoutInflater)
         setContentView(b.root)
-        playlistId = intent.getStringExtra(EXTRA_ID) ?: return finish()
+        playlistId = savedInstanceState?.getString(EXTRA_ID) ?: intent.getStringExtra(EXTRA_ID) ?: return finish()
         setupImmersive()
         b.bgBlur.setBackgroundColor(fallbackBg()) // paint a solid color first to avoid a black flash on entry
         b.toolbar.setNavigationOnClickListener { b.drawer.openDrawer(androidx.core.view.GravityCompat.START) }
-        plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit)
+        plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit,
+            onImport = { id, directory ->
+                if (id == playlistId) launchImport(directory) else startImport(this, id, directory)
+            },
+            onRenamed = { oldId, renamed ->
+                if (playlistId == oldId) {
+                    playlistId = renamed.id
+                    intent.putExtra(EXTRA_ID, renamed.id)
+                    renameItem?.setTitle(if (renamed.isNow) R.string.music_save else R.string.music_rename)
+                    reload()
+                }
+            })
         MusicUi.register(finisher)
         adapter = TrackAdapter()
         b.list.layoutManager = LinearLayoutManager(this)
@@ -113,13 +125,25 @@ class PlaylistActivity : TwigActivity() {
         b.toolbar.menu.add(R.string.sort_by).setOnMenuItemClickListener { showSortDialog(); true }
         if (playlistId != Playlist.TEMP) {
             b.toolbar.menu.add(R.string.music_import_playlist).setOnMenuItemClickListener {
-                playlistPicker.launch(PickerActivity.pathIntentAny(this, getString(R.string.music_import_playlist)))
+                launchImport(directory = false)
                 true
             }
             b.toolbar.menu.add(R.string.music_import_directory).setOnMenuItemClickListener {
-                directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory)))
+                launchImport(directory = true)
                 true
             }
+            b.toolbar.menu.add(R.string.music_export).setOnMenuItemClickListener {
+                playlist?.let(plDrawer::export)
+                true
+            }
+            if (playlistId != Playlist.FAV) {
+                renameItem = b.toolbar.menu.add(if (playlistId == Playlist.NOW) R.string.music_save else R.string.music_rename)
+                    .setOnMenuItemClickListener { playlist?.let(plDrawer::rename); true }
+            }
+        }
+        b.toolbar.menu.add(R.string.music_resume).setOnMenuItemClickListener {
+            playlist?.let(plDrawer::resume)
+            true
         }
         manualSortItem = b.toolbar.menu.add(R.string.music_manual_sort).apply {
             isCheckable = true
@@ -176,6 +200,16 @@ class PlaylistActivity : TwigActivity() {
                 }
             }
         }
+        if (savedInstanceState == null && intent.hasExtra(EXTRA_IMPORT) && playlistId != Playlist.TEMP) {
+            val directory = intent.getBooleanExtra(EXTRA_IMPORT, false)
+            intent.removeExtra(EXTRA_IMPORT)
+            launchImport(directory)
+        }
+    }
+
+    private fun launchImport(directory: Boolean) {
+        if (directory) directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory)))
+        else playlistPicker.launch(PickerActivity.pathIntentAny(this, getString(R.string.music_import_playlist)))
     }
 
     private fun importPicked(data: Intent?, directory: Boolean) {
@@ -190,6 +224,11 @@ class PlaylistActivity : TwigActivity() {
         importProgress = null
         super.onDestroy()
         MusicUi.unregister(finisher)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (::playlistId.isInitialized) outState.putString(EXTRA_ID, playlistId)
+        super.onSaveInstanceState(outState)
     }
 
     /** Immersive: content extends below the status bar (blur fills it); toolbar / list inset around system bars. */
@@ -301,6 +340,8 @@ class PlaylistActivity : TwigActivity() {
 
     override fun onResume() {
         super.onResume()
+        val latest = if (playlistId == Playlist.FAV) PlaylistStore.fav(this) else PlaylistStore.get(this, playlistId)
+        if (latest != playlist) reload()
         adapter.notifyDataSetChanged() // refresh the now-playing highlight
         adapter.syncPlaying()          // sync the highlight row index (for later incremental refreshes)
         plDrawer.reload()
@@ -428,7 +469,8 @@ class PlaylistActivity : TwigActivity() {
     }
 
     private fun reload() {
-        val pl = PlaylistStore.get(this, playlistId) ?: return finish()
+        val pl = if (playlistId == Playlist.FAV) PlaylistStore.fav(this)
+            else PlaylistStore.get(this, playlistId) ?: return finish()
         playlist = pl
         b.plTitle.text = pl.name
         b.plCount.text = getString(R.string.music_track_count, pl.tracks.size)
@@ -669,6 +711,7 @@ class PlaylistActivity : TwigActivity() {
 
     companion object {
         private const val EXTRA_ID = "playlist_id"
+        private const val EXTRA_IMPORT = "playlist_import_directory"
         private const val PAYLOAD_COLORS = "colors"
         private const val PAYLOAD_NUMBER = "number"
         /**
@@ -681,6 +724,11 @@ class PlaylistActivity : TwigActivity() {
         private const val SCRIM = 0x00000000
         fun start(ctx: Context, playlistId: String) {
             ctx.startActivity(Intent(ctx, PlaylistActivity::class.java).putExtra(EXTRA_ID, playlistId))
+        }
+
+        fun startImport(ctx: Context, playlistId: String, directory: Boolean) {
+            ctx.startActivity(Intent(ctx, PlaylistActivity::class.java)
+                .putExtra(EXTRA_ID, playlistId).putExtra(EXTRA_IMPORT, directory))
         }
     }
 }
