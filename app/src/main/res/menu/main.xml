@@ -36,10 +36,6 @@
         android:id="@+id/action_theme"
         android:title="@string/action_theme"
         app:showAsAction="never" />
-    <item
-        android:id="@+id/action_pin_music_shortcut"
-        android:title="@string/music_pin_shortcut"
-        app:showAsAction="never" />
     <!-- Lock is only visible when a master password is set (without one, locking serves no purpose); Exit is always present -->
     <item
         android:id="@+id/action_lock"

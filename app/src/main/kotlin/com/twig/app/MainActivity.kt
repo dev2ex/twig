@@ -21,9 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
-import androidx.core.content.pm.ShortcutInfoCompat
-import com.twig.app.ui.ShortcutIcons
-import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -1203,9 +1200,6 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         R.id.action_theme -> {
             showThemeDialog(); true
         }
-        R.id.action_pin_music_shortcut -> {
-            pinMusicShortcut(); true
-        }
         else -> super.onOptionsItemSelected(item)
     }
 
@@ -1213,22 +1207,6 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         com.twig.app.ui.RootItemsDialog.show(this) {
             for (pane in 0..1) paneAt(pane)?.viewModel?.refreshRootItems()
         }
-    }
-
-    private fun pinMusicShortcut() {
-        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(this)) {
-            Toast.makeText(this, R.string.music_pin_shortcut_unsupported, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val intent = Intent(this, com.twig.app.ui.MusicPlayerActivity::class.java).setAction(Intent.ACTION_VIEW)
-        val shortcut = ShortcutInfoCompat.Builder(this, "music_pinned")
-            // On the desktop it's just called "Music": a long label (e.g. "Music Player") would push out the short name on launchers
-            .setShortLabel(getString(R.string.music_menu))
-            .setLongLabel(getString(R.string.music_menu))
-            .setIcon(ShortcutIcons.of(this, R.drawable.ic_shortcut_music))
-            .setIntent(intent)
-            .build()
-        ShortcutManagerCompat.requestPinShortcut(this, shortcut, null)
     }
 
     private fun showSortDialog(selectedDirectory: Boolean = false) {

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
 import android.util.Log
+import android.widget.Toast
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import com.twig.app.R
@@ -47,6 +48,22 @@ object Shortcuts {
      */
     private const val ID_MUSIC = "open_music"
     private const val ID_TERMINAL = "open_terminal"
+
+    fun pinMusic(act: Activity) {
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(act)) {
+            Toast.makeText(act, R.string.music_pin_shortcut_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val intent = Intent(act, MusicPlayerActivity::class.java).setAction(Intent.ACTION_VIEW)
+        val shortcut = ShortcutInfoCompat.Builder(act, "music_pinned")
+            // On the desktop it's just called "Music": a long label (e.g. "Music Player") would push out the short name on launchers
+            .setShortLabel(act.getString(R.string.music_menu))
+            .setLongLabel(act.getString(R.string.music_menu))
+            .setIcon(ShortcutIcons.of(act, R.drawable.ic_shortcut_music))
+            .setIntent(intent)
+            .build()
+        ShortcutManagerCompat.requestPinShortcut(act, shortcut, null)
+    }
 
     fun publish(act: Activity) {
         val owner = ComponentName(act, com.twig.app.MainActivity::class.java)

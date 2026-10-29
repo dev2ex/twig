@@ -163,6 +163,15 @@ class MusicPlayerActivity : TwigActivity() {
     /** Button/gesture listeners — must be wired both in onCreate and after every re-inflate on orientation switch. */
     private fun wireViews() {
         b.btnDrawer.setOnClickListener { b.drawer.openDrawer(GravityCompat.START) }
+        b.drawerMore.setOnClickListener { anchor ->
+            androidx.appcompat.widget.PopupMenu(this, anchor).apply {
+                menu.add(R.string.action_pin_shortcut).setOnMenuItemClickListener {
+                    Shortcuts.pinMusic(this@MusicPlayerActivity)
+                    true
+                }
+                show()
+            }
+        }
         b.btnMore.setOnClickListener { overflowMenu() }
         b.btnMore.setOnLongClickListener {
             MusicEngine.currentFile()?.takeIf(MusicDialogs::canLocate)?.let { MusicDialogs.locateInFileManager(this, it) }
