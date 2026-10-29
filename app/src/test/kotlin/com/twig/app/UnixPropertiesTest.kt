@@ -39,8 +39,8 @@ class UnixPropertiesTest {
             assertEquals(0, stats)
             assertEquals(0, contexts)
             val mediaInitial = FileInfo.initial(app, file.copy(path = "/video.mp4", canRead = true))
-            assertEquals(listOf(app.getString(R.string.info_section_basic), app.getString(R.string.info_section_unix),
-                app.getString(R.string.info_section_media)), mediaInitial.sections.map { it.title })
+            assertEquals(listOf(app.getString(R.string.info_section_basic), app.getString(R.string.info_section_media),
+                app.getString(R.string.info_section_unix)), mediaInitial.sections.map { it.title })
             assertEquals(0, stats)
             val details = FileInfo.load(app, file)
             val loaded = rows(details)

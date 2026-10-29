@@ -1875,7 +1875,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun applyRequestedInfoTab(key: String, file: XFile) {
         val requested = requestedInfoTab.remove(key) ?: return
         val details = infoCache[key] ?: return
-        val last = (details.sections.size - if (file.isDir) 1 else 0).coerceAtLeast(0)
+        val last = com.twig.app.FileInfo.tabs(getApplication(), file, details).lastIndex.coerceAtLeast(0)
         selectInfoTab(InfoNode(file, 0, details), requested.coerceIn(0, last))
     }
 
@@ -1926,7 +1926,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             runCatching { com.twig.app.FileInfo.initial(getApplication(), file) }
                                 .getOrElse { com.twig.app.FileInfo.Details(emptyList(), it.message ?: str(R.string.info_failed)) }
                         }
-                        publishInfo(key, initial)
+                        publishInfo(key, file, initial)
                         if (initial.sections.isEmpty()) return@launch
                         val d = try {
                             kotlinx.coroutines.runInterruptible(io) { com.twig.app.FileInfo.load(getApplication(), file) }
@@ -1936,7 +1936,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             // Preserve basic fields and finish any loading placeholder on failure.
                             initial.copy(sections = initial.sections.map { it.copy(loading = false) })
                         }
-                        publishInfo(key, d)
+                        publishInfo(key, file, d)
                     } finally {
                         if (infoLoads[key] === coroutineContext[kotlinx.coroutines.Job]) {
                             infoLoads.remove(key)
@@ -1953,15 +1953,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
     }
 
-    private fun publishInfo(key: String, details: com.twig.app.FileInfo.Details) {
+    private fun publishInfo(key: String, file: XFile, details: com.twig.app.FileInfo.Details) {
         if (key !in infoOpen) return
         val previous = infoCache[key]
         val selected = infoTab[key] ?: 0
-        if (previous != null && selected == previous.sections.size) {
-            infoTab[key] = details.sections.size // Keep Hash selected when extra tabs appear.
-        } else if (previous != null) {
-            previous.sections.getOrNull(selected)?.title?.let { title ->
-                infoTab[key] = details.sections.indexOfFirst { it.title == title }.coerceAtLeast(0)
+        if (previous != null) {
+            com.twig.app.FileInfo.tabs(getApplication(), file, previous).getOrNull(selected)?.title?.let { title ->
+                infoTab[key] = com.twig.app.FileInfo.tabs(getApplication(), file, details)
+                    .indexOfFirst { it.title == title }.coerceAtLeast(0)
             }
         }
         infoCache[key] = details
@@ -2006,8 +2005,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (selectionInfo?.scan?.job?.isActive == true) 1 else 0
 
     /**
-     * Switch the properties card's tab. Switching to the "Hash" tab (index == section
-     * count) auto-starts computation for local files; network files wait for the user
+     * Switch the properties card's tab. Switching to Hash auto-starts computation
+     * for local files; network files wait for the user
      * to tap "Compute" (a whole-file read — bandwidth/time is up to the user).
      */
     fun selectInfoTab(n: InfoNode, idx: Int) {
@@ -2019,7 +2018,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (idx == 0 && key !in dirScan) startDirScan(key, n.file)
             else if (idx != 0 && dirScan[key]?.scanning == true) stopDirScan(key)
         }
-        val isHash = !n.file.isDir && idx == (n.details?.sections?.size ?: 0)
+        val page = com.twig.app.FileInfo.tabs(getApplication(), n.file, n.details, n.selection).getOrNull(idx)
+        val isHash = page != null && page.section == null
         if (isHash && n.file.scheme == "file" && !hashCache.containsKey(key) && !hashing.contains(key)) {
             startHash(key, n.file)
         }

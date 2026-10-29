@@ -468,7 +468,7 @@ class FileAdapter(
     }
 
     /**
-     * Info card: one tab per information section + a "hash" tab at the file's tail, ✕ to close.
+     * Info card: one tab per information section + Hash for readable files, Unix last, ✕ to close.
      * The tab title bar is a thin strip that indents along with the tree, with its left edge aligned to
      * the file row's icon (row-start indent 2+depth*14 + chevron 16 + icon margin 2, minus the card's
      * outer margin 4), so it looks like a node in the tree; the content box does not indent and fills
@@ -482,16 +482,15 @@ class FileAdapter(
         }
 
         fun bind(node: PaneViewModel.InfoNode) {
-            val sections = node.details?.sections.orEmpty()
-            val count = sections.size + if (node.selection || node.file.isDir || sections.isEmpty()) 0 else 1
+            val tabs = FileInfo.tabs(b.root.context, node.file, node.details, node.selection)
+            val count = tabs.size
             val tab = node.tab.coerceIn(0, (count - 1).coerceAtLeast(0))
             b.root.swipeEnabled = count > 1
             b.root.onSwipe = { step ->
                 val target = tab + step
                 if (target in 0 until count) onInfoTab(node, target)
             }
-            val page = sections.getOrNull(tab)?.title
-                ?: if (count > 0 && !node.file.isDir) b.root.context.getString(R.string.info_tab_hash) else null
+            val page = tabs.getOrNull(tab)?.title
             b.root.showPage(node.key, page, tab, b.infoContent) { bindContent(node) }
         }
 
@@ -507,7 +506,9 @@ class FileAdapter(
             b.appGroups.removeAllViews()
             // Persistent spinner for directory stats or the currently selected section's metadata.
             // It overlays the bottom-right of the content box; when spinning, give the text a bit of right padding so it doesn't cover the value on the last line
-            val spinning = node.scanning || node.details?.sections?.getOrNull(node.tab)?.loading == true
+            val pages = FileInfo.tabs(ctx, node.file, node.details, node.selection)
+            val pageSection = pages.getOrNull(node.tab)?.section
+            val spinning = node.scanning || pageSection?.let { node.details?.sections?.getOrNull(it)?.loading } == true
             b.scanSpin.visibility = if (spinning) View.VISIBLE else View.GONE
             b.infoBody.setPaddingRelative(
                 b.infoBody.paddingStart, b.infoBody.paddingTop,
@@ -524,13 +525,11 @@ class FileAdapter(
                 return
             }
 
-            val titles = ArrayList(d.sections.map { it.title })
-            val hashIdx = if (node.selection || node.file.isDir || !node.file.canRead) -1 else titles.size
-            if (hashIdx >= 0) titles += ctx.getString(R.string.info_tab_hash)
-            val cur = node.tab.coerceIn(0, titles.size - 1)
-            buildTabs(node, titles, cur)
+            val cur = node.tab.coerceIn(0, pages.size - 1)
+            buildTabs(node, pages.map { it.title }, cur)
+            val sectionIndex = pages[cur].section
 
-            if (cur == hashIdx) {
+            if (sectionIndex == null) {
                 when {
                     node.hashing -> b.infoBody.text = ctx.getString(R.string.info_hash_computing)
                     node.hashRows != null -> b.infoBody.text = renderRows(node.hashRows)
@@ -543,18 +542,18 @@ class FileAdapter(
             } else {
                 // Directory's recursive stats are appended at the end of the "basic" section, updating in real time as scanning progresses
                 val stat = node.dirStat
-                val rows = if (cur == 0 && stat != null) {
+                val rows = if (sectionIndex == 0 && stat != null) {
                     d.sections[0].rows + FileInfo.dirStatRows(ctx, stat)
                 } else {
-                    d.sections[cur].rows
+                    d.sections[sectionIndex].rows
                 }
-                val section = d.sections[cur]
+                val section = d.sections[sectionIndex]
                 b.infoBody.text = when {
                     section.loading -> ctx.getString(R.string.info_loading)
                     rows.isEmpty() && section.appGroups.isEmpty() -> ctx.getString(R.string.info_failed)
                     else -> renderRows(rows)
                 }
-                if (d.sections[cur].appGroups.isNotEmpty()) renderAppGroups(node, d.sections[cur].appGroups)
+                if (section.appGroups.isNotEmpty()) renderAppGroups(node, section.appGroups)
             }
         }
 

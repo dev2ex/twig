@@ -39,6 +39,21 @@ object FileInfo {
     )
     data class Details(val sections: List<Section>, val error: String? = null)
 
+    /** Visible page order; null section denotes the lazily computed Hash page. */
+    data class Tab(val title: String, val section: Int?)
+
+    fun tabs(ctx: Context, file: XFile, details: Details?, selection: Boolean = false): List<Tab> {
+        val sections = details?.sections.orEmpty()
+        if (sections.isEmpty()) return emptyList()
+        val pages = sections.mapIndexed { index, section -> Tab(section.title, index) }
+        val unixTitle = s(ctx, R.string.info_section_unix)
+        return buildList {
+            addAll(pages.filter { it.title != unixTitle })
+            if (!selection && !file.isDir && file.canRead) add(Tab(s(ctx, R.string.info_tab_hash), null))
+            addAll(pages.filter { it.title == unixTitle })
+        }
+    }
+
     /** Aggregate fields use the same Basic tab and row renderer as single-item properties. */
     fun selection(ctx: Context, files: List<XFile>, stat: com.twig.app.ui.DirStat): Details {
         val dirs = files.count { it.isDir }
@@ -54,9 +69,9 @@ object FileInfo {
     /** Listing metadata first; no file reads or directory listings before the card appears. */
     fun initial(ctx: Context, file: XFile): Details = Details(buildList {
         add(basic(ctx, file, includeContents = false))
-        if (supportsUnix(file)) add(unixSection(ctx, file, null).copy(loading = true))
         if (!file.isDir && file.canRead && (OpenFiles.isVideo(file) || OpenFiles.isAudio(file)))
             add(Section(s(ctx, R.string.info_section_media), emptyList(), loading = true))
+        if (supportsUnix(file)) add(unixSection(ctx, file, null).copy(loading = true))
     })
 
     fun load(ctx: Context, file: XFile): Details {
@@ -82,7 +97,6 @@ object FileInfo {
             } else (FsRegistry.of(file) as? UnixMetadataSource)?.unixMetadata(file)
         }.getOrNull()
         sections += basic(ctx, inspected, remote, unix = unix)
-        if (supportsUnix(file)) sections += unixSection(ctx, file, unix)
         if (!file.isDir && file.canRead) {
             when {
                 remote != null -> remoteMedia(ctx, remote)?.let { sections += it }
@@ -97,6 +111,7 @@ object FileInfo {
                     apk(ctx, file)?.let { sections += it }
             }
         }
+        if (supportsUnix(file)) sections += unixSection(ctx, file, unix)
         return Details(sections)
     }
 

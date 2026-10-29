@@ -258,7 +258,7 @@ class AppDetailsCardTest {
         }
     }
 
-    @Test fun `Unix attributes render on their own tab after General`() {
+    @Test fun `Unix attributes render on the final tab after Hash`() {
         val basicTitle = app.getString(R.string.info_section_basic)
         val unixTitle = app.getString(R.string.info_section_unix)
         val details = FileInfo.Details(listOf(
@@ -274,7 +274,9 @@ class AppDetailsCardTest {
         val row = holder.itemView.findViewById<TextView>(R.id.info_body)
         assertTrue(row.text.contains("file.bin"))
         assertFalse(row.text.contains("0755"))
-        (holder as FileAdapter.InfoVH).bind(original.copy(tab = 1))
+        assertEquals(listOf(basicTitle, app.getString(R.string.info_tab_hash), unixTitle),
+            texts(holder.itemView.findViewById(R.id.tab_bar)).take(3).map { it.text.toString() })
+        (holder as FileAdapter.InfoVH).bind(original.copy(tab = 2))
         layout(holder, 240)
         assertTrue(row.text.contains("rwxr-xr-x (0755)"))
         assertTrue(row.text.contains("10001"))

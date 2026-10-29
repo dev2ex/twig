@@ -133,7 +133,7 @@ in `uiSignature` and is included in configuration backups. The Unix properties t
 available with the setting off. When counts are enabled, reserve both count slots for rows
 with permissions, including files and pending directory counts. The counts container exposes its first child's baseline so all metadata
 text aligns across the nested layout. Numeric permissions, UID/GID, access/status-change times and available SELinux context belong in a dedicated
-Unix properties tab, after General. Its initial loading tab uses listing metadata only;
+Unix properties tab, after all other tabs including Hash. Its initial loading tab uses listing metadata only;
 unsupported backends have no Unix tab. General retains modification time and link targets.
 `ctime` is inode status change, never creation time. Symlink attributes describe the link;
 its listing size must still describe the followed stream for copy/resume checks.
