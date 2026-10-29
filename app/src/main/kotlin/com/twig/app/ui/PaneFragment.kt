@@ -268,6 +268,7 @@ class PaneFragment : Fragment() {
             onInfoTab = { node, idx -> viewModel.selectInfoTab(node, idx) },
             onInfoHash = { node -> viewModel.computeHash(node) },
             onInfo = { node -> viewModel.toggleInfo(node) },
+            onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
         // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is

@@ -72,6 +72,7 @@ class FileAdapter(
     /** Text size tier (0/1/2), independent of [density]; defaults to follow row height, see `Prefs.textSize`. */
     private val textSize: Int = density,
     private val onInfo: (PaneViewModel.FileNode) -> Unit = {},
+    private val onInfoLongClick: (PaneViewModel.FileNode) -> Unit = {},
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
     var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
@@ -436,6 +437,7 @@ class FileAdapter(
                 b.infoToggle.visibility = View.GONE
                 b.cellCheck.setOnClickListener(null)
                 b.infoToggle.setOnClickListener(null)
+                b.infoToggle.setOnLongClickListener(null)
                 b.root.setOnTouchListener(null)
                 b.root.setOnClickListener { onClick(node) }
                 b.root.setOnLongClickListener { onLongClick(node); true }
@@ -452,6 +454,7 @@ class FileAdapter(
             bindSelection(node)
             b.cellCheck.setOnClickListener { toggleSelection(node) }
             b.infoToggle.setOnClickListener { onInfo(node) }
+            b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
             guardButtonClicks(b.root, b.infoToggle, b.cellCheck)
             b.root.setOnClickListener { onClick(node) }
             b.root.setOnLongClickListener { onLongClick(node); true }
@@ -844,6 +847,7 @@ class FileAdapter(
             // Hiding a live RippleDrawable ends its animation, even when shown again in this bind.
             b.infoToggle.visibility = if (node is PaneViewModel.FileNode) View.VISIBLE else View.INVISIBLE
             b.infoToggle.setOnClickListener(null)
+            b.infoToggle.setOnLongClickListener(null)
             b.root.setOnTouchListener(null)
             b.indicator.setOnTouchListener(null)
             b.indicator.contentDescription = null
@@ -1021,6 +1025,7 @@ class FileAdapter(
             val ctx = b.root.context
             val file = node.file
             b.infoToggle.setOnClickListener { onInfo(node) }
+            b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
 
             b.name.text = node.label ?: file.name
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
