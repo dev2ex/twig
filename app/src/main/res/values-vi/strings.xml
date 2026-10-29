@@ -1132,4 +1132,5 @@
     <string name="music_import_failed">Không thể nhập nhạc: %1$s</string>
     <string name="music_import_playlist_only">Chọn danh sách phát M3U hoặc M3U8</string>
     <string name="music_import_source_unsupported">Không thể lưu nguồn này vào danh sách phát</string>
+    <string name="info_track_number">Số thứ tự bài</string>
 </resources>

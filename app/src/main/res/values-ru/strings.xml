@@ -1169,4 +1169,5 @@
     <string name="music_import_failed">Не удалось импортировать музыку: %1$s</string>
     <string name="music_import_playlist_only">Выберите плейлист M3U или M3U8</string>
     <string name="music_import_source_unsupported">Этот источник нельзя сохранить в плейлисте</string>
+    <string name="info_track_number">Номер трека</string>
 </resources>

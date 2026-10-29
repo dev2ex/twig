@@ -1214,4 +1214,5 @@
     <string name="music_import_failed">Could not import music: %1$s</string>
     <string name="music_import_playlist_only">Choose an M3U or M3U8 playlist</string>
     <string name="music_import_source_unsupported">This source cannot be saved in a playlist</string>
+    <string name="info_track_number">Track no.</string>
 </resources>

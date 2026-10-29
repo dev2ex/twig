@@ -1133,4 +1133,5 @@
     <string name="music_import_failed">Impossible d’importer la musique : %1$s</string>
     <string name="music_import_playlist_only">Choisir une playlist M3U ou M3U8</string>
     <string name="music_import_source_unsupported">Cette source ne peut pas être enregistrée dans une playlist</string>
+    <string name="info_track_number">Numéro de piste</string>
 </resources>

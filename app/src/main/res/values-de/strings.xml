@@ -1133,4 +1133,5 @@
     <string name="music_import_failed">Musik konnte nicht importiert werden: %1$s</string>
     <string name="music_import_playlist_only">Eine M3U- oder M3U8-Playlist auswählen</string>
     <string name="music_import_source_unsupported">Diese Quelle kann nicht in einer Playlist gespeichert werden</string>
+    <string name="info_track_number">Titelnummer</string>
 </resources>

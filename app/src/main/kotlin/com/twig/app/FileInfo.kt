@@ -290,6 +290,10 @@ object FileInfo {
                 k(MediaMetadataRetriever.METADATA_KEY_TITLE)?.let { rows += s(ctx, R.string.info_title) to it }
                 k(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.let { rows += s(ctx, R.string.info_artist) to it }
                 k(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.let { rows += s(ctx, R.string.info_album) to it }
+                trackNumber(
+                    com.twig.app.ui.MusicTrackSort.tagNumber(k(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)),
+                    com.twig.app.ui.MusicTrackSort.tagNumber(k(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)),
+                )?.let { rows += s(ctx, R.string.info_track_number) to it }
             }
         } catch (e: Exception) {
             // Keep tracks for containers the system can't parse (e.g. some MKV).
@@ -336,7 +340,14 @@ object FileInfo {
         put(R.string.info_track_video, MediaStream.Kind.VIDEO)
         put(R.string.info_track_audio, MediaStream.Kind.AUDIO)
         put(R.string.info_track_subtitle, MediaStream.Kind.SUBTITLE)
+        trackNumber(d.discNumber, d.trackNumber)?.let { rows += s(ctx, R.string.info_track_number) to it }
         return if (rows.isEmpty()) null else Section(s(ctx, R.string.info_section_media), rows)
+    }
+
+    private fun trackNumber(disc: Int, track: Int): String? = when {
+        track <= 0 -> null
+        disc > 0 -> "$disc - $track"
+        else -> track.toString()
     }
 
     private fun bitrate(bps: Long): String =

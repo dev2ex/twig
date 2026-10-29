@@ -1133,4 +1133,5 @@
     <string name="music_import_failed">匯入音樂失敗：%1$s</string>
     <string name="music_import_playlist_only">請選擇 M3U 或 M3U8 播放清單</string>
     <string name="music_import_source_unsupported">此來源無法儲存至播放清單</string>
+    <string name="info_track_number">曲號</string>
 </resources>

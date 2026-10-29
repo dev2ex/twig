@@ -1137,4 +1137,5 @@
     <string name="music_import_failed">تعذر استيراد الموسيقى: %1$s</string>
     <string name="music_import_playlist_only">اختر قائمة تشغيل M3U أو M3U8</string>
     <string name="music_import_source_unsupported">لا يمكن حفظ هذا المصدر في قائمة تشغيل</string>
+    <string name="info_track_number">رقم المقطع</string>
 </resources>

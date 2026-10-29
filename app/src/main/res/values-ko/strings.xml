@@ -1133,4 +1133,5 @@
     <string name="music_import_failed">음악을 가져올 수 없습니다: %1$s</string>
     <string name="music_import_playlist_only">M3U 또는 M3U8 재생목록을 선택하세요</string>
     <string name="music_import_source_unsupported">이 소스는 재생목록에 저장할 수 없습니다</string>
+    <string name="info_track_number">트랙 번호</string>
 </resources>
