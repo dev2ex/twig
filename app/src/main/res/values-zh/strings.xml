@@ -1160,8 +1160,8 @@
     <string name="action_sort_websites">排序网站</string>
     <string name="conn_section_login">登录信息</string>
     <string name="conn_section_options">更多选项</string>
-    <string name="music_import_playlist">从播放列表文件导入</string>
-    <string name="music_import_directory">从目录导入（递归）</string>
+    <string name="music_import_playlist">导入-播放列表</string>
+    <string name="music_import_directory">导入-目录（递归）</string>
     <string name="music_importing">正在导入音乐…</string>
     <string name="music_import_progress">%1$d 首 · %2$s</string>
     <string name="music_import_done">已添加 %1$d 首歌曲</string>

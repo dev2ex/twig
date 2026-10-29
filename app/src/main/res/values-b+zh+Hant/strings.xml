@@ -1125,8 +1125,8 @@
     <string name="action_sort_websites">排序網站</string>
     <string name="conn_section_login">登入資訊</string>
     <string name="conn_section_options">更多選項</string>
-    <string name="music_import_playlist">從播放清單檔案匯入</string>
-    <string name="music_import_directory">從目錄匯入（遞迴）</string>
+    <string name="music_import_playlist">匯入-播放清單</string>
+    <string name="music_import_directory">匯入-目錄（遞迴）</string>
     <string name="music_importing">正在匯入音樂…</string>
     <string name="music_import_progress">%1$d 首 · %2$s</string>
     <string name="music_import_done">已新增 %1$d 首歌曲</string>
