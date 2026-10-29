@@ -1866,8 +1866,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Open or focus properties; shortcut page indices refer to the final section list. */
     fun showInfo(file: XFile, tab: Int = 0) {
         val key = fileKey(file)
-        if (key !in infoOpen) toggleInfo(file)
         requestedInfoTab[key] = tab
+        if (file.isDir && tab != 0 && dirScan[key]?.scanning == true) stopDirScan(key)
+        if (key !in infoOpen) toggleInfo(file, tab)
         if (key !in infoLoads) applyRequestedInfoTab(key, file)
     }
 
@@ -1911,11 +1912,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */
-    fun toggleInfo(file: XFile) {
+    fun toggleInfo(file: XFile) = toggleInfo(file, 0)
+
+    private fun toggleInfo(file: XFile, initialTab: Int) {
         val key = fileKey(file)
         if (!infoOpen.remove(key)) {
             infoOpen.add(key)
-            if (file.isDir) startDirScan(key, file)
+            if (file.isDir && initialTab == 0) startDirScan(key, file)
             if (!infoCache.containsKey(key)) {
                 val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                     try {
@@ -1967,7 +1970,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Recursive stats for a directory's properties card (file count / dir count /
-     * total size): scan begins as soon as the card opens, refreshing along the way.
+     * total size): scan begins when the Basic tab is selected, refreshing along the way.
+     * Leaving Basic cancels unfinished work; completed stats remain until the card closes.
      * Closing the card (toggling via [toggleInfo] again / ✕) or collapsing the
      * directory (clean-up inside [rebuild]) cancels it — scanning large trees,
      * especially on network sources, is expensive and shouldn't keep running
@@ -2011,6 +2015,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val key = fileKey(n.file)
         requestedInfoTab.remove(key) // A manual tab choice supersedes a pending shortcut.
         infoTab[key] = idx
+        if (n.file.isDir) {
+            if (idx == 0 && key !in dirScan) startDirScan(key, n.file)
+            else if (idx != 0 && dirScan[key]?.scanning == true) stopDirScan(key)
+        }
         val isHash = !n.file.isDir && idx == (n.details?.sections?.size ?: 0)
         if (isHash && n.file.scheme == "file" && !hashCache.containsKey(key) && !hashing.contains(key)) {
             startHash(key, n.file)
