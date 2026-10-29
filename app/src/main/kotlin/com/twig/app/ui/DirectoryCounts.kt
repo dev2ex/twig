@@ -36,7 +36,7 @@ object DirectoryCounts {
     private fun key(file: XFile) = file.scheme + "\u0000" + file.path
     fun supports(file: XFile) = file.isDir && when (Format.schemeLabel(file.scheme)) {
         "jellyfin", "emby" -> false
-        "trash" -> file.path != "/"
+        "trash", "apps" -> file.path != "/"
         else -> true
     }
 
