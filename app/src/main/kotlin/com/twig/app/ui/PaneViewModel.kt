@@ -436,6 +436,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val infoLoads = HashMap<String, kotlinx.coroutines.Job>()
     /** Currently selected tab on the card, already-computed hashes, keys currently computing. */
     private val infoTab = HashMap<String, Int>()
+    private val requestedInfoTab = HashMap<String, Int>()
     private val hashCache = HashMap<String, List<Pair<String, String>>>()
     private val hashing = HashSet<String>()
     /** Recursive stats for a directory properties card: directory fileKey -> live state (the card closing/folding cancels — see [rebuild]). */
@@ -1862,6 +1863,21 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun toggleInfo(n: FileNode) = toggleInfo(n.file)
 
+    /** Open or focus properties; shortcut page indices refer to the final section list. */
+    fun showInfo(file: XFile, tab: Int = 0) {
+        val key = fileKey(file)
+        if (key !in infoOpen) toggleInfo(file)
+        requestedInfoTab[key] = tab
+        if (key !in infoLoads) applyRequestedInfoTab(key, file)
+    }
+
+    private fun applyRequestedInfoTab(key: String, file: XFile) {
+        val requested = requestedInfoTab.remove(key) ?: return
+        val details = infoCache[key] ?: return
+        val last = (details.sections.size - if (file.isDir) 1 else 0).coerceAtLeast(0)
+        selectInfoTab(InfoNode(file, 0, details), requested.coerceIn(0, last))
+    }
+
     /** Snapshot the selection and attach its aggregate properties above the first selected row. */
     fun toggleSelectionInfo(targets: List<XFile>, anchorKey: String? = null) {
         val selectedKeys = targets.mapTo(HashSet()) { fileKey(it) }
@@ -1919,7 +1935,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         publishInfo(key, d)
                     } finally {
-                        if (infoLoads[key] === coroutineContext[kotlinx.coroutines.Job]) infoLoads.remove(key)
+                        if (infoLoads[key] === coroutineContext[kotlinx.coroutines.Job]) {
+                            infoLoads.remove(key)
+                            if (key in infoOpen) applyRequestedInfoTab(key, file)
+                        }
                     }
                 }
                 infoLoads[key] = job
@@ -1990,6 +2009,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun selectInfoTab(n: InfoNode, idx: Int) {
         if (n.selection) return // Aggregate properties have only the Basic tab, with no single-file hash.
         val key = fileKey(n.file)
+        requestedInfoTab.remove(key) // A manual tab choice supersedes a pending shortcut.
         infoTab[key] = idx
         val isHash = !n.file.isDir && idx == (n.details?.sections?.size ?: 0)
         if (isHash && n.file.scheme == "file" && !hashCache.containsKey(key) && !hashing.contains(key)) {
@@ -3056,6 +3076,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         infoCache.keys.retainAll(infoOpen)
         infoLoads.keys.toList().forEach { key -> if (key !in infoOpen) infoLoads.remove(key)?.cancel() }
         infoTab.keys.retainAll(infoOpen)
+        requestedInfoTab.keys.retainAll(infoOpen)
         hashCache.keys.retainAll(infoOpen)
         // If a card is gone (closed / collapsed), stop scanning its directory.
         dirScan.keys.toList().forEach { k -> if (k !in infoOpen) dirScan.remove(k)?.job?.cancel() }

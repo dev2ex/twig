@@ -119,6 +119,12 @@
             <TextView style="@style/StripLabel" android:text="@string/strip_delete" />
         </LinearLayout>
 
+        <LinearLayout android:id="@+id/as_info" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_info"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/file_info" />
+        </LinearLayout>
+
         <LinearLayout android:id="@+id/as_compare" style="@style/StripItem">
             <ImageView android:id="@+id/as_compare_icon" style="@style/StripIcon" android:src="@drawable/ic_compare"
                 android:contentDescription="@null" />

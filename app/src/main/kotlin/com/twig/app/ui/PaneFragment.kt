@@ -1176,6 +1176,18 @@ class PaneFragment : Fragment() {
         }
     }
 
+    fun actionInfo(secondTab: Boolean = false) {
+        val targets = selectionOrCurrent(readOnly = true)
+        if (targets.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (targets.size > 1) {
+            val anchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
+            pendingSelectionInfoScroll = true
+            viewModel.toggleSelectionInfo(targets, anchor?.key)
+        } else {
+            if (secondTab) viewModel.showInfo(targets.single(), 1) else viewModel.toggleInfo(targets.single())
+        }
+    }
+
     data class StripActions(
         val create: Boolean = false,
         val copy: Boolean = false,
@@ -1184,6 +1196,7 @@ class PaneFragment : Fragment() {
         val delete: Boolean = false,
         val treemap: Boolean = false,
         val search: Boolean = false,
+        val info: Boolean = false,
     )
 
     /** Check source availability without IO; transfer destinations are validated when clicked. */
@@ -1200,6 +1213,7 @@ class PaneFragment : Fragment() {
             delete = modify,
             treemap = mapMode || target?.let { it.isDir || com.twig.fs.archive.Archives.isArchive(it) } == true,
             search = target?.isDir == true,
+            info = !mapMode && transfer,
         )
     }
 

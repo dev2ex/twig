@@ -346,6 +346,15 @@ each write `= null`.
   screens for theme changes; do not apply palettes or patch window colors there.
   OLED has separate opaque and translucent styles. Keep its window background as a
   resource reference: older `PhoneWindow` versions cannot use an inline color there.
+- Action panel: `StripItems` defines stable action identities; `StripItemsDialog` in
+  the main menu uses drag handles and shared visibility choices.
+  Order and visibility live in `twig_prefs` and are included in configuration backups. `StripGrid.applyItems`
+  reorders existing views while resetting GridLayout specs; retain listeners and
+  orientation changes. Main and picker screens apply the same configuration, with
+  pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
+  Properties defaults to hidden and toggles the current/checked items; long-press
+  requests the second page after metadata finishes loading, falling back to Basic
+  for one-page cards.
 - Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
   view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
   `ToolbarPlacement` moves the existing browser toolbar below content and matches

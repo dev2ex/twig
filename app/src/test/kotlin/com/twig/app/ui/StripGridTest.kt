@@ -60,4 +60,62 @@ class StripGridTest {
             assertEquals(52, hidden.width)
         }
     }
+    @Test fun `custom order and visibility survive measured rotations and picker filtering`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val prefs = app.getSharedPreferences("twig_prefs", 0)
+        prefs.edit().clear().commit()
+        try {
+            val strip = ActionStripBinding.inflate(LayoutInflater.from(ContextThemeWrapper(app, R.style.Theme_Twig)))
+            var clicks = 0
+            strip.asInfo.setOnClickListener { clicks++ }
+            strip.asGrid.setColumns(2)
+            layout(strip.asGrid, 2)
+            val all = com.twig.app.StripItems.all.map { it.id }.toSet()
+            com.twig.app.Prefs.setStripItems(app, listOf("info", "copy", "info", "obsolete"), all - "delete")
+            strip.asGrid.applyItems()
+            assertSame(strip.asInfo, strip.asGrid.getChildAt(0))
+            assertSame(strip.asCopy, strip.asGrid.getChildAt(1))
+            assertEquals(View.GONE, strip.asDelete.visibility)
+            repeat(4) {
+                strip.asGrid.setColumns(1)
+                layout(strip.asGrid, 1)
+                assertEquals(0, strip.asInfo.left)
+                assertEquals(52, strip.asInfo.width)
+                strip.asGrid.setColumns(2)
+                layout(strip.asGrid, 2)
+            }
+            strip.asGrid.applyItems(setOf("up", "info", "search"))
+            assertEquals(View.GONE, strip.asCopy.visibility)
+            assertEquals(View.VISIBLE, strip.asInfo.visibility)
+            strip.asInfo.performClick()
+            assertEquals(1, clicks)
+            com.twig.app.Prefs.setStripItems(app, all.reversed(), all)
+            strip.asGrid.applyItems()
+            strip.asGrid.setColumns(1)
+            layout(strip.asGrid, 1)
+            assertEquals(View.VISIBLE, strip.asDelete.visibility)
+            assertSame(strip.asShare, strip.asGrid.getChildAt(0))
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test fun `properties defaults hidden and an explicit choice overrides the default`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val prefs = app.getSharedPreferences("twig_prefs", 0)
+        prefs.edit().clear().commit()
+        try {
+            val strip = ActionStripBinding.inflate(LayoutInflater.from(ContextThemeWrapper(app, R.style.Theme_Twig)))
+            strip.asGrid.applyItems()
+            assertEquals(View.GONE, strip.asInfo.visibility)
+            assertEquals(View.VISIBLE, strip.asCopy.visibility)
+            val ids = com.twig.app.StripItems.all.map { it.id }
+            com.twig.app.Prefs.setStripItems(app, ids, ids.toSet())
+            strip.asGrid.applyItems()
+            assertEquals(View.VISIBLE, strip.asInfo.visibility)
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
 }

@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">M3U または M3U8 プレイリストを選択してください</string>
     <string name="music_import_source_unsupported">このソースはプレイリストに保存できません</string>
     <string name="info_track_number">トラック番号</string>
+    <string name="settings_action_strip">操作パネル</string>
+    <string name="strip_reorder_hint">ハンドルをドラッグして操作を並べ替えます。チェックを外すと非表示になります。</string>
 </resources>

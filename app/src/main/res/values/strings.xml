@@ -1215,4 +1215,6 @@
     <string name="music_import_playlist_only">Choose an M3U or M3U8 playlist</string>
     <string name="music_import_source_unsupported">This source cannot be saved in a playlist</string>
     <string name="info_track_number">Track no.</string>
+    <string name="settings_action_strip">Action panel</string>
+    <string name="strip_reorder_hint">Drag the handles to reorder actions. Uncheck actions to hide them.</string>
 </resources>

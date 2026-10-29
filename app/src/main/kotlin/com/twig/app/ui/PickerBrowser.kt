@@ -36,6 +36,8 @@ internal class PickerBrowser(
             strip.asDelete.visibility = View.GONE
             strip.asCompare.visibility = View.GONE
             strip.asMap.visibility = View.GONE
+            strip.asInfo.setOnClickListener { pane?.actionInfo() }
+            strip.asInfo.setOnLongClickListener { pane?.actionInfo(secondTab = true); true }
             strip.asUp.setOnClickListener { pane?.actionUp() }
             strip.asRefresh.setOnClickListener { pane?.actionRefresh() }
             strip.asNewFolder.setOnClickListener { pane?.actionNewFolder() }
@@ -68,6 +70,7 @@ internal class PickerBrowser(
 
     fun switchPane(index: Int, animate: Boolean = false) {
         activeIndex = index
+        refreshStripItems()
         val land = isLandscape
         browser.paneA.visibility = View.VISIBLE
         browser.paneB.visibility = View.VISIBLE
@@ -85,6 +88,11 @@ internal class PickerBrowser(
         browser.root.showPane(activeIndex, animate && !land)
         PaneSwitch.update(toolbar.menu.findItem(MENU_SWITCH), toolbar, activeIndex)
         onPaneChanged()
+    }
+
+    fun refreshStripItems() {
+        val available = setOf("up", "sort", "refresh", "new_folder", "info", "search", "history")
+        for (strip in listOf(browser.stripLeft, browser.stripMid, browser.stripRight)) strip.asGrid.applyItems(available)
     }
 
     fun onPaneTouched(pane: PaneFragment) {

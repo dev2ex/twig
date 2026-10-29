@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">M3U 또는 M3U8 재생목록을 선택하세요</string>
     <string name="music_import_source_unsupported">이 소스는 재생목록에 저장할 수 없습니다</string>
     <string name="info_track_number">트랙 번호</string>
+    <string name="settings_action_strip">작업 패널</string>
+    <string name="strip_reorder_hint">핸들을 드래그하여 작업 순서를 변경하세요. 선택을 해제하면 숨겨집니다.</string>
 </resources>

@@ -29,6 +29,10 @@
         android:title="@string/action_root_items"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_strip_items"
+        android:title="@string/settings_action_strip"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_theme"
         android:title="@string/action_theme"
         app:showAsAction="never" />

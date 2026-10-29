@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">Pilih daftar putar M3U atau M3U8</string>
     <string name="music_import_source_unsupported">Sumber ini tidak dapat disimpan dalam daftar putar</string>
     <string name="info_track_number">Nomor lagu</string>
+    <string name="settings_action_strip">Panel tindakan</string>
+    <string name="strip_reorder_hint">Seret pegangan untuk mengurutkan tindakan. Hapus centang untuk menyembunyikannya.</string>
 </resources>

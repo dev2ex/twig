@@ -1133,4 +1133,6 @@
     <string name="music_import_playlist_only">Chọn danh sách phát M3U hoặc M3U8</string>
     <string name="music_import_source_unsupported">Không thể lưu nguồn này vào danh sách phát</string>
     <string name="info_track_number">Số thứ tự bài</string>
+    <string name="settings_action_strip">Bảng thao tác</string>
+    <string name="strip_reorder_hint">Kéo tay cầm để sắp xếp lại thao tác. Bỏ chọn để ẩn thao tác.</string>
 </resources>

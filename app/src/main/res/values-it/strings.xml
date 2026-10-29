@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">Scegli una playlist M3U o M3U8</string>
     <string name="music_import_source_unsupported">Questa sorgente non può essere salvata in una playlist</string>
     <string name="info_track_number">Numero traccia</string>
+    <string name="settings_action_strip">Pannello azioni</string>
+    <string name="strip_reorder_hint">Trascina le maniglie per riordinare le azioni. Deselezionale per nasconderle.</string>
 </resources>

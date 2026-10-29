@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">M3U या M3U8 प्लेलिस्ट चुनें</string>
     <string name="music_import_source_unsupported">इस स्रोत को प्लेलिस्ट में सहेजा नहीं जा सकता</string>
     <string name="info_track_number">ट्रैक नंबर</string>
+    <string name="settings_action_strip">कार्रवाई पैनल</string>
+    <string name="strip_reorder_hint">कार्रवाइयों का क्रम बदलने के लिए हैंडल खींचें। छिपाने के लिए चेक हटाएँ।</string>
 </resources>

@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">Eine M3U- oder M3U8-Playlist auswählen</string>
     <string name="music_import_source_unsupported">Diese Quelle kann nicht in einer Playlist gespeichert werden</string>
     <string name="info_track_number">Titelnummer</string>
+    <string name="settings_action_strip">Aktionsleiste</string>
+    <string name="strip_reorder_hint">Ziehe die Griffe, um Aktionen neu anzuordnen. Entferne das Häkchen, um sie auszublenden.</string>
 </resources>

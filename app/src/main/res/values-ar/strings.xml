@@ -1138,4 +1138,6 @@
     <string name="music_import_playlist_only">اختر قائمة تشغيل M3U أو M3U8</string>
     <string name="music_import_source_unsupported">لا يمكن حفظ هذا المصدر في قائمة تشغيل</string>
     <string name="info_track_number">رقم المقطع</string>
+    <string name="settings_action_strip">لوحة الإجراءات</string>
+    <string name="strip_reorder_hint">اسحب المقابض لإعادة ترتيب الإجراءات. أزل علامة الاختيار لإخفائها.</string>
 </resources>

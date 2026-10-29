@@ -1134,4 +1134,6 @@
     <string name="music_import_playlist_only">M3U veya M3U8 çalma listesi seçin</string>
     <string name="music_import_source_unsupported">Bu kaynak çalma listesine kaydedilemez</string>
     <string name="info_track_number">Parça numarası</string>
+    <string name="settings_action_strip">İşlem paneli</string>
+    <string name="strip_reorder_hint">İşlemleri yeniden sıralamak için tutamaçları sürükleyin. Gizlemek için işaretlerini kaldırın.</string>
 </resources>

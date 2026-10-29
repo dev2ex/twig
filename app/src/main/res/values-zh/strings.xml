@@ -1169,4 +1169,6 @@
     <string name="music_import_playlist_only">请选择 M3U 或 M3U8 播放列表</string>
     <string name="music_import_source_unsupported">此来源无法保存到播放列表</string>
     <string name="info_track_number">曲号</string>
+    <string name="settings_action_strip">操作栏</string>
+    <string name="strip_reorder_hint">拖动把手调整操作顺序，取消勾选即可隐藏。</string>
 </resources>

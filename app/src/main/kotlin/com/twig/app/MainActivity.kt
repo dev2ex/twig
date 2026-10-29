@@ -475,6 +475,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private fun wireStrip(s: ActionStripBinding) {
         s.sizeIconsLikeRows(this)
+        s.asInfo.setOnClickListener { activePane()?.actionInfo() }
+        s.asInfo.setOnLongClickListener { activePane()?.actionInfo(secondTab = true); true }
         s.asUp.setOnClickListener { activePane()?.actionUp() }
         s.asUp.setOnLongClickListener { activePane()?.actionScrollToTop(); true }
         s.asSort.setOnLongClickListener { showSortDialog(selectedDirectory = true); true }
@@ -571,6 +573,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     private fun applyStripState(s: ActionStripBinding, land: Boolean) {
+        s.asGrid.applyItems()
         val direction = if (activeIndex == 0) 1f else -1f
         s.asMoveIcon.scaleX = direction
         s.asCompareIcon.scaleX = direction
@@ -803,6 +806,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             setStripEnabled(s.asCompare, compare)
             setStripEnabled(s.asMap, actions.treemap)
             setStripEnabled(s.asSearch, actions.search)
+            setStripEnabled(s.asInfo, actions.info)
         }
     }
 
@@ -1140,6 +1144,13 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         }
         R.id.action_view_mode -> {
             showViewModeDialog(); true
+        }
+        R.id.action_strip_items -> {
+            com.twig.app.ui.StripItemsDialog.show(this) {
+                for (strip in listOf(b.browser.stripLeft, b.browser.stripMid, b.browser.stripRight)) strip.asGrid.applyItems()
+                syncStripEnabled()
+            }
+            true
         }
         R.id.action_root_items -> {
             showRootItemsDialog(); true

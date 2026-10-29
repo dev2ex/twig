@@ -1170,4 +1170,6 @@
     <string name="music_import_playlist_only">Выберите плейлист M3U или M3U8</string>
     <string name="music_import_source_unsupported">Этот источник нельзя сохранить в плейлисте</string>
     <string name="info_track_number">Номер трека</string>
+    <string name="settings_action_strip">Панель действий</string>
+    <string name="strip_reorder_hint">Перетаскивайте маркеры для изменения порядка действий. Снимите флажок, чтобы скрыть действие.</string>
 </resources>

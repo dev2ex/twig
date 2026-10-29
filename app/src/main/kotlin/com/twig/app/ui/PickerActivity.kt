@@ -137,6 +137,7 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
 
     override fun onResume() {
         super.onResume()
+        if (::browser.isInitialized) browser.refreshStripItems()
         if (::b.isInitialized) ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
         if (::fullscreenLayout.isInitialized) fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
         ShareTransfers.attach(this)

@@ -60,6 +60,19 @@ object Prefs {
         sp(ctx).edit().putString("root_item_order", RootItems.ordered(ids).joinToString(",") { it.id }).apply()
     }
 
+    fun stripItemOrder(ctx: Context): List<StripItems.Item> =
+        StripItems.ordered(sp(ctx).getString("strip_item_order", null)?.split(',').orEmpty())
+
+    fun stripItemVisible(ctx: Context, id: String): Boolean =
+        sp(ctx).getBoolean("strip_item_$id", StripItems.all.first { it.id == id }.visibleByDefault)
+
+    fun setStripItems(ctx: Context, ids: List<String>, visible: Set<String>) {
+        val items = StripItems.ordered(ids)
+        val edit = sp(ctx).edit().putString("strip_item_order", items.joinToString(",") { it.id })
+        items.forEach { edit.putBoolean("strip_item_${it.id}", it.id in visible) }
+        edit.apply()
+    }
+
     /** 0=system region, 1=yy-MM-dd, 2=dd.MM.yy, 3=MM/dd/yy. */
     fun dateFormat(ctx: Context): Int = sp(ctx).getInt("date_format", 0).coerceIn(0, 3)
 
