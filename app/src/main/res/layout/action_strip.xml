@@ -90,7 +90,7 @@
         </LinearLayout>
 
         <LinearLayout android:id="@+id/as_copy" style="@style/StripItem">
-            <ImageView style="@style/StripIcon" android:src="@drawable/ic_copy"
+            <ImageView android:id="@+id/as_copy_icon" style="@style/StripIcon" android:src="@drawable/ic_copy"
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_copy" />
         </LinearLayout>

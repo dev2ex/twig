@@ -577,6 +577,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     private fun applyStripState(s: ActionStripBinding, land: Boolean) {
         s.asGrid.applyItems()
         val direction = if (activeIndex == 0) 1f else -1f
+        s.asCopyIcon.scaleX = direction
         s.asMoveIcon.scaleX = direction
         s.asCompareIcon.scaleX = direction
         s.asTop.visibility = if (land) View.VISIBLE else View.GONE
