@@ -53,12 +53,12 @@
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="56dp"
         android:gravity="center"
-        android:shadowColor="#CC000000"
+        android:shadowColor="#FF000000"
         android:shadowDx="1"
         android:shadowDy="1"
         android:shadowRadius="4"
         android:textColor="@color/white"
-        android:textSize="17sp"
+        android:textSize="24sp"
         android:visibility="gone" />
 
     <!-- Long-press speed-up hint: top, no background; text shadow keeps it readable over bright frames.

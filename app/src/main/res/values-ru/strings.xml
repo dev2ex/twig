@@ -222,6 +222,8 @@
     <string name="player_brightness">Яркость %1$d%%</string>
     <string name="player_volume">Громкость %1$d%%</string>
     <string name="player_subtitle">Субтитры</string>
+    <string name="player_subtitle_size">Размер текстовых субтитров</string>
+    <string name="player_subtitle_size_value">Размер текстовых субтитров: %1$d sp</string>
     <string name="player_subtitle_close">Выключены</string>
     <string name="player_embedded_sub">Встроенные субтитры %1$d</string>
     <string name="player_audio_track">Звуковая дорожка</string>
@@ -1184,4 +1186,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Показывать права Unix</string>
     <string name="settings_unix_permissions_desc">Показывать доступные права в списках файлов. Полные сведения находятся на вкладке Unix в свойствах.</string>
+    <string name="player_subtitle_appearance">Оформление субтитров</string>
+    <string name="player_subtitle_text_color">Цвет текста</string>
 </resources>

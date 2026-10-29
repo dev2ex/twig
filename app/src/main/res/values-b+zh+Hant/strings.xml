@@ -218,6 +218,8 @@
     <string name="player_brightness">亮度 %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
     <string name="player_subtitle">字幕</string>
+    <string name="player_subtitle_size">文字字幕大小</string>
+    <string name="player_subtitle_size_value">文字字幕大小: %1$d sp</string>
     <string name="player_subtitle_close">關閉</string>
     <string name="player_embedded_sub">內嵌字幕 %1$d</string>
     <string name="player_audio_track">音軌</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">顯示 Unix 權限</string>
     <string name="settings_unix_permissions_desc">在檔案清單中顯示可取得的權限位元。完整資訊可在內容的 Unix 分頁中查看。</string>
+    <string name="player_subtitle_appearance">字幕樣式</string>
+    <string name="player_subtitle_text_color">字體顏色</string>
 </resources>

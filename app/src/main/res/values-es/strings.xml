@@ -217,6 +217,8 @@
     <string name="player_brightness">Brillo %1$d%%</string>
     <string name="player_volume">Volumen %1$d%%</string>
     <string name="player_subtitle">Subtítulo</string>
+    <string name="player_subtitle_size">Tamaño de subtítulos de texto</string>
+    <string name="player_subtitle_size_value">Tamaño de subtítulos de texto: %1$d sp</string>
     <string name="player_subtitle_close">Desactivado</string>
     <string name="player_embedded_sub">Subtítulo integrado %1$d</string>
     <string name="player_audio_track">Pista de audio</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Mostrar permisos Unix</string>
     <string name="settings_unix_permissions_desc">Mostrar los permisos disponibles en las listas de archivos. Los detalles completos están en la pestaña Unix de las propiedades.</string>
+    <string name="player_subtitle_appearance">Aspecto de subtítulos</string>
+    <string name="player_subtitle_text_color">Color del texto</string>
 </resources>

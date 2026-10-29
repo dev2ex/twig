@@ -433,6 +433,18 @@ class SettingsActivity : TwigActivity() {
         }
 
         section(getString(R.string.settings_section_player))
+        actionRow(
+            getString(R.string.player_subtitle_appearance),
+            getString(R.string.player_subtitle_size_value, Prefs.subtitleSize(this)),
+        ) { subtitle ->
+            AlertDialog.Builder(this)
+                .setTitle(R.string.player_subtitle_appearance)
+                .setView(SubtitleSizeUi.create(this) {
+                    subtitle.text = getString(R.string.player_subtitle_size_value, it)
+                })
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
         val speeds = intArrayOf(150, 200, 300)
         choiceRow(
             getString(R.string.settings_longpress_speed),

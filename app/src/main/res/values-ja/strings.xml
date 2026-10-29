@@ -217,6 +217,8 @@
     <string name="player_brightness">明るさ %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
     <string name="player_subtitle">字幕</string>
+    <string name="player_subtitle_size">テキスト字幕のサイズ</string>
+    <string name="player_subtitle_size_value">テキスト字幕のサイズ: %1$d sp</string>
     <string name="player_subtitle_close">オフ</string>
     <string name="player_embedded_sub">内蔵字幕 %1$d</string>
     <string name="player_audio_track">音声トラック</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Unix パーミッションを表示</string>
     <string name="settings_unix_permissions_desc">取得可能なパーミッションをファイル一覧に表示します。詳細はプロパティの Unix タブで確認できます。</string>
+    <string name="player_subtitle_appearance">字幕の外観</string>
+    <string name="player_subtitle_text_color">文字色</string>
 </resources>

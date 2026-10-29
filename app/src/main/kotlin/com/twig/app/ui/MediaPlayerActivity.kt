@@ -184,6 +184,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var keepOn = true
     private var userBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var swallowTouch = false // the touch that wakes the screen must not also toggle playback
+    private var subtitleDialogShowing = false
 
     private val handler = Handler(Looper.getMainLooper())
     private var touchingControls = false
@@ -220,6 +221,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         super.onCreate(savedInstanceState)
         b = ActivityMediaPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
+        applySubtitleAppearance()
 
         val scheme = intent.getStringExtra(EXTRA_SCHEME) ?: return finish()
         val path = intent.getStringExtra(EXTRA_PATH) ?: return finish()
@@ -479,7 +481,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 saveGate.onPlayingChanged(isPlaying, SystemClock.elapsedRealtime())
                 b.btnPlay.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-                if (isPlaying) wakeScreen() else scheduleDim()
+                if (isPlaying || subtitleDialogShowing) wakeScreen() else scheduleDim()
                 scheduleControlsHide()
             }
             override fun onPositionDiscontinuity(
@@ -1200,18 +1202,37 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun applySubtitleAppearance() {
+        b.tvSubtitle.textSize = com.twig.app.Prefs.subtitleSize(this).toFloat()
+        b.tvSubtitle.setTextColor(com.twig.app.Prefs.subtitleTextColor(this))
+        b.tvSubtitle.setShadowLayer(4f, 1f, 1f, Color.BLACK)
+    }
+
     private fun showSubtitleDialog() {
         val names = ArrayList<String>()
         names.add(getString(R.string.player_subtitle_close))
         subFiles.forEach { names.add(it.name) }
         textGroups.forEachIndexed { i, g -> names.add(trackName(g, i, getString(R.string.player_subtitle))) }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.player_subtitle)
+        val dialog = AlertDialog.Builder(this)
+            .setCustomTitle(SubtitleSizeUi.create(this, includeTitle = true) {
+                applySubtitleAppearance()
+            })
             .setSingleChoiceItems(names.toTypedArray(), subChoice.coerceIn(0, names.size - 1)) { d, which ->
                 applySubChoice(which)
                 d.dismiss()
             }
-            .show()
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+        dialog.setOnDismissListener {
+            subtitleDialogShowing = false
+            if (!isFinishing && !isDestroyed) wakeScreen()
+        }
+        subtitleDialogShowing = true
+        wakeScreen()
+        dialog.show()
+        dialog.window?.clearFlags(
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+        )
     }
 
     private fun applySubChoice(which: Int) {
@@ -1335,7 +1356,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private fun scheduleDim() {
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
-        if (player?.isPlaying != true) {
+        if (!subtitleDialogShowing && hasWindowFocus() && player?.isPlaying != true) {
             handler.postDelayed(dimRunnable, dimDelay())
             handler.postDelayed(screenOffRunnable, SCREEN_OFF_DELAY)
         }
@@ -1346,6 +1367,14 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         if (dimmed) {
             dimmed = false
             setWindowBrightness(userBrightness)
+        }
+        if (subtitleDialogShowing && player?.isPlaying != true) {
+            // Only idle playback follows system dimming and screen-off while this dialog is open.
+            keepOn = false
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            handler.removeCallbacks(dimRunnable)
+            handler.removeCallbacks(screenOffRunnable)
+            return
         }
         if (!keepOn) {
             keepOn = true
@@ -1730,6 +1759,13 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && isVideo) immersive()
+        if (hasFocus) {
+            wakeScreen()
+        } else {
+            // Dialogs own their touch events; leave the video bright while they are in use.
+            handler.removeCallbacks(dimRunnable)
+            handler.removeCallbacks(screenOffRunnable)
+        }
         scheduleControlsHide()
     }
 
@@ -1751,6 +1787,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     override fun onResume() {
         super.onResume()
+        applySubtitleAppearance()
         wakeScreen()
     }
 

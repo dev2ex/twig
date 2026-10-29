@@ -217,6 +217,8 @@
     <string name="player_brightness">Kecerahan %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Subtitel</string>
+    <string name="player_subtitle_size">Ukuran subtitel teks</string>
+    <string name="player_subtitle_size_value">Ukuran subtitel teks: %1$d sp</string>
     <string name="player_subtitle_close">Nonaktif</string>
     <string name="player_embedded_sub">Subtitel bawaan %1$d</string>
     <string name="player_audio_track">Trek audio</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Tampilkan izin Unix</string>
     <string name="settings_unix_permissions_desc">Tampilkan izin yang tersedia dalam daftar berkas. Detail lengkap ada di tab Unix pada properti.</string>
+    <string name="player_subtitle_appearance">Tampilan subtitel</string>
+    <string name="player_subtitle_text_color">Warna teks</string>
 </resources>

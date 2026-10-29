@@ -217,6 +217,8 @@
     <string name="player_brightness">चमक %1$d%%</string>
     <string name="player_volume">आवाज़ %1$d%%</string>
     <string name="player_subtitle">उपशीर्षक</string>
+    <string name="player_subtitle_size">टेक्स्ट उपशीर्षक का आकार</string>
+    <string name="player_subtitle_size_value">टेक्स्ट उपशीर्षक का आकार: %1$d sp</string>
     <string name="player_subtitle_close">बंद</string>
     <string name="player_embedded_sub">अंतर्निहित उपशीर्षक %1$d</string>
     <string name="player_audio_track">ऑडियो ट्रैक</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Unix अनुमतियाँ दिखाएँ</string>
     <string name="settings_unix_permissions_desc">फ़ाइल सूचियों में उपलब्ध अनुमतियाँ दिखाएँ। पूरी जानकारी गुणों के Unix टैब में है।</string>
+    <string name="player_subtitle_appearance">उपशीर्षक का रूप</string>
+    <string name="player_subtitle_text_color">पाठ का रंग</string>
 </resources>

@@ -239,6 +239,8 @@
     <string name="player_brightness">Brightness %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Subtitle</string>
+    <string name="player_subtitle_size">Text subtitle size</string>
+    <string name="player_subtitle_size_value">Text subtitle size: %1$d sp</string>
     <string name="player_subtitle_close">Off</string>
     <string name="player_embedded_sub">Embedded subtitle %1$d</string>
     <string name="player_audio_track">Audio track</string>
@@ -1229,4 +1231,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Show Unix permissions</string>
     <string name="settings_unix_permissions_desc">Show permission bits in file lists when available. Full details are in the Unix properties tab.</string>
+    <string name="player_subtitle_appearance">Subtitle appearance</string>
+    <string name="player_subtitle_text_color">Text color</string>
 </resources>

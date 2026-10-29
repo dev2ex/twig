@@ -217,6 +217,8 @@
     <string name="player_brightness">Brilho %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Legenda</string>
+    <string name="player_subtitle_size">Tamanho das legendas de texto</string>
+    <string name="player_subtitle_size_value">Tamanho das legendas de texto: %1$d sp</string>
     <string name="player_subtitle_close">Desativado</string>
     <string name="player_embedded_sub">Legenda incorporada %1$d</string>
     <string name="player_audio_track">Faixa de áudio</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Mostrar permissões Unix</string>
     <string name="settings_unix_permissions_desc">Mostrar as permissões disponíveis nas listas de arquivos. Os detalhes completos estão na aba Unix das propriedades.</string>
+    <string name="player_subtitle_appearance">Aparência das legendas</string>
+    <string name="player_subtitle_text_color">Cor do texto</string>
 </resources>

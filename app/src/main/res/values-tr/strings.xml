@@ -217,6 +217,8 @@
     <string name="player_brightness">Parlaklık %1$d%%</string>
     <string name="player_volume">Ses %1$d%%</string>
     <string name="player_subtitle">Altyazı</string>
+    <string name="player_subtitle_size">Metin altyazı boyutu</string>
+    <string name="player_subtitle_size_value">Metin altyazı boyutu: %1$d sp</string>
     <string name="player_subtitle_close">Kapalı</string>
     <string name="player_embedded_sub">Gömülü altyazı %1$d</string>
     <string name="player_audio_track">Ses parçası</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Unix izinlerini göster</string>
     <string name="settings_unix_permissions_desc">Dosya listelerinde mevcut izinleri göster. Ayrıntılar özelliklerin Unix sekmesindedir.</string>
+    <string name="player_subtitle_appearance">Altyazı görünümü</string>
+    <string name="player_subtitle_text_color">Metin rengi</string>
 </resources>

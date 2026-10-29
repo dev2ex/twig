@@ -217,6 +217,8 @@
     <string name="player_brightness">Độ sáng %1$d%%</string>
     <string name="player_volume">Âm lượng %1$d%%</string>
     <string name="player_subtitle">Phụ đề</string>
+    <string name="player_subtitle_size">Cỡ phụ đề văn bản</string>
+    <string name="player_subtitle_size_value">Cỡ phụ đề văn bản: %1$d sp</string>
     <string name="player_subtitle_close">Tắt</string>
     <string name="player_embedded_sub">Phụ đề nhúng %1$d</string>
     <string name="player_audio_track">Bản âm thanh</string>
@@ -1147,4 +1149,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Hiển thị quyền Unix</string>
     <string name="settings_unix_permissions_desc">Hiển thị quyền có sẵn trong danh sách tệp. Thông tin đầy đủ nằm trong thẻ Unix của thuộc tính.</string>
+    <string name="player_subtitle_appearance">Kiểu phụ đề</string>
+    <string name="player_subtitle_text_color">Màu chữ</string>
 </resources>

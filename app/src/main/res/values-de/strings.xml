@@ -217,6 +217,8 @@
     <string name="player_brightness">Helligkeit %1$d%%</string>
     <string name="player_volume">Lautstärke %1$d%%</string>
     <string name="player_subtitle">Untertitel</string>
+    <string name="player_subtitle_size">Textuntertitelgröße</string>
+    <string name="player_subtitle_size_value">Textuntertitelgröße: %1$d sp</string>
     <string name="player_subtitle_close">Aus</string>
     <string name="player_embedded_sub">Eingebetteter Untertitel %1$d</string>
     <string name="player_audio_track">Audiospur</string>
@@ -1148,4 +1150,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">Unix-Berechtigungen anzeigen</string>
     <string name="settings_unix_permissions_desc">Verfügbare Berechtigungen in Dateilisten anzeigen. Vollständige Details stehen im Unix-Reiter der Eigenschaften.</string>
+    <string name="player_subtitle_appearance">Untertiteldarstellung</string>
+    <string name="player_subtitle_text_color">Textfarbe</string>
 </resources>

@@ -250,6 +250,23 @@ object Prefs {
         sp(ctx).edit().putInt("longpress_speed", percent).apply()
     }
 
+    const val SUBTITLE_SIZE_MIN = 12
+    const val SUBTITLE_SIZE_MAX = 36
+
+    /** Text subtitles only, in sp; independent of per-title track choice memory. */
+    fun subtitleSize(ctx: Context): Int =
+        sp(ctx).getInt("subtitle_size", 24).coerceIn(SUBTITLE_SIZE_MIN, SUBTITLE_SIZE_MAX)
+
+    fun setSubtitleSize(ctx: Context, size: Int) {
+        sp(ctx).edit().putInt("subtitle_size", size.coerceIn(SUBTITLE_SIZE_MIN, SUBTITLE_SIZE_MAX)).apply()
+    }
+
+    fun subtitleTextColor(ctx: Context): Int = sp(ctx).getInt("subtitle_text_color", android.graphics.Color.WHITE)
+
+    fun setSubtitleTextColor(ctx: Context, color: Int) {
+        sp(ctx).edit().putInt("subtitle_text_color", color).apply()
+    }
+
     /** Remember video playback position and resume next time, default on (records see [PlaybackStore]). */
     fun resumePlayback(ctx: Context): Boolean = sp(ctx).getBoolean("resume_playback", true)
 

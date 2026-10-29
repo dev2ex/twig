@@ -217,6 +217,8 @@
     <string name="player_brightness">السطوع %1$d%%</string>
     <string name="player_volume">مستوى الصوت %1$d%%</string>
     <string name="player_subtitle">الترجمة</string>
+    <string name="player_subtitle_size">حجم الترجمة النصية</string>
+    <string name="player_subtitle_size_value">حجم الترجمة النصية: %1$d sp</string>
     <string name="player_subtitle_close">إيقاف</string>
     <string name="player_embedded_sub">ترجمة مضمنة %1$d</string>
     <string name="player_audio_track">مسار الصوت</string>
@@ -1152,4 +1154,6 @@
     <string name="info_section_unix">Unix</string>
     <string name="settings_unix_permissions">إظهار أذونات Unix</string>
     <string name="settings_unix_permissions_desc">إظهار الأذونات المتاحة في قوائم الملفات. التفاصيل الكاملة في تبويب Unix ضمن الخصائص.</string>
+    <string name="player_subtitle_appearance">مظهر الترجمة</string>
+    <string name="player_subtitle_text_color">لون النص</string>
 </resources>
