@@ -920,7 +920,9 @@
     <string name="music_temporary_playlist">Временный плейлист</string>
     <string name="smb1_mode">Совместимость с SMB1 (для устаревших устройств)</string>
     <string name="settings_folder_counts">Количество элементов в папках</string>
-    <string name="settings_folder_counts_desc">Показывать количество подпапок и файлов в локальных и SMB-папках. Для SMB могут потребоваться дополнительные запросы.</string>
+    <string name="settings_folder_counts_desc">Показывать количество непосредственных подпапок и файлов.</string>
+    <string name="settings_folder_counts_local_only">Считать элементы только в локальных папках</string>
+    <string name="settings_folder_counts_local_only_desc">Отключите, чтобы также считать папки других сервисов. Это может потребовать дополнительных запросов.</string>
     <string name="folder_counts_description">Папок: %1$d, файлов: %2$d</string>
 
     <!-- Website bookmarks -->

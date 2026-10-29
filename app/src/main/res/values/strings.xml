@@ -936,7 +936,9 @@
     <string name="music_temporary_playlist">Temporary playlist</string>
     <string name="smb1_mode">SMB1 compatibility (legacy devices only)</string>
     <string name="settings_folder_counts">Folder item counts</string>
-    <string name="settings_folder_counts_desc">Show direct folder and file counts for local and SMB directories. SMB counts may require extra directory requests.</string>
+    <string name="settings_folder_counts_desc">Show direct folder and file counts in directories.</string>
+    <string name="settings_folder_counts_local_only">Count folder items locally only</string>
+    <string name="settings_folder_counts_local_only_desc">Turn off to also count directories on other services. This may require extra directory requests.</string>
     <string name="folder_counts_description">Folders: %1$d, files: %2$d</string>
     <string name="info_app_activities" translatable="false">Activities</string>
     <string name="info_app_services" translatable="false">Services</string>

@@ -57,14 +57,32 @@ class DirectoryCountsTest {
         assertEquals(listOf("/"), fs.listed)
     }
 
-    @Test fun `other backends and regular files are excluded`() {
-        for (file in listOf(XFile("sftp-test", "/", true), XFile("zip", "/", true), child("file", false))) {
+    @Test fun `media servers and regular files are excluded`() {
+        for (file in listOf(XFile("jellyfin-test", "/", true), XFile("emby-test", "/", true), child("file", false))) {
             assertFalse(DirectoryCounts.supports(file))
             DirectoryCounts.remember(file, emptyList())
             DirectoryCounts.request(view(), file, false) { fail("unsupported count delivered") }
             assertNull(DirectoryCounts.known(file, false))
         }
         assertTrue(DirectoryCounts.supports(XFile("file", "/storage", true)))
+    }
+
+    @Test fun `other file services count direct children and reuse their listing`() {
+        for (scheme in listOf("sftp-test", "ftp-test", "webdav-test", "s3-test", "zip", "restic-test", "saf")) {
+            val root = XFile(scheme, "/", true)
+            val fs = FakeFileSystem(scheme, mapOf("/" to listOf("sub", "a"), "/sub" to listOf("nested")),
+                mapOf("/a" to "file", "/sub/nested" to "nested"))
+            FsRegistry.register(fs)
+            try {
+                var result: DirectoryCounts.Count? = null
+                DirectoryCounts.request(view(), root, false) { result = it }
+                await { result != null }
+                assertEquals(DirectoryCounts.Count(1, 1), result)
+                assertEquals(listOf("/"), fs.listed)
+                DirectoryCounts.request(view(), root, false) { result = it }
+                assertEquals(listOf("/"), fs.listed)
+            } finally { FsRegistry.unregister(scheme) }
+        }
     }
 
     @Test fun `local counts include only direct entries and respect hidden files`() {

@@ -884,7 +884,9 @@
     <string name="music_temporary_playlist">Lista temporal</string>
     <string name="smb1_mode">Compatibilidad SMB1 (solo dispositivos antiguos)</string>
     <string name="settings_folder_counts">Recuento de elementos</string>
-    <string name="settings_folder_counts_desc">Mostrar el número de subcarpetas y archivos directos en carpetas locales y SMB. SMB puede requerir consultas adicionales.</string>
+    <string name="settings_folder_counts_desc">Mostrar el número de subcarpetas y archivos directos.</string>
+    <string name="settings_folder_counts_local_only">Contar elementos solo en carpetas locales</string>
+    <string name="settings_folder_counts_local_only_desc">Desactivar para contar también carpetas de otros servicios. Puede requerir consultas adicionales.</string>
     <string name="folder_counts_description">Carpetas: %1$d, archivos: %2$d</string>
     <string name="info_activity_failed">No se pudo abrir esta Activity</string>
     <string name="info_app_shortcuts_limited">Android restringe el acceso a los accesos directos dinámicos de otras aplicaciones. Solo se muestran los accesos directos declarados por la aplicación.</string>

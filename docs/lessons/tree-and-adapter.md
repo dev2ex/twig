@@ -131,7 +131,7 @@
   and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
   setting toggles, failures, recycled rows and ordinary listing/refresh reuse.
 
-- **Folder counts are optional direct-child counts, limited to local and SMB sources**
+- **Folder counts are optional direct-child counts across backends**
   (`DirectoryCounts`, 2026-10-15). The metadata line starts with monochrome folder/file
   outline icons and separate numbers; date/time stays at the end. Two equal-width text-scaled
   slots keep the folder/file positions fixed; the group uses the idle selection check’s opacity.
@@ -140,11 +140,16 @@
   setting. A bound row can request one background listing; ordinary expansion/refresh
   results populate the same cache and supersede a slower count request. Local probes
   use `listForSize` with only name/type metadata, retaining its permission fallback;
-  SMB probes use the backend listing. Never recurse, read file contents, or infer zero
+  other backends use their ordinary listing. Never recurse, read file contents, or infer zero
   from failure. One worker, a 32-entry LIFO queue, 512 count-only cache entries and a
   60-second lifetime bound the extra work. Recycled rows reject old callbacks; collapsing
   cancels queued descendants. The setting defaults off and participates in `uiSignature`.
-  `DirectoryCountsTest` / `FolderCountsRowTest` cover actual local reads, SMB listing reuse,
+  A subordinate local-only setting defaults on; disabling it enables counts on other
+  services too, excluding Jellyfin/Emby media trees (2026-10-29). Gate rendering and
+  listing-cache reuse with the same scope,
+  while local empty-folder indicators remain independent. Both settings participate in
+  `uiSignature` and configuration backups.
+  `DirectoryCountsTest` / `FolderCountsRowTest` cover actual local reads, backend listing reuse,
   hidden entries, failure, stale callbacks, rendering and updates after resume. The weighted
   timestamp TextView must use maxLines/ellipsize: singleLine with end gravity can leave a
   horizontally scrolling text layout wider than its visible bounds and hide the date.

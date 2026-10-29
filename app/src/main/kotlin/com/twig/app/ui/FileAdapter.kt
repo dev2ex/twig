@@ -1032,7 +1032,7 @@ class FileAdapter(
                 b.permissions.text = UnixPermissions.symbolic(mode)
                 b.permissions.visibility = View.VISIBLE
                 // Reserve both count slots for files and pending/empty directory counts too.
-                if (Prefs.folderCounts(ctx)) b.folderCounts.visibility = View.INVISIBLE
+                if (Prefs.folderCountsFor(ctx, file.scheme)) b.folderCounts.visibility = View.INVISIBLE
             }
             setMeta(
                 node.capacity ?: when {
@@ -1116,7 +1116,7 @@ class FileAdapter(
                 setIndicator(null)
             }
 
-            val showCounts = !storageRoot && Prefs.folderCounts(ctx) && DirectoryCounts.supports(file)
+            val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
             val localDirectory = file.scheme == "file" && file.isDir
             if (showCounts || localDirectory) {
                 fun applyCount(count: DirectoryCounts.Count) {

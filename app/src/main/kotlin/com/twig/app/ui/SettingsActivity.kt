@@ -40,6 +40,8 @@ class SettingsActivity : TwigActivity() {
     private lateinit var list: LinearLayout
     private val dp get() = resources.displayMetrics.density
 
+    private lateinit var folderCountsLocalOnlyRow: View
+
     /** Thumbnail sub-item rows (greyed out and disabled when the master switch is off). */
     private val thumbRows = ArrayList<View>()
 
@@ -205,7 +207,13 @@ class SettingsActivity : TwigActivity() {
         switchRow(
             getString(R.string.settings_folder_counts), getString(R.string.settings_folder_counts_desc),
             get = { Prefs.folderCounts(this) },
-            set = { Prefs.setFolderCounts(this, it) },
+            set = { Prefs.setFolderCounts(this, it); applyEnabled() },
+        )
+        folderCountsLocalOnlyRow = switchRow(
+            getString(R.string.settings_folder_counts_local_only),
+            getString(R.string.settings_folder_counts_local_only_desc),
+            get = { Prefs.folderCountsLocalOnly(this) },
+            set = { Prefs.setFolderCountsLocalOnly(this, it) },
         )
         switchRow(
             getString(R.string.settings_unix_permissions), getString(R.string.settings_unix_permissions_desc),
@@ -521,6 +529,7 @@ class SettingsActivity : TwigActivity() {
     }
 
     private fun applyEnabled() {
+        folderCountsLocalOnlyRow.visibility = if (Prefs.folderCounts(this)) View.VISIBLE else View.GONE
         val on = Prefs.thumbs(this)
         thumbRows.forEach { row ->
             row.alpha = if (on) 1f else 0.4f

@@ -884,7 +884,9 @@
     <string name="music_temporary_playlist">임시 재생목록</string>
     <string name="smb1_mode">SMB1 호환 모드 (구형 기기 전용)</string>
     <string name="settings_folder_counts">폴더 항목 수</string>
-    <string name="settings_folder_counts_desc">로컬 및 SMB 폴더의 바로 아래 폴더와 파일 수를 표시합니다. SMB는 추가 폴더 조회가 필요할 수 있습니다.</string>
+    <string name="settings_folder_counts_desc">폴더의 바로 아래 폴더와 파일 수를 표시합니다.</string>
+    <string name="settings_folder_counts_local_only">로컬 폴더의 항목만 집계</string>
+    <string name="settings_folder_counts_local_only_desc">끄면 다른 서비스의 폴더도 집계합니다. 추가 폴더 조회가 필요할 수 있습니다.</string>
     <string name="folder_counts_description">폴더: %1$d, 파일: %2$d</string>
     <string name="info_activity_failed">이 Activity를 열 수 없습니다</string>
     <string name="info_app_shortcuts_limited">Android는 다른 앱의 동적 바로가기에 대한 접근을 제한합니다. 앱에 선언된 바로가기만 표시됩니다.</string>

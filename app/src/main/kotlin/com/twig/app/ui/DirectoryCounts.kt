@@ -34,7 +34,11 @@ object DirectoryCounts {
     private val queue = ArrayDeque<Job>()
     private val working = AtomicBoolean(false)
     private fun key(file: XFile) = file.scheme + "\u0000" + file.path
-    fun supports(file: XFile) = file.isDir && (file.scheme == "file" || Format.schemeLabel(file.scheme) == "smb")
+    fun supports(file: XFile) = file.isDir && when (Format.schemeLabel(file.scheme)) {
+        "jellyfin", "emby" -> false
+        "trash" -> file.path != "/"
+        else -> true
+    }
 
     fun known(file: XFile, showHidden: Boolean): Count? {
         if (!supports(file)) return null

@@ -915,7 +915,9 @@
     <string name="music_temporary_playlist">临时播放列表</string>
     <string name="smb1_mode">SMB1 兼容模式（仅限旧设备）</string>
     <string name="settings_folder_counts">目录项计数</string>
-    <string name="settings_folder_counts_desc">显示本地和 SMB 目录内的直接子目录及文件数量。SMB 计数可能需要额外读取目录。</string>
+    <string name="settings_folder_counts_desc">显示目录内的直接子目录及文件数量。</string>
+    <string name="settings_folder_counts_local_only">目录项计数仅限本地</string>
+    <string name="settings_folder_counts_local_only_desc">关闭后也统计其他服务的目录，可能需要额外读取目录。</string>
     <string name="folder_counts_description">目录：%1$d，文件：%2$d</string>
     <string name="info_activity_failed">无法打开此 Activity</string>
     <string name="info_app_shortcuts_limited">Android 限制读取其他应用的动态快捷方式。此处仅显示应用声明的快捷方式。</string>

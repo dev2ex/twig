@@ -521,7 +521,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun rememberCounts(key: String, list: List<XFile>) {
         keyFile[key]?.let { file ->
-            if (file.scheme == "file" || Prefs.folderCounts(getApplication())) DirectoryCounts.remember(file, list)
+            if (file.scheme == "file" || Prefs.folderCountsFor(getApplication(), file.scheme)) DirectoryCounts.remember(file, list)
         }
     }
 
@@ -3127,7 +3127,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
             label, capacity, busy(key), rowPrefix,
-            if (file.scheme == "file" || Prefs.folderCounts(getApplication())) DirectoryCounts.known(file, showHidden) else null,
+            if (file.scheme == "file" || Prefs.folderCountsFor(getApplication(), file.scheme)) DirectoryCounts.known(file, showHidden) else null,
             gridMode,
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),

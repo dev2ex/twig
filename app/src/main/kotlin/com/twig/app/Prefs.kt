@@ -479,13 +479,22 @@ object Prefs {
         if (!on) FileSniff.clear()
     }
 
-    /** Count direct folders/files for visible local and SMB directories; opt-in. */
+    /** Count direct folders/files for visible directories; opt-in. */
     fun folderCounts(ctx: Context): Boolean = sp(ctx).getBoolean("folder_counts", false)
 
     fun setFolderCounts(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("folder_counts", on).apply()
         // Local empty-folder indicators share this cache even when counts are hidden.
     }
+
+    fun folderCountsLocalOnly(ctx: Context): Boolean = sp(ctx).getBoolean("folder_counts_local_only", true)
+
+    fun setFolderCountsLocalOnly(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("folder_counts_local_only", on).apply()
+    }
+
+    fun folderCountsFor(ctx: Context, scheme: String): Boolean =
+        folderCounts(ctx) && (scheme == "file" || !folderCountsLocalOnly(ctx))
 
     /** Show permission bits in file rows when supplied by the backend; opt-in. */
     fun unixPermissions(ctx: Context): Boolean = sp(ctx).getBoolean("unix_permissions", false)
@@ -554,7 +563,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), unixPermissions(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

@@ -884,7 +884,9 @@
     <string name="music_temporary_playlist">Playlist temporanea</string>
     <string name="smb1_mode">Compatibilità SMB1 (solo dispositivi meno recenti)</string>
     <string name="settings_folder_counts">Conteggio elementi delle cartelle</string>
-    <string name="settings_folder_counts_desc">Mostra il numero di sottocartelle e file diretti nelle cartelle locali e SMB. SMB può richiedere ulteriori richieste di elenco.</string>
+    <string name="settings_folder_counts_desc">Mostra il numero di sottocartelle e file diretti.</string>
+    <string name="settings_folder_counts_local_only">Conta elementi solo nelle cartelle locali</string>
+    <string name="settings_folder_counts_local_only_desc">Disattiva per contare anche le cartelle di altri servizi. Potrebbero essere necessarie richieste aggiuntive.</string>
     <string name="folder_counts_description">Cartelle: %1$d, file: %2$d</string>
     <string name="info_activity_failed">Impossibile aprire questa Activity</string>
     <string name="info_app_shortcuts_limited">Android limita l’accesso alle scorciatoie dinamiche delle altre app. Sono mostrate solo le scorciatoie dichiarate dall’app.</string>

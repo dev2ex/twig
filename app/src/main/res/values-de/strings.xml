@@ -884,7 +884,9 @@
     <string name="music_temporary_playlist">Temporäre Wiedergabeliste</string>
     <string name="smb1_mode">SMB1-Kompatibilität (nur alte Geräte)</string>
     <string name="settings_folder_counts">Ordnerinhalte zählen</string>
-    <string name="settings_folder_counts_desc">Direkte Unterordner und Dateien in lokalen und SMB-Ordnern zählen. Für SMB können zusätzliche Verzeichnisabfragen nötig sein.</string>
+    <string name="settings_folder_counts_desc">Direkte Unterordner und Dateien in Ordnern zählen.</string>
+    <string name="settings_folder_counts_local_only">Ordnerinhalte nur lokal zählen</string>
+    <string name="settings_folder_counts_local_only_desc">Deaktivieren, um auch Ordner anderer Dienste zu zählen. Dies kann zusätzliche Verzeichnisabfragen erfordern.</string>
     <string name="folder_counts_description">Ordner: %1$d, Dateien: %2$d</string>
     <string name="info_activity_failed">Dieser Vorgang konnte nicht gestartet werden</string>
     <string name="info_app_shortcuts_limited">Android schränkt den Zugriff auf dynamische Verknüpfungen anderer Apps ein. Es werden nur von der App deklarierte Verknüpfungen angezeigt.</string>

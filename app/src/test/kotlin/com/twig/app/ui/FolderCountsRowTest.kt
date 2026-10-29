@@ -36,13 +36,34 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class FolderCountsRowTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
-    @After fun tearDown() { Prefs.setFolderCounts(app, false); DirectoryCounts.clear() }
+    @After fun tearDown() { Prefs.setFolderCounts(app, false); Prefs.setFolderCountsLocalOnly(app, true); DirectoryCounts.clear() }
     private val dir = XFile("file", "/storage/Example", true, lastModified = 1700000000000L)
     private fun adapter() = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
     private fun parent() = FrameLayout(ContextThemeWrapper(app, R.style.Theme_Twig))
     private fun seed() {
         DirectoryCounts.remember(dir, (1..2).map { XFile("file", dir.path + "/Folder$it", true) } +
             (1..5).map { XFile("file", dir.path + "/File$it", false) })
+    }
+
+    @Test fun `local only scope hides remote counts and media services always stay excluded`() {
+        Prefs.setFolderCounts(app, true)
+        assertTrue(Prefs.folderCountsLocalOnly(app))
+        val initialSignature = Prefs.uiSignature(app)
+        for (localOnly in listOf(true, false)) {
+            Prefs.setFolderCountsLocalOnly(app, localOnly)
+            for (scheme in listOf("file", "smb-test", "sftp-test", "ftp-test", "webdav-test", "s3-test", "jellyfin-test", "emby-test")) {
+                val file = dir.copy(scheme = scheme)
+                DirectoryCounts.remember(file, listOf(XFile(scheme, file.path + "/child", false)))
+                val adapter = adapter()
+                adapter.submitList(listOf(PaneViewModel.FileNode(file, 1, true, false)))
+                val holder = adapter.createViewHolder(parent(), adapter.getItemViewType(0))
+                adapter.bindViewHolder(holder, 0)
+                val visible = (scheme == "file" || !localOnly) && !scheme.startsWith("jellyfin") && !scheme.startsWith("emby")
+                assertEquals("scope for $scheme with localOnly=$localOnly", if (visible) View.VISIBLE else View.GONE,
+                    holder.itemView.findViewById<View>(R.id.folderCounts).visibility)
+            }
+        }
+        assertNotEquals(initialSignature, Prefs.uiSignature(app))
     }
 
     @Test fun `count icons sit before the timestamp with the idle selection check color`() {
@@ -168,16 +189,17 @@ class FolderCountsRowTest {
         }
     }
     @OptIn(ExperimentalCoroutinesApi::class)
-    @Test fun `ordinary SMB expansion and resume update counts without a separate probe`() = runTest {
+    @Test fun `ordinary SFTP expansion and resume update counts without a separate probe`() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
-        val conn = SavedConnection("smb", "counts.test")
+        val conn = SavedConnection("sftp", "counts.test")
         val scheme = Connections.schemeOf(conn)
         val dirs = mutableMapOf("/" to listOf("dir"), "/dir" to listOf("sub", "first.txt"), "/dir/sub" to emptyList())
         val files = mutableMapOf("/dir/first.txt" to "first")
         val fs = FakeFileSystem(scheme, dirs, files)
         FsRegistry.register(fs)
         ConnectionStore.save(app, conn)
+        Prefs.setFolderCountsLocalOnly(app, false)
         Prefs.setFolderCounts(app, true)
         try {
             val vm = PaneViewModel(app).apply { io = dispatcher }

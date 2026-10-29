@@ -883,7 +883,9 @@
     <string name="music_temporary_playlist">Danh sách phát tạm</string>
     <string name="smb1_mode">Tương thích SMB1 (chỉ thiết bị cũ)</string>
     <string name="settings_folder_counts">Số mục trong thư mục</string>
-    <string name="settings_folder_counts_desc">Hiển thị số thư mục con và tệp trực tiếp trong thư mục cục bộ và SMB. SMB có thể cần thêm yêu cầu đọc thư mục.</string>
+    <string name="settings_folder_counts_desc">Hiển thị số thư mục con và tệp trực tiếp trong thư mục.</string>
+    <string name="settings_folder_counts_local_only">Chỉ đếm mục trong thư mục cục bộ</string>
+    <string name="settings_folder_counts_local_only_desc">Tắt để đếm cả thư mục trên các dịch vụ khác. Có thể cần thêm yêu cầu đọc thư mục.</string>
     <string name="folder_counts_description">Thư mục: %1$d, tệp: %2$d</string>
     <string name="info_activity_failed">Không thể mở Activity này</string>
     <string name="info_app_shortcuts_limited">Android hạn chế quyền truy cập vào lối tắt động của ứng dụng khác. Chỉ hiển thị các lối tắt được ứng dụng khai báo.</string>
