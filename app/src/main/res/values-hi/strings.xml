@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">ऐप खुला होने पर पूर्णता सूचना</string>
     <string name="settings_foreground_completion_desc">Twig इस्तेमाल करते समय भी सूचना दें। पृष्ठभूमि और लॉक स्क्रीन पर हमेशा सूचना दें।</string>
 
-    <string name="settings_exit_on_back">वापस जाने पर बाहर निकलें</string>
-    <string name="settings_exit_on_back_desc">वापस बटन से मुख्य स्क्रीन बंद होने पर Twig से बाहर निकलने से पहले पुष्टि माँगें।</string>
+    <string name="settings_back_action">मुख्य स्क्रीन पर वापस बटन</string>
+    <string name="settings_back_close">स्क्रीन बंद करें (डिफ़ॉल्ट)</string>
+    <string name="settings_back_exit">ऐप से बाहर निकलें (पुष्टि के साथ)</string>
+    <string name="settings_back_up">एक स्तर ऊपर जाएँ (शीर्ष पर स्क्रीन बंद करें)</string>
+    <string name="settings_back_up_exit">एक स्तर ऊपर जाएँ (शीर्ष पर ऐप से बाहर निकलें)</string>
     <string name="share_text_filename">साझा पाठ.txt</string>
     <string name="settings_toolbar_bottom">टूलबार नीचे रखें</string>
     <string name="settings_toolbar_bottom_desc">एक हाथ से आसानी से उपयोग करने के लिए फ़ाइल ब्राउज़र का टूलबार नीचे रखें</string>

@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Notificaciones al finalizar en primer plano</string>
     <string name="settings_foreground_completion_desc">Notificar también al usar Twig. En segundo plano y con la pantalla bloqueada siempre se notifica.</string>
 
-    <string name="settings_exit_on_back">Salir al volver atrás</string>
-    <string name="settings_exit_on_back_desc">Pedir confirmación antes de salir de Twig cuando Atrás cierre la pantalla principal.</string>
+    <string name="settings_back_action">Atrás en la pantalla principal</string>
+    <string name="settings_back_close">Cerrar pantalla (predeterminado)</string>
+    <string name="settings_back_exit">Salir de la aplicación (con confirmación)</string>
+    <string name="settings_back_up">Subir un nivel (cerrar pantalla en la raíz)</string>
+    <string name="settings_back_up_exit">Subir un nivel (salir de la aplicación en la raíz)</string>
     <string name="share_text_filename">Texto compartido.txt</string>
     <string name="settings_toolbar_bottom">Barra de herramientas abajo</string>
     <string name="settings_toolbar_bottom_desc">Mover la barra de herramientas del explorador de archivos abajo para facilitar el uso con una mano</string>

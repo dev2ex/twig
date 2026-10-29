@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">포그라운드 완료 알림</string>
     <string name="settings_foreground_completion_desc">Twig 사용 중에도 알립니다. 백그라운드 및 화면 잠금 상태에서는 항상 알립니다.</string>
 
-    <string name="settings_exit_on_back">뒤로 가기로 종료</string>
-    <string name="settings_exit_on_back_desc">뒤로 가기로 메인 화면을 닫을 때 확인 후 Twig를 종료합니다.</string>
+    <string name="settings_back_action">메인 화면의 뒤로 버튼</string>
+    <string name="settings_back_close">화면 닫기 (기본값)</string>
+    <string name="settings_back_exit">앱 종료 (확인 필요)</string>
+    <string name="settings_back_up">한 단계 위로 (최상위에서 화면 닫기)</string>
+    <string name="settings_back_up_exit">한 단계 위로 (최상위에서 앱 종료)</string>
     <string name="share_text_filename">공유 텍스트.txt</string>
     <string name="settings_toolbar_bottom">도구 모음을 하단에 배치</string>
     <string name="settings_toolbar_bottom_desc">한 손으로 쉽게 사용할 수 있도록 파일 탐색기의 도구 모음을 하단으로 이동</string>

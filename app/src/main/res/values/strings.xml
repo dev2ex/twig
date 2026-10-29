@@ -1177,8 +1177,11 @@
     <string name="settings_foreground_completion">Completion notifications in foreground</string>
     <string name="settings_foreground_completion_desc">Also notify while using Twig. Background and locked-screen operations always notify.</string>
 
-    <string name="settings_exit_on_back">Exit on Back</string>
-    <string name="settings_exit_on_back_desc">Ask for confirmation before exiting Twig when Back closes the main screen.</string>
+    <string name="settings_back_action">Back button on main screen</string>
+    <string name="settings_back_close">Close screen (default)</string>
+    <string name="settings_back_exit">Exit app (ask first)</string>
+    <string name="settings_back_up">Go up one level (close screen at top)</string>
+    <string name="settings_back_up_exit">Go up one level (exit app at top)</string>
     <string name="share_text_filename">Shared text.txt</string>
     <string name="settings_toolbar_bottom">Toolbar at bottom</string>
     <string name="settings_toolbar_bottom_desc">Move the file browser toolbar to the bottom for easier one-handed use</string>

@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">フォアグラウンドでの完了通知</string>
     <string name="settings_foreground_completion_desc">Twig の使用中も完了を通知します。バックグラウンドや画面ロック中は常に通知します。</string>
 
-    <string name="settings_exit_on_back">戻る操作で終了</string>
-    <string name="settings_exit_on_back_desc">戻る操作でメイン画面を閉じるときに、確認してから Twig を終了します。</string>
+    <string name="settings_back_action">メイン画面の戻る操作</string>
+    <string name="settings_back_close">画面を閉じる（既定）</string>
+    <string name="settings_back_exit">アプリを終了（確認あり）</string>
+    <string name="settings_back_up">上の階層へ（最上位では画面を閉じる）</string>
+    <string name="settings_back_up_exit">上の階層へ（最上位ではアプリを終了）</string>
     <string name="share_text_filename">共有テキスト.txt</string>
     <string name="settings_toolbar_bottom">ツールバーを下部に配置</string>
     <string name="settings_toolbar_bottom_desc">ファイルブラウザーのツールバーを下部に移動し、片手で操作しやすくします</string>

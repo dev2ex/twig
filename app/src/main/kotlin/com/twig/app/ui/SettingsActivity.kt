@@ -233,10 +233,16 @@ class SettingsActivity : TwigActivity() {
             get = { Prefs.toolbarAtBottom(this) },
             set = { Prefs.setToolbarAtBottom(this, it) },
         )
-        switchRow(
-            getString(R.string.settings_exit_on_back), getString(R.string.settings_exit_on_back_desc),
-            get = { Prefs.exitOnBack(this) },
-            set = { Prefs.setExitOnBack(this, it) },
+        choiceRow(
+            getString(R.string.settings_back_action),
+            arrayOf(
+                getString(R.string.settings_back_close),
+                getString(R.string.settings_back_exit),
+                getString(R.string.settings_back_up),
+                getString(R.string.settings_back_up_exit),
+            ),
+            get = { Prefs.backAction(this).ordinal },
+            set = { Prefs.setBackAction(this, Prefs.BackAction.entries[it]) },
         )
 
         section(getString(R.string.settings_section_grid))

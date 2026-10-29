@@ -1131,8 +1131,11 @@
     <string name="settings_foreground_completion">前台操作完成通知</string>
     <string name="settings_foreground_completion_desc">在 Twig 内操作时也保留完成通知。后台和锁屏时始终通知。</string>
 
-    <string name="settings_exit_on_back">返回时退出</string>
-    <string name="settings_exit_on_back_desc">返回关闭主界面时，先确认再退出 Twig。</string>
+    <string name="settings_back_action">主界面返回键</string>
+    <string name="settings_back_close">关闭界面（默认）</string>
+    <string name="settings_back_exit">退出应用（需确认）</string>
+    <string name="settings_back_up">返回上级（顶层时关闭界面）</string>
+    <string name="settings_back_up_exit">返回上级（顶层时退出应用）</string>
     <string name="share_text_filename">分享的文本.txt</string>
     <string name="settings_toolbar_bottom">工具栏置于底部</string>
     <string name="settings_toolbar_bottom_desc">将文件浏览界面的工具栏移到底部，方便单手操作</string>

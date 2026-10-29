@@ -28,10 +28,17 @@ object Prefs {
         sp(ctx).edit().putBoolean("toolbar_at_bottom", bottom).apply()
     }
 
-    fun exitOnBack(ctx: Context): Boolean = sp(ctx).getBoolean("exit_on_back", false)
+    enum class BackAction { CLOSE, EXIT, UP, UP_EXIT }
 
-    fun setExitOnBack(ctx: Context, on: Boolean) {
-        sp(ctx).edit().putBoolean("exit_on_back", on).apply()
+    fun backAction(ctx: Context): BackAction {
+        val prefs = sp(ctx)
+        val saved = prefs.getString("back_action", null)
+        return BackAction.entries.firstOrNull { it.name == saved }
+            ?: if (prefs.getBoolean("exit_on_back", false)) BackAction.EXIT else BackAction.CLOSE
+    }
+
+    fun setBackAction(ctx: Context, action: BackAction) {
+        sp(ctx).edit().putString("back_action", action.name).remove("exit_on_back").apply()
     }
 
     fun vibrateOnCompletion(ctx: Context): Boolean = sp(ctx).getBoolean("vibrate_on_completion", false)

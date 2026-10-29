@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Notifikasi selesai di latar depan</string>
     <string name="settings_foreground_completion_desc">Beri notifikasi juga saat menggunakan Twig. Selalu beri notifikasi di latar belakang dan saat layar terkunci.</string>
 
-    <string name="settings_exit_on_back">Keluar saat Kembali</string>
-    <string name="settings_exit_on_back_desc">Minta konfirmasi sebelum keluar dari Twig saat tombol Kembali menutup layar utama.</string>
+    <string name="settings_back_action">Tombol Kembali di layar utama</string>
+    <string name="settings_back_close">Tutup layar (default)</string>
+    <string name="settings_back_exit">Keluar dari aplikasi (minta konfirmasi)</string>
+    <string name="settings_back_up">Naik satu tingkat (tutup layar di tingkat teratas)</string>
+    <string name="settings_back_up_exit">Naik satu tingkat (keluar dari aplikasi di tingkat teratas)</string>
     <string name="share_text_filename">Teks dibagikan.txt</string>
     <string name="settings_toolbar_bottom">Bilah alat di bawah</string>
     <string name="settings_toolbar_bottom_desc">Pindahkan bilah alat penjelajah berkas ke bawah agar lebih mudah digunakan dengan satu tangan</string>

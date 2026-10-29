@@ -377,9 +377,13 @@ its listing size must still describe the followed stream for copy/resume checks.
   the main landscape layout keeps the toolbar hidden and the strip centered.
   The preference is included in `uiSignature` so returning from settings recreates
   the main layout while retaining pane ViewModels.
-  The default-off `Prefs.exitOnBack` applies
-  only to the main screen: after pane-local Back handling, it reuses `confirmExit`
-  (Back-triggered exits always require confirmation; explicit exit shortcuts ask only with active tasks). Music keeps its long-press Shuffle exit shortcut.
+  `Prefs.backAction` applies only to the main screen after pane-local Back handling:
+  close the screen (default), exit via `confirmExit`, or use the pane's Up action
+  until the tree top, then close the screen or confirm exit (two separate choices).
+  Legacy `exit_on_back=true` maps to Exit;
+  false/absent maps to Close until an explicit choice is saved. Back-triggered exits
+  always require confirmation; explicit exit shortcuts ask only with active tasks.
+  Music keeps its long-press Shuffle exit shortcut.
   Layout-affecting preferences (row height,
   grid, thumbnails) go through `Prefs.uiSignature` — `MainActivity.onResume` compares the
   signature and calls `recreate()` on change; in `PaneFragment.onViewCreated`, **when the

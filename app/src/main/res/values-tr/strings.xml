@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Ön planda tamamlanma bildirimleri</string>
     <string name="settings_foreground_completion_desc">Twig kullanılırken de bildir. Arka planda ve ekran kilitliyken her zaman bildir.</string>
 
-    <string name="settings_exit_on_back">Geri ile çık</string>
-    <string name="settings_exit_on_back_desc">Geri düğmesi ana ekranı kapattığında Twig uygulamasından çıkmadan önce onay iste.</string>
+    <string name="settings_back_action">Ana ekranda Geri düğmesi</string>
+    <string name="settings_back_close">Ekranı kapat (varsayılan)</string>
+    <string name="settings_back_exit">Uygulamadan çık (onay iste)</string>
+    <string name="settings_back_up">Bir üst düzeye git (en üstte ekranı kapat)</string>
+    <string name="settings_back_up_exit">Bir üst düzeye git (en üstte uygulamadan çık)</string>
     <string name="share_text_filename">Paylaşılan metin.txt</string>
     <string name="settings_toolbar_bottom">Araç çubuğu altta</string>
     <string name="settings_toolbar_bottom_desc">Tek elle kullanımı kolaylaştırmak için dosya tarayıcısının araç çubuğunu alta taşı</string>

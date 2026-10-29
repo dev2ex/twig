@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Notifiche di completamento in primo piano</string>
     <string name="settings_foreground_completion_desc">Notifica anche durante l’uso di Twig. Notifica sempre in background e a schermo bloccato.</string>
 
-    <string name="settings_exit_on_back">Esci con Indietro</string>
-    <string name="settings_exit_on_back_desc">Chiedi conferma prima di uscire da Twig quando Indietro chiude la schermata principale.</string>
+    <string name="settings_back_action">Indietro nella schermata principale</string>
+    <string name="settings_back_close">Chiudi schermata (predefinito)</string>
+    <string name="settings_back_exit">Esci dall’app (con conferma)</string>
+    <string name="settings_back_up">Sali di un livello (chiudi schermata in cima)</string>
+    <string name="settings_back_up_exit">Sali di un livello (esci dall’app in cima)</string>
     <string name="share_text_filename">Testo condiviso.txt</string>
     <string name="settings_toolbar_bottom">Barra degli strumenti in basso</string>
     <string name="settings_toolbar_bottom_desc">Sposta in basso la barra degli strumenti del browser di file per facilitare l’uso con una mano</string>

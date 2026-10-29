@@ -364,9 +364,23 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             )
             return
         }
-        if (Prefs.exitOnBack(this)) {
-            confirmExit(alwaysConfirm = true)
-            return
+        when (Prefs.backAction(this)) {
+            Prefs.BackAction.EXIT -> {
+                confirmExit(alwaysConfirm = true)
+                return
+            }
+            Prefs.BackAction.UP, Prefs.BackAction.UP_EXIT -> {
+                val pane = activePane()
+                if (pane?.viewModel?.state?.value?.currentKey != null) {
+                    pane.actionUp()
+                    return
+                }
+                if (Prefs.backAction(this) == Prefs.BackAction.UP_EXIT) {
+                    confirmExit(alwaysConfirm = true)
+                    return
+                }
+            }
+            Prefs.BackAction.CLOSE -> Unit
         }
         @Suppress("DEPRECATION") super.onBackPressed()
     }

@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Notifications de fin au premier plan</string>
     <string name="settings_foreground_completion_desc">Notifier aussi pendant l’utilisation de Twig. Toujours notifier en arrière-plan et lorsque l’écran est verrouillé.</string>
 
-    <string name="settings_exit_on_back">Quitter avec Retour</string>
-    <string name="settings_exit_on_back_desc">Demander confirmation avant de quitter Twig lorsque Retour ferme l’écran principal.</string>
+    <string name="settings_back_action">Retour sur l’écran principal</string>
+    <string name="settings_back_close">Fermer l’écran (par défaut)</string>
+    <string name="settings_back_exit">Quitter l’application (avec confirmation)</string>
+    <string name="settings_back_up">Remonter d’un niveau (fermer l’écran au sommet)</string>
+    <string name="settings_back_up_exit">Remonter d’un niveau (quitter l’application au sommet)</string>
     <string name="share_text_filename">Texte partagé.txt</string>
     <string name="settings_toolbar_bottom">Barre d’outils en bas</string>
     <string name="settings_toolbar_bottom_desc">Déplacer la barre d’outils de l’explorateur de fichiers en bas pour faciliter l’utilisation à une main</string>

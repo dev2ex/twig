@@ -1100,8 +1100,11 @@
     <string name="settings_foreground_completion">Abschlussmeldungen im Vordergrund</string>
     <string name="settings_foreground_completion_desc">Auch während der Nutzung von Twig benachrichtigen. Im Hintergrund und bei gesperrtem Bildschirm immer benachrichtigen.</string>
 
-    <string name="settings_exit_on_back">Mit Zurück beenden</string>
-    <string name="settings_exit_on_back_desc">Vor dem Beenden von Twig bestätigen, wenn Zurück den Hauptbildschirm schließt.</string>
+    <string name="settings_back_action">Zurück auf dem Hauptbildschirm</string>
+    <string name="settings_back_close">Bildschirm schließen (Standard)</string>
+    <string name="settings_back_exit">App beenden (mit Bestätigung)</string>
+    <string name="settings_back_up">Eine Ebene nach oben (oben Bildschirm schließen)</string>
+    <string name="settings_back_up_exit">Eine Ebene nach oben (oben App beenden)</string>
     <string name="share_text_filename">Geteilter Text.txt</string>
     <string name="settings_toolbar_bottom">Symbolleiste unten</string>
     <string name="settings_toolbar_bottom_desc">Die Symbolleiste des Dateibrowsers für eine einfachere Einhandbedienung nach unten verschieben</string>

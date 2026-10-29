@@ -1104,8 +1104,11 @@
     <string name="settings_foreground_completion">إشعارات الاكتمال أثناء استخدام التطبيق</string>
     <string name="settings_foreground_completion_desc">الإشعار أيضًا أثناء استخدام Twig. الإشعار دائمًا في الخلفية وعند قفل الشاشة.</string>
 
-    <string name="settings_exit_on_back">الخروج عند الرجوع</string>
-    <string name="settings_exit_on_back_desc">طلب التأكيد قبل الخروج من Twig عندما يغلق زر الرجوع الشاشة الرئيسية.</string>
+    <string name="settings_back_action">زر الرجوع في الشاشة الرئيسية</string>
+    <string name="settings_back_close">إغلاق الشاشة (الافتراضي)</string>
+    <string name="settings_back_exit">الخروج من التطبيق (مع التأكيد)</string>
+    <string name="settings_back_up">الانتقال للمستوى الأعلى (إغلاق الشاشة عند القمة)</string>
+    <string name="settings_back_up_exit">الانتقال للمستوى الأعلى (الخروج من التطبيق عند القمة)</string>
     <string name="share_text_filename">نص مشارك.txt</string>
     <string name="settings_toolbar_bottom">شريط الأدوات في الأسفل</string>
     <string name="settings_toolbar_bottom_desc">نقل شريط أدوات متصفح الملفات إلى الأسفل لتسهيل الاستخدام بيد واحدة</string>
