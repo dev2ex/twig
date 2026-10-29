@@ -3,7 +3,7 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <!-- Left and right columns + a bidirectional arrow in the middle: "compare the two sides" at a glance -->
+    <!-- Left and right columns with a centered arrow between them. -->
     <path
         android:fillColor="@android:color/black"
         android:pathData="M3,4h6v16H3V4zM5,6v12h2V6H5z" />
@@ -12,5 +12,5 @@
         android:pathData="M15,4h6v16h-6V4zM17,6v12h2V6h-2z" />
     <path
         android:fillColor="@android:color/black"
-        android:pathData="M10.5,8.5L9,10l2,2l-2,2l1.5,1.5L14,12z" />
+        android:pathData="M11,8.5L9.5,10l2,2l-2,2l1.5,1.5L14.5,12z" />
 </vector>
