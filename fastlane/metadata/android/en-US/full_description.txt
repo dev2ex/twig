@@ -1,8 +1,8 @@
-Twig is a dual-pane Android file manager that puts every storage source in one tree, built with Kotlin and XML views, without Material or unnecessary dependencies.
+Twig is a dual-pane Android file manager: every storage source in one tree, built with Kotlin and XML views.
 
 <b>One tree, every source</b>
 
-Browse local storage, archives, FTP, SFTP, SMB, WebDAV, S3, restic backups and Jellyfin/Emby in one tree. Copy between sources or compress an SMB folder into a local ZIP. Archives expand in place like folders.
+Browse local storage, archives, FTP, SFTP, SMB, WebDAV, S3, restic and Jellyfin/Emby. Copy or compress across sources. Archives expand in place.
 
 <b>Small and resource-conscious</b>
 
@@ -11,16 +11,16 @@ The 1.16.1 libre APK measures 10.48 MiB for arm64-v8a and x86_64 together, inclu
 <b>Features</b>
 
 <ul>
-<li>Independent panes, selection counts, folder icons, thumbnails and per-folder sorting/list/grid views with optional inheritance</li>
+<li>Independent panes; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and link targets; per-folder sorting/views</li>
 <li>Background copy/move/delete with cancellation; retry unfinished transfers, resume supported writes or skip failed items; local trash with batch restore/purge</li>
-<li>Share remote files with background preparation and reusable cached files; save incoming files or text through a dual-pane picker</li>
+<li>Dual-pane file picking and shared file/text saving; prepare remote selections and shares with progress and reusable cache</li>
 <li>Batch rename with text/regex replacement, numbering and previews</li>
 <li>Read/create encrypted ZIP/7z and remember the last format; browse tar and gz/xz/bz2/zst</li>
 <li>Folder compare and sync between any two sources</li>
-<li>Disk usage treemap with pinch zoom; optional bottom toolbar, Back to exit, completion vibration and foreground notifications</li>
+<li>Disk usage treemap with pinch zoom; bottom toolbar, Back navigation/exit choices, completion vibration and foreground notifications</li>
 <li>Private space excluded from backups and configuration exports; files are deleted when Twig is uninstalled</li>
-<li>Text editing with syntax highlighting and original encoding; hex, PDF, image and media viewers</li>
-<li>Music playlists across sources, waveform seeking, synced lyrics, background playback, cover volume gestures and notification timer/exit</li>
+<li>Text editing with syntax highlighting and original encoding; hex, PDF, image and media viewers; subtitle size/color and video control auto-hide</li>
+<li>Music playlists with M3U/folder imports, waveform seeking, synced lyrics, background playback, cover volume gestures and notification timer/exit</li>
 <li>Git status, history, side-by-side diff, worktrees and submodules for local and remote repositories</li>
 <li>Local, SSH and privileged terminals with multiple sessions, idle dimming and locating the shell directory in the tree</li>
 <li>File, folder, website and command shortcuts; editable paths; long-press actions for browsing, music and terminals</li>

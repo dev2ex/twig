@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.16.1** (versionCode 314) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.17.0-beta.1** (versionCode 315) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -255,13 +255,19 @@ The compression dialog remembers the last ZIP/7Z format across launches, even if
 - **Share into Twig** to copy incoming files or save shared text as a UTF-8 file with an
   editable name. The destination picker has two panes, sorting, search and history, and
   follows the browser's fullscreen and toolbar-placement settings.
-- **Browser controls:** optionally put the toolbar at the bottom or exit the main screen
-  with Back after pane navigation is exhausted, always with exit confirmation.
+- **Browser controls:** choose an OLED black theme, reorder root items and action buttons,
+  and show or hide individual actions. Favorites and websites support inline drag ordering.
+  Optionally put the toolbar at the bottom. Back can close, confirm exit or navigate up
+  the tree before closing/exiting; Back-triggered exits always require confirmation.
   Completion vibration and foreground completion notifications are separate, default-off
   settings; background results and transfer failures retain a notification.
 - **Long-press shortcuts** on browser controls: copy/move/compress immediately, create
   a text file, select the extension when renaming, open directory sorting or refresh
   selected thumbnails. Terminal and music controls also offer direct actions.
+- **Directory details** include optional direct folder/file counts, with a local-only
+  scope by default. Empty local directories hide their expand indicators. Symbolic links
+  show badges and target paths; Unix properties and optional permission rows are available
+  where the source supplies them, including permission rows on SFTP.
 - **Folder icons** distinguish common local directories such as Downloads, Pictures
   and Music; favourites retain their directory or installed-app icons.
 - **Batch rename** selected files and folders with live original/new-name previews.
@@ -466,7 +472,8 @@ all work the same way.
   picture scaling for the next episode and when reopening a file
 - **Playback controls** include swipe seeking, brightness/volume gestures and
   temporary speed-up while holding the screen; embedded and external subtitles
-  can be selected alongside audio tracks
+  can be selected alongside audio tracks. Text subtitle size and color are configurable;
+  playing video controls hide after ten seconds of inactivity
 
 #### Dedicated music player
 
@@ -835,5 +842,9 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   sharing with background preparation and reusable files. Selection counts, folder
   icons and long-press actions for browsing, music and terminals. Fix image zoom
   opening menus, Back exit confirmation and thumbnail refresh.
+- **1.17.0-beta.1** — Preview: OLED theme; reorder roots, favorites, websites and action
+  buttons; M3U/directory playlist imports; Unix properties and symbolic-link targets.
+  Configurable Back behavior and subtitle appearance, video control auto-hide, dual-pane
+  file picking and remote selection preparation; folder count and trash improvements.
 
 </details>
