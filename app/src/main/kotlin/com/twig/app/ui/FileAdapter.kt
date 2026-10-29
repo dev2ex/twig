@@ -961,15 +961,14 @@ class FileAdapter(
         }
 
         /** Compare-favorite row: not expandable, click jumps straight to the compare page; no selection state (not an object that can be copied or deleted).
-         *  The dedicated icon is reserved for the "compare favorites" root group above ([bindGroup]); this row's icon reuses the same black [R.drawable.ic_compare] as the action bar,
-         *  but is tinted with the row title's [R.color.text_primary] —
-         *  both light and dark themes follow the text colour, no longer fixed black that turns into a smear in the dark theme. */
+         *  The dedicated icon is reserved for the "compare favorites" root group above ([bindGroup]);
+         *  this row reuses [R.drawable.ic_compare], tinted with [R.color.primary] like other tree icons. */
         private fun bindCompareFavorite(node: PaneViewModel.CompareNode) {
             val ctx = b.root.context
             b.name.text = node.session.label
             setMeta(null)
             b.icon.setImageResource(R.drawable.ic_compare)
-            b.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_primary))
+            b.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.primary))
             setIndicator(null)
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
