@@ -117,7 +117,7 @@
     <string name="clip_into_self">Нельзя вставить папку саму в себя</string>
     <string name="action_select_all">Выбрать всё / ничего</string>
     <string name="msg_added_favorite">Добавлено в избранное</string>
-    <string name="action_refresh_thumb">Обновить миниатюру</string>
+    <string name="action_refresh_thumb">Обновить миниатюры</string>
     <string name="msg_thumbs_refreshing">Обновление миниатюр…</string>
     <string name="title_selected_count">%1$d выбрано</string>
     <string name="action_pin_shortcut">Добавить ярлык на главный экран</string>
