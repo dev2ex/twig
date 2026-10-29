@@ -17,6 +17,10 @@ class TrashOsShadow {
     companion object {
         @Implementation @JvmStatic fun lstat(path: String): StructStat = read(path, false)
         @Implementation @JvmStatic fun stat(path: String): StructStat = read(path, true)
+        @Implementation @JvmStatic fun readlink(path: String): String = try {
+            Files.readSymbolicLink(Paths.get(path)).toString()
+        } catch (e: java.io.IOException) { throw ErrnoException("readlink", OsConstants.EINVAL, e) }
+
         private fun read(path: String, follow: Boolean): StructStat {
             val attrs = try {
                 Files.readAttributes(Paths.get(path), "unix:*", *if (follow) emptyArray() else arrayOf(LinkOption.NOFOLLOW_LINKS))

@@ -66,7 +66,10 @@ object FileInfo {
         } else {
             runCatching { (FsRegistry.of(file) as? MediaInfoSource)?.detailsOf(file) }.getOrNull()
         }
-        sections += basic(ctx, file, remote)
+        val inspected = if (file.isSymbolicLink && file.scheme == "file") {
+            file.copy(linkTarget = (FsRegistry.of(file) as? com.twig.fs.local.LocalFileSystem)?.linkTarget(file))
+        } else file
+        sections += basic(ctx, inspected, remote)
         if (!file.isDir && file.canRead) {
             when {
                 remote != null -> remoteMedia(ctx, remote)?.let { sections += it }
@@ -108,16 +111,25 @@ object FileInfo {
             rows += s(ctx, R.string.info_path) to remote?.realPath?.ifEmpty { null }.orEmpty().ifEmpty { file.path }
             if (file.scheme != "file") rows += s(ctx, R.string.info_source) to Format.schemeLabel(file.scheme)
         }
+        val symbolicLink = file.isSymbolicLink || (trash != null && android.system.OsConstants.S_ISLNK(trash.st_mode))
+        val linkTarget = file.linkTarget ?: if (symbolicLink && trash != null && includeContents)
+            runCatching { android.system.Os.readlink((FsRegistry.of(file) as TrashFileSystem).let { fs ->
+                val item = fs.item(file)
+                fs.store.payload(item.entry, item.relative).path
+            }) }.getOrNull() else null
+        if (symbolicLink) {
+            rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_symbolic_link)
+            rows += s(ctx, R.string.info_link_target) to (linkTarget ?: s(ctx, R.string.info_unavailable))
+        }
         if (file.isDir) {
-            rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_folder)
+            if (!symbolicLink) rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_folder)
             if (includeContents) runCatching { FsRegistry.of(file).list(file) }.getOrNull()?.let { kids ->
                 val dirs = kids.count { it.isDir }
                 rows += s(ctx, R.string.info_contains) to
                     s(ctx, R.string.info_contains_value, dirs, kids.size - dirs)
             }
         } else {
-            rows += s(ctx, R.string.info_type) to if (trash != null && android.system.OsConstants.S_ISLNK(trash.st_mode))
-                "inode/symlink" else OpenFiles.mimeOf(file.name)
+            if (!symbolicLink) rows += s(ctx, R.string.info_type) to OpenFiles.mimeOf(file.name)
             // XFile.size in the listing may be 0 (media servers don't expose photo byte counts),
             // but the properties card only deals with one entry and the source will fetch it
             // specifically — use the real value when available

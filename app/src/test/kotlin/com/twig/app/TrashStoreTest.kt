@@ -129,7 +129,8 @@ class TrashStoreTest {
         assertFalse(link.canRead)
         FsRegistry.register(fs)
         val properties = FileInfo.load(app, link).sections.single().rows.toMap()
-        assertEquals("inode/symlink", properties[app.getString(R.string.info_type)])
+        assertEquals(app.getString(R.string.info_symbolic_link), properties[app.getString(R.string.info_type)])
+        assertEquals(File(root, "outside").path, properties[app.getString(R.string.info_link_target)])
         assertThrows(IOException::class.java) { fs.openInput(link) }
         assertThrows(IOException::class.java) { store.payload(entry, "link/keep.txt") }
         assertThrows(IOException::class.java) { store.purgeItem(entry, "../info.json") }

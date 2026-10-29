@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Numero traccia</string>
     <string name="settings_action_strip">Pannello azioni</string>
     <string name="strip_reorder_hint">Trascina le maniglie per riordinare le azioni. Deselezionale per nasconderle.</string>
+    <string name="info_symbolic_link">Collegamento simbolico</string>
+    <string name="info_link_target">Destinazione</string>
+    <string name="info_unavailable">Non disponibile</string>
 </resources>

@@ -1136,4 +1136,7 @@
     <string name="info_track_number">ट्रैक नंबर</string>
     <string name="settings_action_strip">कार्रवाई पैनल</string>
     <string name="strip_reorder_hint">कार्रवाइयों का क्रम बदलने के लिए हैंडल खींचें। छिपाने के लिए चेक हटाएँ।</string>
+    <string name="info_symbolic_link">प्रतीकात्मक लिंक</string>
+    <string name="info_link_target">लक्ष्य</string>
+    <string name="info_unavailable">अनुपलब्ध</string>
 </resources>

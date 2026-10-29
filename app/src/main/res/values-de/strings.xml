@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Titelnummer</string>
     <string name="settings_action_strip">Aktionsleiste</string>
     <string name="strip_reorder_hint">Ziehe die Griffe, um Aktionen neu anzuordnen. Entferne das Häkchen, um sie auszublenden.</string>
+    <string name="info_symbolic_link">Symbolischer Link</string>
+    <string name="info_link_target">Verweist auf</string>
+    <string name="info_unavailable">Nicht verfügbar</string>
 </resources>

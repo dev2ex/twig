@@ -39,6 +39,30 @@ class LocalFileSystemTest {
         assertEquals("hi", File(tmp, "b.txt").readText())
     }
 
+    @Test
+    fun symbolicLinkMetadataPreservesRawTargetsAndBrokenLinks() {
+        val reader: (String) -> String? = { path ->
+            runCatching { java.nio.file.Files.readSymbolicLink(File(path).toPath()).toString() }.getOrNull()
+        }
+        val links = LocalFileSystem(readLink = reader)
+        val directory = File(tmp, "real").apply { mkdir() }
+        File(directory, "child").writeText("hello")
+        val link = File(tmp, "link")
+        java.nio.file.Files.createSymbolicLink(link.toPath(), java.nio.file.Paths.get("real"))
+        val missing = File(tmp, "broken")
+        java.nio.file.Files.createSymbolicLink(missing.toPath(), java.nio.file.Paths.get("missing\nname\n"))
+        val items = links.list(links.resolve(tmp.path)).associateBy { it.name }
+        assertTrue(items.getValue("link").isDir)
+        assertTrue(items.getValue("link").isSymbolicLink)
+        assertEquals("real", items.getValue("link").linkTarget)
+        assertFalse(items.getValue("real").isSymbolicLink)
+        assertFalse(links.resolve(File(link, "child").path).isSymbolicLink)
+        assertTrue(links.resolve(missing.path).isSymbolicLink)
+        assertEquals("missing\nname\n", links.stat(missing.path)!!.linkTarget)
+        assertFalse(items.getValue("broken").isDir)
+        assertFalse(items.getValue("broken").canRead)
+    }
+
     /** Regression: renaming to an already-existing name must throw an error, not replace that file. */
     @Test
     fun renameRefusesToOverwrite() {

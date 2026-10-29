@@ -43,6 +43,9 @@ class TwigApp : Application() {
          */
         fun registerBaseFs(ctx: Context) {
             val app = ctx.applicationContext
+            LocalFileSystem.symbolicLinkTarget = { path ->
+                try { android.system.Os.readlink(path) } catch (_: android.system.ErrnoException) { null }
+            }
             FsRegistry.register(LocalFileSystem())
             FsRegistry.register(ZipFileSystem())
             FsRegistry.register(SevenZFileSystem())

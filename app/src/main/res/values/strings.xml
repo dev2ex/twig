@@ -1217,4 +1217,7 @@
     <string name="info_track_number">Track no.</string>
     <string name="settings_action_strip">Action panel</string>
     <string name="strip_reorder_hint">Drag the handles to reorder actions. Uncheck actions to hide them.</string>
+    <string name="info_symbolic_link">Symbolic link</string>
+    <string name="info_link_target">Points to</string>
+    <string name="info_unavailable">Unavailable</string>
 </resources>

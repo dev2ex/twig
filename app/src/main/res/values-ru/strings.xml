@@ -1172,4 +1172,7 @@
     <string name="info_track_number">Номер трека</string>
     <string name="settings_action_strip">Панель действий</string>
     <string name="strip_reorder_hint">Перетаскивайте маркеры для изменения порядка действий. Снимите флажок, чтобы скрыть действие.</string>
+    <string name="info_symbolic_link">Символическая ссылка</string>
+    <string name="info_link_target">Указывает на</string>
+    <string name="info_unavailable">Недоступно</string>
 </resources>

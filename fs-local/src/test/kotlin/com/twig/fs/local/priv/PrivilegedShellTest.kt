@@ -359,6 +359,18 @@ exec /usr/bin/find "${'$'}@"
         val items = fs.list(dir.absolutePath)!!.associateBy { it.name }
         assertTrue("link to dir should be a directory", items["link"]!!.isDir)
         assertFalse("broken link must not claim to be a directory", items["broken"]!!.isDir)
+        assertTrue(items.getValue("link").isSymbolicLink)
+        assertTrue(items.getValue("broken").isSymbolicLink)
+        assertFalse(items.getValue("realdir").isSymbolicLink)
+        assertNull("Listing must not fetch each target", items.getValue("link").linkTarget)
+        assertEquals(target.absolutePath, fs.readLink(File(dir, "link").absolutePath))
+        assertEquals("/nowhere/at/all", fs.readLink(File(dir, "broken").absolutePath))
+        assertTrue(fs.stat(File(dir, "broken").absolutePath)!!.isSymbolicLink)
+        val unusual = File(dir, "odd link")
+        val rawTarget = "relative|target\nwith newline\n"
+        java.nio.file.Files.createSymbolicLink(unusual.toPath(), java.nio.file.Paths.get(rawTarget))
+        assertEquals(rawTarget, fs.readLink(unusual.path))
+        assertNull(fs.readLink(target.absolutePath))
     }
 
     @Test

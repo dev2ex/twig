@@ -1136,4 +1136,7 @@
     <string name="info_track_number">曲號</string>
     <string name="settings_action_strip">操作列</string>
     <string name="strip_reorder_hint">拖動把手調整操作順序，取消勾選即可隱藏。</string>
+    <string name="info_symbolic_link">符號連結</string>
+    <string name="info_link_target">指向</string>
+    <string name="info_unavailable">無法取得</string>
 </resources>

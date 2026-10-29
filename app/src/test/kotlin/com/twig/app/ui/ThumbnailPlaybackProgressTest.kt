@@ -225,6 +225,30 @@ class ThumbnailPlaybackProgressTest {
         }
     }
 
+    @Test fun `link badge survives thumbnail delivery and clears when a holder is reused`() {
+        val link = video.copy(path = "/missing/link.mp4", isSymbolicLink = true)
+        val ordinary = video.copy(path = "/missing/ordinary.mp4")
+        seed(link)
+        seed(ordinary)
+        for (grid in 0..1) {
+            val adapter = adapter(grid = grid)
+            adapter.submitList(listOf(node(link), node(ordinary)))
+            val holder = bind(adapter)
+            val image = image(holder, grid)
+            assertTrue(image.symbolicLink)
+            image.setThumbnailBitmap(black(100, 100))
+            val marked = draw(image, 100, 100)
+            image.symbolicLink = false
+            val plain = draw(image, 100, 100)
+            assertFalse(marked.sameAs(plain))
+            // The emblem must leave the upper-left area of the original image intact.
+            assertEquals(plain.getPixel(20, 20), marked.getPixel(20, 20))
+            image.symbolicLink = true
+            adapter.bindViewHolder(holder, 1)
+            assertFalse(image.symbolicLink)
+        }
+    }
+
     @Test fun `hiding history preserves the thumbnail bar and its preference changes the ui signature`() {
         PlaybackStore.save(app, video, 30000L, 120000L)
         PlaybackStore.hideRecent(app)

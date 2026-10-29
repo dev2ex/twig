@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Número da faixa</string>
     <string name="settings_action_strip">Painel de ações</string>
     <string name="strip_reorder_hint">Arraste as alças para reordenar as ações. Desmarque-as para ocultá-las.</string>
+    <string name="info_symbolic_link">Link simbólico</string>
+    <string name="info_link_target">Aponta para</string>
+    <string name="info_unavailable">Indisponível</string>
 </resources>

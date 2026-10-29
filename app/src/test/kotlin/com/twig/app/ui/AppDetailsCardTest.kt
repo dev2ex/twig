@@ -290,7 +290,7 @@ class AppDetailsCardTest {
         }
     }
 
-    @Test fun `wrapped names and paths keep the copy icon beside the final value character`() {
+    @Test fun `wrapped names paths and link targets keep their copy icon beside the final value character`() {
         val adapter = adapter()
         adapter.submitList(listOf(node()))
         val holder = holder(adapter)
@@ -299,7 +299,8 @@ class AppDetailsCardTest {
         for (name in names) {
             val path = "/storage/emulated/0/Download/$name"
             val info = node().copy(details = FileInfo.Details(listOf(FileInfo.Section("Basic", listOf(
-                app.getString(R.string.info_name) to name, app.getString(R.string.info_path) to path)))))
+                app.getString(R.string.info_name) to name, app.getString(R.string.info_path) to path,
+                app.getString(R.string.info_link_target) to "../target/$name")))))
             submitAndAwait(adapter, listOf(info))
             adapter.bindViewHolder(holder, 0)
             for (width in listOf(180, 220, 300, 400)) {
@@ -307,8 +308,13 @@ class AppDetailsCardTest {
                 val row = holder.itemView.findViewById<TextView>(R.id.info_body)
                 val text = row.text as Spanned
                 val icons = text.getSpans(0, text.length, android.text.style.ImageSpan::class.java)
-                assertEquals(2, icons.size)
-                for ((index, value) in listOf(name, path).withIndex()) {
+                assertEquals(3, icons.size)
+                val clicks = text.getSpans(0, text.length, android.text.style.ClickableSpan::class.java)
+                assertEquals(3, clicks.size)
+                for ((index, value) in listOf(name, path, "../target/$name").withIndex()) {
+                    clicks[index].onClick(row)
+                    val clipboard = app.getSystemService(android.content.ClipboardManager::class.java)
+                    assertEquals(value, clipboard.primaryClip!!.getItemAt(0).text.toString())
                     val valueStart = text.indexOf(value, if (index == 0) 0 else text.indexOf('\n') + 1)
                     val valueLine = row.layout.getLineForOffset(valueStart + value.length - 1)
                     val iconLine = row.layout.getLineForOffset(text.getSpanEnd(icons[index]) - 1)

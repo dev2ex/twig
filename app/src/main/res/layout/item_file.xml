@@ -60,7 +60,7 @@
                     android:visibility="gone" />
             </LinearLayout>
 
-            <!-- Subtitle (shows the package name for app entries); hidden for other rows -->
+            <!-- Subtitle: app package name or symbolic-link target. -->
             <TextView
                 android:id="@+id/sub"
                 android:layout_width="match_parent"

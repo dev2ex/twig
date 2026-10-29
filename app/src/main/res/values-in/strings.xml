@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Nomor lagu</string>
     <string name="settings_action_strip">Panel tindakan</string>
     <string name="strip_reorder_hint">Seret pegangan untuk mengurutkan tindakan. Hapus centang untuk menyembunyikannya.</string>
+    <string name="info_symbolic_link">Tautan simbolis</string>
+    <string name="info_link_target">Mengarah ke</string>
+    <string name="info_unavailable">Tidak tersedia</string>
 </resources>

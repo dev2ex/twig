@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Parça numarası</string>
     <string name="settings_action_strip">İşlem paneli</string>
     <string name="strip_reorder_hint">İşlemleri yeniden sıralamak için tutamaçları sürükleyin. Gizlemek için işaretlerini kaldırın.</string>
+    <string name="info_symbolic_link">Sembolik bağlantı</string>
+    <string name="info_link_target">Hedef</string>
+    <string name="info_unavailable">Kullanılamıyor</string>
 </resources>

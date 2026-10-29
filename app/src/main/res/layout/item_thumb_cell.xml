@@ -50,4 +50,14 @@
         android:paddingTop="2dp"
         android:textColor="@color/text_primary"
         android:textSize="11sp" />
+    <TextView
+        android:id="@+id/link_target"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:singleLine="true"
+        android:ellipsize="middle"
+        android:gravity="center_horizontal"
+        android:textColor="@color/text_secondary"
+        android:textSize="10sp"
+        android:visibility="gone" />
 </LinearLayout>

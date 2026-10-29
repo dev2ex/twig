@@ -167,6 +167,11 @@ class PrivilegedFs(val shell: PrivilegedShell) {
         return e.toXFile().copy(isDir = mode != null && mode and S_IFMT == S_IFDIR)
     }
 
+    fun readLink(path: String): String? {
+        val result = shell.exec("readlink -n ${quote(path)}; echo", quiet = true)
+        return result.lines.joinToString("\n").takeIf { it.isNotEmpty() }
+    }
+
     fun exists(path: String): Boolean = shell.exec("[ -e ${quote(path)} ]", quiet = true).ok
 
     /** Reads a file. EOF of the one-shot `cat` is the end of the file. */
@@ -264,6 +269,7 @@ class PrivilegedFs(val shell: PrivilegedShell) {
             // session is uid 0 (or shell uid, which owns what it can see here).
             // Per-entry permission bits describe the *file's* owner, not ours.
             canWrite = true,
+            isSymbolicLink = isLink,
         )
     }
 

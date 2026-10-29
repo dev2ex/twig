@@ -1136,4 +1136,7 @@
     <string name="info_track_number">Numéro de piste</string>
     <string name="settings_action_strip">Panneau d’actions</string>
     <string name="strip_reorder_hint">Faites glisser les poignées pour réordonner les actions. Décochez-les pour les masquer.</string>
+    <string name="info_symbolic_link">Lien symbolique</string>
+    <string name="info_link_target">Cible</string>
+    <string name="info_unavailable">Indisponible</string>
 </resources>

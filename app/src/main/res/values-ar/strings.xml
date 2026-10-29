@@ -1140,4 +1140,7 @@
     <string name="info_track_number">رقم المقطع</string>
     <string name="settings_action_strip">لوحة الإجراءات</string>
     <string name="strip_reorder_hint">اسحب المقابض لإعادة ترتيب الإجراءات. أزل علامة الاختيار لإخفائها.</string>
+    <string name="info_symbolic_link">رابط رمزي</string>
+    <string name="info_link_target">يشير إلى</string>
+    <string name="info_unavailable">غير متاح</string>
 </resources>

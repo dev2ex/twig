@@ -22,6 +22,14 @@ class ThumbnailImageView @JvmOverloads constructor(
     private val progressColor = ContextCompat.getColor(context, R.color.accent)
     private var thumbnailReady = false
 
+    private val linkArrow by lazy { ContextCompat.getDrawable(context, R.drawable.ic_symbolic_link)!! }
+    var symbolicLink = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     var playbackFraction = 0f
         set(value) {
             val fraction = if (value.isFinite()) value.coerceIn(0f, 1f) else 0f
@@ -44,13 +52,26 @@ class ThumbnailImageView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!thumbnailReady || playbackFraction <= 0f) return
+        if (!symbolicLink && (!thumbnailReady || playbackFraction <= 0f)) return
         val image = drawable ?: return
         imageBounds.set(image.bounds)
         imageMatrix.mapRect(imageBounds)
         imageBounds.offset(paddingLeft.toFloat(), paddingTop.toFloat())
         if (!imageBounds.intersect(paddingLeft.toFloat(), paddingTop.toFloat(),
                 (width - paddingRight).toFloat(), (height - paddingBottom).toFloat())) return
+        if (thumbnailReady && playbackFraction > 0f) drawProgress(canvas)
+        if (symbolicLink) {
+            // Match the lower-right emblems in the multicolored folder vectors.
+            val edge = (minOf(imageBounds.width(), imageBounds.height()) * .46f)
+                .coerceAtMost(20f * resources.displayMetrics.density).toInt()
+            val right = imageBounds.right.toInt()
+            val bottom = imageBounds.bottom.toInt()
+            linkArrow.setBounds(right - edge, bottom - edge, right, bottom)
+            linkArrow.draw(canvas)
+        }
+    }
+
+    private fun drawProgress(canvas: Canvas) {
         val top = (imageBounds.bottom - barHeight).coerceAtLeast(imageBounds.top)
         barPaint.color = Color.argb(85, 255, 255, 255)
         canvas.drawRect(imageBounds.left, top, imageBounds.right, imageBounds.bottom, barPaint)

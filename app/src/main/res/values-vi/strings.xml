@@ -1135,4 +1135,7 @@
     <string name="info_track_number">Số thứ tự bài</string>
     <string name="settings_action_strip">Bảng thao tác</string>
     <string name="strip_reorder_hint">Kéo tay cầm để sắp xếp lại thao tác. Bỏ chọn để ẩn thao tác.</string>
+    <string name="info_symbolic_link">Liên kết tượng trưng</string>
+    <string name="info_link_target">Trỏ đến</string>
+    <string name="info_unavailable">Không khả dụng</string>
 </resources>

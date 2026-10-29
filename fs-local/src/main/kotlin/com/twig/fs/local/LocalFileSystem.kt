@@ -23,6 +23,7 @@ import java.io.OutputStream
 class LocalFileSystem(
     private val rootDir: File = File("/"),
     override val displayName: String = "Local storage",
+    private val readLink: (String) -> String? = { symbolicLinkTarget?.invoke(it) },
 ) : FileSystem, com.twig.core.ResumableWrite {
 
     override val scheme: String = SCHEME
@@ -36,7 +37,7 @@ class LocalFileSystem(
     override fun resolve(path: String): XFile {
         documents(path)?.let { return it.resolve(path) }
         val f = File(path)
-        if (!f.exists()) {
+        if (!f.exists() && readLink(path) == null) {
             if (maybeHidden(f)) fallback?.stat(path)?.let { return it }
             throw FsException("No such path: $path")
         }
@@ -47,7 +48,7 @@ class LocalFileSystem(
     override fun stat(path: String): XFile? {
         documents(path)?.let { return it.stat(path) }
         val f = File(path)
-        if (f.exists()) return toXFile(f)
+        if (f.exists() || readLink(path) != null) return toXFile(f)
         return if (maybeHidden(f)) fallback?.stat(path) else null
     }
 
@@ -317,18 +318,30 @@ class LocalFileSystem(
         inCanonicalDir.canonicalFile != inCanonicalDir.absoluteFile
     }.getOrDefault(false)
 
-    private fun toXFile(f: File): XFile = XFile(
-        scheme = SCHEME,
-        path = f.absolutePath,
-        isDir = f.isDirectory,
-        size = if (f.isDirectory) 0L else f.length(),
-        lastModified = f.lastModified(),
-        canRead = f.canRead(),
-        canWrite = f.canWrite(),
-    )
+    private fun toXFile(f: File): XFile {
+        val target = readLink(f.absolutePath)
+        return XFile(
+            scheme = SCHEME,
+            path = f.absolutePath,
+            isDir = f.isDirectory,
+            size = if (f.isDirectory) 0L else f.length(),
+            lastModified = f.lastModified(),
+            canRead = f.canRead(),
+            canWrite = f.canWrite(),
+            isSymbolicLink = target != null,
+            linkTarget = target,
+        )
+    }
+
+    /** Called from properties on a worker thread; privileged listings do not read each link. */
+    fun linkTarget(file: XFile): String? =
+        file.linkTarget ?: readLink(file.path) ?: fallback?.readLink(file.path)
 
     companion object {
         const val SCHEME = "file"
+
+        /** Android supplies Os.readlink; this module also runs on JVMs and Android API 24. */
+        @Volatile var symbolicLinkTarget: ((String) -> String?)? = null
 
         /** Optional persisted document-tree routes, supplied by the Android layer; no Android dependency here. */
         @Volatile var documentAccess: ((String) -> FileSystem?)? = null

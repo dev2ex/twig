@@ -292,6 +292,8 @@ class FileAdapter(
         holder.itemView.findViewById<View>(R.id.folderCounts)?.setTag(R.id.directory_count, null)
         holder.itemView.findViewById<View>(R.id.indicator)?.setTag(R.id.directory_count, null)
         holder.itemView.findViewById<View>(R.id.meta)?.setTag(R.id.size_probe, null)
+        holder.itemView.findViewById<android.widget.TextView>(R.id.sub)?.let(LinkTargets::clear)
+        holder.itemView.findViewById<android.widget.TextView>(R.id.link_target)?.let(LinkTargets::clear)
         super.onViewRecycled(holder)
     }
 
@@ -418,7 +420,10 @@ class FileAdapter(
                 b.cellName.visibility = View.GONE
             }
             // Placeholder: ordinary type icon centred with inset; once the thumbnail is filled in, it automatically switches to full-cell centerCrop
+            LinkTargets.clear(b.linkTarget)
+            b.linkTarget.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.thumb.resetThumbnail()
+            b.thumb.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.thumb.tag = null
             b.thumb.scaleType = ImageView.ScaleType.FIT_CENTER
             val pad = edge / 5
@@ -436,6 +441,7 @@ class FileAdapter(
                 return
             }
             node as PaneViewModel.FileNode
+            if (gridNames) LinkTargets.bind(b.linkTarget, node.file)
             FileIcons.bind(b.thumb, node.file, onTyped(this, node.file))
             if (thumbs) Thumbs.bind(b.thumb, node.file)
             bindPlaybackProgress(node)
@@ -693,7 +699,8 @@ class FileAdapter(
         private fun renderRows(rows: List<Pair<String, String>>): CharSequence {
             val ctx = b.root.context
             val label = ContextCompat.getColor(ctx, R.color.text_secondary)
-            val copyable = setOf(ctx.getString(R.string.info_name), ctx.getString(R.string.info_path))
+            val linkTarget = ctx.getString(R.string.info_link_target)
+            val copyable = setOf(ctx.getString(R.string.info_name), ctx.getString(R.string.info_path), linkTarget)
             val sb = SpannableStringBuilder()
             rows.forEachIndexed { i, (k, v) ->
                 if (i > 0) sb.append("\n")
@@ -719,7 +726,8 @@ class FileAdapter(
                 }, s, s + k.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 val indent = kotlin.math.ceil(android.text.Layout.getDesiredWidth(sb, s, sb.length, b.infoBody.paint).toDouble()).toInt()
                 sb.append(v)
-                if (k in copyable && v.isNotEmpty()) appendCopyIcon(sb, v)
+                if (k in copyable && v.isNotEmpty() &&
+                    (k != linkTarget || v != ctx.getString(R.string.info_unavailable))) appendCopyIcon(sb, v)
                 // Explicit value newlines need indentation on their first line too.
                 var start = s
                 while (start < sb.length) {
@@ -815,6 +823,7 @@ class FileAdapter(
             )
             // Reset reusable state
             b.icon.resetThumbnail()
+            b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
             b.icon.scaleType = ImageView.ScaleType.FIT_CENTER // thumbnail rows switch to centerCrop when filled in
             b.icon.setPadding(0, 0, 0, 0)
@@ -823,7 +832,7 @@ class FileAdapter(
             b.name.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
             b.name.alpha = 1f
             b.appVersion.visibility = View.GONE // only app entries open it (see bindApp)
-            b.sub.visibility = View.GONE
+            LinkTargets.clear(b.sub)
             b.appVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.root.isActivated = false
@@ -1011,6 +1020,7 @@ class FileAdapter(
 
             b.name.text = node.label ?: file.name
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
+            if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
             setMeta(
                 node.capacity ?: when {
                     file.isDir -> dateMeta(file)

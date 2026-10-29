@@ -1136,4 +1136,7 @@
     <string name="info_track_number">トラック番号</string>
     <string name="settings_action_strip">操作パネル</string>
     <string name="strip_reorder_hint">ハンドルをドラッグして操作を並べ替えます。チェックを外すと非表示になります。</string>
+    <string name="info_symbolic_link">シンボリックリンク</string>
+    <string name="info_link_target">リンク先</string>
+    <string name="info_unavailable">取得できません</string>
 </resources>
