@@ -1220,4 +1220,13 @@
     <string name="info_symbolic_link">Symbolic link</string>
     <string name="info_link_target">Points to</string>
     <string name="info_unavailable">Unavailable</string>
+    <string name="info_permissions">Permissions</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Accessed</string>
+    <string name="info_changed">Status changed</string>
+    <string name="info_selinux_context">SELinux context</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Show Unix permissions</string>
+    <string name="settings_unix_permissions_desc">Show permission bits in file lists when available. Full details are in the Unix properties tab.</string>
 </resources>

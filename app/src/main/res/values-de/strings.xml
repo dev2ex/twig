@@ -1139,4 +1139,13 @@
     <string name="info_symbolic_link">Symbolischer Link</string>
     <string name="info_link_target">Verweist auf</string>
     <string name="info_unavailable">Nicht verfügbar</string>
+    <string name="info_permissions">Berechtigungen</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Letzter Zugriff</string>
+    <string name="info_changed">Statusänderung</string>
+    <string name="info_selinux_context">SELinux-Kontext</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix-Berechtigungen anzeigen</string>
+    <string name="settings_unix_permissions_desc">Verfügbare Berechtigungen in Dateilisten anzeigen. Vollständige Details stehen im Unix-Reiter der Eigenschaften.</string>
 </resources>

@@ -46,6 +46,8 @@ class TwigApp : Application() {
             LocalFileSystem.symbolicLinkTarget = { path ->
                 try { android.system.Os.readlink(path) } catch (_: android.system.ErrnoException) { null }
             }
+            LocalFileSystem.unixMetadataReader = UnixFiles::stat
+            LocalFileSystem.selinuxContextReader = UnixFiles::context
             FsRegistry.register(LocalFileSystem())
             FsRegistry.register(ZipFileSystem())
             FsRegistry.register(SevenZFileSystem())

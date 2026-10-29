@@ -14,6 +14,9 @@ import com.twig.core.MediaDetails
 import com.twig.core.MediaInfoSource
 import com.twig.core.MediaStream
 import com.twig.core.XFile
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixMetadataSource
+import com.twig.core.UnixPermissions
 import java.io.ByteArrayInputStream
 
 /**
@@ -51,6 +54,7 @@ object FileInfo {
     /** Listing metadata first; no file reads or directory listings before the card appears. */
     fun initial(ctx: Context, file: XFile): Details = Details(buildList {
         add(basic(ctx, file, includeContents = false))
+        if (supportsUnix(file)) add(unixSection(ctx, file, null).copy(loading = true))
         if (!file.isDir && file.canRead && (OpenFiles.isVideo(file) || OpenFiles.isAudio(file)))
             add(Section(s(ctx, R.string.info_section_media), emptyList(), loading = true))
     })
@@ -69,7 +73,16 @@ object FileInfo {
         val inspected = if (file.isSymbolicLink && file.scheme == "file") {
             file.copy(linkTarget = (FsRegistry.of(file) as? com.twig.fs.local.LocalFileSystem)?.linkTarget(file))
         } else file
-        sections += basic(ctx, inspected, remote)
+        val unix = runCatching {
+            if (file.scheme == "trash" && file.path != "/") {
+                val fs = FsRegistry.of(file) as TrashFileSystem
+                val item = fs.item(file)
+                val path = fs.store.payload(item.entry, item.relative).path
+                UnixFiles.stat(path)?.let { it.copy(selinuxContext = UnixFiles.context(path)) }
+            } else (FsRegistry.of(file) as? UnixMetadataSource)?.unixMetadata(file)
+        }.getOrNull()
+        sections += basic(ctx, inspected, remote, unix = unix)
+        if (supportsUnix(file)) sections += unixSection(ctx, file, unix)
         if (!file.isDir && file.canRead) {
             when {
                 remote != null -> remoteMedia(ctx, remote)?.let { sections += it }
@@ -89,7 +102,7 @@ object FileInfo {
 
     // ---- Basic ----
 
-    private fun basic(ctx: Context, file: XFile, remote: MediaDetails? = null, includeContents: Boolean = true): Section {
+    private fun basic(ctx: Context, file: XFile, remote: MediaDetails? = null, includeContents: Boolean = true, unix: UnixMetadata? = null): Section {
         val rows = ArrayList<Pair<String, String>>()
         rows += s(ctx, R.string.info_name) to file.name
         val trash = if (file.scheme == "trash" && file.path != "/") (FsRegistry.of(file) as TrashFileSystem).let { fs ->
@@ -139,12 +152,33 @@ object FileInfo {
                     s(ctx, R.string.info_size_value, Format.size(bytes), "%,d".format(bytes))
             }
         }
-        val modified = trash?.st_mtime?.times(1000) ?: file.lastModified
+        val modified = unix?.modified ?: trash?.st_mtime?.times(1000) ?: file.lastModified
         if (modified > 0) rows += s(ctx, R.string.info_modified) to Format.time(modified, ctx)
         if (trash == null) rows += s(ctx, R.string.info_writable) to
             s(ctx, if (file.canWrite) R.string.info_yes else R.string.info_no)
         if (!file.isDir && file.canRead) rows += apps(ctx, file) // open-with merged into basic info
         return Section(s(ctx, R.string.info_section_basic), rows)
+    }
+
+    private fun supportsUnix(file: XFile): Boolean = file.unixMode != null || file.scheme == "file" ||
+        (file.scheme == "trash" && file.path != "/") ||
+        runCatching { FsRegistry.of(file) is UnixMetadataSource }.getOrDefault(false)
+
+    private fun unixSection(ctx: Context, file: XFile, attributes: UnixMetadata?): Section {
+        val rows = buildList {
+            val mode = attributes?.mode ?: file.unixMode
+            add(s(ctx, R.string.info_permissions) to if (mode != null)
+                "${UnixPermissions.symbolic(mode)} (${UnixPermissions.octal(mode)})"
+                else s(ctx, R.string.info_unavailable))
+            if (attributes != null) {
+                add(s(ctx, R.string.info_uid) to attributes.uid.toString())
+                add(s(ctx, R.string.info_gid) to attributes.gid.toString())
+                if (attributes.accessed > 0) add(s(ctx, R.string.info_accessed) to Format.time(attributes.accessed, ctx))
+                if (attributes.changed > 0) add(s(ctx, R.string.info_changed) to Format.time(attributes.changed, ctx))
+                attributes.selinuxContext?.let { add(s(ctx, R.string.info_selinux_context) to it) }
+            }
+        }
+        return Section(s(ctx, R.string.info_section_unix), rows)
     }
 
     /**

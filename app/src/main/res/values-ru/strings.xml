@@ -1175,4 +1175,13 @@
     <string name="info_symbolic_link">Символическая ссылка</string>
     <string name="info_link_target">Указывает на</string>
     <string name="info_unavailable">Недоступно</string>
+    <string name="info_permissions">Права доступа</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Последний доступ</string>
+    <string name="info_changed">Изменение состояния</string>
+    <string name="info_selinux_context">Контекст SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Показывать права Unix</string>
+    <string name="settings_unix_permissions_desc">Показывать доступные права в списках файлов. Полные сведения находятся на вкладке Unix в свойствах.</string>
 </resources>

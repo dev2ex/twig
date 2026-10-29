@@ -1139,4 +1139,13 @@
     <string name="info_symbolic_link">Tautan simbolis</string>
     <string name="info_link_target">Mengarah ke</string>
     <string name="info_unavailable">Tidak tersedia</string>
+    <string name="info_permissions">Izin</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Terakhir diakses</string>
+    <string name="info_changed">Perubahan status</string>
+    <string name="info_selinux_context">Konteks SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Tampilkan izin Unix</string>
+    <string name="settings_unix_permissions_desc">Tampilkan izin yang tersedia dalam daftar berkas. Detail lengkap ada di tab Unix pada properti.</string>
 </resources>

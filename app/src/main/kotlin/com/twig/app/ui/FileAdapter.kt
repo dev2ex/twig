@@ -44,6 +44,7 @@ import com.twig.app.databinding.ItemInfoCardBinding
 import com.twig.app.databinding.ItemThumbCellBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.core.UnixPermissions
 
 /**
  * The whole tree's adapter (files / directories / storages / groups / servers / action rows),
@@ -814,6 +815,9 @@ class FileAdapter(
             }
             b.folderCounts.alpha = IDLE_CHECK_ALPHA
             b.folderCounts.visibility = View.GONE
+            b.permissions.visibility = View.GONE
+            b.permissions.text = ""
+            b.permissions.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.folderCounts.contentDescription = null
             b.folderCounts.setTag(R.id.directory_count, null)
             b.indicator.setTag(R.id.directory_count, null)
@@ -1021,6 +1025,12 @@ class FileAdapter(
             b.name.text = node.label ?: file.name
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
             if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
+            file.unixMode?.takeIf { Prefs.unixPermissions(ctx) }?.let { mode ->
+                b.permissions.text = UnixPermissions.symbolic(mode)
+                b.permissions.visibility = View.VISIBLE
+                // Reserve both count slots for files and pending/empty directory counts too.
+                if (Prefs.folderCounts(ctx)) b.folderCounts.visibility = View.INVISIBLE
+            }
             setMeta(
                 node.capacity ?: when {
                     file.isDir -> dateMeta(file)
@@ -1298,7 +1308,8 @@ class FileAdapter(
                 b.meta.visibility = View.VISIBLE
                 b.meta.text = text
             }
-            b.metaRow.visibility = if (b.meta.visibility == View.VISIBLE || b.folderCounts.visibility == View.VISIBLE)
+            b.metaRow.visibility = if (b.meta.visibility == View.VISIBLE || b.folderCounts.visibility == View.VISIBLE ||
+                b.permissions.visibility == View.VISIBLE)
                 View.VISIBLE else View.GONE
         }
 

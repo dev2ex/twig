@@ -71,16 +71,18 @@
                 android:textSize="10sp"
                 android:visibility="gone" />
 
-            <!-- Counts sit at the start of the metadata line; size/time stays at the end. -->
+            <!-- Counts, then Unix permissions when known; size/time stays at the end. -->
             <LinearLayout
                 android:id="@+id/metaRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:baselineAligned="true"
+                android:gravity="top">
 
                 <LinearLayout
                     android:id="@+id/folderCounts"
+                    android:baselineAlignedChildIndex="0"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="8dp"
@@ -112,7 +114,21 @@
                 </LinearLayout>
 
                 <TextView
+                    android:id="@+id/permissions"
+                    android:includeFontPadding="false"
+                    android:ellipsize="end"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:singleLine="true"
+                    android:fontFamily="monospace"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="10sp"
+                    android:visibility="gone" />
+
+                <TextView
                     android:id="@+id/meta"
+                    android:includeFontPadding="false"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="wrap_content"

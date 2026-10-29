@@ -1,6 +1,8 @@
 package com.twig.fs.local.priv
 
 import com.twig.core.XFile
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixPermissions
 import com.twig.core.RandomSource
 import com.twig.fs.local.LocalFileSystem
 import com.twig.fs.local.priv.PrivilegedShell.Companion.quote
@@ -167,6 +169,24 @@ class PrivilegedFs(val shell: PrivilegedShell) {
         return e.toXFile().copy(isDir = mode != null && mode and S_IFMT == S_IFDIR)
     }
 
+    /** Fixed metadata fields only: filenames, including newlines and separators, are never parsed. */
+    fun unixMetadata(path: String): UnixMetadata? {
+        val result = shell.exec("stat -c '%f|%u|%g|%s|%Y|%X|%Z' ${quote(path)}", quiet = true)
+        if (!result.ok) return null
+        val fields = result.lines.firstOrNull()?.split('|') ?: return null
+        if (fields.size != 7) return null
+        val mode = fields[0].toIntOrNull(16) ?: return null
+        val numbers = fields.drop(1).map { it.toLongOrNull() ?: return null }
+        return UnixMetadata(mode, numbers[0], numbers[1], numbers[2],
+            numbers[3] * 1000L, numbers[4] * 1000L, numbers[5] * 1000L, selinuxContext(path))
+    }
+
+    fun selinuxContext(path: String): String? {
+        // stat %C on toybox follows the target even when its other fields use lstat.
+        val result = shell.exec("ls -Zd -- ${quote(path)}", quiet = true)
+        return if (result.ok) parseContext(result.text) else null
+    }
+
     fun readLink(path: String): String? {
         val result = shell.exec("readlink -n ${quote(path)}; echo", quiet = true)
         return result.lines.joinToString("\n").takeIf { it.isNotEmpty() }
@@ -270,22 +290,32 @@ class PrivilegedFs(val shell: PrivilegedShell) {
             // Per-entry permission bits describe the *file's* owner, not ours.
             canWrite = true,
             isSymbolicLink = isLink,
+            unixMode = mode,
         )
     }
 
-    private companion object {
+    companion object {
+        /** ls -Zd emits the context before the filename. Reject unsupported/unknown markers. */
+        fun parseContext(output: String): String? = output.trimStart().takeWhile { !it.isWhitespace() }
+            .takeIf { it.matches(Regex("[^:\\s]+:[^:\\s]+:[^:\\s]+:[^\\s]+")) }
+
         /** Symlinks re-stat'd per command; keeps one argv well under ARG_MAX. */
-        const val LINK_BATCH = 200
-        const val S_IFMT = 0xF000
-        const val S_IFDIR = 0x4000
-        const val S_IFLNK = 0xA000
+        private const val LINK_BATCH = 200
+        private const val S_IFMT = 0xF000
+        private const val S_IFDIR = 0x4000
+        private const val S_IFLNK = 0xA000
 
         /** `%M|%s|%T@|%p` from GNU/toybox find; split only the metadata fields. */
-        fun parseFind(record: String): Entry? {
+        private fun parseFind(record: String): Entry? {
             val a = record.indexOf('|'); if (a <= 0) return null
             val b = record.indexOf('|', a + 1); if (b < 0) return null
             val c = record.indexOf('|', b + 1); if (c < 0) return null
-            val mode = when (record[0]) { 'd' -> S_IFDIR; 'l' -> S_IFLNK; else -> 0x8000 }
+            val type = when (record[0]) {
+                'd' -> S_IFDIR; 'l' -> S_IFLNK; '-' -> 0x8000
+                'b' -> 0x6000; 'c' -> 0x2000; 'p' -> 0x1000; 's' -> 0xC000
+                else -> return null
+            }
+            val mode = type or (UnixPermissions.parseSymbolic(record.substring(1, a)) ?: return null)
             val size = record.substring(a + 1, b).toLongOrNull() ?: return null
             val time = record.substring(b + 1, c).substringBefore('.').toLongOrNull() ?: return null
             val path = record.substring(c + 1).takeIf { it.isNotEmpty() } ?: return null
@@ -293,7 +323,7 @@ class PrivilegedFs(val shell: PrivilegedShell) {
         }
 
         /** `%f|%s|%Y|%n` → raw mode (hex), size, mtime (seconds), name. */
-        fun parseStat(line: String): Entry? {
+        private fun parseStat(line: String): Entry? {
             val a = line.indexOf('|'); if (a <= 0) return null
             val b = line.indexOf('|', a + 1); if (b < 0) return null
             val c = line.indexOf('|', b + 1); if (c < 0) return null

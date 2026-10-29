@@ -1139,4 +1139,13 @@
     <string name="info_symbolic_link">Sembolik bağlantı</string>
     <string name="info_link_target">Hedef</string>
     <string name="info_unavailable">Kullanılamıyor</string>
+    <string name="info_permissions">İzinler</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Son erişim</string>
+    <string name="info_changed">Durum değişikliği</string>
+    <string name="info_selinux_context">SELinux bağlamı</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix izinlerini göster</string>
+    <string name="settings_unix_permissions_desc">Dosya listelerinde mevcut izinleri göster. Ayrıntılar özelliklerin Unix sekmesindedir.</string>
 </resources>

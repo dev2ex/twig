@@ -463,6 +463,13 @@ object Prefs {
         // Local empty-folder indicators share this cache even when counts are hidden.
     }
 
+    /** Show permission bits in file rows when supplied by the backend; opt-in. */
+    fun unixPermissions(ctx: Context): Boolean = sp(ctx).getBoolean("unix_permissions", false)
+
+    fun setUnixPermissions(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("unix_permissions", on).apply()
+    }
+
     /** Show hidden files (dotfiles and dot-directories), default off. */
     fun showHidden(ctx: Context): Boolean = sp(ctx).getBoolean("show_hidden", false)
 
@@ -523,7 +530,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), unixPermissions(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

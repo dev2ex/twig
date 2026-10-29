@@ -1139,4 +1139,13 @@
     <string name="info_symbolic_link">シンボリックリンク</string>
     <string name="info_link_target">リンク先</string>
     <string name="info_unavailable">取得できません</string>
+    <string name="info_permissions">パーミッション</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">アクセス日時</string>
+    <string name="info_changed">状態変更日時</string>
+    <string name="info_selinux_context">SELinux コンテキスト</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix パーミッションを表示</string>
+    <string name="settings_unix_permissions_desc">取得可能なパーミッションをファイル一覧に表示します。詳細はプロパティの Unix タブで確認できます。</string>
 </resources>

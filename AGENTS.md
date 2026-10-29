@@ -124,6 +124,20 @@ Before adding a capability, decide whether *every* backend should be able to ans
 if yes it belongs in `FileSystem`, otherwise it goes here; don't make 20 implementations
 each write `= null`.
 
+`UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
+Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
+failed reads. `XFile.unixMode` carries the entry's own mode into listings; render it after
+folder counts and before size/time, without bind-time filesystem calls. The independent,
+default-off `Prefs.unixPermissions` display setting controls this row only, participates
+in `uiSignature` and is included in configuration backups. The Unix properties tab stays
+available with the setting off. When counts are enabled, reserve both count slots for rows
+with permissions, including files and pending directory counts. The counts container exposes its first child's baseline so all metadata
+text aligns across the nested layout. Numeric permissions, UID/GID, access/status-change times and available SELinux context belong in a dedicated
+Unix properties tab, after General. Its initial loading tab uses listing metadata only;
+unsupported backends have no Unix tab. General retains modification time and link targets.
+`ctime` is inode status change, never creation time. Symlink attributes describe the link;
+its listing size must still describe the followed stream for copy/resume checks.
+
 ### Modules
 
 | Module | Purpose |

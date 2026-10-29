@@ -236,3 +236,16 @@
     leaves immediately and the session ends carrying su's own error message, instead of handing
     back a prompt at the app's uid that looks like root. The echoed kickoff line stays visible
     on purpose; it is how you tell which route a session took, and `twig-priv` logs it too.
+
+- **Read-only Unix properties (2026-10-29)**: listing modes reuse the existing batched
+  stat output; never add per-row shell calls for permissions. The fast size walk decodes
+  its existing find `%M` field, including setuid/setgid/sticky bits, instead of keeping
+  only the file type and thereby inventing mode 0000.
+  Property reads print fixed numeric fields without filenames, so quoted paths containing
+  pipes/newlines cannot corrupt metadata parsing. Use lstat semantics for modes,
+  ownership and times. Toybox stat's `%C` calls `getfilecon`, which follows symlinks
+  even when its numeric fields describe the link; use `ls -Zd -- <path>` for the link's
+  own SELinux context. Ordinary `Os.getxattr` also follows links and is available only
+  from API 26, so symlinks/older systems use ordinary ls first, then the privileged
+  fallback if needed. Unknown modes, owners and contexts must never become zero/root
+  defaults. Keep the existing millisecond listing mtime used by resume/cache identities.

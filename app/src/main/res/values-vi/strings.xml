@@ -1138,4 +1138,13 @@
     <string name="info_symbolic_link">Liên kết tượng trưng</string>
     <string name="info_link_target">Trỏ đến</string>
     <string name="info_unavailable">Không khả dụng</string>
+    <string name="info_permissions">Quyền truy cập</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Truy cập lần cuối</string>
+    <string name="info_changed">Thay đổi trạng thái</string>
+    <string name="info_selinux_context">Ngữ cảnh SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Hiển thị quyền Unix</string>
+    <string name="settings_unix_permissions_desc">Hiển thị quyền có sẵn trong danh sách tệp. Thông tin đầy đủ nằm trong thẻ Unix của thuộc tính.</string>
 </resources>

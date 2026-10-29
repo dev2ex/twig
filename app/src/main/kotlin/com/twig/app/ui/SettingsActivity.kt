@@ -208,6 +208,11 @@ class SettingsActivity : TwigActivity() {
             set = { Prefs.setFolderCounts(this, it) },
         )
         switchRow(
+            getString(R.string.settings_unix_permissions), getString(R.string.settings_unix_permissions_desc),
+            get = { Prefs.unixPermissions(this) },
+            set = { Prefs.setUnixPermissions(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_show_hidden), getString(R.string.settings_show_hidden_desc),
             get = { Prefs.showHidden(this) },
             set = { Prefs.setShowHidden(this, it) },

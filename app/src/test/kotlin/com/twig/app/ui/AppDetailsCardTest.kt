@@ -258,6 +258,29 @@ class AppDetailsCardTest {
         }
     }
 
+    @Test fun `Unix attributes render on their own tab after General`() {
+        val basicTitle = app.getString(R.string.info_section_basic)
+        val unixTitle = app.getString(R.string.info_section_unix)
+        val details = FileInfo.Details(listOf(
+            FileInfo.Section(basicTitle, listOf(app.getString(R.string.info_name) to "file.bin")),
+            FileInfo.Section(unixTitle, listOf(app.getString(R.string.info_permissions) to "rwxr-xr-x (0755)",
+                app.getString(R.string.info_uid) to "10001")),
+        ))
+        val original = node().copy(details = details)
+        val adapter = adapter()
+        adapter.submitList(listOf(original))
+        val holder = holder(adapter)
+        adapter.bindViewHolder(holder, 0)
+        val row = holder.itemView.findViewById<TextView>(R.id.info_body)
+        assertTrue(row.text.contains("file.bin"))
+        assertFalse(row.text.contains("0755"))
+        (holder as FileAdapter.InfoVH).bind(original.copy(tab = 1))
+        layout(holder, 240)
+        assertTrue(row.text.contains("rwxr-xr-x (0755)"))
+        assertTrue(row.text.contains("10001"))
+        assertFalse(row.text.contains("file.bin"))
+    }
+
     @Test fun `basic EXIF media and hash tabs share wrapped-value alignment and keep copy actions`() {
         val longValue = "1234567890ABCDEF:".repeat(15) + "\n" + "FEDCBA0987654321:".repeat(8)
         val original = node().copy(details = FileInfo.Details(listOf(

@@ -1174,4 +1174,13 @@
     <string name="info_symbolic_link">符号链接</string>
     <string name="info_link_target">指向</string>
     <string name="info_unavailable">无法获取</string>
+    <string name="info_permissions">权限</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">访问时间</string>
+    <string name="info_changed">状态变更时间</string>
+    <string name="info_selinux_context">SELinux 上下文</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">显示 Unix 权限</string>
+    <string name="settings_unix_permissions_desc">在文件列表中显示可获取的权限位。完整信息可在属性的 Unix 页签中查看。</string>
 </resources>

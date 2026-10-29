@@ -1143,4 +1143,13 @@
     <string name="info_symbolic_link">رابط رمزي</string>
     <string name="info_link_target">يشير إلى</string>
     <string name="info_unavailable">غير متاح</string>
+    <string name="info_permissions">الأذونات</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">آخر وصول</string>
+    <string name="info_changed">تغيير الحالة</string>
+    <string name="info_selinux_context">سياق SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">إظهار أذونات Unix</string>
+    <string name="settings_unix_permissions_desc">إظهار الأذونات المتاحة في قوائم الملفات. التفاصيل الكاملة في تبويب Unix ضمن الخصائص.</string>
 </resources>

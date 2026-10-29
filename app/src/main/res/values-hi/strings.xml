@@ -1139,4 +1139,13 @@
     <string name="info_symbolic_link">प्रतीकात्मक लिंक</string>
     <string name="info_link_target">लक्ष्य</string>
     <string name="info_unavailable">अनुपलब्ध</string>
+    <string name="info_permissions">अनुमतियाँ</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">अंतिम पहुँच</string>
+    <string name="info_changed">स्थिति परिवर्तन</string>
+    <string name="info_selinux_context">SELinux संदर्भ</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix अनुमतियाँ दिखाएँ</string>
+    <string name="settings_unix_permissions_desc">फ़ाइल सूचियों में उपलब्ध अनुमतियाँ दिखाएँ। पूरी जानकारी गुणों के Unix टैब में है।</string>
 </resources>
