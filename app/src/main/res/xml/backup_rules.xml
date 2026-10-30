@@ -17,8 +17,9 @@
     <exclude domain="sharedpref" path="twig_connections.xml" />
     <!-- Restic repository password -->
     <exclude domain="sharedpref" path="twig_restic_pw.xml" />
-    <!-- Saved archive passwords and WiFi sharing credentials -->
+    <!-- Saved archive/PDF passwords and WiFi sharing credentials -->
     <exclude domain="sharedpref" path="twig_archive_pw.xml" />
+    <exclude domain="sharedpref" path="twig_pdf_pw.xml" />
     <exclude domain="sharedpref" path="twig_share.xml" />
     <!-- Custom website headers may contain credentials. -->
     <exclude domain="sharedpref" path="twig_websites.xml" />

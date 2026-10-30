@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">Mostrar los permisos disponibles en las listas de archivos. Los detalles completos están en la pestaña Unix de las propiedades.</string>
     <string name="player_subtitle_appearance">Aspecto de subtítulos</string>
     <string name="player_subtitle_text_color">Color del texto</string>
+    <string name="pdf_password">Contraseña del PDF</string>
+    <string name="pdf_password_retry">La contraseña no se ha aceptado o el PDF usa un cifrado no compatible. Inténtalo de nuevo.</string>
+    <string name="pdf_password_unsupported">Este PDF requiere una contraseña o usa un cifrado no compatible. Esta versión de Android no puede desbloquearlo en Twig. Prueba otra aplicación de PDF.</string>
 </resources>

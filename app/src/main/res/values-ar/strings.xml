@@ -1161,4 +1161,7 @@
     <string name="settings_unix_permissions_desc">إظهار الأذونات المتاحة في قوائم الملفات. التفاصيل الكاملة في تبويب Unix ضمن الخصائص.</string>
     <string name="player_subtitle_appearance">مظهر الترجمة</string>
     <string name="player_subtitle_text_color">لون النص</string>
+    <string name="pdf_password">كلمة مرور PDF</string>
+    <string name="pdf_password_retry">لم تُقبل كلمة المرور، أو أن الملف يستخدم تشفيرًا غير مدعوم. حاول مجددًا.</string>
+    <string name="pdf_password_unsupported">يتطلب هذا الملف كلمة مرور أو يستخدم تشفيرًا غير مدعوم. لا يستطيع إصدار Android هذا فتحه في Twig. جرّب تطبيق PDF آخر.</string>
 </resources>

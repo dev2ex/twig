@@ -1156,4 +1156,7 @@
     <string name="settings_unix_permissions_desc">Hiển thị quyền có sẵn trong danh sách tệp. Thông tin đầy đủ nằm trong thẻ Unix của thuộc tính.</string>
     <string name="player_subtitle_appearance">Kiểu phụ đề</string>
     <string name="player_subtitle_text_color">Màu chữ</string>
+    <string name="pdf_password">Mật khẩu PDF</string>
+    <string name="pdf_password_retry">Mật khẩu không được chấp nhận hoặc PDF dùng kiểu mã hóa không được hỗ trợ. Hãy thử lại.</string>
+    <string name="pdf_password_unsupported">PDF này cần mật khẩu hoặc dùng kiểu mã hóa không được hỗ trợ. Phiên bản Android này không thể mở khóa trong Twig. Hãy thử ứng dụng PDF khác.</string>
 </resources>

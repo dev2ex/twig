@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">取得可能なパーミッションをファイル一覧に表示します。詳細はプロパティの Unix タブで確認できます。</string>
     <string name="player_subtitle_appearance">字幕の外観</string>
     <string name="player_subtitle_text_color">文字色</string>
+    <string name="pdf_password">PDF のパスワード</string>
+    <string name="pdf_password_retry">パスワードが正しくないか、PDF の暗号化方式に対応していません。再試行してください。</string>
+    <string name="pdf_password_unsupported">この PDF はパスワードが必要か、対応していない暗号化方式を使用しています。この Android バージョンの Twig では解除できません。他の PDF アプリをお試しください。</string>
 </resources>

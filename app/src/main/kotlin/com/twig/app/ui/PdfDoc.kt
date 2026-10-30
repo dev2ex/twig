@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Point
 import android.graphics.RectF
+import android.graphics.pdf.LoadParams
 import android.graphics.pdf.PdfRenderer
 import android.graphics.pdf.models.selection.SelectionBoundary
 import android.net.Uri
@@ -43,6 +44,8 @@ class PdfDoc private constructor(
     private val pfd: ParcelFileDescriptor,
     private val renderer: PdfRenderer,
 ) {
+    class PasswordRequired(cause: SecurityException) : Exception(cause)
+
     val pageCount: Int = renderer.pageCount
 
     /** Page sizes in PDF points (1/72"), index-aligned. See [measureFrom] for why they start out uniform. */
@@ -363,10 +366,14 @@ class PdfDoc private constructor(
 
         private const val TAG = "twig-pdf"
 
+        val PASSWORD_SUPPORTED: Boolean
+            get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
+
         /**
          * Open [file] for rendering, from **any** source. **Blocking** — call from a worker
          * thread. Returns null only when the bytes turn out not to be a readable PDF, or the
-         * source could not be read at all.
+         * source could not be read at all. Throws [PasswordRequired] when the renderer rejects
+         * the document for a missing/incorrect password or unsupported encryption.
          *
          * Two steps, in this order:
          *  1. a seekable fd if one can be had ([fdOf]) — a local file, SAF, another app's
@@ -383,8 +390,8 @@ class PdfDoc private constructor(
          * ★ Every failure is logged rather than swallowed. This used to return null through
          * three silent `runCatching`s, and a PDF that would not open told nobody why.
          */
-        fun open(ctx: Context, file: XFile): PdfDoc? {
-            fromFd(fdOf(ctx, file))?.let { return it }
+        fun open(ctx: Context, file: XFile, password: String? = null): PdfDoc? {
+            fromFd(fdOf(ctx, file), password)?.let { return it }
             val local = runCatching { OpenFiles.materialize(ctx, file) }
                 .onFailure { Log.w(TAG, "materialize failed: ${file.scheme}:${file.path}", it) }
                 .getOrNull() ?: return null
@@ -392,6 +399,7 @@ class PdfDoc private constructor(
                 runCatching {
                     ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
                 }.onFailure { Log.w(TAG, "cannot open the cached copy $local", it) }.getOrNull(),
+                password,
             )
         }
 
@@ -416,12 +424,23 @@ class PdfDoc private constructor(
         }
 
         /** Hand [pfd] to PdfRenderer, closing it again on any failure — the fd is ours from here on. */
-        private fun fromFd(pfd: ParcelFileDescriptor?): PdfDoc? {
+        private fun fromFd(pfd: ParcelFileDescriptor?, password: String?): PdfDoc? {
             if (pfd == null) return null
-            val renderer = runCatching { PdfRenderer(pfd) }
-                .onFailure { Log.w(TAG, "PdfRenderer rejected the fd", it) }.getOrNull()
-            if (renderer == null || renderer.pageCount <= 0) {
-                runCatching { renderer?.close() }
+            val renderer = try {
+                if (PASSWORD_SUPPORTED) PdfRenderer(pfd, LoadParams.Builder().apply {
+                    if (password != null) setPassword(password)
+                }.build()) else PdfRenderer(pfd)
+            } catch (e: SecurityException) {
+                // Copying the same bytes cannot fix encryption; preserve the reason for the UI.
+                runCatching { pfd.close() }
+                throw PasswordRequired(e)
+            } catch (e: Exception) {
+                Log.w(TAG, "PdfRenderer rejected the fd", e)
+                runCatching { pfd.close() }
+                return null
+            }
+            if (renderer.pageCount <= 0) {
+                runCatching { renderer.close() }
                 runCatching { pfd.close() }
                 return null
             }

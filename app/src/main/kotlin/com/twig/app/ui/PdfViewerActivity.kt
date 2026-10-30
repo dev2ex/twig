@@ -14,6 +14,8 @@ import android.view.MenuItem
 import android.view.inputmethod.InputMethodManager
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import kotlinx.coroutines.CancellationException
 import com.twig.app.TwigActivity
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -41,6 +43,8 @@ class PdfViewerActivity : TwigActivity() {
     private lateinit var file: XFile
     private var modeItem: MenuItem? = null
     private var doc: PdfDoc? = null
+    private var passwordDialog: AlertDialog? = null
+    private val passwordKey: String get() = "${file.scheme}:${file.path}"
     private var actionMode: ActionMode? = null
 
     /**
@@ -107,18 +111,36 @@ class PdfViewerActivity : TwigActivity() {
         b.strip.onSelection = { text -> onSelectionChanged(text) }
 
         NavBarTint.apply(this, getColor(R.color.surface))
-        load()
+        SecurityUi.gate(this) {
+            val saved = if (PdfDoc.PASSWORD_SUPPORTED) Prefs.pdfPassword(this, passwordKey) else null
+            load(saved, fromSaved = saved != null)
+        }
     }
 
-    private fun load() {
+    private fun load(password: String? = null, remember: Boolean = false, fromSaved: Boolean = false) {
+        b.loading.visibility = View.VISIBLE
         lifecycleScope.launch {
-            val doc = withContext(Dispatchers.IO) { PdfDoc.open(this@PdfViewerActivity, file) }
+            var opened: PdfDoc? = null
+            val doc = try {
+                withContext(Dispatchers.IO) {
+                    PdfDoc.open(this@PdfViewerActivity, file, password).also { opened = it }
+                }
+            } catch (e: CancellationException) {
+                opened?.close()
+                throw e
+            } catch (_: PdfDoc.PasswordRequired) {
+                b.loading.visibility = View.GONE
+                if (fromSaved) Prefs.setPdfPassword(this@PdfViewerActivity, passwordKey, null)
+                promptPassword(password != null, remember || fromSaved)
+                return@launch
+            }
             b.loading.visibility = View.GONE
             if (doc == null) {
                 Toast.makeText(this@PdfViewerActivity, R.string.pdf_open_failed, Toast.LENGTH_SHORT).show()
                 finish()
                 return@launch
             }
+            if (password != null && remember) Prefs.setPdfPassword(this@PdfViewerActivity, passwordKey, password)
             this@PdfViewerActivity.doc = doc
             b.strip.setDocument(doc)
 
@@ -128,6 +150,24 @@ class PdfViewerActivity : TwigActivity() {
             // read when it settles.
             doc.measureFrom { _ -> b.strip.post { b.strip.onSizesChanged() } }
         }
+    }
+
+    private fun promptPassword(retry: Boolean, remember: Boolean) {
+        if (isFinishing || isDestroyed) return
+        if (!PdfDoc.PASSWORD_SUPPORTED) {
+            passwordDialog = AlertDialog.Builder(this)
+                .setTitle(R.string.pdf_password)
+                .setMessage(R.string.pdf_password_unsupported)
+                .setPositiveButton(R.string.dialog_ok) { _, _ -> finish() }
+                .setOnCancelListener { finish() }
+                .show()
+            return
+        }
+        if (retry) Toast.makeText(this, R.string.pdf_password_retry, Toast.LENGTH_LONG).show()
+        passwordDialog = EncryptedFilePasswordDialog.show(
+            this, file.name, hintRes = R.string.pdf_password, remember = remember,
+            onCancel = { finish() },
+        ) { password, save -> load(password, remember = save) }
     }
 
     // ---- Text selection ----
@@ -321,6 +361,7 @@ class PdfViewerActivity : TwigActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        passwordDialog?.dismiss()
         searchToken++
         actionMode?.finish()
         b.searchInput.removeCallbacks(searchDebounce)

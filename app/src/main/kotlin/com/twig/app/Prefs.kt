@@ -395,6 +395,23 @@ object Prefs {
     fun archivePasswords(ctx: Context): Map<String, String> =
         archiveSp(ctx).all.keys.mapNotNull { k -> archivePassword(ctx, k)?.let { k to it } }.toMap()
 
+    // PDF passwords are independent of archive passwords, keyed by scheme:path.
+    const val FILE_PDF_PW = "twig_pdf_pw"
+    private fun pdfSp(ctx: Context) = ctx.getSharedPreferences(FILE_PDF_PW, Context.MODE_PRIVATE)
+
+    fun pdfPassword(ctx: Context, path: String): String? =
+        pdfSp(ctx).getString(path, null)?.let { com.twig.app.secure.Secrets.dec(ctx, it) }
+
+    fun setPdfPassword(ctx: Context, path: String, pw: String?) {
+        pdfSp(ctx).edit().apply {
+            if (pw == null) remove(path) else sealOrSkip(ctx, pw)?.let { putString(path, it) }
+        }.apply()
+    }
+
+    /** Plaintext passwords for configuration backup; re-encrypted on import. */
+    fun pdfPasswords(ctx: Context): Map<String, String> =
+        pdfSp(ctx).all.keys.mapNotNull { k -> pdfPassword(ctx, k)?.let { k to it } }.toMap()
+
     // ---- Thumbnails ----
 
     /** Thumbnail master switch, default off; when off, the list looks exactly like the pre-thumbnail era. */

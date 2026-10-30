@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">फ़ाइल सूचियों में उपलब्ध अनुमतियाँ दिखाएँ। पूरी जानकारी गुणों के Unix टैब में है।</string>
     <string name="player_subtitle_appearance">उपशीर्षक का रूप</string>
     <string name="player_subtitle_text_color">पाठ का रंग</string>
+    <string name="pdf_password">PDF पासवर्ड</string>
+    <string name="pdf_password_retry">पासवर्ड स्वीकार नहीं हुआ, या PDF का एन्क्रिप्शन समर्थित नहीं है। फिर से कोशिश करें।</string>
+    <string name="pdf_password_unsupported">इस PDF के लिए पासवर्ड चाहिए या इसका एन्क्रिप्शन समर्थित नहीं है। Android के इस संस्करण में Twig इसे अनलॉक नहीं कर सकता। कोई अन्य PDF ऐप आज़माएँ।</string>
 </resources>

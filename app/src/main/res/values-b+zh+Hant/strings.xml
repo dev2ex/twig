@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">在檔案清單中顯示可取得的權限位元。完整資訊可在內容的 Unix 分頁中查看。</string>
     <string name="player_subtitle_appearance">字幕樣式</string>
     <string name="player_subtitle_text_color">字體顏色</string>
+    <string name="pdf_password">PDF 密碼</string>
+    <string name="pdf_password_retry">密碼未被接受，或此 PDF 使用了不支援的加密方式。請重試。</string>
+    <string name="pdf_password_unsupported">此 PDF 需要密碼或使用了不支援的加密方式。目前的 Android 版本無法在 Twig 中解鎖，請嘗試其他 PDF 應用程式。</string>
 </resources>

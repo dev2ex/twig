@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">Verfügbare Berechtigungen in Dateilisten anzeigen. Vollständige Details stehen im Unix-Reiter der Eigenschaften.</string>
     <string name="player_subtitle_appearance">Untertiteldarstellung</string>
     <string name="player_subtitle_text_color">Textfarbe</string>
+    <string name="pdf_password">PDF-Passwort</string>
+    <string name="pdf_password_retry">Das Passwort wurde nicht akzeptiert oder die Verschlüsselung wird nicht unterstützt. Versuche es erneut.</string>
+    <string name="pdf_password_unsupported">Diese PDF benötigt ein Passwort oder verwendet eine nicht unterstützte Verschlüsselung. Diese Android-Version kann sie in Twig nicht entsperren. Versuche eine andere PDF-App.</string>
 </resources>

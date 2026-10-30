@@ -1192,4 +1192,7 @@
     <string name="settings_unix_permissions_desc">在文件列表中显示可获取的权限位。完整信息可在属性的 Unix 页签中查看。</string>
     <string name="player_subtitle_appearance">字幕样式</string>
     <string name="player_subtitle_text_color">字体颜色</string>
+    <string name="pdf_password">PDF 密码</string>
+    <string name="pdf_password_retry">密码未被接受，或此 PDF 使用了不支持的加密方式。请重试。</string>
+    <string name="pdf_password_unsupported">此 PDF 需要密码或使用了不支持的加密方式。当前 Android 版本无法在 Twig 中解锁，请尝试其他 PDF 应用。</string>
 </resources>

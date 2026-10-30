@@ -387,3 +387,23 @@
   focus, with a separate focused border taking precedence over the selection fill.
   Keep focus distinct from selection; requesting focus must not check a file.
   `FileFocusTest` checks both layouts and remote confirmation on API 24 and 34.
+
+- **Encrypted PDFs reported as unreadable (2026-10-30, #34)**: collapsing the
+  renderer's `SecurityException` into null hid the password requirement and retried
+  identical bytes through the cache. Preserve this failure separately and close its
+  fd immediately. API 35+ uses `LoadParams` for password entry/retry; older devices
+  explain the limitation without offering a password field.
+  SecurityException can also mean unsupported encryption, so never claim it proves
+  the password is wrong. Passwords are not saved in view state. The archive-style prompt offers optional
+  remembering: save only after a successful open, remove a rejected saved password,
+  and encrypt it through Secrets. Configuration backups decrypt/re-encrypt the
+  separate PDF password store; system backup/transfer excludes it. `PdfPasswordTest`
+  checks the failure/descriptor handling, dialog branches and password remembering with
+  a simulated renderer on API 24, 34 and 35; real PDF rendering still needs a device.
+
+- **PDF password entry displayed plaintext (2026-10-30)**: calling `setSingleLine`
+  after setting a password input type replaces its masking transformation. Archives
+  and PDFs now share `EncryptedFilePasswordDialog`, configuring single-line behavior
+  before the password type. Keep entered text out of saved view state, clear it on
+  dismissal, and retain the prompt on empty confirmation. PDF password entry has no
+  external-app button. Tests check the actual transformation, not just inputType.

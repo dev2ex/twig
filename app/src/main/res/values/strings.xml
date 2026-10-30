@@ -1238,4 +1238,7 @@
     <string name="settings_unix_permissions_desc">Show permission bits in file lists when available. Full details are in the Unix properties tab.</string>
     <string name="player_subtitle_appearance">Subtitle appearance</string>
     <string name="player_subtitle_text_color">Text color</string>
+    <string name="pdf_password">PDF password</string>
+    <string name="pdf_password_retry">The password was not accepted, or this PDF uses unsupported encryption. Please try again.</string>
+    <string name="pdf_password_unsupported">This PDF requires a password or uses unsupported encryption. This Android version cannot unlock it in Twig. Try another PDF app.</string>
 </resources>

@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">Dosya listelerinde mevcut izinleri göster. Ayrıntılar özelliklerin Unix sekmesindedir.</string>
     <string name="player_subtitle_appearance">Altyazı görünümü</string>
     <string name="player_subtitle_text_color">Metin rengi</string>
+    <string name="pdf_password">PDF parolası</string>
+    <string name="pdf_password_retry">Parola kabul edilmedi veya PDF desteklenmeyen bir şifreleme kullanıyor. Tekrar deneyin.</string>
+    <string name="pdf_password_unsupported">Bu PDF parola gerektiriyor veya desteklenmeyen bir şifreleme kullanıyor. Bu Android sürümünde Twig kilidini açamaz. Başka bir PDF uygulaması deneyin.</string>
 </resources>

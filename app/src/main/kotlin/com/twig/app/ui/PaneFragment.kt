@@ -1707,34 +1707,16 @@ class PaneFragment : Fragment() {
         if (pwDialogFor == key) return
         val ctx = context ?: return
         pwDialogFor = key
-        val pw = EditText(ctx).apply {
-            hint = getString(R.string.archive_password)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val save = android.widget.CheckBox(ctx).apply { text = getString(R.string.archive_save_pw) }
-        val box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            val p = (20 * resources.displayMetrics.density).toInt()
-            setPadding(p, p / 2, p, 0)
-            addView(pw)
-            addView(save)
-        }
-        AlertDialog.Builder(ctx)
-            .setTitle(getString(R.string.archive_locked, archive.name))
-            .setView(box)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                val text = pw.text.toString()
-                if (text.isEmpty()) return@setPositiveButton
-                viewModel.unlockArchive(archive, text, save.isChecked) { ok ->
-                    if (ok || _b == null) return@unlockArchive
-                    toast(getString(R.string.archive_wrong_pw))
-                    askArchivePassword(archive) // Ask again in place; no need to re-open this archive.
-                }
+        EncryptedFilePasswordDialog.show(
+            ctx, archive.name,
+            onDismiss = { pwDialogFor = null },
+        ) { text, save ->
+            viewModel.unlockArchive(archive, text, save) { ok ->
+                if (ok || _b == null) return@unlockArchive
+                toast(getString(R.string.archive_wrong_pw))
+                askArchivePassword(archive)
             }
-            .setOnDismissListener { pwDialogFor = null }
-            .show()
+        }
     }
 
     /**

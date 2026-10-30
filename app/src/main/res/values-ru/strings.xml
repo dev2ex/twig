@@ -1193,4 +1193,7 @@
     <string name="settings_unix_permissions_desc">Показывать доступные права в списках файлов. Полные сведения находятся на вкладке Unix в свойствах.</string>
     <string name="player_subtitle_appearance">Оформление субтитров</string>
     <string name="player_subtitle_text_color">Цвет текста</string>
+    <string name="pdf_password">Пароль PDF</string>
+    <string name="pdf_password_retry">Пароль не принят или шифрование PDF не поддерживается. Повторите попытку.</string>
+    <string name="pdf_password_unsupported">Этот PDF требует пароль или использует неподдерживаемое шифрование. В этой версии Android Twig не может его разблокировать. Попробуйте другое приложение для PDF.</string>
 </resources>

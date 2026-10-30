@@ -1157,4 +1157,7 @@
     <string name="settings_unix_permissions_desc">Tampilkan izin yang tersedia dalam daftar berkas. Detail lengkap ada di tab Unix pada properti.</string>
     <string name="player_subtitle_appearance">Tampilan subtitel</string>
     <string name="player_subtitle_text_color">Warna teks</string>
+    <string name="pdf_password">Kata sandi PDF</string>
+    <string name="pdf_password_retry">Kata sandi ditolak, atau PDF menggunakan enkripsi yang tidak didukung. Coba lagi.</string>
+    <string name="pdf_password_unsupported">PDF ini memerlukan kata sandi atau menggunakan enkripsi yang tidak didukung. Versi Android ini tidak dapat membukanya di Twig. Coba aplikasi PDF lain.</string>
 </resources>
