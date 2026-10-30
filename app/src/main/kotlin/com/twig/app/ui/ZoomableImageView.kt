@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Region
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -64,16 +65,18 @@ class ZoomableImageView @JvmOverloads constructor(
     private var scaledTouch = false
     /** Bitmap → original image pixels ratio (decoded down-sampling ratio); the actual-size mode scales up by this to render the image at its true size. */
     private var actualScale = 1f
+    private var vectorImage = false
 
     private var hiRes: Bitmap? = null
     private var hiResRect: RectF? = null // in displayed bitmap coordinates, corresponds 1:1 with hiRes
     private var hiResScale = 0f          // the scale when this region was requested, used to decide whether to re-decode at the new factor
+    private val hiResViewRect = RectF()
     private val hiResPaint = Paint().apply { isFilterBitmap = true }
     private val hiResReq = Runnable { requestHiRes() }
 
     private val fitScale get() = if (imgW == 0f) 1f else minOf(width / imgW, height / imgH)
     private val cropScale get() = if (imgW == 0f) 1f else maxOf(width / imgW, height / imgH)
-    private val maxScale get() = maxOf(cropScale, actualScale) * 2f
+    private val maxScale get() = maxOf(cropScale, actualScale) * if (vectorImage) 16f else 2f
 
     /**
      * Zoom lower bound. ★ Cannot unconditionally use [fitScale]: under [MODE_FIT_ACTUAL]
@@ -160,11 +163,12 @@ class ZoomableImageView @JvmOverloads constructor(
      * @param actual bitmap → original image pixels ratio (decoded down-sampling ratio),
      *   used by the "actual size" mode to render the image at its true size.
      */
-    fun setImage(bmp: Bitmap, actual: Float = 1f) {
+    fun setImage(bmp: Bitmap, actual: Float = 1f, vector: Boolean = false) {
         clearHiRes()
         setImageBitmap(bmp)
         imgW = bmp.width.toFloat(); imgH = bmp.height.toFloat()
         actualScale = actual
+        vectorImage = vector
         mode = initialMode
         if (width > 0) applyMode()
     }
@@ -184,10 +188,21 @@ class ZoomableImageView @JvmOverloads constructor(
         hiResScale = 0f
     }
 
+    @Suppress("DEPRECATION") // DIFFERENCE clipping also works on API 24/25, before clipOutRect.
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val h = hiRes ?: return
-        val r = hiResRect ?: return
+        val h = hiRes
+        val r = hiResRect
+        if (vectorImage && h != null && r != null) {
+            // Replace the base pixels: compositing a translucent SVG twice darkens its colours.
+            m.mapRect(hiResViewRect, r)
+            canvas.save()
+            canvas.clipRect(hiResViewRect, Region.Op.DIFFERENCE)
+            super.onDraw(canvas)
+            canvas.restore()
+        } else {
+            super.onDraw(canvas)
+        }
+        if (h == null || r == null) return
         canvas.save()
         canvas.concat(m) // same transform as the base bitmap, hi-res region falls into bitmap coordinates
         canvas.drawBitmap(h, null, r, hiResPaint)
@@ -197,7 +212,7 @@ class ZoomableImageView @JvmOverloads constructor(
     /** Request a hi-res region after zoom/pan settles; drop it when zoomed back out so the bitmap isn't interpolated, saving memory. */
     private fun scheduleHiRes() {
         removeCallbacks(hiResReq)
-        if (actualScale <= 1f || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
+        if ((!vectorImage && actualScale <= 1f) || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
             if (hiRes != null) { clearHiRes(); invalidate() }
             return
         }

@@ -4,12 +4,16 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapRegionDecoder
+import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Picture
 import android.graphics.Rect
 import android.graphics.RectF
 import android.media.ExifInterface
+import com.caverock.androidsvg.SVG
 import com.twig.app.OpenFiles
 import com.twig.core.XFile
+import java.io.InputStream
 import kotlin.math.roundToInt
 
 /**
@@ -32,6 +36,7 @@ private const val MAX_HIRES_PX = 12_000_000L
  * @param exifRot EXIF rotation angle already baked into [bmp].
  * @param path    Local file path, used when zooming in to re-decode a hi-res region.
  * @param origW/origH Original image dimensions in the file coordinate system (unrotated).
+ * @param vector Recorded SVG commands in base-bitmap coordinates; replayed for zoomed regions.
  */
 class Decoded(
     val bmp: Bitmap,
@@ -40,10 +45,17 @@ class Decoded(
     val path: String,
     val origW: Int,
     val origH: Int,
+    val vector: Picture? = null,
 )
 
 internal fun decodeImage(ctx: Context, file: XFile): Decoded? {
     val local = OpenFiles.materialize(ctx, file)
+    if (file.extension == "svg") {
+        val dm = ctx.resources.displayMetrics
+        return local.inputStream().use {
+            decodeSvg(it, local.absolutePath, maxOf(dm.widthPixels, dm.heightPixels), dm.densityDpi)
+        }
+    }
     val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(local.absolutePath, opts)
     if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
@@ -115,6 +127,7 @@ internal fun decodeImage(ctx: Context, file: XFile): Decoded? {
  * system to feed BitmapRegionDecoder, then the decoded region rotated back the right way.
  */
 internal fun decodeRegion(d: Decoded, rot: Int, rect: RectF, scale: Float, vw: Int, vh: Int): Bitmap? {
+    d.vector?.let { return renderVectorRegion(it, rot, rect, scale, vw, vh) }
     val s = d.actual
     val l = (rect.left * s).toInt(); val t = (rect.top * s).toInt()
     val r = (rect.right * s).toInt(); val bo = (rect.bottom * s).toInt()
@@ -183,4 +196,65 @@ internal fun exifDegrees(path: String): Int = runCatching {
 internal fun rotate(bmp: Bitmap, deg: Int): Bitmap {
     val mtx = Matrix().apply { postRotate(deg.toFloat()) }
     return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, mtx, true)
+}
+
+/** Record vector commands once; zooming replays only the visible region into a bounded bitmap. */
+internal fun decodeSvg(input: InputStream, path: String, edge: Int, density: Int): Decoded {
+    // No external resolver is registered: documents cannot fetch files, fonts or URLs.
+    // Disable the parser's optional DTD entity expansion before parsing untrusted files.
+    SVG.setInternalEntitiesEnabled(false)
+    val svg = SVG.getFromInputStream(input)
+    val box = svg.documentViewBox
+    val ratio = svg.documentAspectRatio.takeIf { it.isFinite() && it > 0f }
+        ?: box?.let { it.width() / it.height() }?.takeIf { it.isFinite() && it > 0f }
+        ?: 2f
+    val w = svg.documentWidth.takeIf { it.isFinite() && it > 0f }
+        ?: svg.documentHeight.takeIf { it.isFinite() && it > 0f }?.times(ratio)
+        ?: box?.width()?.takeIf { it.isFinite() && it > 0f } ?: 300f
+    val h = svg.documentHeight.takeIf { it.isFinite() && it > 0f } ?: w / ratio
+    require(w.isFinite() && h.isFinite() && w > 0f && h > 0f) { "Invalid SVG dimensions" }
+    val factor = minOf(
+        edge.coerceIn(1, 4096).toDouble() / maxOf(w, h),
+        kotlin.math.sqrt(MAX_HIRES_PX / (w.toDouble() * h)),
+    ).toFloat()
+    val bw = (w * factor).roundToInt().coerceAtLeast(1)
+    val bh = (h * factor).roundToInt().coerceAtLeast(1)
+    // Absolute root dimensions would otherwise keep rendering at the original size.
+    // A missing viewBox uses the original viewport as its coordinate space.
+    if (box == null) svg.setDocumentViewBox(0f, 0f, w, h)
+    svg.setDocumentWidth("100%")
+    svg.setDocumentHeight("100%")
+    val picture = svg.renderToPicture(bw, bh)
+    val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+    bmp.density = density
+    Canvas(bmp).drawPicture(picture)
+    return Decoded(bmp, w / bw, 0, path, w.roundToInt(), h.roundToInt(), picture)
+}
+
+private fun renderVectorRegion(picture: Picture, rot: Int, rect: RectF, scale: Float, vw: Int, vh: Int): Bitmap? {
+    if (rect.width() <= 0f || rect.height() <= 0f || !scale.isFinite() || scale <= 0f) return null
+    val maxPx = minOf(vw.toLong() * vh * MAX_HIRES_SCREENS, MAX_HIRES_PX).coerceAtLeast(1)
+    val area = rect.width().toDouble() * rect.height()
+    var factor = minOf(scale.toDouble(), kotlin.math.sqrt(maxPx / area)).toFloat()
+    while (factor > 0f) {
+        val width = (rect.width() * factor).toInt().coerceAtLeast(1)
+        val height = (rect.height() * factor).toInt().coerceAtLeast(1)
+        try {
+            val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bmp)
+            canvas.scale(width / rect.width(), height / rect.height())
+            canvas.translate(-rect.left, -rect.top)
+            val matrix = Matrix().apply { setRotate(rot.toFloat()) }
+            val bounds = RectF(0f, 0f, picture.width.toFloat(), picture.height.toFloat())
+            matrix.mapRect(bounds)
+            matrix.postTranslate(-bounds.left, -bounds.top)
+            canvas.concat(matrix)
+            canvas.drawPicture(picture)
+            return bmp
+        } catch (_: OutOfMemoryError) {
+            if (width == 1 && height == 1) return null
+            factor /= 2f
+        }
+    }
+    return null
 }

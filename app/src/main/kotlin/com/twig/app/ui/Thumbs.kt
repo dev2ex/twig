@@ -622,11 +622,17 @@ object Thumbs {
             if (!Prefs.thumbsNetwork(ctx)) return null // Toggle off and no embedded image: don't download.
             if (file.size > NET_DECODE_CAP) return null
             val bytes = FsRegistry.of(file).openInput(file).use { readCapped(it, NET_DECODE_CAP, file.size) }
+            if (file.extension == "svg") return ByteArrayInputStream(bytes).use {
+                decodeSvg(it, "", MAX_EDGE, ctx.resources.displayMetrics.densityDpi).bmp
+            }
             val bmp = decodeSampled { ByteArrayInputStream(bytes) } ?: return null
             return rotate(bmp, if (file.extension in JPG) orientationOf(bytes) else 0)
         }
         if (Prefs.thumbsEmbedded(ctx)) embedded(file)?.let { return it }
         val fs = FsRegistry.of(file)
+        if (file.extension == "svg") return fs.openInput(file).use {
+            decodeSvg(it, "", MAX_EDGE, ctx.resources.displayMetrics.densityDpi).bmp
+        }
         val bmp = decodeSampled { fs.openInput(file) } ?: return null
         return rotate(bmp, if (file.extension in JPG) orientationOf(head(file)) else 0)
     }

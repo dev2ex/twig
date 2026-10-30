@@ -104,8 +104,8 @@ class ImageCompareActivity : TwigActivity() {
             }
             decA = da
             decB = db
-            da?.let { b.imageA.setImage(it.bmp, it.actual) }
-            db?.let { b.imageB.setImage(it.bmp, it.actual) }
+            da?.let { b.imageA.setImage(it.bmp, it.actual, it.vector != null) }
+            db?.let { b.imageB.setImage(it.bmp, it.actual, it.vector != null) }
             b.infoA.text = sideInfo(getString(R.string.compare_side_left), a, da)
             b.infoB.text = sideInfo(getString(R.string.compare_side_right), c, db)
             b.toolbar.subtitle = summary(da, db)
@@ -132,7 +132,7 @@ class ImageCompareActivity : TwigActivity() {
     }
 
     private fun loadHiRes(view: ZoomableImageView, d: Decoded?, rect: RectF, scale: Float, isA: Boolean) {
-        if (d == null || d.actual <= 1f) return // original has no more pixels to dig out
+        if (d == null || (d.vector == null && d.actual <= 1f)) return // original has no more pixels to dig out
         val vw = view.width.coerceAtLeast(1)
         val vh = view.height.coerceAtLeast(1)
         val token = if (isA) ++tokenA else ++tokenB

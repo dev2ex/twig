@@ -120,6 +120,7 @@ The Classpath Exception on `desugar_jdk_libs` permits linking without the copyle
 
 | Component | Version | License | Used for |
 |---|---|---|---|
+| AndroidSVG (`com.caverock:androidsvg-aar`) | 1.4 | Apache-2.0 | Static SVG viewer, comparison and thumbnails |
 | Kotlin stdlib | 1.9.24 | Apache-2.0 | — |
 | `kotlinx-coroutines-android` | 1.8.1 | Apache-2.0 | Coroutines |
 | AndroidX `core-ktx` | 1.13.1 | Apache-2.0 | — |

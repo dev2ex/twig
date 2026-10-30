@@ -31,7 +31,7 @@ object OpenFiles {
 
     private val PREVIEW_EXT = setOf("md", "markdown", "html", "htm")
 
-    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp")
+    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "svg")
     private val VIDEO_EXT = setOf("mp4", "mkv", "webm", "3gp", "m4v", "mov", "avi", "ts", "m2ts", "flv")
     private val AUDIO_EXT = setOf("mp3", "aac", "m4a", "flac", "ogg", "opus", "wav", "wma", "mid")
     private val DOC_EXT = setOf(

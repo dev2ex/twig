@@ -307,7 +307,7 @@ class ImageViewerActivity : TwigActivity() {
         val extra = if (autoFit) screenFitRotation(d.bmp) else 0
         shown = d
         shownRot = (d.exifRot + extra) % 360
-        b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual)
+        b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual, d.vector != null)
     }
 
     /** Rotate by 90° when the image's orientation doesn't match the screen's, to fill the current screen "horizontally/vertically". */
@@ -465,7 +465,7 @@ class ImageViewerActivity : TwigActivity() {
     /** The base bitmap has been upscaled with interpolation; re-decode a hi-res region from the original file for the visible area and overlay it. */
     private fun loadHiRes(rect: RectF, scale: Float) {
         val d = shown ?: return
-        if (d.actual <= 1f) return // original has no more pixels to dig out
+        if (d.vector == null && d.actual <= 1f) return // original has no more pixels to dig out
         val rot = shownRot
         val vw = b.image.width.coerceAtLeast(1) // View dimensions read on the main thread before entering IO
         val vh = b.image.height.coerceAtLeast(1)

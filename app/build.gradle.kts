@@ -205,6 +205,9 @@ dependencies {
     implementation(project(":fs-zstd"))
     implementation(project(":git-lite"))
 
+    // Static SVG rendering; shared by the viewer, image comparison and thumbnails.
+    implementation("com.caverock:androidsvg-aar:1.4")
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.recyclerview)
