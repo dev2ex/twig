@@ -206,6 +206,11 @@ class SettingsActivity : TwigActivity() {
             set = { Prefs.setTextSize(this, it) },
         )
         switchRow(
+            getString(R.string.settings_tap_row_to_select), getString(R.string.settings_tap_row_to_select_desc),
+            get = { Prefs.tapRowToSelect(this) },
+            set = { Prefs.setTapRowToSelect(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_folder_counts), getString(R.string.settings_folder_counts_desc),
             get = { Prefs.folderCounts(this) },
             set = { Prefs.setFolderCounts(this, it); applyEnabled() },

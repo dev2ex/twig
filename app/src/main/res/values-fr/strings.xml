@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">Réinitialiser</string>
     <string name="settings_unix_permissions_octal">Afficher les permissions en octal</string>
     <string name="settings_unix_permissions_octal_desc">Activé : 0755 ; désactivé : rwxr-xr-x. Uniquement dans les listes de fichiers.</string>
+    <string name="settings_tap_row_to_select">Toucher les lignes pour sélectionner</string>
+    <string name="settings_tap_row_to_select_desc">Si des éléments sont sélectionnés, toucher une ligne change sa sélection. Toucher son icône ou sa miniature pour ouvrir. Désactivé : sélection par les coches uniquement.</string>
 </resources>

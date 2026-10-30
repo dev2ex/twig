@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">Sıfırla</string>
     <string name="settings_unix_permissions_octal">İzinleri sekizlik göster</string>
     <string name="settings_unix_permissions_octal_desc">Açık: 0755; kapalı: rwxr-xr-x. Yalnızca dosya listelerine uygulanır.</string>
+    <string name="settings_tap_row_to_select">Seçmek için satırlara dokun</string>
+    <string name="settings_tap_row_to_select_desc">Seçili öğeler varken seçmek veya seçimi kaldırmak için satıra dokunun. Açmak için simgeye veya küçük resme dokunun. Kapalı: yalnızca onay işaretleriyle seçilir.</string>
 </resources>

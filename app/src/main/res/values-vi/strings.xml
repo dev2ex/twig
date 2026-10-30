@@ -1169,4 +1169,6 @@
     <string name="dialog_reset">Đặt lại</string>
     <string name="settings_unix_permissions_octal">Hiển thị quyền ở hệ bát phân</string>
     <string name="settings_unix_permissions_octal_desc">Bật: 0755; tắt: rwxr-xr-x. Chỉ áp dụng cho danh sách tệp.</string>
+    <string name="settings_tap_row_to_select">Chạm vào hàng để chọn</string>
+    <string name="settings_tap_row_to_select_desc">Khi có mục được chọn, chạm vào hàng để chọn hoặc bỏ chọn. Chạm vào biểu tượng hoặc hình thu nhỏ để mở. Khi tắt, chỉ chọn bằng nút đánh dấu.</string>
 </resources>

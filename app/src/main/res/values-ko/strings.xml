@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">초기화</string>
     <string name="settings_unix_permissions_octal">권한을 8진수로 표시</string>
     <string name="settings_unix_permissions_octal_desc">켬: 0755, 끔: rwxr-xr-x. 파일 목록에만 적용됩니다.</string>
+    <string name="settings_tap_row_to_select">행을 눌러 선택</string>
+    <string name="settings_tap_row_to_select_desc">선택된 항목이 있으면 행을 눌러 선택하거나 해제합니다. 아이콘이나 미리보기를 누르면 열립니다. 끄면 체크 버튼으로만 선택합니다.</string>
 </resources>

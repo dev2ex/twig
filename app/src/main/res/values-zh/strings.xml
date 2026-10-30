@@ -1200,4 +1200,6 @@
     <string name="dialog_reset">重置</string>
     <string name="settings_unix_permissions_octal">八进制显示权限</string>
     <string name="settings_unix_permissions_octal_desc">开启显示 0755，关闭显示 rwxr-xr-x。仅影响文件列表。</string>
+    <string name="settings_tap_row_to_select">点击行选择</string>
+    <string name="settings_tap_row_to_select_desc">有选中项时，点击行可选择或取消选择，点击图标或缩略图打开。关闭时，只能通过勾选按钮选择。</string>
 </resources>

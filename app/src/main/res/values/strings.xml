@@ -1248,4 +1248,6 @@
     <string name="dialog_reset">Reset</string>
     <string name="settings_unix_permissions_octal">Show permissions in octal</string>
     <string name="settings_unix_permissions_octal_desc">On: 0755; off: rwxr-xr-x. Applies to file lists only.</string>
+    <string name="settings_tap_row_to_select">Tap rows to select</string>
+    <string name="settings_tap_row_to_select_desc">When items are selected, tap a row to select or deselect it. Tap its icon or thumbnail to open. Off: select using checkmarks only.</string>
 </resources>

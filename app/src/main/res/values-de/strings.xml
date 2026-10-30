@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">Zurücksetzen</string>
     <string name="settings_unix_permissions_octal">Berechtigungen oktal anzeigen</string>
     <string name="settings_unix_permissions_octal_desc">Ein: 0755; aus: rwxr-xr-x. Gilt nur für Dateilisten.</string>
+    <string name="settings_tap_row_to_select">Zeilen zum Auswählen antippen</string>
+    <string name="settings_tap_row_to_select_desc">Bei ausgewählten Einträgen schaltet ein Tippen auf die Zeile die Auswahl um. Symbol oder Vorschaubild öffnet den Eintrag. Aus: Auswahl nur über Häkchen.</string>
 </resources>

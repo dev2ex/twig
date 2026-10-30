@@ -151,6 +151,12 @@ class FileAdapter(
 
     fun isSelected(node: PaneViewModel.FileNode): Boolean = selected.contains(node.key)
 
+    /** Read selection state at click time: selection payloads deliberately keep listeners intact. */
+    private fun clickFileRow(node: PaneViewModel.FileNode, ctx: Context) {
+        if (selected.isNotEmpty() && node.label == null && Prefs.tapRowToSelect(ctx)) toggleSelection(node)
+        else onClick(node)
+    }
+
     fun clearSelection() {
         if (selected.isEmpty()) return
         selected.clear()
@@ -414,7 +420,7 @@ class FileAdapter(
         row.setOnTouchListener { view, event ->
             if (event.actionMasked != MotionEvent.ACTION_UP) return@setOnTouchListener false
             val inside = buttons.any { button ->
-                if (button.visibility != View.VISIBLE) false else {
+                if (button.visibility != View.VISIBLE || !button.isClickable) false else {
                     button.getDrawingRect(bounds)
                     row.offsetDescendantRectToMyCoords(button, bounds)
                     bounds.contains(event.x.toInt(), event.y.toInt())
@@ -460,6 +466,10 @@ class FileAdapter(
             val pad = edge / 5
             b.thumb.setPadding(pad, pad, pad, pad)
             if (node is PaneViewModel.WebsiteNode) {
+                b.thumb.setOnClickListener(null)
+                b.thumb.isClickable = false
+                b.thumb.setOnLongClickListener(null)
+                b.thumb.isLongClickable = false
                 WebsiteIcons.bind(b.thumb, node.site)
                 b.root.isActivated = false
                 b.cellCheck.visibility = View.GONE
@@ -484,8 +494,10 @@ class FileAdapter(
             b.cellCheck.setOnClickListener { toggleSelection(node) }
             b.infoToggle.setOnClickListener { onInfo(node) }
             b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
-            guardButtonClicks(b.root, b.infoToggle, b.cellCheck)
-            b.root.setOnClickListener { onClick(node) }
+            b.thumb.setOnClickListener { onClick(node) }
+            b.thumb.setOnLongClickListener { onLongClick(node); true }
+            guardButtonClicks(b.root, b.infoToggle, b.cellCheck, b.thumb)
+            b.root.setOnClickListener { clickFileRow(node, ctx) }
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
@@ -873,6 +885,10 @@ class FileAdapter(
             b.icon.resetThumbnail()
             b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
+            b.icon.setOnClickListener(null)
+            b.icon.isClickable = false
+            b.icon.setOnLongClickListener(null)
+            b.icon.isLongClickable = false
             b.icon.scaleType = ImageView.ScaleType.FIT_CENTER // thumbnail rows switch to centerCrop when filled in
             b.icon.setPadding(0, 0, 0, 0)
             b.icon.clearColorFilter() // compare-favorite rows are tinted temporarily; clear before reuse or it leaks to other rows
@@ -891,6 +907,8 @@ class FileAdapter(
             b.infoToggle.setOnLongClickListener(null)
             b.root.setOnTouchListener(null)
             b.indicator.setOnTouchListener(null)
+            b.indicator.setOnClickListener(null)
+            b.indicator.isClickable = false
             b.indicator.contentDescription = null
             val sortingItem = node.reordering
             val indicatorPadding = if (sortingItem) (4 * dpi).toInt() else 0
@@ -916,7 +934,9 @@ class FileAdapter(
                 is PaneViewModel.SearchNode -> bindSearch(node)
                 is PaneViewModel.InfoNode -> Unit // routes to InfoVH, never reaches here
             }
-            guardButtonClicks(b.root, b.infoToggle, b.check)
+            if (node is PaneViewModel.FileNode) {
+                guardButtonClicks(b.root, b.infoToggle, b.check, b.icon, b.indicator)
+            } else guardButtonClicks(b.root, b.infoToggle, b.check)
         }
 
         /**
@@ -1207,7 +1227,10 @@ class FileAdapter(
                 b.check.visibility = View.GONE
             }
 
-            b.root.setOnClickListener { onClick(node) }
+            b.icon.setOnClickListener { onClick(node) }
+            b.icon.setOnLongClickListener { onLongClick(node); true }
+            if (node.expandable) b.indicator.setOnClickListener { onClick(node) }
+            b.root.setOnClickListener { clickFileRow(node, ctx) }
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 

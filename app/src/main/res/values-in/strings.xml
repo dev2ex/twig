@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">Atur ulang</string>
     <string name="settings_unix_permissions_octal">Tampilkan izin dalam oktal</string>
     <string name="settings_unix_permissions_octal_desc">Aktif: 0755; nonaktif: rwxr-xr-x. Hanya untuk daftar file.</string>
+    <string name="settings_tap_row_to_select">Ketuk baris untuk memilih</string>
+    <string name="settings_tap_row_to_select_desc">Saat ada item terpilih, ketuk baris untuk memilih atau membatalkan pilihan. Ketuk ikon atau gambar mini untuk membuka. Nonaktif: pilih hanya dengan tanda centang.</string>
 </resources>

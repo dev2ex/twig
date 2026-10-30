@@ -1170,4 +1170,6 @@
     <string name="dialog_reset">リセット</string>
     <string name="settings_unix_permissions_octal">権限を8進数で表示</string>
     <string name="settings_unix_permissions_octal_desc">オン：0755、オフ：rwxr-xr-x。ファイル一覧のみに適用します。</string>
+    <string name="settings_tap_row_to_select">行をタップして選択</string>
+    <string name="settings_tap_row_to_select_desc">選択中の項目がある場合、行をタップして選択を切り替えます。アイコンやサムネイルで開きます。オフの場合はチェックボタンのみで選択します。</string>
 </resources>

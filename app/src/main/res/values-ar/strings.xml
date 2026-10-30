@@ -1174,4 +1174,6 @@
     <string name="dialog_reset">إعادة ضبط</string>
     <string name="settings_unix_permissions_octal">عرض الأذونات بالنظام الثماني</string>
     <string name="settings_unix_permissions_octal_desc">عند التفعيل: 0755؛ عند الإيقاف: rwxr-xr-x. ينطبق على قوائم الملفات فقط.</string>
+    <string name="settings_tap_row_to_select">اضغط على الصفوف للتحديد</string>
+    <string name="settings_tap_row_to_select_desc">عند وجود عناصر محددة، اضغط على الصف لتحديده أو إلغاء تحديده. اضغط على الأيقونة أو الصورة المصغرة للفتح. عند التعطيل، يتم التحديد بعلامات الاختيار فقط.</string>
 </resources>

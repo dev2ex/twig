@@ -1206,4 +1206,6 @@
     <string name="dialog_reset">Сбросить</string>
     <string name="settings_unix_permissions_octal">Права в восьмеричном виде</string>
     <string name="settings_unix_permissions_octal_desc">Включено: 0755; выключено: rwxr-xr-x. Только для списка файлов.</string>
+    <string name="settings_tap_row_to_select">Выбор нажатием на строку</string>
+    <string name="settings_tap_row_to_select_desc">Если есть выбранные элементы, нажатие на строку меняет её выделение. Значок или миниатюра открывает элемент. Выключено: выбор только флажками.</string>
 </resources>
