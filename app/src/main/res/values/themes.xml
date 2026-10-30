@@ -24,7 +24,7 @@
         <item name="android:statusBarColor">?attr/twigToolbar</item>
     </style>
 
-    <!-- OLED keeps large surfaces unlit; muted borders and the active path retain hierarchy. -->
+    <!-- OLED keeps large surfaces unlit; text brightness and borders retain hierarchy. -->
     <style name="Theme.Twig.Oled" parent="Theme.Twig">
         <!-- Older PhoneWindow versions require a resource reference for the window background. -->
         <item name="android:windowBackground">@android:color/black</item>
@@ -34,12 +34,23 @@
         <item name="twigToolbar">#000000</item>
         <item name="twigPrimaryDark">#000000</item>
         <item name="twigDivider">#202020</item>
-        <item name="twigPathBarActive">#242424</item>
+        <item name="twigPathBarActive">#000000</item>
         <item name="twigPathBar">#000000</item>
         <item name="twigPdfBackdrop">#000000</item>
+        <item name="popupMenuStyle">@style/TwigOledPopupMenu</item>
+        <item name="actionOverflowMenuStyle">@style/TwigOledPopupMenu</item>
+        <item name="android:popupMenuStyle">@style/TwigOledPlatformPopupMenu</item>
         <item name="android:colorBackground">#000000</item>
         <item name="android:colorBackgroundFloating">#000000</item>
         <item name="colorBackgroundFloating">#000000</item>
+    </style>
+
+    <style name="TwigOledPopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@android:color/black</item>
+    </style>
+
+    <style name="TwigOledPlatformPopupMenu" parent="android:style/Widget.Material.PopupMenu">
+        <item name="android:popupBackground">@android:color/black</item>
     </style>
 
     <style name="Theme.Twig.Oled.Translucent" parent="Theme.Twig.Oled">

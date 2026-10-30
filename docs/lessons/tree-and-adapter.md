@@ -412,3 +412,9 @@
   the dialog draft. Cancel preserves saved ordering and visibility; OK applies the
   defaults to both root panes or the shared action panel. `ConfigurationResetTest`
   checks the draft, cancellation and persistence paths.
+
+- **OLED path and menu backgrounds (2026-10-30, #35)**: active path bars are black
+  too; the existing text-alpha difference marks the active pane. Menu popups have
+  their own backgrounds, independent of dialog floating colors. Override AppCompat
+  popup/overflow and platform popup styles in the OLED theme. `AppThemeTest`
+  checks all three popup routes.

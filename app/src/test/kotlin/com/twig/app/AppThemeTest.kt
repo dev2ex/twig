@@ -56,7 +56,7 @@ class AppThemeTest {
             assertEquals(Color.BLACK, ContextCompat.getColor(activity, color))
         }
         assertEquals(Color.BLACK, (activity.findViewById<android.view.View>(R.id.panes).background as ColorDrawable).color)
-        assertNotEquals(Color.BLACK, activity.getColor(R.color.path_bar_active))
+        assertEquals(Color.BLACK, activity.getColor(R.color.path_bar_active))
         assertNotEquals(Color.BLACK, activity.getColor(R.color.selected))
         assertEquals(Color.BLACK, (activity.window.decorView.background as ColorDrawable).color)
         assertEquals(Color.BLACK, activity.window.statusBarColor)
@@ -67,6 +67,12 @@ class AppThemeTest {
         assertEquals(Color.BLACK, background.data)
         assertEquals(Color.BLACK, dialog.context.getColor(R.color.surface))
         dialog.dismiss()
+        for (attr in listOf(androidx.appcompat.R.attr.popupMenuStyle, androidx.appcompat.R.attr.actionOverflowMenuStyle)) {
+            val popup = androidx.appcompat.widget.ListPopupWindow(activity, null, attr)
+            assertEquals(Color.BLACK, (popup.background as ColorDrawable).color)
+        }
+        val platformPopup = android.widget.ListPopupWindow(activity, null, android.R.attr.popupMenuStyle)
+        assertEquals(Color.BLACK, (platformPopup.background as ColorDrawable).color)
         controller.pause().stop().destroy()
     }
 
