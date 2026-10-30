@@ -373,7 +373,7 @@ class FileAdapter(
      * (the checkbox in cells has a darker background, give alpha separately). */
     private fun tintCheck(v: ImageView, on: Boolean, offAlpha: Float = IDLE_CHECK_ALPHA) {
         v.setColorFilter(
-            ContextCompat.getColor(v.context, if (on) R.color.accent else R.color.text_secondary),
+            ContextCompat.getColor(v.context, if (on) R.color.action_text else R.color.text_secondary),
         )
         v.alpha = if (on) 1f else offAlpha
     }
