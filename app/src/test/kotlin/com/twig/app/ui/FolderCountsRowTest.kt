@@ -107,11 +107,14 @@ class FolderCountsRowTest {
         }
     }
 
-    @Test fun `zero counts are hidden without shifting either count slot`() {
+    @Test fun `counts cap at 999 plus and hidden zeros preserve both slots`() {
         Prefs.setFolderCounts(app, true)
         val adapter = adapter()
         val values = listOf(DirectoryCounts.Count(2, 5), DirectoryCounts.Count(0, 5),
-            DirectoryCounts.Count(9999, 0), DirectoryCounts.Count(0, 0))
+            DirectoryCounts.Count(9999, 0), DirectoryCounts.Count(0, 0),
+            DirectoryCounts.Count(999, 1000), DirectoryCounts.Count(1000, 999))
+        val labels = listOf("2" to "5", "0" to "5", "999+" to "0", "0" to "0",
+            "999" to "999+", "999+" to "999")
         adapter.submitList(values.mapIndexed { index, value ->
             val file = dir.copy(path = "/storage/Example$index")
             DirectoryCounts.remember(file,
@@ -132,6 +135,13 @@ class FolderCountsRowTest {
             val files = row.findViewById<TextView>(R.id.fileCount)
             assertEquals(if (value.directories == 0) View.INVISIBLE else View.VISIBLE, directories.visibility)
             assertEquals(if (value.files == 0) View.INVISIBLE else View.VISIBLE, files.visibility)
+            assertEquals(labels[index].first, directories.text.toString())
+            assertEquals(labels[index].second, files.text.toString())
+            for (counter in listOf(directories, files)) {
+                val iconWidth = counter.compoundDrawablesRelative[0]!!.bounds.width()
+                assertTrue("999+ and its icon must fit the fixed slot",
+                    counter.width >= iconWidth + counter.compoundDrawablePadding + counter.paint.measureText(counter.text.toString()))
+            }
             assertEquals(0, directories.left)
             if (fileLeft == null) fileLeft = files.left else assertEquals(fileLeft, files.left)
         }

@@ -812,8 +812,8 @@ class FileAdapter(
             b.meta.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             for (count in listOf(b.directoryCount, b.fileCount)) {
                 count.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
-                // Equal slots stay fixed across rows, including when one count is hidden.
-                count.layoutParams = count.layoutParams.apply { width = (count.textSize * 3.5f).toInt() }
+                // Equal slots fit the icon plus 999+ and stay fixed even when a count is hidden.
+                count.layoutParams = count.layoutParams.apply { width = (count.textSize * 4f).toInt() }
             }
             b.folderCounts.alpha = IDLE_CHECK_ALPHA
             b.folderCounts.visibility = View.GONE
@@ -1310,7 +1310,7 @@ class FileAdapter(
         private fun setCounts(count: DirectoryCounts.Count) {
             fun bindCount(view: android.widget.TextView, res: Int, number: Int) {
                 bindMetadataIcon(view, res)
-                view.text = number.toString()
+                view.text = if (number > 999) "999+" else number.toString()
                 view.visibility = if (number == 0) View.INVISIBLE else View.VISIBLE
             }
             bindCount(b.directoryCount, R.drawable.ic_count_folder, count.directories)
