@@ -180,6 +180,10 @@ its listing size must still describe the followed stream for copy/resume checks.
   checks cancellation per entry, skips unused metadata and stops once both visible
   counts reach 1000 (`999+`); rarer categories still require reaching the end to be exact.
   Hidden and all-entry counts are cached separately. Never cap ordinary `list` results.
+  Probes have a three-second soft deadline starting when IO begins, excluding queue
+  wait. Streaming/local entry processing checks it; late blocking results are discarded.
+  Timeouts keep existing cache entries, deliver no zero and share the failure cooldown.
+  Ordinary expansion/refresh listings can still populate counts after any duration.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
   Favorites and websites keep their stored order. Long-pressing either heading offers

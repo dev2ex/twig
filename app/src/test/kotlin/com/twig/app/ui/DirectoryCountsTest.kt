@@ -16,11 +16,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowSystemClock
 import org.robolectric.annotation.Config
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import java.nio.file.Files
+import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -87,6 +90,77 @@ class DirectoryCountsTest {
         positions["/Zulu"] = 0
         await { completed == 3 }
         assertEquals(listOf("/Zulu", "/Alpha", "/Middle"), calls.toList())
+    }
+
+    @Test fun `streaming counts stop at three seconds and queued work gets its own budget`() {
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        val reads = AtomicInteger()
+        val beforeDeadline = AtomicBoolean()
+        val afterDeadline = AtomicBoolean(true)
+        val next = root.copy(path = "/next")
+        FsRegistry.register(object : FileSystem by fake, DirectoryCountSource {
+            override fun countChildren(dir: XFile, limit: Int, keepGoing: () -> Boolean): ChildCounts {
+                reads.incrementAndGet()
+                assertTrue(keepGoing())
+                if (dir.path == root.path) {
+                    ShadowSystemClock.advanceBy(Duration.ofMillis(2999))
+                    beforeDeadline.set(keepGoing())
+                    ShadowSystemClock.advanceBy(Duration.ofMillis(1))
+                    afterDeadline.set(keepGoing())
+                }
+                // Even a backend that returns a value after its deadline must be ignored.
+                return ChildCounts(0, 1, 0, 1)
+            }
+        })
+        var result: DirectoryCounts.Count? = null
+        DirectoryCounts.request(view(), root, false) { fail("timed out count was delivered") }
+        DirectoryCounts.request(view(), next, false) { result = it }
+        await { result != null && DirectoryCounts.isIdle() }
+        assertTrue("2999 ms is still within the count budget", beforeDeadline.get())
+        assertFalse("3000 ms expires the count budget", afterDeadline.get())
+        assertNull(DirectoryCounts.known(root, false))
+        assertEquals(DirectoryCounts.Count(0, 1), result)
+        assertEquals(2, reads.get())
+        DirectoryCounts.request(view(), root, false) { fail("timeout must not become zero") }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(DirectoryCounts.isIdle())
+        assertEquals("timeout must cool down rather than immediately retry", 2, reads.get())
+    }
+
+    @Test fun `late blocking listings stay unknown and explicit invalidation permits retry`() {
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        val reads = AtomicInteger()
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                if (reads.incrementAndGet() == 1) ShadowSystemClock.advanceBy(Duration.ofSeconds(3))
+                return emptyList()
+            }
+        })
+        DirectoryCounts.request(view(), root, false) { fail("late empty listing must not become zero") }
+        await { reads.get() == 1 && DirectoryCounts.isIdle() }
+        assertNull(DirectoryCounts.known(root, false))
+        DirectoryCounts.invalidate(root)
+        var retried: DirectoryCounts.Count? = null
+        DirectoryCounts.request(view(), root, false) { retried = it }
+        await { retried != null && DirectoryCounts.isIdle() }
+        assertEquals(DirectoryCounts.Count(0, 0), retried)
+        assertEquals(2, reads.get())
+    }
+
+    @Test fun `ordinary listings resolve timed out counts without the probe deadline`() {
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                ShadowSystemClock.advanceBy(Duration.ofSeconds(4))
+                return emptyList()
+            }
+        })
+        DirectoryCounts.request(view(), root, false) { fail("late count was delivered") }
+        await { DirectoryCounts.isIdle() }
+        DirectoryCounts.remember(root, listOf(child("from-normal-expansion", false)))
+        var result: DirectoryCounts.Count? = null
+        DirectoryCounts.request(view(), root, false) { result = it }
+        assertEquals(DirectoryCounts.Count(0, 1), result)
     }
 
     @Test fun `SMB probe lists only immediate children and subsequent binds reuse the count`() {

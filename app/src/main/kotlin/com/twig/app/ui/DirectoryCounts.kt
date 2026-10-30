@@ -40,6 +40,7 @@ object DirectoryCounts {
     }
     private const val MAX_CACHE = 512
     private const val MAX_PENDING = 32
+    private const val PROBE_TIMEOUT = 3_000L
     private const val TTL = 60_000L
     private val main = Handler(Looper.getMainLooper())
     private val cache = object : LinkedHashMap<String, Entry>(MAX_CACHE, 0.75f, true) {
@@ -185,21 +186,25 @@ object DirectoryCounts {
         lane.working = true
         lane.executor.execute {
             val result = runCatching {
-                check(job.active.get())
+                // Queue wait is free. Blocking backend calls cannot be forcibly stopped;
+                // reject late results and let streaming backends stop between entries.
+                val deadline = SystemClock.elapsedRealtime() + PROBE_TIMEOUT
+                fun keepGoing() = job.active.get() && SystemClock.elapsedRealtime() < deadline
+                check(keepGoing())
                 val fs = FsRegistry.of(job.file)
                 if (fs is DirectoryCountSource) {
-                    val count = fs.countChildren(job.file, 1000) { job.active.get() }
-                    return@runCatching count?.let {
+                    val count = fs.countChildren(job.file, 1000, ::keepGoing)
+                    return@runCatching count?.takeIf { keepGoing() }?.let {
                         Entry(Count(it.directories, it.files), Count(it.visibleDirectories, it.visibleFiles),
                             job.file.lastModified, SystemClock.elapsedRealtime())
                     }
                 }
                 // Local counts need only names/types; check for abandoned work between entries.
                 val children = if (fs is LocalFileSystem) fs.listForSize(job.file) {
-                    check(job.active.get())
+                    check(keepGoing())
                     XFile(job.file.scheme, it.path, isDir = it.isDirectory)
                 } else fs.list(job.file)
-                if (job.active.get()) entry(job.file, children) else null
+                if (keepGoing()) entry(job.file, children).takeIf { keepGoing() } else null
             }.getOrNull()
             main.post {
                 try { finish(job, result) }

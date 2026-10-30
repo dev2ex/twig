@@ -465,3 +465,15 @@
   jobs, so scrolling needs no separate newest-first policy. A running call finishes
   or observes cancellation; sorting only reorders queued work. Unit tests cover
   changed positions, reversed attachment and pane activation.
+
+- **Count-only probes need a time budget (2026-10-30)**: allow three seconds per
+  directory from worker execution, excluding queue wait. Use elapsed realtime and
+  check the deadline through the streaming continuation predicate and local entry
+  conversion, then again before accepting any backend result. A blocking network
+  request may finish late; never interrupt its thread or close a shared connection
+  to enforce this soft deadline. Timeout behaves like an unknown count, preserving
+  existing cache entries and using the ordinary 60-second failure cooldown rather
+  than immediately retrying. Invalidation allows a retry; successful ordinary
+  expansion/refresh supersedes the failure without a deadline. Tests advance the
+  clock across the exact three-second boundary, check independent queued budgets,
+  reject late empty results, and verify retry and ordinary-listing recovery.
