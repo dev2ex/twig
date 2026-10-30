@@ -27,6 +27,10 @@
   The state owns one observable size plan and its cancellable job; the draft holds
   operation inputs only. UI updates and confirmation share one target validation
   path, including rechecking a connection that disappears after picker return.
+  Size planning checks the owning coroutine's cancellation before each entry and
+  before returning totals. Cancelling the draft stops subsequent recursive listings;
+  an already-issued blocking backend request may finish, without interrupting its
+  thread or closing the shared connection. Never publish partial totals on cancellation.
   Long-press copy/move uses valid targets immediately; missing/read-only targets are
   picked before confirmation, while same-directory/self targets show the error there.
   `CopyDestinationTest` covers actual copy/move, missing/read-only/recursive targets,

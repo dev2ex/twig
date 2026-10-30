@@ -48,12 +48,16 @@ object CopyEngine {
         fun onDone() {}
     }
 
-    /** Recursively tallies a batch of entries (directories are accumulated recursively). */
-    fun plan(items: List<XFile>): Plan {
+    /** Recursively tallies entries; cancellation stops between backend calls without returning partial totals. */
+    fun plan(items: List<XFile>, cancelled: Cancelled = Cancelled { false }): Plan {
         var bytes = 0L
         var files = 0
         var dirs = 0
+        fun checkCancelled() {
+            if (cancelled.isCancelled()) throw java.util.concurrent.CancellationException("Size planning cancelled")
+        }
         fun walk(f: XFile) {
+            checkCancelled()
             if (f.isDir) {
                 dirs++
                 for (c in FsRegistry.of(f).list(f)) walk(c)
@@ -63,6 +67,7 @@ object CopyEngine {
             }
         }
         items.forEach { walk(it) }
+        checkCancelled()
         return Plan(bytes, files, dirs)
     }
 

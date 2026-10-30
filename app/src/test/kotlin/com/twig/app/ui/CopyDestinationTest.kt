@@ -331,6 +331,50 @@ class CopyDestinationTest {
         }
     }
 
+    @Test fun `canceling destination selection stops size scanning after an in-flight listing`() {
+        val scheme = "sftp-cancel-copy-size"
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(1)
+        val reads = AtomicInteger()
+        val fake = FakeFileSystem(scheme,
+            mapOf("/batch" to listOf("sub"), "/batch/sub" to listOf("file")),
+            mapOf("/batch/sub/file" to "123"))
+        FsRegistry.register(object : com.twig.core.FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                reads.incrementAndGet()
+                if (dir.path == "/batch") {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+                return fake.list(dir)
+            }
+        })
+        try {
+            pane(1).viewModel.currentDir = null
+            open(files = listOf(XFile(scheme, "/batch", true)))
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val job = ReflectionHelpers.getField<kotlinx.coroutines.Job>(state(), "planning")
+            job.invokeOnCompletion { finished.countDown() }
+            cancelPicker()
+            assertTrue(job.isCancelled)
+            release.countDown()
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+            while (finished.count > 0 && System.nanoTime() < deadline) {
+                idle()
+                Thread.sleep(5)
+            }
+            assertEquals(0L, finished.count)
+            assertEquals(1, reads.get())
+            assertNull(state().draft)
+            assertNull(state().plan.value)
+            assertNull(Transfers.active)
+        } finally {
+            release.countDown()
+            FsRegistry.unregister(scheme)
+        }
+    }
+
     @Test fun `copying from the right chooses only the left pane and returns to the right`() {
         pane(0).viewModel.currentDir = null
         activity.focusPane(pane(1))

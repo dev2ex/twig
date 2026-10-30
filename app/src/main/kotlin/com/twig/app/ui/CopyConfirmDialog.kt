@@ -17,7 +17,9 @@ import com.twig.core.XFile
 import com.twig.core.isWritableDir
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,7 +39,8 @@ class CopyConfirmDialog : DialogFragment() {
             this.draft = draft
             planning = viewModelScope.launch {
                 plan.value = withContext(Dispatchers.IO) {
-                    runCatching { CopyEngine.plan(draft.sources) }.getOrNull()
+                    val context = currentCoroutineContext()
+                    runCatching { CopyEngine.plan(draft.sources) { !context.isActive } }.getOrNull()
                 }
             }
         }

@@ -475,6 +475,37 @@ class CopyEngineTest {
     }
 
     @Test
+    fun cancelledPlanDoesNotStartListing() {
+        src.put("/d/x.txt", "123")
+        var listings = 0
+        FsRegistry.register(object : FileSystem by src {
+            override fun list(dir: XFile): List<XFile> {
+                listings++
+                return src.list(dir)
+            }
+        })
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            CopyEngine.plan(listOf(srcFile("/d")), cancelled = { true })
+        }
+        assertEquals(0, listings)
+    }
+
+    @Test
+    fun cancellationDuringTheLastEmptyListingDoesNotReturnAPlan() {
+        src.dirs.add("/empty")
+        var cancelled = false
+        FsRegistry.register(object : FileSystem by src {
+            override fun list(dir: XFile): List<XFile> {
+                cancelled = true
+                return src.list(dir)
+            }
+        })
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            CopyEngine.plan(listOf(srcFile("/empty")), cancelled = { cancelled })
+        }
+    }
+
+    @Test
     fun listenerReportsEveryItem() {
         src.put("/d/x.txt", "x")
         src.put("/d/sub/y.txt", "y")
