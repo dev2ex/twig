@@ -891,7 +891,7 @@
     <string name="settings_folder_counts_desc">عرض عدد المجلدات والملفات المباشرة داخل المجلدات.</string>
     <string name="settings_folder_counts_local_only">عدّ العناصر في المجلدات المحلية فقط</string>
     <string name="settings_folder_counts_local_only_desc">عند إيقافه، تُحسب مجلدات الخدمات الأخرى أيضًا. قد يتطلب ذلك طلبات إضافية.</string>
-    <string name="folder_counts_description">المجلدات: %1$d، الملفات: %2$d</string>
+    <string name="folder_counts_description">المجلدات: %1$s، الملفات: %2$s</string>
     <string name="info_activity_failed">تعذّر فتح هذا Activity</string>
     <string name="info_app_shortcuts_limited">يقيّد Android الوصول إلى الاختصارات الديناميكية للتطبيقات الأخرى. تُعرض فقط الاختصارات المعلنة من التطبيق.</string>
 

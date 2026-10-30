@@ -1,6 +1,8 @@
 package com.twig.fs.network
 
 import com.twig.core.FileSystem
+import com.twig.core.DirectoryCountSource
+import com.twig.core.ChildCounts
 import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.XFile
@@ -57,7 +59,7 @@ data class SftpConfig(
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem, com.twig.core.ResumableWrite {
+) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource {
 
     /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
     private val base = config.path.trim('/')
@@ -497,6 +499,43 @@ class SftpFileSystem(
                 toXFile(join(dir.path, info.name), info.attributes)
             }
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
+
+    private class StopCounting : RuntimeException(null, null, false, false)
+
+    override fun countChildren(dir: XFile, limit: Int, keepGoing: () -> Boolean): ChildCounts? {
+        require(limit > 0)
+        if (!keepGoing()) return null
+        return retry { c ->
+            // Reset on reconnect: a partial traversal must not be counted twice.
+            var directories = 0
+            var files = 0
+            var visibleDirectories = 0
+            var visibleFiles = 0
+            if (!keepGoing()) return@retry null
+            try {
+                // SSHJ closes this directory handle even when the filter throws. Returning
+                // false only avoids retaining entries; it does not stop READDIR requests.
+                c.ls(serverPath(dir.path)) { info ->
+                    if (!keepGoing()) throw StopCounting()
+                    val isDir = if (info.attributes.type == FileMode.Type.SYMLINK) {
+                        runCatching { c.stat(serverPath(join(dir.path, info.name))).type }
+                            .getOrNull() == FileMode.Type.DIRECTORY
+                    } else info.attributes.type == FileMode.Type.DIRECTORY
+                    if (isDir) directories = (directories + 1).coerceAtMost(limit)
+                    else files = (files + 1).coerceAtMost(limit)
+                    if (!info.name.startsWith('.')) {
+                        if (isDir) visibleDirectories = (visibleDirectories + 1).coerceAtMost(limit)
+                        else visibleFiles = (visibleFiles + 1).coerceAtMost(limit)
+                    }
+                    if (visibleDirectories >= limit && visibleFiles >= limit) throw StopCounting()
+                    false
+                }
+            } catch (_: StopCounting) {
+                // Catch inside retry: stopping is not a transport failure and must not reconnect.
+            }
+            if (keepGoing()) ChildCounts(directories, files, visibleDirectories, visibleFiles) else null
+        }
+    }
 
     /** Read the entry itself; only links need a separate stat for their stream metadata. */
     override fun stat(path: String): XFile? {

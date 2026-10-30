@@ -923,7 +923,7 @@
     <string name="settings_folder_counts_desc">Показывать количество непосредственных подпапок и файлов.</string>
     <string name="settings_folder_counts_local_only">Считать элементы только в локальных папках</string>
     <string name="settings_folder_counts_local_only_desc">Отключите, чтобы также считать папки других сервисов. Это может потребовать дополнительных запросов.</string>
-    <string name="folder_counts_description">Папок: %1$d, файлов: %2$d</string>
+    <string name="folder_counts_description">Папок: %1$s, файлов: %2$s</string>
 
     <!-- Website bookmarks -->
     <string name="group_websites">Сайты</string>

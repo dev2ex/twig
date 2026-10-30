@@ -5,6 +5,8 @@ import android.os.Looper
 import android.view.View
 import androidx.test.core.app.ApplicationProvider
 import com.twig.core.FileSystem
+import com.twig.core.DirectoryCountSource
+import com.twig.core.ChildCounts
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
@@ -46,6 +48,24 @@ class DirectoryCountsTest {
             child("a", false), child("b", false), child(".hidden-file", false)))
         assertEquals(DirectoryCounts.Count(1, 2), DirectoryCounts.known(root, false))
         assertEquals(DirectoryCounts.Count(2, 3), DirectoryCounts.known(root, true))
+    }
+
+    @Test fun `capable backends use bounded counts instead of ordinary listings`() {
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake, DirectoryCountSource {
+            override fun list(dir: XFile): List<XFile> = error("count must not request a full listing")
+            override fun countChildren(dir: XFile, limit: Int, keepGoing: () -> Boolean): ChildCounts {
+                assertEquals(root.path, dir.path)
+                assertEquals(1000, limit)
+                assertTrue(keepGoing())
+                return ChildCounts(1000, 1000, 3, 1000)
+            }
+        })
+        var result: DirectoryCounts.Count? = null
+        DirectoryCounts.request(view(), root, false) { result = it }
+        await { result != null }
+        assertEquals(DirectoryCounts.Count(3, 1000), result)
+        assertEquals(DirectoryCounts.Count(1000, 1000), DirectoryCounts.known(root, true))
     }
 
     @Test fun `queued counts follow live display positions rather than request order`() {

@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">顯示目錄內的直接子目錄及檔案數量。</string>
     <string name="settings_folder_counts_local_only">目錄項計數僅限本機</string>
     <string name="settings_folder_counts_local_only_desc">關閉後也統計其他服務的目錄，可能需要額外讀取目錄。</string>
-    <string name="folder_counts_description">目錄：%1$d，檔案：%2$d</string>
+    <string name="folder_counts_description">目錄：%1$s，檔案：%2$s</string>
     <string name="info_activity_failed">無法開啟此 Activity</string>
     <string name="info_app_shortcuts_limited">Android 限制讀取其他應用程式的動態捷徑。此處僅顯示應用程式宣告的捷徑。</string>
 

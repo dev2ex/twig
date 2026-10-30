@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">フォルダー内にある直下のフォルダーとファイルの数を表示します。</string>
     <string name="settings_folder_counts_local_only">項目数の集計をローカルフォルダーに限定</string>
     <string name="settings_folder_counts_local_only_desc">オフにすると他のサービスのフォルダーも集計します。追加の一覧取得が必要な場合があります。</string>
-    <string name="folder_counts_description">フォルダー: %1$d、ファイル: %2$d</string>
+    <string name="folder_counts_description">フォルダー: %1$s、ファイル: %2$s</string>
     <string name="info_activity_failed">このActivityを開けません</string>
     <string name="info_app_shortcuts_limited">Android では他のアプリの動的ショートカットへのアクセスが制限されています。アプリで宣言されたショートカットのみ表示します。</string>
 

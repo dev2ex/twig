@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">Klasörlerdeki doğrudan alt klasör ve dosya sayılarını göster.</string>
     <string name="settings_folder_counts_local_only">Yalnızca yerel klasörlerin öğelerini say</string>
     <string name="settings_folder_counts_local_only_desc">Diğer hizmetlerdeki klasörleri de saymak için kapatın. Ek dizin istekleri gerekebilir.</string>
-    <string name="folder_counts_description">Klasörler: %1$d, dosyalar: %2$d</string>
+    <string name="folder_counts_description">Klasörler: %1$s, dosyalar: %2$s</string>
     <string name="info_activity_failed">Bu Activity açılamadı</string>
     <string name="info_app_shortcuts_limited">Android, diğer uygulamaların dinamik kısayollarına erişimi kısıtlar. Yalnızca uygulamada tanımlanan kısayollar gösterilir.</string>
 

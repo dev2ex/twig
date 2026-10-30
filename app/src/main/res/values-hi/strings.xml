@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">फ़ोल्डरों में सीधे मौजूद फ़ोल्डरों और फ़ाइलों की संख्या दिखाएँ।</string>
     <string name="settings_folder_counts_local_only">केवल स्थानीय फ़ोल्डरों के आइटम गिनें</string>
     <string name="settings_folder_counts_local_only_desc">अन्य सेवाओं के फ़ोल्डर भी गिनने के लिए बंद करें। इसके लिए अतिरिक्त अनुरोध हो सकते हैं।</string>
-    <string name="folder_counts_description">फ़ोल्डर: %1$d, फ़ाइलें: %2$d</string>
+    <string name="folder_counts_description">फ़ोल्डर: %1$s, फ़ाइलें: %2$s</string>
     <string name="info_activity_failed">यह Activity खोली नहीं जा सकी</string>
     <string name="info_app_shortcuts_limited">Android दूसरे ऐप्लिकेशन के डायनैमिक शॉर्टकट का ऐक्सेस सीमित करता है। केवल ऐप्लिकेशन में घोषित शॉर्टकट दिखाए जाते हैं।</string>
 

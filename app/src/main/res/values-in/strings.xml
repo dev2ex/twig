@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">Tampilkan jumlah subfolder dan file langsung di dalam folder.</string>
     <string name="settings_folder_counts_local_only">Hitung isi folder lokal saja</string>
     <string name="settings_folder_counts_local_only_desc">Nonaktifkan untuk juga menghitung folder di layanan lain. Ini mungkin memerlukan permintaan direktori tambahan.</string>
-    <string name="folder_counts_description">Folder: %1$d, file: %2$d</string>
+    <string name="folder_counts_description">Folder: %1$s, file: %2$s</string>
     <string name="info_activity_failed">Activity ini tidak dapat dibuka</string>
     <string name="info_app_shortcuts_limited">Android membatasi akses ke pintasan dinamis aplikasi lain. Hanya pintasan yang dideklarasikan oleh aplikasi yang ditampilkan.</string>
 

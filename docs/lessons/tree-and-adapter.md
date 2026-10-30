@@ -441,6 +441,21 @@
   complete and checks abandoned queues and shared subscriptions;
   `DirectoryCountLifecycleTest` covers prefetch, detach and hidden-pane cancellation.
 
+- **SFTP counts still read entire large directories (2026-10-30)**: the count worker
+  used ordinary `list`, which buffers and sorts every entry and reads link targets.
+  `DirectoryCountSource` is an optional count-only capability; SFTP counts directly
+  from READDIR attributes, following links only to distinguish directories, and
+  saturates each category at 1000. Stop early only after both visible categories
+  saturate; stopping after 1000 total entries would invent an exact value for the
+  rarer category. Hidden entries have their own cached totals. SSHJ's filter false
+  means discard, not stop; a private control exception exits its scan and closes
+  the directory handle. Catch that exception inside the retry boundary so stopping
+  does not tear down a shared connection. Transport retries reset the accumulator.
+  Ordinary listings always remain complete for browsing, transfers and comparison.
+  `SftpFileSystemTest` checks fewer READDIR requests, cancellation, connection reuse,
+  mounted roots, symlinks and hidden/rare categories; count accessibility uses the
+  same capped labels as the visible row.
+
 - **Counts loaded in reverse or arbitrary row order (2026-10-30)**: LIFO preferred
   the last attached row, and pane activation iterated a holder HashSet. Count jobs
   now read their subscribers' live adapter positions before dispatch, choosing the

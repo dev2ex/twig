@@ -13,6 +13,8 @@ import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider
 import org.apache.sshd.server.session.ServerSession
 import org.apache.sshd.sftp.server.SftpEventListener
+import org.apache.sshd.sftp.server.DirectoryHandle
+import org.apache.sshd.sftp.SftpModuleProperties
 import org.apache.sshd.sftp.server.SftpSubsystemFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -36,6 +38,7 @@ class SftpFileSystemTest {
 
     @Volatile private var dropAfterCreate = false
     private val sessions = AtomicInteger()
+    private val directoryReads = AtomicInteger()
 
     @Before
     fun setup() {
@@ -50,6 +53,9 @@ class SftpFileSystemTest {
             subsystemFactories = listOf(
                 SftpSubsystemFactory().apply {
                     addSftpEventListener(object : SftpEventListener {
+                        override fun readingEntries(session: ServerSession, remoteHandle: String, handle: DirectoryHandle) {
+                            directoryReads.incrementAndGet()
+                        }
                         override fun created(session: ServerSession, path: Path, attrs: MutableMap<String, *>, thrown: Throwable?) {
                             // Simulates "the request landed, the reply never made it back"
                             if (thrown == null && dropAfterCreate) {
@@ -89,6 +95,63 @@ class SftpFileSystemTest {
         val text = fs.openInput(XFile("sftp", "/hello.txt", false))
             .bufferedReader().use { it.readText() }
         assertEquals("hi-sftp", text)
+    }
+
+    @Test
+    fun countChildrenSaturatesBothKindsWithoutClosingTheConnection() {
+        SftpModuleProperties.MAX_READDIR_DATA_SIZE.set(server, 1024)
+        repeat(120) {
+            File(home, "dir-$it").mkdir()
+            File(home, "file-$it").writeText("")
+        }
+        val counts = fs.countChildren(fs.root(), 2) { true }!!
+        assertEquals(2, counts.directories)
+        assertEquals(2, counts.files)
+        assertEquals(2, counts.visibleDirectories)
+        assertEquals(2, counts.visibleFiles)
+        val connections = sessions.get()
+        val countReads = directoryReads.get()
+        assertEquals(240, fs.list(fs.root()).size)
+        assertTrue("bounded count must stop before an ordinary listing", directoryReads.get() - countReads > countReads)
+        assertEquals(connections, sessions.get())
+    }
+
+    @Test
+    fun countChildrenKeepsTheRareKindExactAndCachesHiddenCountsSeparately() {
+        File(home, "dir").mkdir()
+        File(home, ".hidden-dir").mkdir()
+        repeat(12) { File(home, "file-$it").writeText("") }
+        File(home, ".hidden-file").writeText("")
+        val counts = fs.countChildren(fs.root(), 2) { true }!!
+        assertEquals(2, counts.directories)
+        assertEquals(2, counts.files)
+        assertEquals(1, counts.visibleDirectories)
+        assertEquals(2, counts.visibleFiles)
+    }
+
+    @Test
+    fun countChildrenCanCancelDuringEnumerationAndKeepTheSharedConnection() {
+        repeat(40) { File(home, "file-$it").writeText("") }
+        var checks = 0
+        assertNull(fs.countChildren(fs.root(), 1000) { ++checks < 8 })
+        assertEquals(9, checks)
+        val connections = sessions.get()
+        assertEquals(40, fs.list(fs.root()).size)
+        assertEquals(connections, sessions.get())
+    }
+
+    @Test
+    fun countChildrenFollowsDirectoryLinksAndHonorsTheMountedRoot() {
+        File(home, "mounted/dir").mkdirs()
+        File(home, "mounted/file").writeText("")
+        File(home, "outside").writeText("")
+        Files.createSymbolicLink(File(home, "mounted/link").toPath(), Path.of("dir"))
+        val sub = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "mounted"))
+        try {
+            val counts = sub.countChildren(sub.root(), 1000) { true }!!
+            assertEquals(2, counts.directories)
+            assertEquals(1, counts.files)
+        } finally { sub.disconnect() }
     }
 
     @Test

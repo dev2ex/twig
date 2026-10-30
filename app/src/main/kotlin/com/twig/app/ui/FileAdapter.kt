@@ -1367,7 +1367,7 @@ class FileAdapter(
             bindCount(b.directoryCount, R.drawable.ic_count_folder, count.directories)
             bindCount(b.fileCount, R.drawable.ic_count_file, count.files)
             b.folderCounts.contentDescription = b.root.context.getString(R.string.folder_counts_description,
-                count.directories, count.files)
+                b.directoryCount.text, b.fileCount.text)
             b.folderCounts.visibility = View.VISIBLE
             b.metaRow.visibility = View.VISIBLE
         }

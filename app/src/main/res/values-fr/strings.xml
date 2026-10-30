@@ -887,7 +887,7 @@
     <string name="settings_folder_counts_desc">Afficher le nombre de sous-dossiers et fichiers directs.</string>
     <string name="settings_folder_counts_local_only">Compter les éléments des dossiers locaux uniquement</string>
     <string name="settings_folder_counts_local_only_desc">Désactiver pour compter aussi les dossiers des autres services. Cela peut nécessiter des requêtes supplémentaires.</string>
-    <string name="folder_counts_description">Dossiers : %1$d, fichiers : %2$d</string>
+    <string name="folder_counts_description">Dossiers : %1$s, fichiers : %2$s</string>
     <string name="info_activity_failed">Impossible d’ouvrir cette Activity</string>
     <string name="info_app_shortcuts_limited">Android limite l’accès aux raccourcis dynamiques des autres applications. Seuls les raccourcis déclarés par l’application sont affichés.</string>
 

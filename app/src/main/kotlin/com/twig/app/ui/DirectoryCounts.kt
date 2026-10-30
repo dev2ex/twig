@@ -7,6 +7,7 @@ import android.view.View
 import com.twig.app.Format
 import com.twig.app.R
 import com.twig.core.FsRegistry
+import com.twig.core.DirectoryCountSource
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import java.util.ArrayDeque
@@ -186,6 +187,13 @@ object DirectoryCounts {
             val result = runCatching {
                 check(job.active.get())
                 val fs = FsRegistry.of(job.file)
+                if (fs is DirectoryCountSource) {
+                    val count = fs.countChildren(job.file, 1000) { job.active.get() }
+                    return@runCatching count?.let {
+                        Entry(Count(it.directories, it.files), Count(it.visibleDirectories, it.visibleFiles),
+                            job.file.lastModified, SystemClock.elapsedRealtime())
+                    }
+                }
                 // Local counts need only names/types; check for abandoned work between entries.
                 val children = if (fs is LocalFileSystem) fs.listForSize(job.file) {
                     check(job.active.get())

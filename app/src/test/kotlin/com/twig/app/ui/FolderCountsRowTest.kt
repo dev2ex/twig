@@ -137,6 +137,9 @@ class FolderCountsRowTest {
             assertEquals(if (value.files == 0) View.INVISIBLE else View.VISIBLE, files.visibility)
             assertEquals(labels[index].first, directories.text.toString())
             assertEquals(labels[index].second, files.text.toString())
+            assertEquals(row.context.getString(R.string.folder_counts_description,
+                labels[index].first, labels[index].second),
+                row.findViewById<View>(R.id.folderCounts).contentDescription)
             for (counter in listOf(directories, files)) {
                 val iconWidth = counter.compoundDrawablesRelative[0]!!.bounds.width()
                 assertTrue("999+ and its icon must fit the fixed slot",

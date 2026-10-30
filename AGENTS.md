@@ -176,6 +176,10 @@ its listing size must still describe the followed stream for copy/resume checks.
   processing checks cancellation; an already-running blocking
   backend call may finish, without holding up the local count worker. Ordinary listings
   populate the shared cache, and failed reads stay unknown rather than becoming zero.
+  `DirectoryCountSource` optionally provides streaming count-only enumeration. SFTP
+  checks cancellation per entry, skips unused metadata and stops once both visible
+  counts reach 1000 (`999+`); rarer categories still require reaching the end to be exact.
+  Hidden and all-entry counts are cached separately. Never cap ordinary `list` results.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
   Favorites and websites keep their stored order. Long-pressing either heading offers
