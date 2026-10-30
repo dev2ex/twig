@@ -1113,7 +1113,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     /** Checked states of the toggle items in R.menu.main; shared between the Toolbar menu and the landscape strip's PopupMenu. */
     private fun syncMenuChecks(menu: Menu) {
-        menu.findItem(R.id.action_settings)?.title = "⚙︎  ${getString(R.string.action_settings)}"
+        menu.findItem(R.id.action_settings)?.title = "${getString(R.string.action_settings)}  ⚙︎"
         menu.findItem(R.id.action_remember_location)?.isChecked = Prefs.rememberLocation(this)
         menu.findItem(R.id.action_fullscreen)?.isChecked = Prefs.fullscreen(this)
         menu.findItem(R.id.action_thumbs)?.isChecked = Prefs.thumbs(this)
