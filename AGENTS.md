@@ -797,7 +797,8 @@ add its symptom here.
   the Properties ripple disappearing on the first tap with folder counts enabled,
   fast pane swipes also clicking a node, website refresh firing midway through a fixed-header page,
   webpage video fullscreen buttons doing nothing, website fullscreen adding an extra Back step,
-  batch-rename preview columns shifting until scrolling, content-read errors offered as sync differences.
+  batch-rename preview columns shifting until scrolling, content-read errors offered as sync differences,
+  external multi-file folder taps selecting entries instead of expanding them.
 - **[Website background execution](docs/lessons/website-background.md)** — skipping
   WebView.onPause does not protect a cached host process from Android freezing. Opted-in
   website sessions hold a general foreground service until closed; register from

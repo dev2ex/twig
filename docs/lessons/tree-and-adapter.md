@@ -39,6 +39,15 @@
   long presses and landscape focus restoration;
   `StripWriteActionsTest` retains immediate-transfer and readable-root coverage.
 
+- **External multi-file row selection also selected folders (2026-10-31 review)**:
+  the file-only picker's tap-to-select flag applied to every ordinary tree row,
+  so tapping a folder name checked an entry that confirmation later discarded.
+  In external multi-file mode, only files use row selection; folders keep normal
+  navigation even with an existing selection and the general row-selection preference
+  enabled. Keep the external-mode branch separate from that preference, or it can
+  select folders again once a file is checked. `FileFocusTest` covers both preferences,
+  empty/existing selection and list/grid configurations on API 24 and 34.
+
 - **File picking lacked the destination picker's pane switch and navigation actions
   (2026-10-28)**: `PickerActivity` still used a single-pane layout and configured its
   strip separately. Both pickers now use `view_panes.xml` and `PickerBrowser` for pane

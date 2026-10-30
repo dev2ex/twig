@@ -155,7 +155,9 @@ class FileAdapter(
 
     /** Read selection state at click time: selection payloads deliberately keep listeners intact. */
     private fun clickFileRow(node: PaneViewModel.FileNode, ctx: Context) {
-        if (node.label == null && (selectFilesByRow || selected.isNotEmpty() && Prefs.tapRowToSelect(ctx))) toggleSelection(node)
+        val selectByRow = if (selectFilesByRow) !node.file.isDir
+            else selected.isNotEmpty() && Prefs.tapRowToSelect(ctx)
+        if (node.label == null && selectByRow) toggleSelection(node)
         else onClick(node)
     }
 

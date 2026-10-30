@@ -16,6 +16,37 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [24, 34])
 class FileFocusTest {
+    @Test fun `external multi-file folders navigate with or without selection and row selection preference`() {
+        val host = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            val parent = FrameLayout(ContextThemeWrapper(host.get(), R.style.Theme_Twig))
+            for (tapToSelect in listOf(false, true)) {
+                Prefs.setTapRowToSelect(parent.context, tapToSelect)
+                for (grid in listOf(0, 2)) {
+                    val opened = mutableListOf<PaneViewModel.Node>()
+                    val adapter = FileAdapter(1, { opened.add(it) }, {}, {}, { _, _ -> }, {},
+                        gridMode = grid, selectFilesByRow = true)
+                    val folder = PaneViewModel.FileNode(XFile("file", "/selection/folder", true, canRead = false), 1, true, false)
+                    val file = PaneViewModel.FileNode(XFile("file", "/selection/picked.txt", false, canRead = false), 1, false, false)
+                    adapter.submitList(listOf(folder, file))
+                    val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+                    adapter.bindViewHolder(holder, 0)
+                    holder.itemView.performClick()
+                    assertEquals(listOf(folder), opened)
+                    assertTrue(adapter.selectedItems().isEmpty())
+                    adapter.toggleSelection(file)
+                    holder.itemView.performClick()
+                    assertEquals(listOf(folder, folder), opened)
+                    assertEquals(listOf(file.file), adapter.selectedItems())
+                    assertFalse(adapter.isSelected(folder))
+                }
+            }
+        } finally {
+            Prefs.setTapRowToSelect(host.get(), false)
+            host.pause().stop().destroy()
+        }
+    }
+
     @Test fun `external multi-file mode selects the first row and opens only from the icon`() {
         val host = Robolectric.buildActivity(Activity::class.java).setup()
         try {
