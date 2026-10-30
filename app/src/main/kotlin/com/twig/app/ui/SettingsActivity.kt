@@ -179,6 +179,7 @@ class SettingsActivity : TwigActivity() {
             LanguagePref.displayLabels(this),
             get = { LanguagePref.current() },
             set = { LanguagePref.apply(it) },
+            titleIcon = R.drawable.ic_translate,
         )
         choiceRow(
             getString(R.string.settings_date_format),
@@ -571,6 +572,7 @@ class SettingsActivity : TwigActivity() {
         title: String,
         subtitle: CharSequence?,
         end: View? = null,
+        titleIcon: Int = 0,
         onClick: (() -> Unit)? = null,
     ): Pair<LinearLayout, TextView> {
         val subView = TextView(this).apply {
@@ -593,6 +595,14 @@ class SettingsActivity : TwigActivity() {
                             setTextColor(
                                 ContextCompat.getColor(this@SettingsActivity, R.color.text_primary),
                             )
+                            if (titleIcon != 0) {
+                                val icon = ContextCompat.getDrawable(this@SettingsActivity, titleIcon)?.mutate()
+                                icon?.setTint(currentTextColor)
+                                val size = (20 * dp).toInt()
+                                icon?.setBounds(0, 0, size, size)
+                                setCompoundDrawablesRelative(icon, null, null, null)
+                                compoundDrawablePadding = (6 * dp).toInt()
+                            }
                         },
                     )
                     addView(subView)
@@ -628,9 +638,10 @@ class SettingsActivity : TwigActivity() {
         options: Array<out CharSequence>,
         get: () -> Int,
         set: (Int) -> Unit,
+        titleIcon: Int = 0,
     ): View {
         lateinit var subRef: TextView
-        val (row, sub) = addRow(title, options[get().coerceIn(0, options.size - 1)]) {
+        val (row, sub) = addRow(title, options[get().coerceIn(0, options.size - 1)], titleIcon = titleIcon) {
             AlertDialog.Builder(this)
                 .setTitle(title)
                 .setSingleChoiceItems(options, get()) { dlg, w ->
