@@ -404,6 +404,11 @@ its listing size must still describe the followed stream for copy/resume checks.
   reorders existing views while resetting GridLayout specs; retain listeners and
   orientation changes. Main and picker screens apply the same configuration, with
   pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
+  Duplicate defaults to hidden; tapping copies selected entries into their own parents with
+  `_1`, `_2`, … suffixes, while holding applies the same numbering as an immediate rename.
+  Existing numeric suffixes advance instead of stacking (file_1.txt → file_2.txt). File
+  extensions are retained; dotted directory names stay whole. Duplicate copies use ordinary
+  background transfers and retain their generated names across retries.
   Properties defaults to hidden and toggles the current/checked items; long-press
   requests the second page after metadata finishes loading, falling back to Basic
   for one-page cards. Quit is appended to the default action order and hidden by

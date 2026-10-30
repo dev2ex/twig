@@ -95,6 +95,12 @@
             <TextView style="@style/StripLabel" android:text="@string/strip_copy" />
         </LinearLayout>
 
+        <LinearLayout android:id="@+id/as_duplicate" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_duplicate"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_duplicate" />
+        </LinearLayout>
+
         <LinearLayout android:id="@+id/as_move" style="@style/StripItem">
             <ImageView android:id="@+id/as_move_icon" style="@style/StripIcon" android:src="@drawable/ic_move"
                 android:contentDescription="@null" />

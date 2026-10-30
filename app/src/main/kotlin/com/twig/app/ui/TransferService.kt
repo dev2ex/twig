@@ -88,7 +88,10 @@ object Transfers {
         class Sync(
             val pairs: List<Pair<XFile, XFile>>,
             val move: Boolean,
+            val duplicate: Boolean = false,
         ) : Work() {
+            // Keep generated destinations stable across retries, including partially copied directories.
+            var targetNames: Map<String, String>? = null
             override val items: List<XFile> get() = pairs.map { it.first }
         }
 
@@ -361,6 +364,9 @@ object Transfers {
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                 )
                 is Work.Sync -> {
+                    if (w.duplicate && w.targetNames == null) {
+                        w.targetNames = DuplicateEntries.names(w.pairs) { s.cancelled.get() }
+                    }
                     // Group by destination and move one group at a time. Each group reports
                     // its progress starting from 0; the `base` offset stitches them into a
                     // continuous line — otherwise the bar jumps back every time we switch
@@ -379,6 +385,7 @@ object Transfers {
                         CopyEngine.transfer(
                             srcs, dest, w.move, offset,
                             { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
+                            targetNames = w.targetNames.orEmpty(),
                         )
                         base += lastCopied
                     }

@@ -1171,4 +1171,5 @@
     <string name="settings_unix_permissions_octal_desc">開啟顯示 0755，關閉顯示 rwxr-xr-x。僅影響檔案清單。</string>
     <string name="settings_tap_row_to_select">點擊列選取</string>
     <string name="settings_tap_row_to_select_desc">有選取項目時，點擊列可選取或取消選取，點擊圖示或縮圖開啟。關閉時，只能透過勾選按鈕選取。</string>
+    <string name="strip_duplicate">建立副本</string>
 </resources>

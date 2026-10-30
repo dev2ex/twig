@@ -10,6 +10,7 @@ object StripItems {
         Item("refresh", R.id.as_refresh, R.string.strip_refresh, R.drawable.ic_refresh),
         Item("new_folder", R.id.as_new_folder, R.string.strip_new_folder, R.drawable.ic_new_folder),
         Item("copy", R.id.as_copy, R.string.strip_copy, R.drawable.ic_copy),
+        Item("duplicate", R.id.as_duplicate, R.string.strip_duplicate, R.drawable.ic_duplicate, visibleByDefault = false),
         Item("move", R.id.as_move, R.string.strip_move, R.drawable.ic_move),
         Item("compress", R.id.as_compress, R.string.strip_compress, R.drawable.ic_compress),
         Item("rename", R.id.as_rename, R.string.strip_rename, R.drawable.ic_rename),

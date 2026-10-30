@@ -1249,6 +1249,45 @@ class PaneFragment : Fragment() {
 
     fun canCreateHere(): Boolean = viewModel.currentDir?.isWritableDir() == true
 
+    fun actionDuplicate(rename: Boolean = false) {
+        val files = selectionOrCurrent().distinctBy { it.scheme to it.path }
+        if (files.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (!files.all { it.isMutable() }) return
+        // Snapshot tree parents on the UI thread; opaque SAF paths cannot be sliced.
+        val parents = files.associateWith(viewModel::renameParent)
+        noteSourceDirs(files)
+        val context = requireContext()
+        if (rename) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                var changed = false
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val pairs = DuplicateEntries.parents(context, files, parents)
+                        val names = DuplicateEntries.names(pairs)
+                        BatchRenameDialog.execute(context, files, files.map { names.getValue(it.toUri()) }, parents) {
+                            changed = true
+                        }
+                    }
+                }
+                if (changed) {
+                    adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
+                }
+                result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            }
+        } else {
+            viewLifecycleOwner.lifecycleScope.launch {
+                runCatching { withContext(Dispatchers.IO) { DuplicateEntries.parents(context, files, parents) } }
+                    .onSuccess { pairs ->
+                        launchSession(Transfers.Session(
+                            Transfers.Work.Sync(pairs, move = false, duplicate = true),
+                            R.string.progress_copy, getString(R.string.strip_duplicate), R.drawable.ic_duplicate, null,
+                        ))
+                    }
+                    .onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            }
+        }
+    }
+
     fun actionRename(selectExtension: Boolean = false) {
         val sel = selectionOrCurrent()
         if (sel.isEmpty()) {

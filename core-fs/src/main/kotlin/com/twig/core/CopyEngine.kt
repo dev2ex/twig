@@ -111,10 +111,12 @@ object CopyEngine {
         resolver: ConflictResolver = ConflictResolver { _, _ -> Decision.OVERWRITE },
         plannedBytes: Long = -1, // when the caller has already called plan(), pass it in to avoid a second recursive scan
         checkpoint: TransferCheckpoint? = null,
+        targetNames: Map<String, String> = emptyMap(), // Optional names for top-level entries, keyed by source URI.
     ) {
         checkpoint?.failure = null
         val pending = items.filterNot { checkpoint?.completed?.contains("root:" + checkpoint.key(it, destDir)) == true }
         val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(pending), move, checkpoint)
+        require(targetNames.values.all(::isSafeName)) { "Invalid destination name" }
         val destFs = FsRegistry.of(destDir)
         for (item in items) {
             if (task.cancelled.isCancelled() || task.aborted) break
@@ -128,9 +130,10 @@ object CopyEngine {
             try {
                 // Same file system and no same-name conflict at the destination: prefer
                 // in-place move, saving a full copy.
+                val targetName = targetNames[item.toUri()] ?: item.name
                 if (move && item.scheme == destDir.scheme &&
-                    childrenOf(task, destFs, destDir)[item.name] == null &&
-                    destFs.moveWithin(item, destDir, item.name)
+                    childrenOf(task, destFs, destDir)[targetName] == null &&
+                    destFs.moveWithin(item, destDir, targetName)
                 ) {
                     checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
                     listener?.onItemDone(item.isDir)
@@ -142,7 +145,7 @@ object CopyEngine {
                 val source = if (needsRefresh && !item.isDir) {
                     FsRegistry.of(item).stat(item.path) ?: throw FsException("Source unavailable: ${item.name}")
                 } else item
-                val complete = copyRecursive(source, destDir, task)
+                val complete = copyRecursive(source, destDir, task, targetName)
                 if (move && complete) FsRegistry.of(item).delete(item)
                 if (complete) checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
             } catch (t: Throwable) {
@@ -158,14 +161,14 @@ object CopyEngine {
     }
 
     /** @return whether the copy completed cleanly (no skips / cancels); `move` uses this to decide whether to delete the source. */
-    private fun copyRecursive(src: XFile, destDir: XFile, task: Task): Boolean {
+    private fun copyRecursive(src: XFile, destDir: XFile, task: Task, targetName: String = src.name): Boolean {
         if (task.checkpoint?.isSkipped(src, destDir) == true) {
             skipItem(src, task)
             return false // A move must keep the source directory containing this entry.
         }
         val checkpoint = task.checkpoint
         val key = checkpoint?.key(src, destDir)
-        val name = checkpoint?.partials?.get(key)?.name ?: checkpoint?.outputs?.get(key)?.name ?: src.name
+        val name = checkpoint?.partials?.get(key)?.name ?: checkpoint?.outputs?.get(key)?.name ?: targetName
         val attempt = TransferCheckpoint.Failure(src, destDir, name)
         return try {
             copyEntry(src, destDir, task, attempt)
@@ -191,12 +194,12 @@ object CopyEngine {
         val srcFs = FsRegistry.of(src)
         val destFs = FsRegistry.of(destDir)
         val siblings = childrenOf(task, destFs, destDir)
-        val existing = siblings[src.name]
+        val existing = siblings[attempt.targetName]
 
         if (src.isDir) {
             // Same-name directory: merge into the existing directory directly.
             val newDir = if (existing?.isDir == true) existing
-            else destFs.mkdir(destDir, src.name).also { siblings[it.name] = it }
+            else destFs.mkdir(destDir, attempt.targetName).also { siblings[it.name] = it }
             attempt.targetName = newDir.name
             var complete = true
             for (child in srcFs.list(src)) {
@@ -223,7 +226,7 @@ object CopyEngine {
         }
         if (key != null) checkpoint.completed.remove(key)
         val rememberedPartial = checkpoint?.partials?.get(key)
-        var name = rememberedPartial?.name ?: savedOutput?.name ?: src.name
+        var name = rememberedPartial?.name ?: savedOutput?.name ?: attempt.targetName
         attempt.targetName = name
         val collision = siblings[name]
         val approved = rememberedPartial?.replacing

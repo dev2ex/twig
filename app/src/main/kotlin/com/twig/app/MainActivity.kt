@@ -516,6 +516,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asRefresh.setOnLongClickListener { activePane()?.actionRefreshThumbnails(); true }
         s.asNewFolder.setOnLongClickListener { activePane()?.actionNewTextFile(); true }
         s.asCopy.setOnLongClickListener { activePane()?.actionCopy(move = false, immediate = true); true }
+        s.asDuplicate.setOnLongClickListener { activePane()?.actionDuplicate(rename = true); true }
         s.asMove.setOnLongClickListener { activePane()?.actionCopy(move = true, immediate = true); true }
         s.asCompress.setOnLongClickListener { activePane()?.actionCompress(immediate = true); true }
         s.asRename.setOnLongClickListener { activePane()?.actionRename(selectExtension = true); true }
@@ -541,6 +542,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asRefresh.setOnClickListener { activePane()?.actionRefresh() }
         s.asNewFolder.setOnClickListener { activePane()?.actionNewFolder() }
         s.asCopy.setOnClickListener { activePane()?.actionCopy(move = false) }
+        s.asDuplicate.setOnClickListener { activePane()?.actionDuplicate() }
         s.asMove.setOnClickListener { activePane()?.actionCopy(move = true) }
         s.asCompress.setOnClickListener { activePane()?.actionCompress() }
         s.asRename.setOnClickListener { activePane()?.actionRename() }
@@ -911,6 +913,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             setStripEnabled(s.asNewFolder, actions.create)
             setStripEnabled(s.asCopy, actions.copy && !choosing)
             setStripEnabled(s.asCompress, actions.copy && !choosing)
+            setStripEnabled(s.asDuplicate, actions.rename && !choosing)
             setStripEnabled(s.asMove, actions.move && !choosing)
             setStripEnabled(s.asRename, actions.rename && !choosing)
             setStripEnabled(s.asDelete, actions.delete && !choosing)

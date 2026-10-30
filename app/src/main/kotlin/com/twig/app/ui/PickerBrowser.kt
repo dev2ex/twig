@@ -31,6 +31,7 @@ internal class PickerBrowser(
             strip.asCompress.visibility = View.GONE
             strip.asShare.visibility = View.GONE
             strip.asCopy.visibility = View.GONE
+            strip.asDuplicate.visibility = View.GONE
             strip.asMove.visibility = View.GONE
             strip.asRename.visibility = View.GONE
             strip.asDelete.visibility = View.GONE

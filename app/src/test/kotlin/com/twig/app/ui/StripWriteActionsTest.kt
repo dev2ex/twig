@@ -304,4 +304,66 @@ class StripWriteActionsTest {
         dialog.dismiss()
     }
 
+    @Test
+    fun `duplicate is hidden by default and follows writable selection`() {
+        assertFalse(com.twig.app.Prefs.stripItemVisible(activity, "duplicate"))
+        for (strip in listOf(R.id.strip_left, R.id.strip_mid, R.id.strip_right)) {
+            assertEquals(View.GONE, activity.findViewById<View>(strip).findViewById<View>(R.id.as_duplicate).visibility)
+        }
+        val adapter = adapterOf(pane0())
+        val file = XFile("file", "/source/a.txt", isDir = false)
+        adapter.submitList(listOf(PaneViewModel.FileNode(file, 1, false, false)))
+        awaitList(adapter, 1)
+        adapter.setSelection(listOf(file))
+        assertStrip(R.id.as_duplicate, true)
+        adapter.clearSelection()
+        assertStrip(R.id.as_duplicate, false)
+    }
+
+    private fun awaitCondition(condition: () -> Boolean) {
+        repeat(300) {
+            idle()
+            if (condition()) return
+            Thread.sleep(10)
+        }
+        assertTrue("background operation did not finish", condition())
+    }
+
+    @Test
+    fun `duplicate copies in place and long press renames without a dialog`() {
+        val dir = java.io.File(activity.cacheDir, "duplicate-test").apply { mkdirs() }
+        val original = java.io.File(dir, "photo.jpg").apply { writeText("image") }
+        java.io.File(dir, "PHOTO_1.jpg").writeText("keep")
+        val source = XFile("file", original.path, false, original.length())
+        val adapter = adapterOf(pane0())
+        fun select() {
+            adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+            awaitList(adapter, 1)
+            adapter.setSelection(listOf(source))
+        }
+        select()
+        FileClipboard.put(listOf(source))
+        val button = activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_duplicate)
+        button.performClick()
+        awaitCondition { Transfers.active != null }
+        val session = requireNotNull(Transfers.active)
+        assertTrue((session.work as Transfers.Work.Sync).duplicate)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start(); worker.join(5000)
+        idle()
+        assertFalse(worker.isAlive)
+        assertTrue(session.finished?.isSuccess == true)
+        assertEquals("image", java.io.File(dir, "photo_2.jpg").readText())
+        assertEquals("image", original.readText())
+        assertEquals("keep", java.io.File(dir, "PHOTO_1.jpg").readText())
+        assertEquals(listOf(source), FileClipboard.items)
+        Transfers.consumeFinished()
+        select()
+        assertTrue(button.performLongClick())
+        awaitCondition { !original.exists() }
+        assertEquals("image", java.io.File(dir, "photo_3.jpg").readText())
+        assertEquals("image", java.io.File(dir, "photo_2.jpg").readText())
+        FileClipboard.clear()
+    }
+
 }

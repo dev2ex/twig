@@ -1172,4 +1172,5 @@
     <string name="settings_unix_permissions_octal_desc">चालू: 0755; बंद: rwxr-xr-x। केवल फ़ाइल सूचियों पर लागू।</string>
     <string name="settings_tap_row_to_select">चुनने के लिए पंक्ति पर टैप करें</string>
     <string name="settings_tap_row_to_select_desc">कोई आइटम चुना होने पर पंक्ति पर टैप करके चुनें या चयन हटाएँ। खोलने के लिए आइकन या थंबनेल पर टैप करें। बंद होने पर केवल चेक बटन से चुनें।</string>
+    <string name="strip_duplicate">डुप्लिकेट</string>
 </resources>

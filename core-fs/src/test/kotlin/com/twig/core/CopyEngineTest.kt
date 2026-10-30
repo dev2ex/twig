@@ -193,6 +193,38 @@ class CopyEngineTest {
     private fun srcFile(path: String) = src.resolve(path)
     private fun dstRoot() = dst.root()
 
+    @Test
+    fun sameDirectoryCopyUsesExplicitRootNamesAndKeepsNestedNames() {
+        src.put("/photo.jpg", "original")
+        src.put("/album.old/song.mp3", "music")
+        val files = listOf(srcFile("/photo.jpg"), srcFile("/album.old"))
+        CopyEngine.transfer(files, src.root(), move = false, targetNames = mapOf(
+            files[0].toUri() to "photo (1).jpg", files[1].toUri() to "album.old (1)",
+        ))
+        assertEquals("original", src.text("/photo.jpg"))
+        assertEquals("original", src.text("/photo (1).jpg"))
+        assertEquals("music", src.text("/album.old/song.mp3"))
+        assertEquals("music", src.text("/album.old (1)/song.mp3"))
+        assertFalse(src.dirs.contains("/album.old/album.old (1)"))
+    }
+
+    @Test
+    fun numberedDirectoryRetryKeepsItsDestinationAndSource() {
+        src.put("/album/song.mp3", "complete music", time = 1000L)
+        val directory = srcFile("/album")
+        val names = mapOf(directory.toUri() to "album (1)")
+        val checkpoint = TransferCheckpoint()
+        src.failAfter = 3
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(directory), src.root(), false, checkpoint = checkpoint, targetNames = names)
+        }
+        src.failAfter = null
+        CopyEngine.transfer(listOf(directory), src.root(), false, checkpoint = checkpoint, targetNames = names)
+        assertEquals("complete music", src.text("/album/song.mp3"))
+        assertEquals("complete music", src.text("/album (1)/song.mp3"))
+        assertFalse(src.dirs.contains("/album (2)"))
+    }
+
     // ---- Basics ----
 
     @Test
