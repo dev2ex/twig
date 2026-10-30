@@ -184,6 +184,9 @@ its listing size must still describe the followed stream for copy/resume checks.
   wait. Streaming/local entry processing checks it; late blocking results are discarded.
   Timeouts keep existing cache entries, deliver no zero and share the failure cooldown.
   Ordinary expansion/refresh listings can still populate counts after any duration.
+  Confirmed empty directories hide their row chevron across supported backends,
+  retaining click/destination behavior and arrows for synthetic children. Reuse
+  ordinary listings even with counts disabled; extra nonlocal probes remain opt-in.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
   Favorites and websites keep their stored order. Long-pressing either heading offers

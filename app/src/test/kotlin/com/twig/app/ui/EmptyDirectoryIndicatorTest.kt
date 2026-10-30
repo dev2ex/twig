@@ -26,6 +26,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSystemClock
+import java.time.Duration
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -93,14 +95,64 @@ class EmptyDirectoryIndicatorTest {
         assertEquals(View.VISIBLE, indicator(bind(adapter(), node.copy(expanded = true, hasVirtualChildren = true))).visibility)
     }
 
-    @Test fun `nonlocal empty directories keep the arrow even with counts enabled`() {
-        Prefs.setFolderCounts(app, true)
-        for (scheme in listOf("smb-test", "sftp-test", "saf", "zip")) {
-            val file = dir.copy(scheme = scheme)
-            DirectoryCounts.remember(file, emptyList())
-            assertEquals(scheme, View.VISIBLE,
-                indicator(bind(adapter(), PaneViewModel.FileNode(file, 1, true, false))).visibility)
+    @Test fun `known nonlocal empty directories hide the arrow even with counts disabled`() {
+        for (enabled in listOf(false, true)) {
+            Prefs.setFolderCounts(app, enabled)
+            Prefs.setFolderCountsLocalOnly(app, false)
+            for (scheme in listOf("smb-test", "sftp-test", "saf", "zip")) {
+                val file = dir.copy(scheme = scheme)
+                DirectoryCounts.remember(file, emptyList())
+                val node = PaneViewModel.FileNode(file, 1, true, false)
+                assertEquals(scheme, View.INVISIBLE, indicator(bind(adapter(), node)).visibility)
+                assertEquals(scheme, View.VISIBLE,
+                    indicator(bind(adapter(), node.copy(hasVirtualChildren = true))).visibility)
+            }
         }
+    }
+
+    @Test fun `remote hidden entries follow visibility and disabled counts do not start probes`() {
+        Prefs.setFolderCounts(app, false)
+        val file = dir.copy(scheme = "sftp-empty-test")
+        val reads = AtomicInteger()
+        val fake = FakeFileSystem(file.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> { reads.incrementAndGet(); return emptyList() }
+        })
+        try {
+            val node = PaneViewModel.FileNode(file, 1, true, false)
+            assertEquals(View.VISIBLE, indicator(bind(adapter(), node)).visibility)
+            DirectoryCounts.remember(file, listOf(file.copy(path = file.path + "/.hidden", isDir = false)))
+            Prefs.setShowHidden(app, false)
+            assertEquals(View.INVISIBLE, indicator(bind(adapter(), node)).visibility)
+            Prefs.setShowHidden(app, true)
+            assertEquals(View.VISIBLE, indicator(bind(adapter(), node)).visibility)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(0, reads.get())
+        } finally { FsRegistry.unregister(file.scheme) }
+    }
+
+    @Test fun `remote failed and timed out probes retain arrows but successful empty probes hide them`() {
+        Prefs.setFolderCounts(app, true)
+        Prefs.setFolderCountsLocalOnly(app, false)
+        val scheme = "sftp-empty-test"
+        val fake = FakeFileSystem(scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                if (dir.path == "/failure") error("permission denied")
+                if (dir.path == "/timeout") ShadowSystemClock.advanceBy(Duration.ofSeconds(3))
+                return emptyList()
+            }
+        })
+        try {
+            for (path in listOf("/failure", "/timeout", "/empty")) {
+                val file = XFile(scheme, path, true)
+                val holder = bind(adapter(), PaneViewModel.FileNode(file, 1, true, false))
+                await { DirectoryCounts.isIdle() }
+                assertEquals(path, if (path == "/empty") View.INVISIBLE else View.VISIBLE,
+                    indicator(holder).visibility)
+                if (path != "/empty") assertNull(DirectoryCounts.known(file, false))
+            }
+        } finally { FsRegistry.unregister(scheme) }
     }
 
     @Test fun `one pending listing supplies both the arrow and enabled counts and is cached across toggles`() {
@@ -185,6 +237,36 @@ class EmptyDirectoryIndicatorTest {
             assertNull(DirectoryCounts.known(dir, false))
             assertEquals(View.VISIBLE, indicator(holder).visibility)
         } finally { release.countDown() }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun `ordinary remote expansion and refresh update arrows with counts disabled`() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val file = dir.copy(scheme = "sftp-empty-expansion")
+        val dirs = mutableMapOf(file.path to emptyList<String>())
+        val fs = FakeFileSystem(file.scheme, dirs)
+        FsRegistry.register(fs)
+        Prefs.setFolderCounts(app, false)
+        try {
+            val vm = PaneViewModel(app).apply { io = dispatcher; lockRoot = file }
+            vm.refreshTree()
+            fun row() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().first()
+            vm.toggle(row())
+            advanceUntilIdle()
+            assertEquals(DirectoryCounts.Count(0, 0), DirectoryCounts.known(file, false))
+            assertEquals(View.INVISIBLE, indicator(bind(adapter(), row())).visibility)
+            dirs[file.path] = listOf("child")
+            dirs[file.path + "/child"] = emptyList()
+            vm.refreshOnResume()
+            advanceUntilIdle()
+            assertEquals(DirectoryCounts.Count(1, 0), row().directoryCount)
+            assertEquals(View.VISIBLE, indicator(bind(adapter(), row())).visibility)
+            assertEquals(listOf(file.path, file.path), fs.listed)
+        } finally {
+            Dispatchers.resetMain()
+            FsRegistry.unregister(file.scheme)
+        }
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

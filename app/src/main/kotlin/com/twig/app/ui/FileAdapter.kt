@@ -1072,18 +1072,18 @@ class FileAdapter(
             val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
             val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
             val localDirectory = file.scheme == "file" && file.isDir
-            if (showCounts || localDirectory) {
+            if (DirectoryCounts.supports(file)) {
                 fun applyCount(count: DirectoryCounts.Count) {
                     if (showCounts) setCounts(count)
                     // Keep the row clickable as a destination even when there is nothing to expand.
                     // Synthetic children (search, Git, access hints) must keep their indicator.
-                    if (localDirectory && !node.loading && !node.hasVirtualChildren) {
+                    if (!node.loading && !node.hasVirtualChildren) {
                         setIndicator(if (node.expandable && (count.directories > 0 || count.files > 0))
                             node.expanded else null)
                     }
                 }
                 (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::applyCount)
-                if (!node.loading && directoryCountsActive && this in attachedCountRows) {
+                if ((showCounts || localDirectory) && !node.loading && directoryCountsActive && this in attachedCountRows) {
                     val owner = if (showCounts) b.folderCounts else b.indicator
                     DirectoryCounts.release(if (showCounts) b.indicator else b.folderCounts)
                     DirectoryCounts.request(owner, file, Prefs.showHidden(ctx), order = {

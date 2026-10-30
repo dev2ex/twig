@@ -136,7 +136,8 @@
   this shared cache. Hidden entries follow the display setting. Unknown/failed reads
   retain the arrow, and search/Git/restic/access-hint children keep it even with zero
   visible files. Empty rows remain clickable destinations. Remote and archive rows
-  retain their existing indicators. Both callback owner views release their
+  also reuse confirmed counts to hide empty indicators (2026-10-30), without extra
+  nonlocal probes when counts are disabled. Both callback owner views release their
   subscriptions on detach and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
   setting toggles, failures, recycled rows and ordinary listing/refresh reuse.
 
@@ -155,8 +156,8 @@
   rows release their subscriptions. The setting defaults off and participates in `uiSignature`.
   A subordinate local-only setting defaults on; disabling it enables counts on other
   services too, excluding Jellyfin/Emby media trees (2026-10-29). Gate rendering and
-  listing-cache reuse with the same scope,
-  while local empty-folder indicators remain independent. Both settings participate in
+  additional probes with the same scope, while cached empty-folder indicators remain
+  independent. Both settings participate in
   `uiSignature` and configuration backups.
   `DirectoryCountsTest` / `FolderCountsRowTest` cover actual local reads, backend listing reuse,
   hidden entries, failure, stale callbacks, rendering and updates after resume. The weighted
@@ -477,3 +478,13 @@
   expansion/refresh supersedes the failure without a deadline. Tests advance the
   clock across the exact three-second boundary, check independent queued budgets,
   reject late empty results, and verify retry and ordinary-listing recovery.
+
+- **Remote empty folders kept their expand arrow (2026-10-30)**: count callbacks
+  updated indicators only for the local scheme, even after a successful remote
+  count confirmed zero visible children. Apply known counts to every supported
+  directory, retaining loading/synthetic-child guards and click behavior. Ordinary
+  expansion and refresh now cache counts independently of the count display setting;
+  remote probes still require opting into counts for that source. Failures/timeouts
+  stay unknown with their arrow. Tests cover remote/archive cached counts, hidden
+  entries, synthetic children, live failures/timeouts, no extra disabled-scope probes,
+  and remote ordinary-listing recovery with counts disabled on API 24 and 34.
