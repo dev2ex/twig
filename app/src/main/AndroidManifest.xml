@@ -97,6 +97,7 @@
              installed but the app says it's not" — package visibility keeps
              it out of our view entirely. -->
         <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="com.hamondev.shevery" />
     </queries>
 
     <!-- ★ android:usesCleartextTraffic below is deliberate, and F-Droid's scanner reports it

@@ -249,3 +249,11 @@
   from API 26, so symlinks/older systems use ordinary ls first, then the privileged
   fallback if needed. Unknown modes, owners and contexts must never become zero/root
   defaults. Keep the existing millisecond listing mtime used by resume/cache identities.
+
+- **Compatible Shizuku managers rejected before connection (2026-10-30, #35)**:
+  Shevery changes the manager package to `com.hamondev.shevery`. Checking only the
+  official package blocked an already-authorized, live service with “not installed”.
+  A live Binder takes precedence over package detection; known manager packages are
+  queried only to distinguish installed-but-stopped from missing. Both package names
+  are declared in manifest queries. Permission checks and the shared shell connection
+  remain mandatory. `ShizukuAvailabilityTest` covers absent, stopped and live cases.
