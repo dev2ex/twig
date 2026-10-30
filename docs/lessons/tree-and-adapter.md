@@ -380,3 +380,10 @@
   must not accidentally turn a page. Ordinary double-tap mode cycling, long presses,
   one-finger panning and fresh page swipes remain supported. `ImageGestureTest` feeds
   real single/multiple-pointer events and advances long-press timers on API 24/34.
+
+- **Invisible remote/keyboard focus (2026-10-30, #41)**: file rows and grid cells
+  shared a background with only `state_activated` (multi-selection). Neither layout
+  explicitly opted into keyboard focus on older Android versions. Both now accept
+  focus, with a separate focused border taking precedence over the selection fill.
+  Keep focus distinct from selection; requesting focus must not check a file.
+  `FileFocusTest` checks both layouts and remote confirmation on API 24 and 34.

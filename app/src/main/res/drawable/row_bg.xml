@@ -1,4 +1,11 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Keyboard/remote focus is independent of multi-selection. Keep its border visible on selected rows. -->
+    <item android:state_focused="true">
+        <shape>
+            <solid android:color="@color/selected" />
+            <stroke android:width="2dp" android:color="@color/action_text" />
+        </shape>
+    </item>
     <item android:state_activated="true" android:drawable="@color/selected" />
     <item>
         <!-- A shape can defer theme resolution; a selector's drawable attribute cannot. -->
