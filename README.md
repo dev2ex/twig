@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.17.0-beta.1** (versionCode 315) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.17.0-beta.2** (versionCode 316) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -240,6 +240,9 @@ The compression dialog remembers the last ZIP/7Z format across launches, even if
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
   files through the system chooser. The path bar shows the checked-item count.
+- Choose copy/move destinations directly in the opposite pane. Optionally tap rows to
+  toggle selection once items are checked; external multi-file pickers select by tapping.
+  Enable the hidden **Duplicate** action to make numbered copies, or hold it to rename.
 - **Retry failed transfers** from the failure dialog, or skip the failing item and
   continue. Completed files are retained; local, FTP, SFTP and SMB destinations can
   resume partial writes when source size and modification time are known.
@@ -449,8 +452,9 @@ all work the same way.
 - Hex viewer with virtual scrolling, a draggable scrollbar and text/HEX search
 - **PDF reader** on the platform renderer: continuous or single-page scrolling,
   double-tap to crop the page margins away, text selection, and full-text search
-  where the system provides it (Android 15+)
-- Image viewer with downsampling, horizontal or vertical swipes to switch images,
+  where the system provides it (Android 15+). Encrypted PDFs can be opened on
+  Android 15+, with optional password memory
+- Static SVG viewing with sharp zoom. Image viewer with downsampling, horizontal or vertical swipes to switch images,
   plus a slideshow that starts on the first image found while still scanning
 - **Video/audio player** (media3 + FFmpeg software decoding) supporting AVI,
   M2TS, HDMV audio tracks and PGS subtitles, with two-stage
@@ -846,5 +850,10 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   buttons; M3U/directory playlist imports; Unix properties and symbolic-link targets.
   Configurable Back behavior and subtitle appearance, video control auto-hide, dual-pane
   file picking and remote selection preparation; folder count and trash improvements.
+
+- **1.17.0-beta.2** — Preview: encrypted PDFs on Android 15+, static SVG viewing,
+  opposite-pane copy/move destination selection, tap-to-select and numbered duplicates.
+  Permission notation choices and configuration resets; improved folder counts, focus,
+  OLED contrast and Shizuku detection.
 
 </details>
