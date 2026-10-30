@@ -71,6 +71,17 @@ class BackupTest {
     }
 
     @Test
+    fun `permission format choice survives configuration backup`() {
+        assertTrue(Prefs.unixPermissionsOctal(ctx))
+        Prefs.setUnixPermissionsOctal(ctx, false)
+        val raw = export(null)
+        freshDevice()
+        assertTrue(Prefs.unixPermissionsOctal(ctx))
+        Backup.import(ctx, raw, null)
+        assertFalse(Prefs.unixPermissionsOctal(ctx))
+    }
+
+    @Test
     fun `remembered PDF passwords are encrypted and survive backup on another device`() {
         val key = "file:/sdcard/secret.pdf"
         Prefs.setPdfPassword(ctx, key, "pdf-secret")

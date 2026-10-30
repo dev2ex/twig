@@ -1196,4 +1196,6 @@
     <string name="pdf_password_retry">密码未被接受，或此 PDF 使用了不支持的加密方式。请重试。</string>
     <string name="pdf_password_unsupported">此 PDF 需要密码或使用了不支持的加密方式。当前 Android 版本无法在 Twig 中解锁，请尝试其他 PDF 应用。</string>
     <string name="dialog_reset">重置</string>
+    <string name="settings_unix_permissions_octal">八进制显示权限</string>
+    <string name="settings_unix_permissions_octal_desc">开启显示 0755，关闭显示 rwxr-xr-x。仅影响文件列表。</string>
 </resources>

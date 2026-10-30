@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">Destino: %1$s</string>
     <string name="transfer_skip_failed">Omitir este elemento</string>
     <string name="dialog_reset">Restablecer</string>
+    <string name="settings_unix_permissions_octal">Mostrar permisos en octal</string>
+    <string name="settings_unix_permissions_octal_desc">Activado: 0755; desactivado: rwxr-xr-x. Solo afecta a las listas de archivos.</string>
 </resources>

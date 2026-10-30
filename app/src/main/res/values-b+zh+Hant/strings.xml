@@ -1165,4 +1165,6 @@
     <string name="transfer_failed_target">目標：%1$s</string>
     <string name="transfer_skip_failed">略過此項目</string>
     <string name="dialog_reset">重設</string>
+    <string name="settings_unix_permissions_octal">以八進位顯示權限</string>
+    <string name="settings_unix_permissions_octal_desc">開啟顯示 0755，關閉顯示 rwxr-xr-x。僅影響檔案清單。</string>
 </resources>

@@ -1170,4 +1170,6 @@
     <string name="transfer_failed_target">الوجهة: %1$s</string>
     <string name="transfer_skip_failed">تخطي هذا العنصر</string>
     <string name="dialog_reset">إعادة ضبط</string>
+    <string name="settings_unix_permissions_octal">عرض الأذونات بالنظام الثماني</string>
+    <string name="settings_unix_permissions_octal_desc">عند التفعيل: 0755؛ عند الإيقاف: rwxr-xr-x. ينطبق على قوائم الملفات فقط.</string>
 </resources>

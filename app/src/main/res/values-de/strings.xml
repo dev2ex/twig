@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">Ziel: %1$s</string>
     <string name="transfer_skip_failed">Dieses Element überspringen</string>
     <string name="dialog_reset">Zurücksetzen</string>
+    <string name="settings_unix_permissions_octal">Berechtigungen oktal anzeigen</string>
+    <string name="settings_unix_permissions_octal_desc">Ein: 0755; aus: rwxr-xr-x. Gilt nur für Dateilisten.</string>
 </resources>

@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">転送先：%1$s</string>
     <string name="transfer_skip_failed">この項目をスキップ</string>
     <string name="dialog_reset">リセット</string>
+    <string name="settings_unix_permissions_octal">権限を8進数で表示</string>
+    <string name="settings_unix_permissions_octal_desc">オン：0755、オフ：rwxr-xr-x。ファイル一覧のみに適用します。</string>
 </resources>

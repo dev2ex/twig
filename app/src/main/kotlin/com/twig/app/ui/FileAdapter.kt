@@ -818,7 +818,14 @@ class FileAdapter(
             b.folderCounts.alpha = IDLE_CHECK_ALPHA
             b.folderCounts.visibility = View.GONE
             b.permissions.visibility = View.GONE
+            b.folderCounts.layoutParams = (b.folderCounts.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                marginEnd = (8 * dpi).toInt()
+            }
             b.permissions.text = ""
+            b.permissions.setCompoundDrawablesRelative(null, null, null, null)
+            b.permissions.compoundDrawablePadding = 0
+            b.permissions.alpha = b.folderCounts.alpha
+            b.permissions.setTextColor(b.directoryCount.currentTextColor)
             b.permissions.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.folderCounts.contentDescription = null
             b.folderCounts.setTag(R.id.directory_count, null)
@@ -1029,8 +1036,14 @@ class FileAdapter(
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
             if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
             file.unixMode?.takeIf { Prefs.unixPermissions(ctx) }?.let { mode ->
-                b.permissions.text = UnixPermissions.symbolic(mode)
+                val octal = Prefs.unixPermissionsOctal(ctx)
+                b.permissions.text = if (octal) UnixPermissions.octal(mode) else UnixPermissions.symbolic(mode)
+                if (octal) bindMetadataIcon(b.permissions, R.drawable.ic_count_permissions)
                 b.permissions.visibility = View.VISIBLE
+                // Count slots already include spacing; the next metadata icon needs no extra gap.
+                b.folderCounts.layoutParams = (b.folderCounts.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                    marginEnd = 0
+                }
                 // Reserve both count slots for files and pending/empty directory counts too.
                 if (Prefs.folderCountsFor(ctx, file.scheme)) b.folderCounts.visibility = View.INVISIBLE
             }
@@ -1285,14 +1298,18 @@ class FileAdapter(
             }
         }
 
+        private fun bindMetadataIcon(view: android.widget.TextView, res: Int) {
+            val drawable = ContextCompat.getDrawable(b.root.context, res)!!.mutate()
+            drawable.setTint(b.meta.currentTextColor)
+            val edge = (view.textSize * 1.2f).toInt().coerceAtLeast(1)
+            drawable.setBounds(0, 0, edge, edge)
+            view.setCompoundDrawablesRelative(drawable, null, null, null)
+            view.compoundDrawablePadding = (view.textSize * 0.25f).toInt()
+        }
+
         private fun setCounts(count: DirectoryCounts.Count) {
             fun bindCount(view: android.widget.TextView, res: Int, number: Int) {
-                val drawable = ContextCompat.getDrawable(b.root.context, res)!!.mutate()
-                drawable.setTint(b.meta.currentTextColor)
-                val edge = (view.textSize * 1.2f).toInt().coerceAtLeast(1)
-                drawable.setBounds(0, 0, edge, edge)
-                view.setCompoundDrawablesRelative(drawable, null, null, null)
-                view.compoundDrawablePadding = (view.textSize * 0.25f).toInt()
+                bindMetadataIcon(view, res)
                 view.text = number.toString()
                 view.visibility = if (number == 0) View.INVISIBLE else View.VISIBLE
             }

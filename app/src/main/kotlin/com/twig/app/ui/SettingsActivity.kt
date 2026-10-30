@@ -41,6 +41,7 @@ class SettingsActivity : TwigActivity() {
     private val dp get() = resources.displayMetrics.density
 
     private lateinit var folderCountsLocalOnlyRow: View
+    private lateinit var unixPermissionsOctalRow: View
 
     /** Thumbnail sub-item rows (greyed out and disabled when the master switch is off). */
     private val thumbRows = ArrayList<View>()
@@ -218,7 +219,12 @@ class SettingsActivity : TwigActivity() {
         switchRow(
             getString(R.string.settings_unix_permissions), getString(R.string.settings_unix_permissions_desc),
             get = { Prefs.unixPermissions(this) },
-            set = { Prefs.setUnixPermissions(this, it) },
+            set = { Prefs.setUnixPermissions(this, it); applyEnabled() },
+        )
+        unixPermissionsOctalRow = switchRow(
+            getString(R.string.settings_unix_permissions_octal), getString(R.string.settings_unix_permissions_octal_desc),
+            get = { Prefs.unixPermissionsOctal(this) },
+            set = { Prefs.setUnixPermissionsOctal(this, it) },
         )
         switchRow(
             getString(R.string.settings_show_hidden), getString(R.string.settings_show_hidden_desc),
@@ -530,6 +536,7 @@ class SettingsActivity : TwigActivity() {
 
     private fun applyEnabled() {
         folderCountsLocalOnlyRow.visibility = if (Prefs.folderCounts(this)) View.VISIBLE else View.GONE
+        unixPermissionsOctalRow.visibility = if (Prefs.unixPermissions(this)) View.VISIBLE else View.GONE
         val on = Prefs.thumbs(this)
         thumbRows.forEach { row ->
             row.alpha = if (on) 1f else 0.4f

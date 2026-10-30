@@ -1165,4 +1165,6 @@
     <string name="transfer_failed_target">Đích: %1$s</string>
     <string name="transfer_skip_failed">Bỏ qua mục này</string>
     <string name="dialog_reset">Đặt lại</string>
+    <string name="settings_unix_permissions_octal">Hiển thị quyền ở hệ bát phân</string>
+    <string name="settings_unix_permissions_octal_desc">Bật: 0755; tắt: rwxr-xr-x. Chỉ áp dụng cho danh sách tệp.</string>
 </resources>

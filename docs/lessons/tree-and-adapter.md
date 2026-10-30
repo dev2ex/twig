@@ -418,3 +418,10 @@
   their own backgrounds, independent of dialog floating colors. Override AppCompat
   popup/overflow and platform popup styles in the OLED theme. `AppThemeTest`
   checks all three popup routes.
+
+- **Permission display format (2026-10-30, #35)**: file-list permissions default
+  to four octal digits, retaining special bits. The default-on format setting can
+  restore symbolic notation independently of permission visibility. Octal labels
+  reuse the counts' outline-icon sizing/padding and muted text color/opacity;
+  clear recycled compound drawables when switching format or binding an
+  unknown-mode row. Unix properties retain both symbolic and numeric notation.

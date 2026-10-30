@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">Hedef: %1$s</string>
     <string name="transfer_skip_failed">Bu öğeyi atla</string>
     <string name="dialog_reset">Sıfırla</string>
+    <string name="settings_unix_permissions_octal">İzinleri sekizlik göster</string>
+    <string name="settings_unix_permissions_octal_desc">Açık: 0755; kapalı: rwxr-xr-x. Yalnızca dosya listelerine uygulanır.</string>
 </resources>

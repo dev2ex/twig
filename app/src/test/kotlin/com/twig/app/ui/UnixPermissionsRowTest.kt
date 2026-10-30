@@ -31,6 +31,7 @@ class UnixPermissionsRowTest {
         val previous = Prefs.unixPermissions(ctx)
         try {
             assertFalse(Prefs.unixPermissions(ctx))
+            assertTrue(Prefs.unixPermissionsOctal(ctx))
             val signature = Prefs.uiSignature(ctx)
             val file = XFile("file", "/file.bin", false, canRead = false, unixMode = "100755".toInt(8))
             val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
@@ -46,7 +47,15 @@ class UnixPermissionsRowTest {
             assertNotEquals(signature, Prefs.uiSignature(ctx))
             adapter.bindViewHolder(holder, 0)
             assertEquals(View.VISIBLE, permissions.visibility)
+            assertEquals("0755", permissions.text.toString())
+            assertNotNull(permissions.compoundDrawablesRelative[0])
+            val octalSignature = Prefs.uiSignature(ctx)
+            Prefs.setUnixPermissionsOctal(ctx, false)
+            assertNotEquals(octalSignature, Prefs.uiSignature(ctx))
+            adapter.bindViewHolder(holder, 0)
             assertEquals("rwxr-xr-x", permissions.text.toString())
+            assertNull(permissions.compoundDrawablesRelative[0])
+            Prefs.setUnixPermissionsOctal(ctx, true)
             Prefs.setUnixPermissions(ctx, false)
             adapter.bindViewHolder(holder, 0)
             assertEquals(View.GONE, permissions.visibility)
@@ -54,6 +63,7 @@ class UnixPermissionsRowTest {
             assertEquals(signature, Prefs.uiSignature(ctx))
         } finally {
             Prefs.setUnixPermissions(ctx, previous)
+            Prefs.setUnixPermissionsOctal(ctx, true)
             host.pause().stop().destroy()
         }
     }
@@ -91,6 +101,7 @@ class UnixPermissionsRowTest {
                     val metadata = row.findViewById<TextView>(R.id.meta)
                     if (start == null) start = permissions.left
                     assertEquals("text size $textSize, count ${counts[index]}", start, permissions.left)
+                    assertEquals("permission icon follows the fixed count slots without an extra gap", group.right, permissions.left)
                     val baseline = permissions.top + permissions.baseline
                     for (id in listOf(R.id.directoryCount, R.id.fileCount)) {
                         val counter = row.findViewById<TextView>(id)
@@ -122,7 +133,7 @@ class UnixPermissionsRowTest {
             adapter.submitList(listOf(
                 PaneViewModel.FileNode(file, 1, true, false, loading = true, directoryCount = DirectoryCounts.Count(3, 12)),
                 PaneViewModel.FileNode(file.copy(path = "/unknown", unixMode = null), 1, true, false, loading = true),
-                PaneViewModel.FileNode(file.copy(path = "/locked.bin", isDir = false, unixMode = 0, lastModified = 0), 1, false, false),
+                PaneViewModel.FileNode(file.copy(path = "/locked.bin", isDir = false, unixMode = "106755".toInt(8), lastModified = 0), 1, false, false),
             ))
             val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
             parent.addView(holder.itemView)
@@ -133,7 +144,7 @@ class UnixPermissionsRowTest {
             val meta = row.findViewById<TextView>(R.id.meta)
             val metadata = row.findViewById<ViewGroup>(R.id.metaRow)
             assertEquals(View.VISIBLE, permissions.visibility)
-            assertEquals("rwxr-xr-x", permissions.text.toString())
+            assertEquals("0755", permissions.text.toString())
             assertTrue(metadata.indexOfChild(counts) < metadata.indexOfChild(permissions))
             assertTrue(metadata.indexOfChild(permissions) < metadata.indexOfChild(meta))
             for (width in listOf(180, 240, 360)) {
@@ -145,6 +156,11 @@ class UnixPermissionsRowTest {
             }
             val directoryCount = row.findViewById<TextView>(R.id.directoryCount)
             val fileCount = row.findViewById<TextView>(R.id.fileCount)
+            assertEquals(directoryCount.currentTextColor, permissions.currentTextColor)
+            assertEquals(counts.alpha, permissions.alpha)
+            assertEquals(directoryCount.compoundDrawablesRelative[0]!!.bounds,
+                permissions.compoundDrawablesRelative[0]!!.bounds)
+            assertEquals(directoryCount.compoundDrawablePadding, permissions.compoundDrawablePadding)
             val baseline = permissions.top + permissions.baseline
             assertEquals(baseline, counts.top + directoryCount.top + directoryCount.baseline)
             assertEquals(baseline, counts.top + fileCount.top + fileCount.baseline)
@@ -161,9 +177,12 @@ class UnixPermissionsRowTest {
             adapter.bindViewHolder(holder, 1)
             assertEquals(View.GONE, permissions.visibility)
             assertEquals("", permissions.text.toString())
+            assertNull(permissions.compoundDrawablesRelative[0])
+            assertEquals((8 * ctx.resources.displayMetrics.density).toInt(),
+                (counts.layoutParams as ViewGroup.MarginLayoutParams).marginEnd)
             adapter.bindViewHolder(holder, 2)
             assertEquals(View.VISIBLE, permissions.visibility)
-            assertEquals("---------", permissions.text.toString())
+            assertEquals("6755", permissions.text.toString())
             assertEquals(View.INVISIBLE, counts.visibility)
             row.measure(View.MeasureSpec.makeMeasureSpec(360, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))

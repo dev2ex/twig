@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">लक्ष्य: %1$s</string>
     <string name="transfer_skip_failed">यह आइटम छोड़ें</string>
     <string name="dialog_reset">रीसेट करें</string>
+    <string name="settings_unix_permissions_octal">अनुमतियाँ अष्टाधारी में दिखाएँ</string>
+    <string name="settings_unix_permissions_octal_desc">चालू: 0755; बंद: rwxr-xr-x। केवल फ़ाइल सूचियों पर लागू।</string>
 </resources>

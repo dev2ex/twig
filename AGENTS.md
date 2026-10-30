@@ -126,8 +126,11 @@ each write `= null`.
 
 `UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
 Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
-failed reads. `XFile.unixMode` carries the entry's own mode into listings; render it after
-folder counts and before size/time, without bind-time filesystem calls. The independent,
+failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
+folder counts and before size/time, without bind-time filesystem calls.
+`Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic
+notation. Octal labels have an outline shield matching count-icon size, tint and opacity.
+The format choice participates in `uiSignature` and configuration backups. The independent,
 default-off `Prefs.unixPermissions` display setting controls this row only, participates
 in `uiSignature` and is included in configuration backups. The Unix properties tab stays
 available with the setting off. When counts are enabled, reserve both count slots for rows

@@ -1166,4 +1166,6 @@
     <string name="transfer_failed_target">대상: %1$s</string>
     <string name="transfer_skip_failed">이 항목 건너뛰기</string>
     <string name="dialog_reset">초기화</string>
+    <string name="settings_unix_permissions_octal">권한을 8진수로 표시</string>
+    <string name="settings_unix_permissions_octal_desc">켬: 0755, 끔: rwxr-xr-x. 파일 목록에만 적용됩니다.</string>
 </resources>

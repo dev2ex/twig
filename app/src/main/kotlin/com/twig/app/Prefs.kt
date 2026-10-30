@@ -520,6 +520,13 @@ object Prefs {
         sp(ctx).edit().putBoolean("unix_permissions", on).apply()
     }
 
+    /** Compact numeric permission labels by default; independent of whether the row is shown. */
+    fun unixPermissionsOctal(ctx: Context): Boolean = sp(ctx).getBoolean("unix_permissions_octal", true)
+
+    fun setUnixPermissionsOctal(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("unix_permissions_octal", on).apply()
+    }
+
     /** Show hidden files (dotfiles and dot-directories), default off. */
     fun showHidden(ctx: Context): Boolean = sp(ctx).getBoolean("show_hidden", false)
 
@@ -580,7 +587,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */
