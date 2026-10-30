@@ -1067,12 +1067,12 @@
     <string name="website_open_url">Ouvrir une URL</string>
     <string name="website_user_agent_global_hint">Vide = User-Agent global, puis valeur mobile/bureau</string>
     <string name="website_global_settings_hint">Chaque site peut remplacer le User-Agent global. JavaScript, CSS, éléments masqués et blocage des requêtes se combinent aux paramètres globaux. Les options d’affichage servent de valeurs par défaut aux nouveaux sites.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Ajouter NFS</string>
+    <string name="nfs_host">Adresse du serveur NFS</string>
+    <string name="nfs_export">Chemin exporté (ex. /volume1/public)</string>
+    <string name="nfs_version">Version NFS (3 ou 4)</string>
+    <string name="nfs_uid">UID (65534 par défaut)</string>
+    <string name="nfs_gid">GID (65534 par défaut)</string>
     <string name="website_media_permission">Autoriser %1$s à utiliser :</string>
     <string name="website_microphone">Microphone</string>
     <string name="website_camera">Caméra</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">Mot de passe du PDF</string>
     <string name="pdf_password_retry">Le mot de passe a été refusé ou le chiffrement du PDF est incompatible. Réessayez.</string>
     <string name="pdf_password_unsupported">Ce PDF nécessite un mot de passe ou utilise un chiffrement incompatible. Cette version d’Android ne permet pas de le déverrouiller dans Twig. Essayez une autre application PDF.</string>
+    <string name="theme_oled">Noir (OLED)</string>
+    <string name="transfer_retry">Réessayer les éléments inachevés</string>
+    <string name="transfer_retry_detail">Réessaie uniquement les éléments inachevés. Les fichiers terminés sont ignorés et les transferts partiels reprennent si possible.</string>
+    <string name="transfer_failed_target">Destination : %1$s</string>
+    <string name="transfer_skip_failed">Ignorer cet élément</string>
 </resources>

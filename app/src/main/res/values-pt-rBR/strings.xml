@@ -1067,12 +1067,12 @@
     <string name="website_open_url">Abrir URL</string>
     <string name="website_user_agent_global_hint">Vazio = User-Agent global ou padrão móvel/desktop</string>
     <string name="website_global_settings_hint">Cada site pode substituir o User-Agent global. JavaScript, CSS, elementos ocultos e bloqueio de solicitações se combinam com as configurações globais. As opções de exibição são padrões para novos sites.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Adicionar NFS</string>
+    <string name="nfs_host">Endereço do servidor NFS</string>
+    <string name="nfs_export">Caminho de exportação (ex.: /volume1/public)</string>
+    <string name="nfs_version">Versão do NFS (3 ou 4)</string>
+    <string name="nfs_uid">UID (padrão 65534)</string>
+    <string name="nfs_gid">GID (padrão 65534)</string>
     <string name="website_media_permission">Permitir que %1$s use:</string>
     <string name="website_microphone">Microfone</string>
     <string name="website_camera">Câmera</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">Senha do PDF</string>
     <string name="pdf_password_retry">A senha não foi aceita ou o PDF usa uma criptografia incompatível. Tente novamente.</string>
     <string name="pdf_password_unsupported">Este PDF exige uma senha ou usa uma criptografia incompatível. Esta versão do Android não pode desbloqueá-lo no Twig. Tente outro aplicativo de PDF.</string>
+    <string name="theme_oled">Preto (OLED)</string>
+    <string name="transfer_retry">Tentar novamente itens incompletos</string>
+    <string name="transfer_retry_detail">Tenta novamente apenas os itens incompletos. Arquivos concluídos são ignorados; os parciais são retomados quando possível.</string>
+    <string name="transfer_failed_target">Destino: %1$s</string>
+    <string name="transfer_skip_failed">Ignorar este item</string>
 </resources>

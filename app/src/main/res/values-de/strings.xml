@@ -1067,12 +1067,12 @@
     <string name="website_open_url">URL öffnen</string>
     <string name="website_user_agent_global_hint">Leer = globale User-Agent, sonst Mobil-/Desktop-Standard</string>
     <string name="website_global_settings_hint">Websites können den globalen User-Agent überschreiben. JavaScript, CSS, ausgeblendete Elemente und Anfragesperren ergänzen die globalen Einstellungen. Anzeigeoptionen gelten als Standard für neue Websites.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ NFS hinzufügen</string>
+    <string name="nfs_host">NFS-Serveradresse</string>
+    <string name="nfs_export">Exportpfad (z. B. /volume1/public)</string>
+    <string name="nfs_version">NFS-Version (3 oder 4)</string>
+    <string name="nfs_uid">UID (Standard 65534)</string>
+    <string name="nfs_gid">GID (Standard 65534)</string>
     <string name="website_media_permission">%1$s die Nutzung erlauben:</string>
     <string name="website_microphone">Mikrofon</string>
     <string name="website_camera">Kamera</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">PDF-Passwort</string>
     <string name="pdf_password_retry">Das Passwort wurde nicht akzeptiert oder die Verschlüsselung wird nicht unterstützt. Versuche es erneut.</string>
     <string name="pdf_password_unsupported">Diese PDF benötigt ein Passwort oder verwendet eine nicht unterstützte Verschlüsselung. Diese Android-Version kann sie in Twig nicht entsperren. Versuche eine andere PDF-App.</string>
+    <string name="theme_oled">Schwarz (OLED)</string>
+    <string name="transfer_retry">Unfertige Elemente erneut versuchen</string>
+    <string name="transfer_retry_detail">Nur unfertige Elemente erneut versuchen. Fertige Dateien werden übersprungen; teilweise übertragene Dateien werden fortgesetzt, sofern unterstützt.</string>
+    <string name="transfer_failed_target">Ziel: %1$s</string>
+    <string name="transfer_skip_failed">Dieses Element überspringen</string>
 </resources>

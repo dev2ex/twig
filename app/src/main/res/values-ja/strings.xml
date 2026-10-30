@@ -1067,12 +1067,12 @@
     <string name="website_open_url">URLを開く</string>
     <string name="website_user_agent_global_hint">空欄 = グローバルUser-Agent、未設定ならモバイル/デスクトップの既定値</string>
     <string name="website_global_settings_hint">User-Agentはサイトごとに上書きできます。JavaScript、CSS、非表示要素、リクエストブロックはグローバル設定と統合されます。表示設定は新規サイトの既定値です。</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ NFS を追加</string>
+    <string name="nfs_host">NFS サーバーのアドレス</string>
+    <string name="nfs_export">エクスポートパス（例：/volume1/public）</string>
+    <string name="nfs_version">NFS バージョン（3 または 4）</string>
+    <string name="nfs_uid">UID（既定値 65534）</string>
+    <string name="nfs_gid">GID（既定値 65534）</string>
     <string name="website_media_permission">%1$s に使用を許可：</string>
     <string name="website_microphone">マイク</string>
     <string name="website_camera">カメラ</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">PDF のパスワード</string>
     <string name="pdf_password_retry">パスワードが正しくないか、PDF の暗号化方式に対応していません。再試行してください。</string>
     <string name="pdf_password_unsupported">この PDF はパスワードが必要か、対応していない暗号化方式を使用しています。この Android バージョンの Twig では解除できません。他の PDF アプリをお試しください。</string>
+    <string name="theme_oled">黒（OLED）</string>
+    <string name="transfer_retry">未完了の項目を再試行</string>
+    <string name="transfer_retry_detail">未完了の項目のみ再試行します。完了したファイルはスキップし、対応している場合は途中から転送を再開します。</string>
+    <string name="transfer_failed_target">転送先：%1$s</string>
+    <string name="transfer_skip_failed">この項目をスキップ</string>
 </resources>

@@ -1067,12 +1067,12 @@
     <string name="website_open_url">URL 열기</string>
     <string name="website_user_agent_global_hint">비어 있으면 전역 User-Agent, 없으면 모바일/데스크톱 기본값</string>
     <string name="website_global_settings_hint">사이트별 User-Agent로 전역 값을 덮어쓸 수 있습니다. JavaScript, CSS, 숨김 요소와 요청 차단은 전역 설정과 합쳐집니다. 표시 옵션은 새 사이트의 기본값입니다.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ NFS 추가</string>
+    <string name="nfs_host">NFS 서버 주소</string>
+    <string name="nfs_export">내보내기 경로 (예: /volume1/public)</string>
+    <string name="nfs_version">NFS 버전 (3 또는 4)</string>
+    <string name="nfs_uid">UID (기본값 65534)</string>
+    <string name="nfs_gid">GID (기본값 65534)</string>
     <string name="website_media_permission">%1$s에 사용 허용:</string>
     <string name="website_microphone">마이크</string>
     <string name="website_camera">카메라</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">PDF 비밀번호</string>
     <string name="pdf_password_retry">비밀번호가 올바르지 않거나 지원하지 않는 암호화 방식입니다. 다시 시도하세요.</string>
     <string name="pdf_password_unsupported">이 PDF는 비밀번호가 필요하거나 지원하지 않는 암호화를 사용합니다. 이 Android 버전에서는 Twig로 잠금을 해제할 수 없습니다. 다른 PDF 앱을 사용하세요.</string>
+    <string name="theme_oled">검정 (OLED)</string>
+    <string name="transfer_retry">미완료 항목 다시 시도</string>
+    <string name="transfer_retry_detail">미완료 항목만 다시 시도합니다. 완료된 파일은 건너뛰고 지원되는 경우 부분 파일 전송을 이어서 진행합니다.</string>
+    <string name="transfer_failed_target">대상: %1$s</string>
+    <string name="transfer_skip_failed">이 항목 건너뛰기</string>
 </resources>

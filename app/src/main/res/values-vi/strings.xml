@@ -1066,12 +1066,12 @@
     <string name="website_open_url">Mở URL</string>
     <string name="website_user_agent_global_hint">Trống = User-Agent chung, sau đó mặc định di động/máy tính</string>
     <string name="website_global_settings_hint">Mỗi trang có thể ghi đè User-Agent chung. JavaScript, CSS, phần tử ẩn và chặn yêu cầu được kết hợp với cài đặt chung. Tùy chọn hiển thị là mặc định cho trang mới.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Thêm NFS</string>
+    <string name="nfs_host">Địa chỉ máy chủ NFS</string>
+    <string name="nfs_export">Đường dẫn xuất (ví dụ /volume1/public)</string>
+    <string name="nfs_version">Phiên bản NFS (3 hoặc 4)</string>
+    <string name="nfs_uid">UID (mặc định 65534)</string>
+    <string name="nfs_gid">GID (mặc định 65534)</string>
     <string name="website_media_permission">Cho phép %1$s sử dụng:</string>
     <string name="website_microphone">Micrô</string>
     <string name="website_camera">Máy ảnh</string>
@@ -1159,4 +1159,9 @@
     <string name="pdf_password">Mật khẩu PDF</string>
     <string name="pdf_password_retry">Mật khẩu không được chấp nhận hoặc PDF dùng kiểu mã hóa không được hỗ trợ. Hãy thử lại.</string>
     <string name="pdf_password_unsupported">PDF này cần mật khẩu hoặc dùng kiểu mã hóa không được hỗ trợ. Phiên bản Android này không thể mở khóa trong Twig. Hãy thử ứng dụng PDF khác.</string>
+    <string name="theme_oled">Đen (OLED)</string>
+    <string name="transfer_retry">Thử lại các mục chưa hoàn tất</string>
+    <string name="transfer_retry_detail">Chỉ thử lại các mục chưa hoàn tất. Bỏ qua tệp đã hoàn tất; tiếp tục truyền tệp còn dở nếu được hỗ trợ.</string>
+    <string name="transfer_failed_target">Đích: %1$s</string>
+    <string name="transfer_skip_failed">Bỏ qua mục này</string>
 </resources>

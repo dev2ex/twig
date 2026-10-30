@@ -1067,12 +1067,12 @@
     <string name="website_open_url">Abrir URL</string>
     <string name="website_user_agent_global_hint">Vacío = User-Agent global o valor móvil/escritorio</string>
     <string name="website_global_settings_hint">Cada sitio puede sustituir el User-Agent global. JavaScript, CSS, elementos ocultos y bloqueo de solicitudes se combinan con la configuración global. Las opciones de visualización son valores predeterminados para sitios nuevos.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Añadir NFS</string>
+    <string name="nfs_host">Dirección del servidor NFS</string>
+    <string name="nfs_export">Ruta de exportación (p. ej., /volume1/public)</string>
+    <string name="nfs_version">Versión de NFS (3 o 4)</string>
+    <string name="nfs_uid">UID (predeterminado: 65534)</string>
+    <string name="nfs_gid">GID (predeterminado: 65534)</string>
     <string name="website_media_permission">Permitir que %1$s use:</string>
     <string name="website_microphone">Micrófono</string>
     <string name="website_camera">Cámara</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">Contraseña del PDF</string>
     <string name="pdf_password_retry">La contraseña no se ha aceptado o el PDF usa un cifrado no compatible. Inténtalo de nuevo.</string>
     <string name="pdf_password_unsupported">Este PDF requiere una contraseña o usa un cifrado no compatible. Esta versión de Android no puede desbloquearlo en Twig. Prueba otra aplicación de PDF.</string>
+    <string name="theme_oled">Negro (OLED)</string>
+    <string name="transfer_retry">Reintentar elementos pendientes</string>
+    <string name="transfer_retry_detail">Reintenta solo los elementos pendientes. Se omiten los archivos completados y se reanudan los parciales cuando es compatible.</string>
+    <string name="transfer_failed_target">Destino: %1$s</string>
+    <string name="transfer_skip_failed">Omitir este elemento</string>
 </resources>

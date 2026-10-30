@@ -1071,12 +1071,12 @@
     <string name="website_open_url">فتح رابط</string>
     <string name="website_user_agent_global_hint">فارغ = User-Agent العام، ثم افتراضي الهاتف/سطح المكتب</string>
     <string name="website_global_settings_hint">يمكن لكل موقع تجاوز User-Agent العام. تُدمج JavaScript وCSS والعناصر المخفية وحظر الطلبات مع الإعدادات العامة. خيارات العرض هي القيم الافتراضية للمواقع الجديدة.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ إضافة NFS</string>
+    <string name="nfs_host">عنوان خادم NFS</string>
+    <string name="nfs_export">مسار التصدير (مثل /volume1/public)</string>
+    <string name="nfs_version">إصدار NFS (3 أو 4)</string>
+    <string name="nfs_uid">UID (الافتراضي 65534)</string>
+    <string name="nfs_gid">GID (الافتراضي 65534)</string>
     <string name="website_media_permission">السماح لـ %1$s باستخدام:</string>
     <string name="website_microphone">الميكروفون</string>
     <string name="website_camera">الكاميرا</string>
@@ -1164,4 +1164,9 @@
     <string name="pdf_password">كلمة مرور PDF</string>
     <string name="pdf_password_retry">لم تُقبل كلمة المرور، أو أن الملف يستخدم تشفيرًا غير مدعوم. حاول مجددًا.</string>
     <string name="pdf_password_unsupported">يتطلب هذا الملف كلمة مرور أو يستخدم تشفيرًا غير مدعوم. لا يستطيع إصدار Android هذا فتحه في Twig. جرّب تطبيق PDF آخر.</string>
+    <string name="theme_oled">أسود (OLED)</string>
+    <string name="transfer_retry">إعادة محاولة العناصر غير المكتملة</string>
+    <string name="transfer_retry_detail">تُعاد محاولة العناصر غير المكتملة فقط. تُتخطى الملفات المكتملة ويُستأنف نقل الملفات الجزئية عند دعم ذلك.</string>
+    <string name="transfer_failed_target">الوجهة: %1$s</string>
+    <string name="transfer_skip_failed">تخطي هذا العنصر</string>
 </resources>

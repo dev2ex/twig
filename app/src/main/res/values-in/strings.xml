@@ -1067,12 +1067,12 @@
     <string name="website_open_url">Buka URL</string>
     <string name="website_user_agent_global_hint">Kosong = User-Agent global, lalu default seluler/desktop</string>
     <string name="website_global_settings_hint">User-Agent dapat diganti per situs. JavaScript, CSS, elemen tersembunyi dan pemblokiran permintaan digabung dengan setelan global. Opsi tampilan menjadi default untuk situs baru.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Tambah NFS</string>
+    <string name="nfs_host">Alamat server NFS</string>
+    <string name="nfs_export">Jalur ekspor (mis. /volume1/public)</string>
+    <string name="nfs_version">Versi NFS (3 atau 4)</string>
+    <string name="nfs_uid">UID (bawaan 65534)</string>
+    <string name="nfs_gid">GID (bawaan 65534)</string>
     <string name="website_media_permission">Izinkan %1$s menggunakan:</string>
     <string name="website_microphone">Mikrofon</string>
     <string name="website_camera">Kamera</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">Kata sandi PDF</string>
     <string name="pdf_password_retry">Kata sandi ditolak, atau PDF menggunakan enkripsi yang tidak didukung. Coba lagi.</string>
     <string name="pdf_password_unsupported">PDF ini memerlukan kata sandi atau menggunakan enkripsi yang tidak didukung. Versi Android ini tidak dapat membukanya di Twig. Coba aplikasi PDF lain.</string>
+    <string name="theme_oled">Hitam (OLED)</string>
+    <string name="transfer_retry">Coba lagi item yang belum selesai</string>
+    <string name="transfer_retry_detail">Hanya mencoba ulang item yang belum selesai. File yang selesai dilewati; file parsial dilanjutkan jika didukung.</string>
+    <string name="transfer_failed_target">Tujuan: %1$s</string>
+    <string name="transfer_skip_failed">Lewati item ini</string>
 </resources>

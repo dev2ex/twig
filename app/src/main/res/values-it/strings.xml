@@ -1067,12 +1067,12 @@
     <string name="website_open_url">Apri URL</string>
     <string name="website_user_agent_global_hint">Vuoto = User-Agent globale, poi predefinito mobile/desktop</string>
     <string name="website_global_settings_hint">Ogni sito può sostituire lo User-Agent globale. JavaScript, CSS, elementi nascosti e blocco richieste si combinano con le impostazioni globali. Le opzioni di visualizzazione sono predefinite per i nuovi siti.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ Aggiungi NFS</string>
+    <string name="nfs_host">Indirizzo del server NFS</string>
+    <string name="nfs_export">Percorso di esportazione (es. /volume1/public)</string>
+    <string name="nfs_version">Versione NFS (3 o 4)</string>
+    <string name="nfs_uid">UID (predefinito 65534)</string>
+    <string name="nfs_gid">GID (predefinito 65534)</string>
     <string name="website_media_permission">Consenti a %1$s di usare:</string>
     <string name="website_microphone">Microfono</string>
     <string name="website_camera">Fotocamera</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">Password del PDF</string>
     <string name="pdf_password_retry">La password non è stata accettata oppure la crittografia non è supportata. Riprova.</string>
     <string name="pdf_password_unsupported">Questo PDF richiede una password o usa una crittografia non supportata. Questa versione di Android non può sbloccarlo in Twig. Prova un’altra app PDF.</string>
+    <string name="theme_oled">Nero (OLED)</string>
+    <string name="transfer_retry">Riprova elementi incompleti</string>
+    <string name="transfer_retry_detail">Riprova solo gli elementi incompleti. I file completati vengono saltati; i trasferimenti parziali riprendono se supportato.</string>
+    <string name="transfer_failed_target">Destinazione: %1$s</string>
+    <string name="transfer_skip_failed">Salta questo elemento</string>
 </resources>

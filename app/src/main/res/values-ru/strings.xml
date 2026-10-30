@@ -1196,4 +1196,9 @@
     <string name="pdf_password">Пароль PDF</string>
     <string name="pdf_password_retry">Пароль не принят или шифрование PDF не поддерживается. Повторите попытку.</string>
     <string name="pdf_password_unsupported">Этот PDF требует пароль или использует неподдерживаемое шифрование. В этой версии Android Twig не может его разблокировать. Попробуйте другое приложение для PDF.</string>
+    <string name="theme_oled">Чёрная (OLED)</string>
+    <string name="transfer_retry">Повторить незавершённые операции</string>
+    <string name="transfer_retry_detail">Повторяются только незавершённые операции. Готовые файлы пропускаются; частично записанные продолжаются, если это поддерживается.</string>
+    <string name="transfer_failed_target">Назначение: %1$s</string>
+    <string name="transfer_skip_failed">Пропустить этот элемент</string>
 </resources>

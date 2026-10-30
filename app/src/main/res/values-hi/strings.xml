@@ -1067,12 +1067,12 @@
     <string name="website_open_url">यूआरएल खोलें</string>
     <string name="website_user_agent_global_hint">खाली = वैश्विक User-Agent, फिर मोबाइल/डेस्कटॉप डिफ़ॉल्ट</string>
     <string name="website_global_settings_hint">हर वेबसाइट वैश्विक User-Agent को बदल सकती है। JavaScript, CSS, छिपे तत्व और अनुरोध अवरोध वैश्विक सेटिंग से जुड़ते हैं। प्रदर्शन विकल्प नई वेबसाइटों के डिफ़ॉल्ट हैं।</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ NFS जोड़ें</string>
+    <string name="nfs_host">NFS सर्वर का पता</string>
+    <string name="nfs_export">निर्यात पथ (जैसे /volume1/public)</string>
+    <string name="nfs_version">NFS संस्करण (3 या 4)</string>
+    <string name="nfs_uid">UID (डिफ़ॉल्ट 65534)</string>
+    <string name="nfs_gid">GID (डिफ़ॉल्ट 65534)</string>
     <string name="website_media_permission">%1$s को इस्तेमाल करने दें:</string>
     <string name="website_microphone">माइक्रोफ़ोन</string>
     <string name="website_camera">कैमरा</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">PDF पासवर्ड</string>
     <string name="pdf_password_retry">पासवर्ड स्वीकार नहीं हुआ, या PDF का एन्क्रिप्शन समर्थित नहीं है। फिर से कोशिश करें।</string>
     <string name="pdf_password_unsupported">इस PDF के लिए पासवर्ड चाहिए या इसका एन्क्रिप्शन समर्थित नहीं है। Android के इस संस्करण में Twig इसे अनलॉक नहीं कर सकता। कोई अन्य PDF ऐप आज़माएँ।</string>
+    <string name="theme_oled">काला (OLED)</string>
+    <string name="transfer_retry">अधूरे आइटम फिर से आज़माएँ</string>
+    <string name="transfer_retry_detail">केवल अधूरे आइटम फिर से आज़माएँ। पूरे हो चुके फ़ाइल छोड़ दिए जाते हैं; समर्थन होने पर आंशिक फ़ाइलों का स्थानांतरण फिर शुरू होता है।</string>
+    <string name="transfer_failed_target">लक्ष्य: %1$s</string>
+    <string name="transfer_skip_failed">यह आइटम छोड़ें</string>
 </resources>

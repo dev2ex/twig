@@ -1067,12 +1067,12 @@
     <string name="website_open_url">URL aç</string>
     <string name="website_user_agent_global_hint">Boş = genel User-Agent, ardından mobil/masaüstü varsayılanı</string>
     <string name="website_global_settings_hint">User-Agent her site için değiştirilebilir. JavaScript, CSS, gizli öğeler ve istek engelleme genel ayarlarla birleştirilir. Görüntüleme seçenekleri yeni siteler için varsayılandır.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">＋ NFS ekle</string>
+    <string name="nfs_host">NFS sunucu adresi</string>
+    <string name="nfs_export">Dışa aktarma yolu (ör. /volume1/public)</string>
+    <string name="nfs_version">NFS sürümü (3 veya 4)</string>
+    <string name="nfs_uid">UID (varsayılan 65534)</string>
+    <string name="nfs_gid">GID (varsayılan 65534)</string>
     <string name="website_media_permission">%1$s için kullanım izni:</string>
     <string name="website_microphone">Mikrofon</string>
     <string name="website_camera">Kamera</string>
@@ -1160,4 +1160,9 @@
     <string name="pdf_password">PDF parolası</string>
     <string name="pdf_password_retry">Parola kabul edilmedi veya PDF desteklenmeyen bir şifreleme kullanıyor. Tekrar deneyin.</string>
     <string name="pdf_password_unsupported">Bu PDF parola gerektiriyor veya desteklenmeyen bir şifreleme kullanıyor. Bu Android sürümünde Twig kilidini açamaz. Başka bir PDF uygulaması deneyin.</string>
+    <string name="theme_oled">Siyah (OLED)</string>
+    <string name="transfer_retry">Tamamlanmamış öğeleri yeniden dene</string>
+    <string name="transfer_retry_detail">Yalnızca tamamlanmamış öğeleri yeniden dener. Tamamlanan dosyalar atlanır; destekleniyorsa kısmi dosyalara kaldığı yerden devam edilir.</string>
+    <string name="transfer_failed_target">Hedef: %1$s</string>
+    <string name="transfer_skip_failed">Bu öğeyi atla</string>
 </resources>
