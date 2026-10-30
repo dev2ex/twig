@@ -37,6 +37,30 @@ class PickerBrowserTest {
     private fun pane(activity: PickerActivity, index: Int) = activity.supportFragmentManager
         .findFragmentByTag(if (index == 0) "picker_pane" else "picker_pane_$index") as PaneFragment
 
+    @Test fun `external multiple selection enables immediate row selection in both panes after recreation`() {
+        val intent = Intent(app, PickerActivity::class.java).setAction(Intent.ACTION_GET_CONTENT)
+            .setType("*/*").putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        val controller = Robolectric.buildActivity(PickerActivity::class.java, intent).setup()
+        try {
+            repeat(2) {
+                val activity = controller.get()
+                assertTrue(activity.selectFilesByRow)
+                for (index in 0..1) {
+                    val fragment = pane(activity, index)
+                    val adapter = org.robolectric.util.ReflectionHelpers.getField<FileAdapter>(fragment, "adapter")
+                    assertTrue(org.robolectric.util.ReflectionHelpers.getField(adapter, "selectFilesByRow"))
+                }
+                if (it == 0) controller.recreate()
+            }
+        } finally { controller.pause().stop().destroy() }
+        for (otherIntent in listOf(PickerActivity.intent(app).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true),
+            Intent(intent).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false), PickerActivity.dirIntent(app, null))) {
+            val other = Robolectric.buildActivity(PickerActivity::class.java, otherIntent).setup()
+            try { assertFalse(other.get().selectFilesByRow) }
+            finally { other.pause().stop().destroy() }
+        }
+    }
+
     @Test fun `file picker and copy destination expose identical working strip actions`() {
         val picker = Robolectric.buildActivity(PickerActivity::class.java, PickerActivity.intent(app)).setup()
         val target = Robolectric.buildActivity(ShareTargetActivity::class.java,

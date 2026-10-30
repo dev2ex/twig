@@ -173,7 +173,10 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
 
     // ---- Selection ----
 
-    /** Single-select: tap a file to return; multi-select: return false to let it open normally (checkboxes go through "Confirm"). */
+    override val selectFilesByRow: Boolean
+        get() = intent.action == Intent.ACTION_GET_CONTENT && allowMultiple && !pickDir && !returnPath
+
+    /** Single-select returns files directly; multi-select icon taps open previews, then Confirm returns checked files. */
     override fun onPickFile(file: XFile): Boolean {
         if (allowMultiple || pickDir) return false
         if (file.isDir) return false

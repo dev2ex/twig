@@ -73,6 +73,8 @@ class FileAdapter(
     private val textSize: Int = density,
     private val onInfo: (PaneViewModel.FileNode) -> Unit = {},
     private val onInfoLongClick: (PaneViewModel.FileNode) -> Unit = {},
+    /** External multi-file picking always selects rows, regardless of the normal selection preference. */
+    private val selectFilesByRow: Boolean = false,
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
     var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
@@ -153,7 +155,7 @@ class FileAdapter(
 
     /** Read selection state at click time: selection payloads deliberately keep listeners intact. */
     private fun clickFileRow(node: PaneViewModel.FileNode, ctx: Context) {
-        if (selected.isNotEmpty() && node.label == null && Prefs.tapRowToSelect(ctx)) toggleSelection(node)
+        if (node.label == null && (selectFilesByRow || selected.isNotEmpty() && Prefs.tapRowToSelect(ctx))) toggleSelection(node)
         else onClick(node)
     }
 

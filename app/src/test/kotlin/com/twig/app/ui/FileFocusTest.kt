@@ -16,6 +16,35 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [24, 34])
 class FileFocusTest {
+    @Test fun `external multi-file mode selects the first row and opens only from the icon`() {
+        val host = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            val parent = FrameLayout(ContextThemeWrapper(host.get(), R.style.Theme_Twig))
+            assertFalse(Prefs.tapRowToSelect(parent.context))
+            for (grid in listOf(0, 2)) {
+                var opens = 0
+                val adapter = FileAdapter(1, { opens++ }, {}, {}, { _, _ -> }, {},
+                    gridMode = grid, selectFilesByRow = true)
+                val node = PaneViewModel.FileNode(XFile("file", "/picked.txt", false, canRead = false), 1, false, false)
+                adapter.submitList(listOf(node))
+                val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+                adapter.bindViewHolder(holder, 0)
+                val row = holder.itemView
+                row.performClick()
+                assertTrue(adapter.isSelected(node))
+                assertEquals(0, opens)
+                row.findViewById<android.view.View>(if (grid == 0) R.id.icon else R.id.thumb).performClick()
+                assertEquals(1, opens)
+                assertTrue(adapter.isSelected(node))
+                row.performClick()
+                assertTrue(adapter.selectedItems().isEmpty())
+                row.performClick()
+                assertTrue(adapter.isSelected(node))
+                assertEquals(1, opens)
+            }
+        } finally { host.pause().stop().destroy() }
+    }
+
     @Test fun `checked mode selects rows while icons open without changing selection`() {
         val host = Robolectric.buildActivity(Activity::class.java).setup()
         try {

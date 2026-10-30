@@ -105,6 +105,9 @@ class PaneFragment : Fragment() {
         /** File-picker mode: if the host takes the click (returns true), don't proceed to open / viewer. */
         fun onPickFile(file: XFile): Boolean = false
 
+        /** External multi-file pickers select rows immediately, including the first selection. */
+        val selectFilesByRow: Boolean get() = false
+
         /** Launcher configuration can observe navigation and consume leaf clicks. */
         fun onPickNode(node: PaneViewModel.Node): Boolean = false
         val shortcutResult: ((ShortcutInfoCompat) -> Unit)? get() = null
@@ -239,6 +242,7 @@ class PaneFragment : Fragment() {
             thumbs = Prefs.thumbs(requireContext()),
             gridMode = Prefs.thumbsGrid(requireContext()),
             gridNames = Prefs.thumbsGridNames(requireContext()),
+            selectFilesByRow = host?.selectFilesByRow == true,
             onClick = click@{ node ->
                 if (host?.onPickNode(node) == true) return@click
                 when (node) {
