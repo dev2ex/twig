@@ -11,14 +11,31 @@ import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.Executors
 
-/** Count-only cache; one worker, no recursive scans, no retained child listings. Main-thread API. */
+/** Count-only cache; isolated local/remote workers, no recursive scans. Main-thread API. */
 object DirectoryCounts {
     data class Count(val directories: Int, val files: Int)
     private data class Entry(val all: Count, val visible: Count, val mtime: Long, val time: Long)
-    private class Job(val file: XFile) {
+    private class Lane(name: String) {
+        val queue = ArrayDeque<Job>()
+        var working = false
+        val executor = Executors.newSingleThreadExecutor { task ->
+            Thread({
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+                task.run()
+            }, name).apply { isDaemon = true }
+        }
+    }
+    private class Job(val file: XFile, val lane: Lane) {
         val active = AtomicBoolean(true)
-        val callbacks = ArrayList<(Entry) -> Unit>()
+        val waiters = ArrayList<Waiter>()
+    }
+    private class Waiter(
+        val job: Job, val view: View, val showHidden: Boolean,
+        val order: () -> Int, val deliver: (Count) -> Unit,
+    ) {
+        fun current() = view.getTag(R.id.directory_count) === this
     }
     private const val MAX_CACHE = 512
     private const val MAX_PENDING = 32
@@ -31,9 +48,13 @@ object DirectoryCounts {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?) = size > MAX_CACHE
     }
     private val pending = HashMap<String, Job>()
-    private val queue = ArrayDeque<Job>()
-    private val working = AtomicBoolean(false)
+    private val local = Lane("twig-directory-count-local")
+    private val remote = Lane("twig-directory-count-remote")
+    internal fun isIdle(): Boolean = !local.working && !remote.working && pending.isEmpty()
+
     private fun key(file: XFile) = file.scheme + "\u0000" + file.path
+    private fun order(job: Job) = job.waiters.asSequence().filter { it.current() }
+        .minOfOrNull { it.order() } ?: Int.MAX_VALUE
     fun supports(file: XFile) = file.isDir && when (Format.schemeLabel(file.scheme)) {
         "jellyfin", "emby" -> false
         "trash", "apps" -> file.path != "/"
@@ -70,87 +91,115 @@ object DirectoryCounts {
         val result = entry(file, children)
         cache[k] = result
         failed.remove(k)
-        pending.remove(k)?.let { job ->
-            job.active.set(false)
-            job.callbacks.forEach { it(result) }
+        pending[k]?.let { job ->
+            finish(job, result)
         }
+    }
+
+    private fun cancel(job: Job) {
+        job.active.set(false)
+        if (pending[key(job.file)] === job) pending.remove(key(job.file))
+        job.lane.queue.remove(job)
+        job.waiters.forEach { if (it.current()) it.view.setTag(R.id.directory_count, null) }
+        job.waiters.clear()
+    }
+
+    /** Release just this row; another pane may still be waiting for the same directory. */
+    fun release(view: View) {
+        val waiter = view.getTag(R.id.directory_count) as? Waiter
+        view.setTag(R.id.directory_count, null)
+        if (waiter == null) return
+        waiter.job.waiters.remove(waiter)
+        if (waiter.job.waiters.none { it.current() }) cancel(waiter.job)
     }
 
     fun invalidate(file: XFile) {
         val k = key(file)
         cache.remove(k); failed.remove(k)
-        pending.remove(k)?.active?.set(false)
+        pending[k]?.let(::cancel)
     }
 
     fun clear() {
         cache.clear(); failed.clear()
-        pending.values.forEach { it.active.set(false) }
-        pending.clear()
-        synchronized(queue) { queue.clear() }
+        pending.values.toList().forEach(::cancel)
     }
 
-    fun cancelPending(files: Collection<XFile>) {
-        val keys = files.mapTo(HashSet()) { key(it) }
-        keys.forEach { pending.remove(it)?.active?.set(false) }
-        synchronized(queue) { queue.removeAll { key(it.file) in keys } }
-    }
-
-    /** Only bound rows request work; a recycled view cannot receive another directory's count. */
-    fun request(view: View, file: XFile, showHidden: Boolean, deliver: (Count) -> Unit) {
-        if (!supports(file)) return
-        val token = Any()
-        view.setTag(R.id.directory_count, token)
-        known(file, showHidden)?.let { deliver(it); return }
+    /** Attached rows own their work; detach, recycling and pane hiding call [release]. */
+    fun request(view: View, file: XFile, showHidden: Boolean,
+                order: () -> Int = { Int.MAX_VALUE }, deliver: (Count) -> Unit) {
+        if (!supports(file)) { release(view); return }
+        known(file, showHidden)?.let { release(view); deliver(it); return }
         val k = key(file)
-        if (failed[k]?.let { SystemClock.elapsedRealtime() - it < TTL } == true) return
-        val callback: (Entry) -> Unit = { result ->
-            if (view.getTag(R.id.directory_count) === token)
-                deliver(if (showHidden) result.all else result.visible)
+        if (failed[k]?.let { SystemClock.elapsedRealtime() - it < TTL } == true) {
+            release(view)
+            return
         }
-        pending[k]?.let { it.callbacks.add(callback); return }
-        val job = Job(file).also { it.callbacks.add(callback) }
+        val lane = if (file.scheme == "file") local else remote
+        val job = pending[k] ?: Job(file, lane)
+        val previous = view.getTag(R.id.directory_count) as? Waiter
+        if (previous?.job === job) job.waiters.remove(previous) else release(view)
+        val waiter = Waiter(job, view, showHidden, order, deliver)
+        view.setTag(R.id.directory_count, waiter)
+        job.waiters.add(waiter)
+        if (pending[k] === job) return
         pending[k] = job
-        synchronized(queue) {
-            queue.addLast(job)
-            while (queue.size > MAX_PENDING) {
-                val dropped = queue.removeFirst()
-                dropped.active.set(false)
-                if (pending[key(dropped.file)] === dropped) pending.remove(key(dropped.file))
-            }
-        }
-        startWorker()
+        lane.queue.addLast(job)
+        while (lane.queue.size > MAX_PENDING) cancel(lane.queue.maxBy(::order))
+        // Coalesce binds/detaches before starting blocking filesystem work.
+        main.post { startWorker(lane) }
     }
 
-    private fun startWorker() {
-        if (synchronized(queue) { queue.isEmpty() } || !working.compareAndSet(false, true)) return
-        Thread({
-            try {
-                while (true) {
-                    val job = synchronized(queue) { queue.pollLast() } ?: break
-                    if (!job.active.get()) continue
-                    val result = runCatching {
-                        val fs = FsRegistry.of(job.file)
-                        // Local counts need only the name and type: skip sorting, size, time and permissions.
-                        val children = if (fs is LocalFileSystem) fs.listForSize(job.file) {
-                            XFile(job.file.scheme, it.path, isDir = it.isDirectory)
-                        } else fs.list(job.file)
-                        entry(job.file, children)
-                    }.getOrNull()
-                    main.post {
-                        val k = key(job.file)
-                        if (pending[k] !== job) return@post
-                        pending.remove(k)
-                        if (result == null) failed[k] = SystemClock.elapsedRealtime()
-                        else {
-                            cache[k] = result
-                            job.callbacks.forEach { it(result) }
-                        }
-                    }
-                }
-            } finally {
-                working.set(false)
-                main.post { startWorker() }
+    private fun finish(job: Job, result: Entry?) {
+        if (pending[key(job.file)] !== job) return
+        pending.remove(key(job.file))
+        job.active.set(false)
+        job.lane.queue.remove(job)
+        if (result == null) failed[key(job.file)] = SystemClock.elapsedRealtime()
+        else cache[key(job.file)] = result
+        val waiters = job.waiters.toList()
+        job.waiters.clear()
+        waiters.forEach { waiter ->
+            if (waiter.current()) {
+                waiter.view.setTag(R.id.directory_count, null)
+                if (result != null) waiter.deliver(if (waiter.showHidden) result.all else result.visible)
             }
-        }, "twig-directory-count").apply { isDaemon = true }.start()
+        }
+    }
+
+    private fun startWorker(lane: Lane) {
+        if (lane.working) return
+        var next: Job? = null
+        while (lane.queue.isNotEmpty()) {
+            // Read live adapter positions: attachment order and sort changes need not
+            // match display order. Equal positions retain FIFO order across panes.
+            val job = lane.queue.minBy(::order)
+            lane.queue.remove(job)
+            if (job.active.get() && job.waiters.any { it.current() }) {
+                next = job
+                break
+            }
+            cancel(job)
+        }
+        val job = next ?: return
+        lane.working = true
+        lane.executor.execute {
+            val result = runCatching {
+                check(job.active.get())
+                val fs = FsRegistry.of(job.file)
+                // Local counts need only names/types; check for abandoned work between entries.
+                val children = if (fs is LocalFileSystem) fs.listForSize(job.file) {
+                    check(job.active.get())
+                    XFile(job.file.scheme, it.path, isDir = it.isDirectory)
+                } else fs.list(job.file)
+                if (job.active.get()) entry(job.file, children) else null
+            }.getOrNull()
+            main.post {
+                try { finish(job, result) }
+                finally {
+                    lane.working = false
+                    startWorker(lane)
+                }
+            }
+        }
     }
 }

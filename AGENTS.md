@@ -166,6 +166,16 @@ its listing size must still describe the followed stream for copy/resume checks.
   update the rows. Expanded local directories stay live through inotify
   (`PaneFragment.syncObservers`); resume also re-lists the current directory on any backend.
   The tree always expands/collapses **in place**, it never "enters" a directory.
+- Directory counts (`DirectoryCounts`) use separate background workers for direct local
+  storage and other sources. Only attached rows in visible panes request probes;
+  prefetch does not enumerate directories. Detaching/recycling a row, hiding its pane
+  or stopping its screen releases that row's subscription, while another pane's
+  subscription to the same directory remains valid. Pending work without subscribers
+  is dropped. Queued counts follow live adapter positions, from top to bottom in the
+  displayed sort order, including after pane activation or a resort. Local entry
+  processing checks cancellation; an already-running blocking
+  backend call may finish, without holding up the local count worker. Ordinary listings
+  populate the shared cache, and failed reads stay unknown rather than becoming zero.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
   Favorites and websites keep their stored order. Long-pressing either heading offers

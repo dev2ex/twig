@@ -36,11 +36,16 @@ class EmptyDirectoryIndicatorTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
     private val dir = XFile("file", "/example", true)
     private val previous = runCatching { FsRegistry.of("file") }.getOrNull()
+    private val attached = ArrayList<Pair<FileAdapter, RecyclerView.ViewHolder>>()
     private fun adapter() = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
     private fun parent() = FrameLayout(ContextThemeWrapper(app, R.style.Theme_Twig))
     private fun bind(adapter: FileAdapter, node: PaneViewModel.FileNode): RecyclerView.ViewHolder {
         adapter.submitList(listOf(node))
-        return adapter.createViewHolder(parent(), adapter.getItemViewType(0)).also { adapter.bindViewHolder(it, 0) }
+        return adapter.createViewHolder(parent(), adapter.getItemViewType(0)).also {
+            adapter.bindViewHolder(it, 0)
+            adapter.onViewAttachedToWindow(it)
+            attached.add(adapter to it)
+        }
     }
     private fun indicator(holder: RecyclerView.ViewHolder) = holder.itemView.findViewById<View>(R.id.indicator)
     private fun await(condition: () -> Boolean) {
@@ -52,8 +57,11 @@ class EmptyDirectoryIndicatorTest {
         assertTrue("directory probe did not complete", condition())
     }
     @After fun cleanup() {
+        attached.forEach { (adapter, holder) -> adapter.onViewDetachedFromWindow(holder) }
         DirectoryCounts.clear()
+        await { DirectoryCounts.isIdle() }
         Prefs.setFolderCounts(app, false)
+        Prefs.setFolderCountsLocalOnly(app, true)
         Prefs.setShowHidden(app, false)
         if (previous == null) FsRegistry.unregister("file") else FsRegistry.register(previous)
     }
@@ -112,7 +120,7 @@ class EmptyDirectoryIndicatorTest {
         Prefs.setFolderCounts(app, false)
         val withoutCounts = bind(adapter(), node)
         try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            await { entered.count == 0L }
             assertEquals(View.VISIBLE, indicator(withoutCounts).visibility)
             Prefs.setFolderCounts(app, true)
             val withCounts = bind(adapter(), node)
@@ -143,7 +151,7 @@ class EmptyDirectoryIndicatorTest {
             }
         })
         val holder = bind(adapter(), PaneViewModel.FileNode(dir, 1, true, false))
-        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        await { entered.count == 0L }
         // Queue a successful probe after the failed row so its delivery also drains the failure.
         val owner = View(app)
         var done = false
@@ -168,12 +176,13 @@ class EmptyDirectoryIndicatorTest {
         val adapter = adapter()
         val holder = bind(adapter, PaneViewModel.FileNode(dir, 1, true, false))
         try {
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            await { entered.count == 0L }
             adapter.onViewRecycled(holder)
             val remote = PaneViewModel.FileNode(dir.copy(scheme = "sftp-test"), 1, true, false)
             (holder as FileAdapter.VH).bind(remote)
             release.countDown()
-            await { DirectoryCounts.known(dir, false) != null }
+            await { DirectoryCounts.isIdle() }
+            assertNull(DirectoryCounts.known(dir, false))
             assertEquals(View.VISIBLE, indicator(holder).visibility)
         } finally { release.countDown() }
     }

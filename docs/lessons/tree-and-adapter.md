@@ -136,8 +136,8 @@
   this shared cache. Hidden entries follow the display setting. Unknown/failed reads
   retain the arrow, and search/Git/restic/access-hint children keep it even with zero
   visible files. Empty rows remain clickable destinations. Remote and archive rows
-  retain their existing indicators. Both callback owner views are invalidated on bind
-  and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
+  retain their existing indicators. Both callback owner views release their
+  subscriptions on detach and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
   setting toggles, failures, recycled rows and ordinary listing/refresh reuse.
 
 - **Folder counts are optional direct-child counts across backends**
@@ -150,9 +150,9 @@
   results populate the same cache and supersede a slower count request. Local probes
   use `listForSize` with only name/type metadata, retaining its permission fallback;
   other backends use their ordinary listing. Never recurse, read file contents, or infer zero
-  from failure. One worker, a 32-entry LIFO queue, 512 count-only cache entries and a
-  60-second lifetime bound the extra work. Recycled rows reject old callbacks; collapsing
-  cancels queued descendants. The setting defaults off and participates in `uiSignature`.
+  from failure. Separate local/remote workers, 32-entry queues in displayed row order,
+  512 count-only cache entries and a 60-second lifetime bound the extra work. Detached
+  rows release their subscriptions. The setting defaults off and participates in `uiSignature`.
   A subordinate local-only setting defaults on; disabling it enables counts on other
   services too, excluding Jellyfin/Emby media trees (2026-10-29). Gate rendering and
   listing-cache reuse with the same scope,
@@ -425,3 +425,28 @@
   reuse the counts' outline-icon sizing/padding and muted text color/opacity;
   clear recycled compound drawables when switching format or binding an
   unknown-mode row. Unix properties retain both symbolic and numeric notation.
+
+- **Old count probes delayed local counts after navigation (2026-10-30)**:
+  the global single worker serialized local counts behind slow remote listings.
+  Recycling only invalidated a callback tag, leaving old queue entries to perform
+  filesystem work. Split direct-local and other-source workers, with bounded
+  queues and background priority. Bind-time prefetch may render cached counts but
+  only attached rows in visible panes request IO. Detach/recycle, pane hiding and
+  Activity stop release view-owned subscriptions; a second pane can keep the same
+  directory's shared probe alive. Do not cancel by file identity when collapsing
+  one pane, because that also cancels the other pane's subscription. Never close a
+  shared connection to abort a count: already-issued blocking backend calls may
+  finish, but their abandoned results are ignored. Local per-entry processing checks
+  cancellation. `DirectoryCountsTest` holds a remote request open while local counts
+  complete and checks abandoned queues and shared subscriptions;
+  `DirectoryCountLifecycleTest` covers prefetch, detach and hidden-pane cancellation.
+
+- **Counts loaded in reverse or arbitrary row order (2026-10-30)**: LIFO preferred
+  the last attached row, and pane activation iterated a holder HashSet. Count jobs
+  now read their subscribers' live adapter positions before dispatch, choosing the
+  topmost row first (FIFO ties across panes). This follows any displayed sort rather
+  than sorting paths again. A shared job uses its earliest subscriber's position;
+  queue overflow drops the lowest-priority row. Detached rows still release their
+  jobs, so scrolling needs no separate newest-first policy. A running call finishes
+  or observes cancellation; sorting only reorders queued work. Unit tests cover
+  changed positions, reversed attachment and pane activation.

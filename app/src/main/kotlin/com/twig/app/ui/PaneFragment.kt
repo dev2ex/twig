@@ -405,6 +405,11 @@ class PaneFragment : Fragment() {
         }
     }
 
+    override fun onStop() {
+        if (::adapter.isInitialized) adapter.setDirectoryCountsActive(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         takeImageViewerResult()
@@ -412,6 +417,9 @@ class PaneFragment : Fragment() {
         // The user may have just picked "Always" in the system resolver: clear the file-association icon cache and redraw so the icon follows.
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) {
+            adapter.setDirectoryCountsActive(
+                resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE ||
+                    (host?.isPaneActive(this) ?: (paneIndex == 0)))
             adapter.refreshDefaultAppIcons()
             adapter.refreshPlaybackProgress(requireContext())
         }
@@ -426,6 +434,8 @@ class PaneFragment : Fragment() {
      */
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
+        if (::adapter.isInitialized) adapter.setDirectoryCountsActive(
+            active || resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
         v.alpha = if (active) 1f else 0.5f
         v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
     }

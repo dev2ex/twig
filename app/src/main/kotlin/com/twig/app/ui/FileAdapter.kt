@@ -289,10 +289,39 @@ class FileAdapter(
         }
     }
 
+    private val attachedCountRows = HashSet<VH>()
+    private var directoryCountsActive = true
+
+    fun setDirectoryCountsActive(active: Boolean) {
+        if (directoryCountsActive == active) return
+        directoryCountsActive = active
+        attachedCountRows.forEach { holder ->
+            if (active) holder.refreshDirectoryCounts() else holder.releaseDirectoryCounts()
+        }
+    }
+
+    override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        if (holder is VH) {
+            attachedCountRows.add(holder)
+            holder.refreshDirectoryCounts()
+        }
+    }
+
+    override fun onViewDetachedFromWindow(holder: RecyclerView.ViewHolder) {
+        if (holder is VH) {
+            attachedCountRows.remove(holder)
+            holder.releaseDirectoryCounts()
+        }
+        super.onViewDetachedFromWindow(holder)
+    }
+
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         (holder.itemView as? InfoCardLayout)?.resetPage()
-        holder.itemView.findViewById<View>(R.id.folderCounts)?.setTag(R.id.directory_count, null)
-        holder.itemView.findViewById<View>(R.id.indicator)?.setTag(R.id.directory_count, null)
+        if (holder is VH) {
+            attachedCountRows.remove(holder)
+            holder.releaseDirectoryCounts()
+        }
         holder.itemView.findViewById<View>(R.id.meta)?.setTag(R.id.size_probe, null)
         holder.itemView.findViewById<android.widget.TextView>(R.id.sub)?.let(LinkTargets::clear)
         holder.itemView.findViewById<android.widget.TextView>(R.id.link_target)?.let(LinkTargets::clear)
@@ -301,7 +330,7 @@ class FileAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder) {
-            is VH -> holder.bind(getItem(position))
+            is VH -> holder.bind(getItem(position), position)
             is InfoVH -> holder.bind(getItem(position) as PaneViewModel.InfoNode)
             is CellVH -> holder.bind(getItem(position))
         }
@@ -797,12 +826,19 @@ class FileAdapter(
     }
 
     inner class VH(private val b: ItemFileBinding) : RecyclerView.ViewHolder(b.root) {
+        private var countNode: PaneViewModel.FileNode? = null
+        private var countPosition = RecyclerView.NO_POSITION
+
+        fun refreshDirectoryCounts() { countNode?.let(::bindDirectoryCounts) }
+
         fun bindDefaultAppIcon(node: PaneViewModel.FileNode) { FileIcons.bind(b.icon, node.file) }
         fun bindPlaybackProgress(node: PaneViewModel.FileNode) {
             b.icon.playbackFraction = playbackFraction(b.root.context, node.file)
         }
 
-        fun bind(node: PaneViewModel.Node) {
+        fun bind(node: PaneViewModel.Node, position: Int = RecyclerView.NO_POSITION) {
+            countNode = node as? PaneViewModel.FileNode
+            countPosition = position
             val ctx = b.root.context
             val dpi = ctx.resources.displayMetrics.density
 
@@ -828,8 +864,7 @@ class FileAdapter(
             b.permissions.setTextColor(b.directoryCount.currentTextColor)
             b.permissions.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.folderCounts.contentDescription = null
-            b.folderCounts.setTag(R.id.directory_count, null)
-            b.indicator.setTag(R.id.directory_count, null)
+            if (node !is PaneViewModel.FileNode) releaseDirectoryCounts()
             b.meta.setTag(R.id.size_probe, null)
             b.rowContent.setPaddingRelative(
                 ((2 + node.depth * 14) * dpi).toInt(), 0, 0, 0,
@@ -1026,6 +1061,39 @@ class FileAdapter(
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
+        fun releaseDirectoryCounts() {
+            DirectoryCounts.release(b.folderCounts)
+            DirectoryCounts.release(b.indicator)
+        }
+
+        private fun bindDirectoryCounts(node: PaneViewModel.FileNode) {
+            val ctx = b.root.context
+            val file = node.file
+            val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
+            val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
+            val localDirectory = file.scheme == "file" && file.isDir
+            if (showCounts || localDirectory) {
+                fun applyCount(count: DirectoryCounts.Count) {
+                    if (showCounts) setCounts(count)
+                    // Keep the row clickable as a destination even when there is nothing to expand.
+                    // Synthetic children (search, Git, access hints) must keep their indicator.
+                    if (localDirectory && !node.loading && !node.hasVirtualChildren) {
+                        setIndicator(if (node.expandable && (count.directories > 0 || count.files > 0))
+                            node.expanded else null)
+                    }
+                }
+                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::applyCount)
+                if (!node.loading && directoryCountsActive && this in attachedCountRows) {
+                    val owner = if (showCounts) b.folderCounts else b.indicator
+                    DirectoryCounts.release(if (showCounts) b.indicator else b.folderCounts)
+                    DirectoryCounts.request(owner, file, Prefs.showHidden(ctx), order = {
+                        bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
+                            ?: countPosition.takeIf { it != RecyclerView.NO_POSITION } ?: Int.MAX_VALUE
+                    }, deliver = ::applyCount)
+                } else releaseDirectoryCounts()
+            } else releaseDirectoryCounts()
+        }
+
         private fun bindFile(node: PaneViewModel.FileNode) {
             val ctx = b.root.context
             val file = node.file
@@ -1053,7 +1121,6 @@ class FileAdapter(
                     else -> fileMeta(file)
                 },
             )
-            val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
             // A source that cannot report a size in its listing (media server photos) is asked
             // for this row's, in the background; the answer rewrites this row's meta line only.
             if (node.capacity == null) {
@@ -1129,23 +1196,7 @@ class FileAdapter(
                 setIndicator(null)
             }
 
-            val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
-            val localDirectory = file.scheme == "file" && file.isDir
-            if (showCounts || localDirectory) {
-                fun applyCount(count: DirectoryCounts.Count) {
-                    if (showCounts) setCounts(count)
-                    // Keep the row clickable as a destination even when there is nothing to expand.
-                    // Synthetic children (search, Git, access hints) must keep their indicator.
-                    if (localDirectory && !node.loading && !node.hasVirtualChildren) {
-                        setIndicator(if (node.expandable && (count.directories > 0 || count.files > 0))
-                            node.expanded else null)
-                    }
-                }
-                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::applyCount)
-                if (!node.loading) DirectoryCounts.request(
-                    if (showCounts) b.folderCounts else b.indicator,
-                    file, Prefs.showHidden(ctx), ::applyCount)
-            }
+            bindDirectoryCounts(node)
 
             // Top-level storage nodes don't take part in multi-select; ordinary entries show a grey checkbox
             if (node.label == null) {

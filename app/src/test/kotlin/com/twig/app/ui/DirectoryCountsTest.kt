@@ -35,13 +35,38 @@ class DirectoryCountsTest {
         }
         assertTrue("background count did not complete", condition())
     }
-    @After fun tearDown() { DirectoryCounts.clear(); FsRegistry.unregister(root.scheme) }
+    @After fun tearDown() {
+        DirectoryCounts.clear()
+        await { DirectoryCounts.isIdle() }
+        FsRegistry.unregister(root.scheme)
+    }
 
     @Test fun `directories and files are separate and hidden items follow the display setting`() {
         DirectoryCounts.remember(root, listOf(child("sub", true), child(".hidden-dir", true),
             child("a", false), child("b", false), child(".hidden-file", false)))
         assertEquals(DirectoryCounts.Count(1, 2), DirectoryCounts.known(root, false))
         assertEquals(DirectoryCounts.Count(2, 3), DirectoryCounts.known(root, true))
+    }
+
+    @Test fun `queued counts follow live display positions rather than request order`() {
+        val calls = java.util.Collections.synchronizedList(ArrayList<String>())
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                calls.add(dir.path)
+                return emptyList()
+            }
+        })
+        val positions = mutableMapOf("/Zulu" to 8, "/Alpha" to 1, "/Middle" to 4)
+        var completed = 0
+        for (path in listOf("/Middle", "/Zulu", "/Alpha")) {
+            DirectoryCounts.request(view(), root.copy(path = path), false,
+                order = { positions.getValue(path) }) { completed++ }
+        }
+        // A resort before the worker runs must use the new positions.
+        positions["/Zulu"] = 0
+        await { completed == 3 }
+        assertEquals(listOf("/Zulu", "/Alpha", "/Middle"), calls.toList())
     }
 
     @Test fun `SMB probe lists only immediate children and subsequent binds reuse the count`() {
@@ -138,7 +163,7 @@ class DirectoryCountsTest {
         val owner = view()
         try {
             DirectoryCounts.request(owner, root, false) { fail("recycled row received a count") }
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            await { entered.count == 0L }
             owner.setTag(com.twig.app.R.id.directory_count, null)
             DirectoryCounts.remember(root, listOf(child("one", true), child("two", true)))
         } finally { release.countDown() }
@@ -160,4 +185,121 @@ class DirectoryCountsTest {
         assertNull(DirectoryCounts.known(root.copy(path = "/0"), false))
         assertEquals(DirectoryCounts.Count(0, 0), DirectoryCounts.known(root.copy(path = "/512"), false))
     }
+    @Test fun `blocked remote enumeration never holds up local counts`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val done = CountDownLatch(1)
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                entered.countDown()
+                try { assertTrue(release.await(5, TimeUnit.SECONDS)); return emptyList() }
+                finally { done.countDown() }
+            }
+        })
+        val dir = Files.createTempDirectory("twig-independent-count").toFile()
+        val previous = runCatching { FsRegistry.of("file") }.getOrNull()
+        try {
+            dir.resolve("local.txt").writeText("local")
+            val local = LocalFileSystem(dir)
+            FsRegistry.register(local)
+            DirectoryCounts.request(view(), root, false) { }
+            await { entered.count == 0L }
+            var result: DirectoryCounts.Count? = null
+            DirectoryCounts.request(view(), local.root(), false) { result = it }
+            await { result != null }
+            assertEquals(DirectoryCounts.Count(0, 1), result)
+            assertEquals("remote request must still be blocked", 1L, done.count)
+        } finally {
+            release.countDown()
+            assertTrue(done.await(5, TimeUnit.SECONDS))
+            if (previous == null) FsRegistry.unregister("file") else FsRegistry.register(previous)
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test fun `released queued rows are never enumerated after a slow request finishes`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val calls = java.util.Collections.synchronizedList(ArrayList<String>())
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                calls.add(dir.path)
+                if (dir.path == "/") {
+                    entered.countDown()
+                    assertTrue(release.await(5, TimeUnit.SECONDS))
+                }
+                return emptyList()
+            }
+        })
+        try {
+            DirectoryCounts.request(view(), root, false) { }
+            await { entered.count == 0L }
+            val abandoned = view()
+            DirectoryCounts.request(abandoned, root.copy(path = "/abandoned"), false) { fail("abandoned row updated") }
+            DirectoryCounts.release(abandoned)
+            var completed = false
+            DirectoryCounts.request(view(), root.copy(path = "/current"), false) { completed = true }
+            release.countDown()
+            await { completed }
+            assertEquals(listOf("/", "/current"), calls.toList())
+            assertNull(DirectoryCounts.known(root.copy(path = "/abandoned"), false))
+        } finally { release.countDown() }
+    }
+
+    @Test fun `releasing one pane preserves the other panes subscription to the same directory`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val reads = AtomicInteger()
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                reads.incrementAndGet()
+                entered.countDown()
+                assertTrue(release.await(5, TimeUnit.SECONDS))
+                return listOf(child("shared", false))
+            }
+        })
+        try {
+            val firstPane = view()
+            val otherPane = view()
+            DirectoryCounts.request(firstPane, root, false) { fail("closed pane updated") }
+            await { entered.count == 0L }
+            var result: DirectoryCounts.Count? = null
+            DirectoryCounts.request(otherPane, root, false) { result = it }
+            DirectoryCounts.release(firstPane)
+            release.countDown()
+            await { result != null }
+            assertEquals(DirectoryCounts.Count(0, 1), result)
+            assertEquals(1, reads.get())
+        } finally { release.countDown() }
+    }
+
+    @Test fun `rebinding the same row replaces its callback without repeating the directory read`() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val reads = AtomicInteger()
+        val fake = FakeFileSystem(root.scheme, emptyMap())
+        FsRegistry.register(object : FileSystem by fake {
+            override fun list(dir: XFile): List<XFile> {
+                reads.incrementAndGet()
+                entered.countDown()
+                assertTrue(release.await(5, TimeUnit.SECONDS))
+                return listOf(child(".hidden", false))
+            }
+        })
+        try {
+            val owner = view()
+            DirectoryCounts.request(owner, root, false) { fail("old binding received a result") }
+            await { entered.count == 0L }
+            var result: DirectoryCounts.Count? = null
+            DirectoryCounts.request(owner, root, true) { result = it }
+            release.countDown()
+            await { result != null }
+            assertEquals(DirectoryCounts.Count(0, 1), result)
+            assertEquals(1, reads.get())
+        } finally { release.countDown() }
+    }
+
 }
