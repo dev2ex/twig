@@ -15,9 +15,11 @@
         android:gravity="center_vertical">
         <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1" />
         <TextView android:layout_width="48dp" android:layout_height="wrap_content"
-            android:gravity="center" android:text="@string/compare_side_left" />
+            android:gravity="center" android:text="@string/root_pane_left_symbol" android:textSize="18sp"
+            android:contentDescription="@string/compare_side_left" />
         <TextView android:layout_width="48dp" android:layout_height="wrap_content"
-            android:gravity="center" android:text="@string/compare_side_right" />
+            android:gravity="center" android:text="@string/root_pane_right_symbol" android:textSize="18sp"
+            android:contentDescription="@string/compare_side_right" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView android:id="@+id/items"

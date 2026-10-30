@@ -1163,6 +1163,8 @@
 
     <!-- Top-level tree visibility and app-private files. -->
     <string name="action_root_items">Root item settings</string>
+    <string name="root_pane_left_symbol" translatable="false">←</string>
+    <string name="root_pane_right_symbol" translatable="false">→</string>
     <string name="private_space">Private space</string>
     <string name="private_space_create_failed">Could not create Private space</string>
 
