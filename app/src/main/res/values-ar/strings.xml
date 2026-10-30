@@ -236,6 +236,8 @@
     <string name="progress_copy">جارٍ النسخ…</string>
     <string name="progress_move">جارٍ النقل…</string>
     <string name="copy_title">نسخ</string>
+    <string name="copy_use_destination">استخدام المجلد</string>
+    <string name="copy_choose_destination">اختيار موقع آخر</string>
     <string name="copy_to">نسخ إلى</string>
     <string name="copy_move_mode">نمط النقل (يحذف ملفات المصدر)</string>
     <string name="copy_items">%1$d عنصر</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">أعد تشغيل Twig لتطبيق كل الإعدادات.</string>
     <string name="backup_working">جارٍ العمل…</string>
     <string name="backup_locked">افتح القفل بكلمة المرور الرئيسية أولا</string>
-    <string name="picker_hint_dir">افتح مجلد الحفظ ثم اضغط موافق</string>
+    <string name="picker_hint_dir">افتح المجلد الذي تريد تحديده، ثم اضغط على %1$s</string>
     <string name="backup_pick_dir">حفظ النسخة إلى</string>
     <string name="backup_pick_file">اختيار ملف نسخ احتياطي</string>
     <string name="backup_exported_at">تم التصدير إلى %1$s</string>

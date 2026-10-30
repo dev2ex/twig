@@ -4,6 +4,37 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Copy/move required selecting the other pane's destination first (2026-10-30,
+  #34)**: `performCopy` returned early on a missing or read-only sibling directory,
+  leaving users unable to choose a destination from the operation they had started.
+  Main now chooses directly in the opposite resident pane, then shows
+  `CopyConfirmDialog`; valid defaults go straight to confirmation with an option to
+  choose another location. Missing/read-only defaults choose first. Cancel/Back returns
+  to the existing file selection or restores a prior confirmation. Share clipboard
+  checks for same-directory and directory-into-self destinations without modifying
+  the clipboard. Keep a frozen source list, destination, move mode and shared size
+  plan in a pane-owned in-memory draft across picker cancellation and rotation;
+  process death discards it because transient source schemes cannot be reconstructed.
+  The draft's choosing flags restore the target side and destination bar after rotation.
+  Only the opposite pane can supply the destination; source touch and keyboard/accessibility
+  focus are blocked. Convert root-relative visible bounds to screen coordinates before
+  comparing raw touches, including in offset split-screen/freeform windows. Block pane-switch
+  long presses before mounting a directory into the other pane; blocking only the later
+  focus switch still changes the source location. Hide the clipboard bar without changing its contents, disable
+  transfer/destructive actions and context menus, and leave target navigation available.
+  Other pane hosts retain a directory-picker fallback. Selection only edits the draft;
+  confirmation starts the existing transfer path.
+  The state owns one observable size plan and its cancellable job; the draft holds
+  operation inputs only. UI updates and confirmation share one target validation
+  path, including rechecking a connection that disappears after picker return.
+  Long-press copy/move uses valid targets immediately; missing/read-only targets are
+  picked before confirmation, while same-directory/self targets show the error there.
+  `CopyDestinationTest` covers actual copy/move, missing/read-only/recursive targets,
+  cancellation and recreation, single size planning across rotation, source restrictions,
+  both copy directions, clipboard preservation, offset-window touch isolation, pane-switch
+  long presses and landscape focus restoration;
+  `StripWriteActionsTest` retains immediate-transfer and readable-root coverage.
+
 - **File picking lacked the destination picker's pane switch and navigation actions
   (2026-10-28)**: `PickerActivity` still used a single-pane layout and configured its
   strip separately. Both pickers now use `view_panes.xml` and `PickerBrowser` for pane

@@ -236,6 +236,8 @@
     <string name="progress_copy">कॉपी हो रही है…</string>
     <string name="progress_move">स्थानांतरित हो रहा है…</string>
     <string name="copy_title">कॉपी</string>
+    <string name="copy_use_destination">फ़ोल्डर चुनें</string>
+    <string name="copy_choose_destination">दूसरा स्थान चुनें</string>
     <string name="copy_to">कॉपी करें</string>
     <string name="copy_move_mode">स्थानांतरण मोड (स्रोत फ़ाइलें हटाता है)</string>
     <string name="copy_items">%1$d आइटम</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">सभी सेटिंग लागू करने के लिए Twig फिर शुरू करें।</string>
     <string name="backup_working">काम जारी है…</string>
     <string name="backup_locked">पहले मुख्य पासवर्ड से अनलॉक करें</string>
-    <string name="picker_hint_dir">गंतव्य फ़ोल्डर खोलें, फिर ठीक दबाएँ</string>
+    <string name="picker_hint_dir">जिस फ़ोल्डर को चुनना है उसे खोलें, फिर %1$s दबाएँ</string>
     <string name="backup_pick_dir">बैकअप यहाँ सहेजें</string>
     <string name="backup_pick_file">बैकअप फ़ाइल चुनें</string>
     <string name="backup_exported_at">%1$s में निर्यात हुआ</string>

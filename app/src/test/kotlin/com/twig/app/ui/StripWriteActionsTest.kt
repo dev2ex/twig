@@ -234,10 +234,13 @@ class StripWriteActionsTest {
             assertStrip(R.id.as_copy, true)
             assertStrip(R.id.as_compress, true)
             assertAllWriteActions(false, "a read source must not enable mutation of $key")
-            // No target: both handlers must reach destination validation rather than reject the source.
+            // Copy picks a destination first when the other pane has none.
             pane.actionCopy(move = false)
-            assertEquals(activity.getString(R.string.msg_pick_other_dir_first),
-                org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+            pane.childFragmentManager.executePendingTransactions()
+            assertTrue(pane.childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) == null)
+            assertTrue(activity.isPaneActive(pane1()))
+            activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
+            idle()
             pane.actionCompress()
             assertEquals(activity.getString(R.string.msg_pick_other_dir_first),
                 org.robolectric.shadows.ShadowToast.getTextOfLatestToast())

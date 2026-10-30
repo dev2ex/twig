@@ -241,6 +241,8 @@
     <string name="progress_copy">Копирование…</string>
     <string name="progress_move">Перемещение…</string>
     <string name="copy_title">Копировать</string>
+    <string name="copy_use_destination">Выбрать эту папку</string>
+    <string name="copy_choose_destination">Выбрать другое место</string>
     <string name="copy_to">Копировать в</string>
     <string name="copy_move_mode">Режим перемещения (удаляет исходные файлы)</string>
     <string name="copy_items">%1$d элемент(ов)</string>
@@ -882,7 +884,7 @@
     <string name="backup_restart_note">Перезапустите Twig, чтобы все настройки вступили в силу.</string>
     <string name="backup_working">Работаем…</string>
     <string name="backup_locked">Сначала разблокируйте с помощью главного пароля</string>
-    <string name="picker_hint_dir">Откройте папку, в которую хотите сохранить, а затем нажмите OK</string>
+    <string name="picker_hint_dir">Откройте нужную папку, затем нажмите «%1$s»</string>
     <string name="backup_pick_dir">Сохранить резервную копию в</string>
     <string name="backup_pick_file">Выберите файл бэкапа</string>
     <string name="backup_exported_at">Экспортировано в %1$s</string>

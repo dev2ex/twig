@@ -236,6 +236,8 @@
     <string name="progress_copy">Wird kopiert…</string>
     <string name="progress_move">Wird verschoben…</string>
     <string name="copy_title">Kopieren</string>
+    <string name="copy_use_destination">Ordner verwenden</string>
+    <string name="copy_choose_destination">Anderen Speicherort wählen</string>
     <string name="copy_to">Kopieren nach</string>
     <string name="copy_move_mode">Verschieben (Quelldateien löschen)</string>
     <string name="copy_items">%1$d Einträge</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">Twig neu starten, damit alle Einstellungen wirksam werden.</string>
     <string name="backup_working">Wird bearbeitet…</string>
     <string name="backup_locked">Zuerst mit Masterpasswort entsperren</string>
-    <string name="picker_hint_dir">Zielordner öffnen, dann OK antippen</string>
+    <string name="picker_hint_dir">Gewünschten Ordner öffnen, dann auf %1$s tippen</string>
     <string name="backup_pick_dir">Sicherung speichern unter</string>
     <string name="backup_pick_file">Sicherungsdatei wählen</string>
     <string name="backup_exported_at">Exportiert nach %1$s</string>

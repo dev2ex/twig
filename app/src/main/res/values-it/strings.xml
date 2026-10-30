@@ -236,6 +236,8 @@
     <string name="progress_copy">Copia…</string>
     <string name="progress_move">Spostamento…</string>
     <string name="copy_title">Copia</string>
+    <string name="copy_use_destination">Usa cartella</string>
+    <string name="copy_choose_destination">Scegli altra posizione</string>
     <string name="copy_to">Copia in</string>
     <string name="copy_move_mode">Sposta (elimina i file originali)</string>
     <string name="copy_items">%1$d elementi</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">Riavvia Twig per applicare tutte le impostazioni.</string>
     <string name="backup_working">Operazione in corso…</string>
     <string name="backup_locked">Sblocca prima con password principale</string>
-    <string name="picker_hint_dir">Apri la cartella di destinazione, poi tocca OK</string>
+    <string name="picker_hint_dir">Apri la cartella da selezionare, poi tocca %1$s</string>
     <string name="backup_pick_dir">Salva backup in</string>
     <string name="backup_pick_file">Scegli file di backup</string>
     <string name="backup_exported_at">Esportato in %1$s</string>

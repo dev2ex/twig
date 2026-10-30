@@ -97,13 +97,11 @@ open class PickerActivity : TwigActivity(), PaneFragment.Host {
         ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
         b.toolbar.title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.picker_title)
         b.toolbar.setNavigationOnClickListener { cancel() }
-        b.tvSummary.text = getString(
-            when {
-                pickDir -> R.string.picker_hint_dir
-                allowMultiple -> R.string.picker_hint_multi
-                else -> R.string.picker_hint_single
-            },
-        )
+        b.tvSummary.text = if (pickDir) {
+            getString(R.string.picker_hint_dir, getString(R.string.picker_confirm))
+        } else {
+            getString(if (allowMultiple) R.string.picker_hint_multi else R.string.picker_hint_single)
+        }
 
         TwigApp.registerBaseFs(this)
 

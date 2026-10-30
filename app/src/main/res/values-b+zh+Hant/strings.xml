@@ -237,6 +237,8 @@
     <string name="progress_copy">正在複製…</string>
     <string name="progress_move">正在移動…</string>
     <string name="copy_title">複製</string>
+    <string name="copy_use_destination">選為目標</string>
+    <string name="copy_choose_destination">另選位置</string>
     <string name="copy_to">複製到</string>
     <string name="copy_move_mode">移動模式(刪除原始檔)</string>
     <string name="copy_items">%1$d 項</string>
@@ -850,7 +852,7 @@
     <string name="backup_restart_note">重啟 Twig 後全部設定才會生效。</string>
     <string name="backup_working">正在處理…</string>
     <string name="backup_locked">請先用主密碼解鎖</string>
-    <string name="picker_hint_dir">點開要儲存到的目錄,再按「確定」</string>
+    <string name="picker_hint_dir">開啟要選擇的目錄，再按「%1$s」</string>
     <string name="backup_pick_dir">備份儲存到</string>
     <string name="backup_pick_file">選擇備份檔案</string>
     <string name="backup_exported_at">已匯出到 %1$s</string>

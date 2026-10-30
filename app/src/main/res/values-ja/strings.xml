@@ -236,6 +236,8 @@
     <string name="progress_copy">コピー中…</string>
     <string name="progress_move">移動中…</string>
     <string name="copy_title">コピー</string>
+    <string name="copy_use_destination">このフォルダーを使用</string>
+    <string name="copy_choose_destination">別の保存先を選択</string>
     <string name="copy_to">コピー先</string>
     <string name="copy_move_mode">移動モード（元のファイルを削除）</string>
     <string name="copy_items">%1$d 件</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">すべての設定を反映するにはTwigを再起動してください</string>
     <string name="backup_working">処理中…</string>
     <string name="backup_locked">先にマスターパスワードでロック解除してください</string>
-    <string name="picker_hint_dir">保存先フォルダーを開き、OKをタップ</string>
+    <string name="picker_hint_dir">選択するフォルダーを開き、「%1$s」をタップしてください</string>
     <string name="backup_pick_dir">バックアップの保存先</string>
     <string name="backup_pick_file">バックアップファイルを選択</string>
     <string name="backup_exported_at">%1$s にエクスポートしました</string>

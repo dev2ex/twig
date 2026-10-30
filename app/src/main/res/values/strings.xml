@@ -258,6 +258,8 @@
     <string name="progress_copy">Copying…</string>
     <string name="progress_move">Moving…</string>
     <string name="copy_title">Copy</string>
+    <string name="copy_use_destination">Use folder</string>
+    <string name="copy_choose_destination">Choose another location</string>
     <string name="copy_to">Copy to</string>
     <string name="copy_move_mode">Move mode (deletes source files)</string>
     <string name="copy_items">%1$d item(s)</string>
@@ -899,7 +901,7 @@
     <string name="backup_restart_note">Restart Twig for all settings to take effect.</string>
     <string name="backup_working">Working…</string>
     <string name="backup_locked">Unlock with your master password first</string>
-    <string name="picker_hint_dir">Open the folder you want to save into, then tap OK</string>
+    <string name="picker_hint_dir">Open the folder you want to select, then tap %1$s</string>
     <string name="backup_pick_dir">Save backup to</string>
     <string name="backup_pick_file">Choose a backup file</string>
     <string name="backup_exported_at">Exported to %1$s</string>

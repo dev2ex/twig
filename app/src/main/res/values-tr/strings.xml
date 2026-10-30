@@ -236,6 +236,8 @@
     <string name="progress_copy">Kopyalanıyor…</string>
     <string name="progress_move">Taşınıyor…</string>
     <string name="copy_title">Kopyala</string>
+    <string name="copy_use_destination">Klasörü kullan</string>
+    <string name="copy_choose_destination">Başka konum seç</string>
     <string name="copy_to">Kopyalama hedefi</string>
     <string name="copy_move_mode">Taşıma modu (kaynak dosyaları siler)</string>
     <string name="copy_items">%1$d öğe</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">Tüm ayarların uygulanması için Twig’i yeniden başlatın.</string>
     <string name="backup_working">İşleniyor…</string>
     <string name="backup_locked">Önce ana parolayla kilidi açın</string>
-    <string name="picker_hint_dir">Kaydetme klasörünü açıp Tamam’a dokunun</string>
+    <string name="picker_hint_dir">Seçmek istediğiniz klasörü açın, ardından %1$s düğmesine dokunun</string>
     <string name="backup_pick_dir">Yedek kaydetme hedefi</string>
     <string name="backup_pick_file">Yedek dosyası seç</string>
     <string name="backup_exported_at">%1$s konumuna aktarıldı</string>

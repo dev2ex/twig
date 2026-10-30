@@ -236,6 +236,8 @@
     <string name="progress_copy">복사 중…</string>
     <string name="progress_move">이동 중…</string>
     <string name="copy_title">복사</string>
+    <string name="copy_use_destination">이 폴더 사용</string>
+    <string name="copy_choose_destination">다른 위치 선택</string>
     <string name="copy_to">복사 대상</string>
     <string name="copy_move_mode">이동 모드 (원본 파일 삭제)</string>
     <string name="copy_items">%1$d개 항목</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">모든 설정을 적용하려면 Twig를 다시 시작하세요</string>
     <string name="backup_working">처리 중…</string>
     <string name="backup_locked">먼저 마스터 비밀번호로 잠금을 해제하세요</string>
-    <string name="picker_hint_dir">저장할 폴더를 열고 확인 누르기</string>
+    <string name="picker_hint_dir">선택할 폴더를 연 다음 %1$s 버튼을 누르세요</string>
     <string name="backup_pick_dir">백업 저장 위치</string>
     <string name="backup_pick_file">백업 파일 선택</string>
     <string name="backup_exported_at">%1$s(으)로 내보냄</string>

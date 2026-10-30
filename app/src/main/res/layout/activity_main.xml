@@ -22,6 +22,68 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <LinearLayout
+        android:id="@+id/copy_destination_bar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:background="?attr/twigBar"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_copy_destination_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:text="@string/copy_to"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tv_copy_destination"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:ellipsize="start"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/btn_copy_destination_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:padding="10dp"
+            android:text="@string/dialog_cancel"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <TextView
+            android:id="@+id/btn_copy_destination_confirm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:padding="10dp"
+            android:text="@string/copy_use_destination"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:textSize="15sp"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
     <!-- Clipboard bar (visible only when there is content): spans the whole window rather
          than living inside one pane, and the paste target is the **active pane's** current
          directory — switching panes switches the target. Two rows: top row is info

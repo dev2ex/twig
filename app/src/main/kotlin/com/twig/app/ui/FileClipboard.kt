@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Global clipboard (shared between the two panes): the long-press menu's "copy to clipboard" places things here,
  * and tapping "paste" on the bottom bar of the main screen uses the **active pane's** current directory as the
- * destination, so either pane can act as the target — unlike the action bar's copy / move, which is fixed at
- * "this pane → the other pane".
+ * destination, so either pane can act as the target. The action bar's copy / move defaults
+ * to the other pane, with an optional replacement destination in its confirmation dialog.
  *
  * In-memory only (process-local), not persisted: the [XFile]s inside may come from archives / network sessions,
  * and rebuilding them across processes is expensive and may point at stale connections. [move] is the checkbox
@@ -68,8 +68,7 @@ object FileClipboard {
      * Both require matching schemes — different sources (local vs SMB) with colliding path strings are not
      * necessarily the same place.
      */
-    fun pasteBlockReason(dest: XFile?): Int? {
-        val items = _state.value.items
+    fun pasteBlockReason(dest: XFile?, items: List<XFile> = _state.value.items): Int? {
         if (items.isEmpty() || dest == null) return null
         if (items.any { it.scheme == dest.scheme && it.parentPath == dest.path }) {
             return R.string.clip_same_dir

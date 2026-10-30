@@ -236,6 +236,8 @@
     <string name="progress_copy">Đang sao chép…</string>
     <string name="progress_move">Đang di chuyển…</string>
     <string name="copy_title">Sao chép</string>
+    <string name="copy_use_destination">Dùng thư mục này</string>
+    <string name="copy_choose_destination">Chọn vị trí khác</string>
     <string name="copy_to">Sao chép đến</string>
     <string name="copy_move_mode">Chế độ di chuyển (xóa tệp nguồn)</string>
     <string name="copy_items">%1$d mục</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">Khởi động lại Twig để áp dụng mọi cài đặt.</string>
     <string name="backup_working">Đang xử lý…</string>
     <string name="backup_locked">Mở khóa bằng mật khẩu chính trước</string>
-    <string name="picker_hint_dir">Mở thư mục muốn lưu rồi chạm OK</string>
+    <string name="picker_hint_dir">Mở thư mục muốn chọn, rồi chạm vào %1$s</string>
     <string name="backup_pick_dir">Lưu sao lưu vào</string>
     <string name="backup_pick_file">Chọn tệp sao lưu</string>
     <string name="backup_exported_at">Đã xuất đến %1$s</string>

@@ -53,7 +53,6 @@ import com.twig.app.isMovableSource
 import com.twig.app.favoriteFullPath
 import com.twig.app.databinding.DialogCompressBinding
 import com.twig.app.databinding.DialogConflictBinding
-import com.twig.app.databinding.DialogCopyConfirmBinding
 import com.twig.app.databinding.DialogCopyProgressBinding
 import com.twig.app.databinding.DialogProgressTitleBinding
 import com.twig.app.databinding.FragmentPaneBinding
@@ -84,6 +83,9 @@ class PaneFragment : Fragment() {
         fun onPaneSwipe(velocityX: Float)
         fun refreshTrees()
         fun isPaneActive(self: PaneFragment): Boolean
+        /** Main-screen copies can choose directly in the other resident pane. */
+        fun chooseCopyDestination(source: PaneFragment): Boolean = false
+        fun isChoosingCopyDestination(): Boolean = false
         /** Make a pane the currently-shown one (e.g. the treemap's "Show on the other side" then focus the target pane). */
         fun focusPane(pane: PaneFragment)
         /** This pane's current directory (= the clipboard bar's paste target) changed; let the host refresh that line on the bar.
@@ -119,7 +121,9 @@ class PaneFragment : Fragment() {
     private val b get() = _b!!
 
     val viewModel: PaneViewModel by viewModels()
+    internal val copyState: CopyConfirmDialog.State by viewModels()
     private lateinit var adapter: FileAdapter
+    private var pendingCopySelection: List<XFile> = emptyList()
 
     private var pendingDataPath: String? = null
     private val dataPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -227,6 +231,7 @@ class PaneFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         viewModel.paneIndex = paneIndex
+        pendingCopySelection = copyState.checkedSources
         com.twig.app.WebsiteStore.preferences(requireContext()).registerOnSharedPreferenceChangeListener(websiteListener)
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
@@ -258,7 +263,8 @@ class PaneFragment : Fragment() {
                 }
             },
             onLongClick = { node ->
-                if (host?.shortcutResult != null) host?.onPickNode(node)
+                if (host?.isChoosingCopyDestination() == true) Unit
+                else if (host?.shortcutResult != null) host?.onPickNode(node)
                 else onLongClick(node)
             },
             onSelectionChanged = {
@@ -457,6 +463,10 @@ class PaneFragment : Fragment() {
         adapter.currentKey = s.currentKey
         adapter.submitList(s.rows) {
             val bb = _b ?: return@submitList
+            if (pendingCopySelection.isNotEmpty()) {
+                adapter.setSelection(pendingCopySelection)
+                pendingCopySelection = emptyList()
+            }
             bb.list.invalidate() // The highlight frame redraws as currentKey changes.
             if (pendingSelectionInfoScroll) {
                 val index = s.rows.indexOfFirst { it is PaneViewModel.InfoNode && it.selection }
@@ -912,6 +922,11 @@ class PaneFragment : Fragment() {
         if (!viewModel.sortingItems) return
         viewModel.finishItemSorting()
         host?.refreshTrees()
+    }
+
+    internal fun prepareCopyDestination() {
+        if (mapMode) exitTreemap()
+        if (viewModel.sortingItems) finishInlineSorting()
     }
 
     /** Back first finishes inline reordering; in the treemap it goes up or returns to the tree. */
@@ -1409,7 +1424,7 @@ class PaneFragment : Fragment() {
         startTransfer(items, dest, FileClipboard.move, plan0 = null, fromClipboard = true)
     }
 
-    /** Copy/move the checked items (or the green-highlighted current node when nothing is checked) to the other pane's current directory. */
+    /** Copy/move checked items (or the current node), choosing a target first when the other pane has no writable directory. */
     fun actionCopy(move: Boolean, immediate: Boolean = false) {
         val sel = selectionOrCurrent(readOnly = !move)
         if (sel.isEmpty()) {
@@ -1435,45 +1450,44 @@ class PaneFragment : Fragment() {
         }
         val sibling = host?.siblingOf(this)
         val dest = sibling?.viewModel?.currentDir
-        if (dest == null) {
-            toast(getString(R.string.msg_pick_other_dir_first)); return
-        }
-        if (!dest.isWritableDir()) {
-            toast(getString(R.string.msg_dest_not_writable)); return
-        }
-
-        if (immediate) {
+        if (immediate && dest?.isWritableDir() == true && FileClipboard.pasteBlockReason(dest, sel) == null) {
             startTransfer(sel, dest, move, null)
             return
         }
 
-        // ---- Confirmation dialog: source + size (background tally) + destination + move mode ----
-        val cb = DialogCopyConfirmBinding.inflate(layoutInflater)
-        cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
-        cb.tvSize.text = "…"
-        cb.tvDest.text = pathLabel(dest)
-        cb.ivDest.setImageResource(pathIcon(dest))
-        cb.cbMove.isChecked = move
-        // When the sources can't be moved there's no "move mode" to speak of — better to hide the row entirely than show a checkbox that would error on click.
-        cb.cbMove.visibility = if (movable) View.VISIBLE else View.GONE
-        var plan: CopyEngine.Plan? = null
-        viewLifecycleOwner.lifecycleScope.launch {
-            val p = runCatching { withContext(Dispatchers.IO) { CopyEngine.plan(sel) } }.getOrNull()
-            plan = p
-            if (p != null && _b != null) cb.tvSize.text = Format.size(p.bytes)
-        }
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.copy_title)
-            .setView(cb.root)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                startTransfer(sel, dest, movable && cb.cbMove.isChecked, plan)
-            }
-            .show()
+        // Keep the source snapshot while the destination picker is open.
+        if (childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) != null) return
+        val state = copyState
+        state.prepare(CopyConfirmDialog.Draft(sel.toList(), dest, move, movable))
+        if (dest?.isWritableDir() == true) showCopyConfirmation() else chooseCopyDestination()
+    }
+
+    private val copyDestinationPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val state = copyState
+        val draft = state.draft ?: return@registerForActivityResult
+        val confirmation = childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) as? CopyConfirmDialog
+        val data = result.data
+        val scheme = data?.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME)
+        val path = data?.getStringExtra(PickerActivity.EXTRA_PICKED_PATH)
+        if (result.resultCode == Activity.RESULT_OK && scheme != null && path != null) {
+            draft.destination = XFile(scheme, path, true,
+                displayName = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME))
+            if (confirmation == null) showCopyConfirmation() else confirmation.updateDestination()
+        } else if (confirmation == null) state.clear()
+        else confirmation.updateDestination()
+    }
+
+    internal fun chooseCopyDestination() {
+        if (host?.chooseCopyDestination(this) == true) return
+        copyDestinationPicker.launch(PickerActivity.dirIntent(requireContext(), getString(R.string.copy_to)))
+    }
+
+    internal fun showCopyConfirmation() {
+        CopyConfirmDialog().show(childFragmentManager, CopyConfirmDialog.TAG)
     }
 
     /** Hand the move to the background session, and attach the progress dialog (see [Transfers]). */
-    private fun startTransfer(
+    internal fun startTransfer(
         sel: List<XFile>,
         dest: XFile,
         move: Boolean,

@@ -47,7 +47,7 @@
             android:id="@+id/iv_dest"
             android:layout_width="22dp"
             android:layout_height="22dp"
-            android:src="@drawable/ic_storage"
+            android:src="@drawable/ic_folder"
             android:contentDescription="@null" />
 
         <TextView
@@ -60,6 +60,15 @@
             android:textColor="@color/text_primary"
             android:textSize="15sp" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_dest_error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
 
     <CheckBox
         android:id="@+id/cb_move"

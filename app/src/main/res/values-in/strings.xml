@@ -236,6 +236,8 @@
     <string name="progress_copy">Menyalin…</string>
     <string name="progress_move">Memindahkan…</string>
     <string name="copy_title">Salin</string>
+    <string name="copy_use_destination">Gunakan folder</string>
+    <string name="copy_choose_destination">Pilih lokasi lain</string>
     <string name="copy_to">Salin ke</string>
     <string name="copy_move_mode">Pindahkan (hapus file sumber)</string>
     <string name="copy_items">%1$d item</string>
@@ -849,7 +851,7 @@
     <string name="backup_restart_note">Mulai ulang Twig untuk menerapkan semua pengaturan.</string>
     <string name="backup_working">Memproses…</string>
     <string name="backup_locked">Buka kunci dengan sandi utama dahulu</string>
-    <string name="picker_hint_dir">Buka folder tujuan, lalu ketuk OK</string>
+    <string name="picker_hint_dir">Buka folder yang ingin dipilih, lalu ketuk %1$s</string>
     <string name="backup_pick_dir">Simpan cadangan ke</string>
     <string name="backup_pick_file">Pilih file cadangan</string>
     <string name="backup_exported_at">Diekspor ke %1$s</string>
