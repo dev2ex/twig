@@ -1169,4 +1169,5 @@
     <string name="transfer_retry_detail">تُعاد محاولة العناصر غير المكتملة فقط. تُتخطى الملفات المكتملة ويُستأنف نقل الملفات الجزئية عند دعم ذلك.</string>
     <string name="transfer_failed_target">الوجهة: %1$s</string>
     <string name="transfer_skip_failed">تخطي هذا العنصر</string>
+    <string name="dialog_reset">إعادة ضبط</string>
 </resources>

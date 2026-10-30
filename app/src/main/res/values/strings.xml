@@ -1241,4 +1241,5 @@
     <string name="pdf_password">PDF password</string>
     <string name="pdf_password_retry">The password was not accepted, or this PDF uses unsupported encryption. Please try again.</string>
     <string name="pdf_password_unsupported">This PDF requires a password or uses unsupported encryption. This Android version cannot unlock it in Twig. Try another PDF app.</string>
+    <string name="dialog_reset">Reset</string>
 </resources>

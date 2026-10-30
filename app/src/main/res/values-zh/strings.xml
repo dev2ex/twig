@@ -1195,4 +1195,5 @@
     <string name="pdf_password">PDF 密码</string>
     <string name="pdf_password_retry">密码未被接受，或此 PDF 使用了不支持的加密方式。请重试。</string>
     <string name="pdf_password_unsupported">此 PDF 需要密码或使用了不支持的加密方式。当前 Android 版本无法在 Twig 中解锁，请尝试其他 PDF 应用。</string>
+    <string name="dialog_reset">重置</string>
 </resources>

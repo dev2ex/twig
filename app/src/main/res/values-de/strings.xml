@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">Nur unfertige Elemente erneut versuchen. Fertige Dateien werden übersprungen; teilweise übertragene Dateien werden fortgesetzt, sofern unterstützt.</string>
     <string name="transfer_failed_target">Ziel: %1$s</string>
     <string name="transfer_skip_failed">Dieses Element überspringen</string>
+    <string name="dialog_reset">Zurücksetzen</string>
 </resources>

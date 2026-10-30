@@ -1164,4 +1164,5 @@
     <string name="transfer_retry_detail">Chỉ thử lại các mục chưa hoàn tất. Bỏ qua tệp đã hoàn tất; tiếp tục truyền tệp còn dở nếu được hỗ trợ.</string>
     <string name="transfer_failed_target">Đích: %1$s</string>
     <string name="transfer_skip_failed">Bỏ qua mục này</string>
+    <string name="dialog_reset">Đặt lại</string>
 </resources>

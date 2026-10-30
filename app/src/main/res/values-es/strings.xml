@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">Reintenta solo los elementos pendientes. Se omiten los archivos completados y se reanudan los parciales cuando es compatible.</string>
     <string name="transfer_failed_target">Destino: %1$s</string>
     <string name="transfer_skip_failed">Omitir este elemento</string>
+    <string name="dialog_reset">Restablecer</string>
 </resources>

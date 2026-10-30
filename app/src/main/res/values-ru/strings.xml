@@ -1201,4 +1201,5 @@
     <string name="transfer_retry_detail">Повторяются только незавершённые операции. Готовые файлы пропускаются; частично записанные продолжаются, если это поддерживается.</string>
     <string name="transfer_failed_target">Назначение: %1$s</string>
     <string name="transfer_skip_failed">Пропустить этот элемент</string>
+    <string name="dialog_reset">Сбросить</string>
 </resources>

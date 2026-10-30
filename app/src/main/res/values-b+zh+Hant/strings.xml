@@ -1164,4 +1164,5 @@
     <string name="transfer_retry_detail">僅重試未完成的項目。已完成的檔案會略過；支援時續傳未完成的檔案。</string>
     <string name="transfer_failed_target">目標：%1$s</string>
     <string name="transfer_skip_failed">略過此項目</string>
+    <string name="dialog_reset">重設</string>
 </resources>

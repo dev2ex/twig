@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">केवल अधूरे आइटम फिर से आज़माएँ। पूरे हो चुके फ़ाइल छोड़ दिए जाते हैं; समर्थन होने पर आंशिक फ़ाइलों का स्थानांतरण फिर शुरू होता है।</string>
     <string name="transfer_failed_target">लक्ष्य: %1$s</string>
     <string name="transfer_skip_failed">यह आइटम छोड़ें</string>
+    <string name="dialog_reset">रीसेट करें</string>
 </resources>

@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">Riprova solo gli elementi incompleti. I file completati vengono saltati; i trasferimenti parziali riprendono se supportato.</string>
     <string name="transfer_failed_target">Destinazione: %1$s</string>
     <string name="transfer_skip_failed">Salta questo elemento</string>
+    <string name="dialog_reset">Ripristina</string>
 </resources>

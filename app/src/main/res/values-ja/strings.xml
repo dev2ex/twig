@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">未完了の項目のみ再試行します。完了したファイルはスキップし、対応している場合は途中から転送を再開します。</string>
     <string name="transfer_failed_target">転送先：%1$s</string>
     <string name="transfer_skip_failed">この項目をスキップ</string>
+    <string name="dialog_reset">リセット</string>
 </resources>

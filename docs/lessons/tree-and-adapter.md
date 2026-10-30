@@ -407,3 +407,8 @@
   before the password type. Keep entered text out of saved view state, clear it on
   dismissal, and retain the prompt on empty confirmation. PDF password entry has no
   external-app button. Tests check the actual transformation, not just inputType.
+
+- **Resetting root items and action panels (2026-10-30, #35)**: Reset updates only
+  the dialog draft. Cancel preserves saved ordering and visibility; OK applies the
+  defaults to both root panes or the shared action panel. `ConfigurationResetTest`
+  checks the draft, cancellation and persistence paths.

@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.twig.app.RootItems
 import com.twig.app.Prefs
 import com.twig.app.R
 import com.twig.app.databinding.DialogRootItemsBinding
@@ -73,14 +74,25 @@ object RootItemsDialog {
         return AlertDialog.Builder(activity)
             .setTitle(R.string.action_root_items)
             .setView(content.root)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 Prefs.setRootItemOrder(activity, items.map { it.id })
                 for (pane in 0..1) items.forEach {
                     Prefs.setRootItemVisible(activity, pane, it.id, checked[pane].getValue(it.id))
                 }
                 onSaved()
             }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setNeutralButton(R.string.dialog_reset, null)
+            .show().apply {
+                getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                    items.clear()
+                    items.addAll(RootItems.all)
+                    checked.forEach { choices ->
+                        choices.clear()
+                        items.forEach { choices[it.id] = it.visibleByDefault }
+                    }
+                    adapter.notifyDataSetChanged()
+                }
+            }
     }
 }

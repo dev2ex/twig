@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.twig.app.StripItems
 import com.twig.app.Prefs
 import com.twig.app.R
 import com.twig.app.databinding.DialogStripItemsBinding
@@ -66,12 +67,20 @@ object StripItemsDialog {
         return AlertDialog.Builder(activity)
             .setTitle(R.string.settings_action_strip)
             .setView(content.root)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 Prefs.setStripItems(activity, items.map { it.id }, checked.filterValues { it }.keys)
                 onSaved()
             }
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setNeutralButton(R.string.dialog_reset, null)
             .show().apply {
+                getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                    items.clear()
+                    items.addAll(StripItems.all)
+                    checked.clear()
+                    items.forEach { checked[it.id] = it.visibleByDefault }
+                    adapter.notifyDataSetChanged()
+                }
                 getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(
                     androidx.core.content.ContextCompat.getColor(activity, R.color.action_text))
             }

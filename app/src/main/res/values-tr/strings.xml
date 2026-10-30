@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">Yalnızca tamamlanmamış öğeleri yeniden dener. Tamamlanan dosyalar atlanır; destekleniyorsa kısmi dosyalara kaldığı yerden devam edilir.</string>
     <string name="transfer_failed_target">Hedef: %1$s</string>
     <string name="transfer_skip_failed">Bu öğeyi atla</string>
+    <string name="dialog_reset">Sıfırla</string>
 </resources>

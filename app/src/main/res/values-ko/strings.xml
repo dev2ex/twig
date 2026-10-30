@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">미완료 항목만 다시 시도합니다. 완료된 파일은 건너뛰고 지원되는 경우 부분 파일 전송을 이어서 진행합니다.</string>
     <string name="transfer_failed_target">대상: %1$s</string>
     <string name="transfer_skip_failed">이 항목 건너뛰기</string>
+    <string name="dialog_reset">초기화</string>
 </resources>

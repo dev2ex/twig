@@ -1165,4 +1165,5 @@
     <string name="transfer_retry_detail">Tenta novamente apenas os itens incompletos. Arquivos concluídos são ignorados; os parciais são retomados quando possível.</string>
     <string name="transfer_failed_target">Destino: %1$s</string>
     <string name="transfer_skip_failed">Ignorar este item</string>
+    <string name="dialog_reset">Redefinir</string>
 </resources>
