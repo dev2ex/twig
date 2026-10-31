@@ -4,6 +4,17 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Directory-tree labels ignored app language on Android 11 (2026-10-31)**:
+  settings and menus followed the selected language while storage roots and groups
+  stayed in the system language. Rebuilding rows alone did not help: below API 33,
+  AppCompat localizes Activity contexts but not Application resources, and the
+  retained `PaneViewModel.str` read the latter. Resolve its strings through
+  `LanguagePref.appContext`, caching a configuration context by app language and
+  source configuration without mutating global resources or retaining an Activity.
+  Returning to the system language bypasses that override. `PaneLanguageTest`
+  switches a retained pane between Chinese, German, English and system on API 30/32
+  while verifying that Application strings remain in the system language.
+
 - **Copy/move required selecting the other pane's destination first (2026-10-30,
   #34)**: `performCopy` returned early on a missing or read-only sibling directory,
   leaving users unable to choose a destination from the operation they had started.

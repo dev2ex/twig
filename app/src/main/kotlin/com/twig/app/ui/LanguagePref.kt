@@ -1,6 +1,8 @@
 package com.twig.app.ui
 
 import android.content.Context
+import android.content.res.Configuration
+import android.os.Build
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -22,6 +24,33 @@ import java.util.Locale
  * API 33, without flashing the system language.
  */
 object LanguagePref {
+
+    private var cachedContext: Context? = null
+    private var cachedConfiguration: Configuration? = null
+    private var cachedTags: String? = null
+
+    /** AppCompat localizes Activities below API 33, but leaves Application resources unchanged. */
+    @Synchronized
+    fun appContext(ctx: Context): Context {
+        val app = ctx.applicationContext
+        val locales = AppCompatDelegate.getApplicationLocales()
+        if (Build.VERSION.SDK_INT >= 33 || locales.isEmpty) return app
+        val configuration = app.resources.configuration
+        val tags = locales.toLanguageTags()
+        if (cachedContext?.applicationContext !== app || cachedConfiguration != configuration || cachedTags != tags) {
+            cachedConfiguration = Configuration(configuration)
+            cachedTags = tags
+            val localized = Configuration(configuration).apply {
+                // Preserve system fallback languages after the explicitly selected app languages.
+                setLocales(android.os.LocaleList.forLanguageTags(
+                    (tags.split(',') + configuration.locales.toLanguageTags().split(','))
+                        .filter { it.isNotEmpty() }.distinct().joinToString(","),
+                ))
+            }
+            cachedContext = app.createConfigurationContext(localized)
+        }
+        return requireNotNull(cachedContext)
+    }
 
     /** Native names with English translations live only in default resources, keeping every picker readable. */
     private val choices = listOf(

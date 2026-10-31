@@ -3410,7 +3410,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Utilities ----
 
     /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
-    private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+    private fun str(id: Int, vararg args: Any): String = LanguagePref.appContext(getApplication()).getString(id, *args)
 
     private fun capacity(path: String): String? = runCatching {
         val st = StatFs(path)

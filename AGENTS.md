@@ -804,7 +804,7 @@ add its symptom here.
   `isWritableDir()` at six entry points; selection changes use payloads, never
   `notifyDataSetChanged`. Source-directory imports require read access; reusing the
   writable-destination gate makes read-only music directories impossible to select.
-  *Explains*: a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
+  *Explains*: directory-tree labels staying in the system language after an app-language change on Android 11, a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
   spinner that never stops, the whole list flickering when you tick a box, collapsing
   Apps / Installed crashing after an app APK was opened as an archive and restored,
   the Properties ripple disappearing on the first tap with folder counts enabled,
