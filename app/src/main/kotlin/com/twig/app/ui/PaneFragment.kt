@@ -51,7 +51,6 @@ import com.twig.app.Format
 import com.twig.app.favoriteDisplayName
 import com.twig.app.isMovableSource
 import com.twig.app.favoriteFullPath
-import com.twig.app.databinding.DialogCompressBinding
 import com.twig.app.databinding.DialogConflictBinding
 import com.twig.app.databinding.DialogCopyProgressBinding
 import com.twig.app.databinding.DialogProgressTitleBinding
@@ -84,8 +83,8 @@ class PaneFragment : Fragment() {
         fun refreshTrees()
         fun isPaneActive(self: PaneFragment): Boolean
         /** Main-screen copies can choose directly in the other resident pane. */
-        fun chooseCopyDestination(source: PaneFragment): Boolean = false
-        fun isChoosingCopyDestination(): Boolean = false
+        fun chooseDestination(source: PaneFragment): Boolean = false
+        fun isChoosingDestination(): Boolean = false
         /** Make a pane the currently-shown one (e.g. the treemap's "Show on the other side" then focus the target pane). */
         fun focusPane(pane: PaneFragment)
         /** This pane's current directory (= the clipboard bar's paste target) changed; let the host refresh that line on the bar.
@@ -125,9 +124,9 @@ class PaneFragment : Fragment() {
     private val b get() = _b!!
 
     val viewModel: PaneViewModel by viewModels()
-    internal val copyState: CopyConfirmDialog.State by viewModels()
+    internal val destinationState: DestinationState by viewModels()
     private lateinit var adapter: FileAdapter
-    private var pendingCopySelection: List<XFile> = emptyList()
+    private var pendingDestinationSelection: List<XFile> = emptyList()
 
     private var pendingDataPath: String? = null
     private val dataPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -235,7 +234,7 @@ class PaneFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         viewModel.paneIndex = paneIndex
-        pendingCopySelection = copyState.checkedSources
+        pendingDestinationSelection = destinationState.checkedSources
         com.twig.app.WebsiteStore.preferences(requireContext()).registerOnSharedPreferenceChangeListener(websiteListener)
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
@@ -268,7 +267,7 @@ class PaneFragment : Fragment() {
                 }
             },
             onLongClick = { node ->
-                if (host?.isChoosingCopyDestination() == true) Unit
+                if (host?.isChoosingDestination() == true) Unit
                 else if (host?.shortcutResult != null) host?.onPickNode(node)
                 else onLongClick(node)
             },
@@ -468,9 +467,9 @@ class PaneFragment : Fragment() {
         adapter.currentKey = s.currentKey
         adapter.submitList(s.rows) {
             val bb = _b ?: return@submitList
-            if (pendingCopySelection.isNotEmpty()) {
-                adapter.setSelection(pendingCopySelection)
-                pendingCopySelection = emptyList()
+            if (pendingDestinationSelection.isNotEmpty()) {
+                adapter.setSelection(pendingDestinationSelection)
+                pendingDestinationSelection = emptyList()
             }
             bb.list.invalidate() // The highlight frame redraws as currentKey changes.
             if (pendingSelectionInfoScroll) {
@@ -929,7 +928,7 @@ class PaneFragment : Fragment() {
         host?.refreshTrees()
     }
 
-    internal fun prepareCopyDestination() {
+    internal fun prepareDestinationSelection() {
         if (mapMode) exitTreemap()
         if (viewModel.sortingItems) finishInlineSorting()
     }
@@ -1500,34 +1499,41 @@ class PaneFragment : Fragment() {
         }
 
         // Keep the source snapshot while the destination picker is open.
-        if (childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) != null) return
-        val state = copyState
-        state.prepare(CopyConfirmDialog.Draft(sel.toList(), dest, move, movable))
-        if (dest?.isWritableDir() == true) showCopyConfirmation() else chooseCopyDestination()
+        if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
+        val state = destinationState
+        state.prepare(DestinationState.Draft(sel.toList(), dest, move, movable))
+        if (dest?.isWritableDir() == true) showDestinationConfirmation() else chooseDestination()
     }
 
-    private val copyDestinationPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val state = copyState
+    private val destinationPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val state = destinationState
         val draft = state.draft ?: return@registerForActivityResult
-        val confirmation = childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) as? CopyConfirmDialog
         val data = result.data
         val scheme = data?.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME)
         val path = data?.getStringExtra(PickerActivity.EXTRA_PICKED_PATH)
-        if (result.resultCode == Activity.RESULT_OK && scheme != null && path != null) {
-            draft.destination = XFile(scheme, path, true,
+        val picked = result.resultCode == Activity.RESULT_OK && scheme != null && path != null
+        if (picked) {
+            draft.destination = XFile(scheme!!, path!!, true,
                 displayName = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME))
-            if (confirmation == null) showCopyConfirmation() else confirmation.updateDestination()
-        } else if (confirmation == null) state.clear()
-        else confirmation.updateDestination()
+        }
+        val confirm = picked || state.returnToConfirmation
+        state.returnToConfirmation = false
+        if (confirm) showDestinationConfirmation() else state.clear()
     }
 
-    internal fun chooseCopyDestination() {
-        if (host?.chooseCopyDestination(this) == true) return
-        copyDestinationPicker.launch(PickerActivity.dirIntent(requireContext(), getString(R.string.copy_to)))
+    internal fun chooseDestination() {
+        if (host?.chooseDestination(this) == true) return
+        val confirmation = childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as? androidx.fragment.app.DialogFragment
+        destinationState.returnToConfirmation = confirmation != null
+        confirmation?.dismiss()
+        val title = if (destinationState.draft?.compression == null) R.string.copy_to else R.string.compress_save_to
+        destinationPicker.launch(PickerActivity.dirIntent(requireContext(), getString(title)))
     }
 
-    internal fun showCopyConfirmation() {
-        CopyConfirmDialog().show(childFragmentManager, CopyConfirmDialog.TAG)
+    internal fun showDestinationConfirmation() {
+        val draft = destinationState.draft ?: return
+        val dialog = if (draft.compression == null) CopyConfirmDialog() else CompressConfirmDialog()
+        dialog.show(childFragmentManager, DestinationState.CONFIRMATION_TAG)
     }
 
     /** Hand the move to the background session, and attach the progress dialog (see [Transfers]). */
@@ -1619,85 +1625,21 @@ class PaneFragment : Fragment() {
         performCompress(sel, allowMove = selectionOrCurrent().containsAll(sel), immediate = immediate)
     }
 
-    /**
-     * Compress confirmation dialog: file name (default below) + format (zip/7z) + move mode; the destination is fixed to the other pane's current directory,
-     * same as the action bar's copy/move.
-     *
-     * Default name: with a single item (the case when the file/directory menu enters) use that item's name — files strip the extension;
-     * for multiple items use their containing directory's name. The extension follows the format and is rewritten whenever the format changes.
-     */
+    /** Compression shares destination selection with copy/move, retaining its own form fields. */
     private fun performCompress(sel: List<XFile>, allowMove: Boolean = true, immediate: Boolean = false) {
-        val sibling = host?.siblingOf(this)
-        val dest = sibling?.viewModel?.currentDir
-        if (dest == null) {
-            toast(getString(R.string.msg_pick_other_dir_first)); return
-        }
-        if (!dest.isWritableDir()) {
-            toast(getString(R.string.msg_dest_not_writable)); return
-        }
-        val movable = allowMove && sel.all { it.isMovableSource() }
-        if (immediate) {
-            val format = Prefs.compressFormat(requireContext())
-            startCompress(sel, dest, "${defaultArchiveName(sel)}.${format.ext}", format, false, null, "")
+        if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
+        val dest = host?.siblingOf(this)?.viewModel?.currentDir
+        val format = Prefs.compressFormat(requireContext())
+        val name = "${defaultArchiveName(sel)}.${format.ext}"
+        val draft = DestinationState.Draft(sel.toList(), dest, move = false,
+            movable = allowMove && sel.all { it.isMovableSource() },
+            compression = DestinationState.Compression(name, format))
+        if (immediate && dest != null && draft.blockReason(dest) == null) {
+            startCompress(sel, dest, name, format, false, null, "")
             return
         }
-        val cb = DialogCompressBinding.inflate(layoutInflater)
-        cb.cbMove.visibility = if (movable) View.VISIBLE else View.GONE
-        cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
-        cb.tvDest.text = pathLabel(dest)
-        cb.ivDest.setImageResource(pathIcon(dest))
-        val format = Prefs.compressFormat(requireContext())
-        cb.rgFormat.check(if (format == ArchiveWriter.Format.SEVEN_Z) R.id.rb_7z else R.id.rb_zip)
-        cb.etName.setText("${defaultArchiveName(sel)}.${format.ext}")
-        cb.rgFormat.setOnCheckedChangeListener { _, id ->
-            val selected = formatOf(id)
-            Prefs.setCompressFormat(requireContext(), selected)
-            val stem = stripArchiveExt(cb.etName.text.toString())
-            cb.etName.setText("$stem.${selected.ext}")
-            cb.etName.setSelection(stem.length) // setText sends the cursor back to the start; move it back to the end of the name to keep typing.
-        }
-        // "Encrypted archives are read-only" — only mention it when actually encrypting; don't take up space otherwise.
-        cb.etPassword.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(s: android.text.Editable?) {
-                cb.tvEncryptNote.visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
-            }
-        })
-        var plan: CopyEngine.Plan? = null
-        viewLifecycleOwner.lifecycleScope.launch {
-            val p = runCatching { withContext(Dispatchers.IO) { CopyEngine.plan(sel) } }.getOrNull()
-            plan = p
-            if (p != null && _b != null) {
-                cb.tvSrc.text = "${cb.tvSrc.text}  ${Format.size(p.bytes)}"
-            }
-        }
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(R.string.compress_title)
-            .setView(cb.root)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                val name = cb.etName.text.toString().trim()
-                if (name.isEmpty()) return@setPositiveButton
-                startCompress(
-                    sel, dest, name, formatOf(cb.rgFormat.checkedRadioButtonId),
-                    movable && cb.cbMove.isChecked, plan, cb.etPassword.text.toString(),
-                )
-            }
-            .create()
-        dialog.showNameInput(cb.etName, selectStem = true)
-    }
-
-    private fun formatOf(checkedId: Int): ArchiveWriter.Format =
-        if (checkedId == R.id.rb_7z) ArchiveWriter.Format.SEVEN_Z else ArchiveWriter.Format.ZIP
-
-    /** Strip any existing archive extension (used when switching format); other extensions are preserved. */
-    private fun stripArchiveExt(name: String): String {
-        val lower = name.lowercase()
-        for (f in ArchiveWriter.Format.entries) {
-            if (lower.endsWith(".${f.ext}")) return name.dropLast(f.ext.length + 1)
-        }
-        return name
+        destinationState.prepare(draft)
+        if (dest?.isWritableDir() == true) showDestinationConfirmation() else chooseDestination()
     }
 
     /** Single item → that item's name (file strips extension); multiple items → containing directory name. */
@@ -1712,7 +1654,7 @@ class PaneFragment : Fragment() {
     }
 
     /** If the destination name already exists, ask about overwriting first, then go to [runCompress]. */
-    private fun startCompress(
+    internal fun startCompress(
         sel: List<XFile>,
         dest: XFile,
         name: String,

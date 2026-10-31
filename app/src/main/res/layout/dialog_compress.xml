@@ -110,6 +110,15 @@
             android:textSize="15sp" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/tv_dest_error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
     <CheckBox
         android:id="@+id/cb_move"
         android:layout_width="wrap_content"

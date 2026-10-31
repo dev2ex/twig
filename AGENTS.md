@@ -342,7 +342,7 @@ its listing size must still describe the followed stream for copy/resume checks.
   and history to the active pane, while compress and WiFi sharing stay hidden.
   Both pickers follow `Prefs.fullscreen` through `StatusBarFullscreen`, including
   resume and window-focus changes.
-  Copy/move confirmation (`CopyConfirmDialog`) defaults to the other pane's directory
+  Copy/move and compression confirmation default to the other pane's directory
   but can choose another writable directory directly in the opposite resident pane.
   Main temporarily pins that pane active and shows a destination bar; source touch,
   keyboard/accessibility focus and destructive/context actions are blocked while choosing.
@@ -352,7 +352,11 @@ its listing size must still describe the followed stream for copy/resume checks.
   mode and choosing flags across rotation; process death discards it. Other hosts keep
   the directory-picker fallback through `PickerActivity`.
   Confirm only writable targets outside the source directory/subtree, using the shared
-  clipboard destination checks. Long-press transfers remain immediate for valid targets;
+  clipboard destination checks. Compression permits the sources' containing directory,
+  while still rejecting selected directory subtrees. Its separate `CompressConfirmDialog`
+  retains filename, format, move mode and password in the shared `DestinationState` draft;
+  passwords never enter saved view state and are cleared when the draft is discarded.
+  Long-press transfers remain immediate for valid targets;
   otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
   Outgoing system sharing sends directly readable local files and known-size remote
   files up to 512 KiB directly. If a batch includes a larger or unknown-size nonlocal

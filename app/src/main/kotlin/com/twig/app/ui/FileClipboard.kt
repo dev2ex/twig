@@ -67,10 +67,12 @@ object FileClipboard {
      *
      * Both require matching schemes — different sources (local vs SMB) with colliding path strings are not
      * necessarily the same place.
+     * Compression may write a new archive beside its sources, but must still reject their subtrees.
      */
-    fun pasteBlockReason(dest: XFile?, items: List<XFile> = _state.value.items): Int? {
+    fun pasteBlockReason(dest: XFile?, items: List<XFile> = _state.value.items,
+                         allowSameDirectory: Boolean = false): Int? {
         if (items.isEmpty() || dest == null) return null
-        if (items.any { it.scheme == dest.scheme && it.parentPath == dest.path }) {
+        if (!allowSameDirectory && items.any { it.scheme == dest.scheme && it.parentPath == dest.path }) {
             return R.string.clip_same_dir
         }
         val destPath = dest.path.trimEnd('/')

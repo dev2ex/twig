@@ -33,7 +33,7 @@ import com.twig.app.ui.FileClipboard
 import com.twig.app.share.WebShare
 import com.twig.app.ui.PaneFragment
 import com.twig.app.ui.PaneViewModel
-import com.twig.app.ui.CopyConfirmDialog
+import com.twig.app.ui.DestinationState
 import com.twig.app.ui.ShareDialogs
 import com.twig.app.ui.TermManager
 import com.twig.app.ui.TerminalActivity
@@ -54,7 +54,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private lateinit var b: ActivityMainBinding
     private var activeIndex = 0
-    private var ignoringCopySourceTouch = false
+    private var ignoringSourceTouch = false
     private lateinit var fullscreenLayout: com.twig.app.ui.StatusBarFullscreen
     /** Snapshot of layout-affecting preferences; when changed in onResume (after settings edit), recreate. */
     private var uiSig = ""
@@ -229,8 +229,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
             val bounds = android.graphics.Rect()
-            val source = copyDestinationSource()?.view
-            ignoringCopySourceTouch = if (source?.getGlobalVisibleRect(bounds) == true) {
+            val source = destinationSource()?.view
+            ignoringSourceTouch = if (source?.getGlobalVisibleRect(bounds) == true) {
                 // Global view bounds use root coordinates; raw touch coordinates include
                 // the window's screen offset in split-screen and freeform windows.
                 val rootLocation = IntArray(2)
@@ -239,7 +239,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
                 bounds.contains(event.rawX.toInt(), event.rawY.toInt())
             } else false
         }
-        if (ignoringCopySourceTouch) return true
+        if (ignoringSourceTouch) return true
         return inlineSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
     }
 
@@ -278,8 +278,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         wireStrip(b.browser.stripRight)
         syncShareIcon()
         installClipboardBar()
-        b.btnCopyDestinationCancel.setOnClickListener { finishCopyDestination(cancelled = true) }
-        b.btnCopyDestinationConfirm.setOnClickListener { finishCopyDestination(cancelled = false) }
+        b.btnCopyDestinationCancel.setOnClickListener { finishDestination(cancelled = true) }
+        b.btnCopyDestinationConfirm.setOnClickListener { finishDestination(cancelled = false) }
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 WebShare.running.collect { syncShareIcon() }
@@ -382,7 +382,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (copyDestinationSource() != null) { finishCopyDestination(cancelled = true); return }
+        if (destinationSource() != null) { finishDestination(cancelled = true); return }
         if (activePane()?.handleBack() == true) return // inside a takeover view: go up a level / exit the takeover view
         if (activePane()?.viewModel?.unmountPinnedDirectory() == true) return
         // Came here from a terminal session's "Locate current directory": take the temporary node
@@ -589,7 +589,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     private fun showCurrentDirInOtherPane() {
-        if (isChoosingCopyDestination()) return
+        if (isChoosingDestination()) return
         val dir = activePane()?.viewModel?.currentDir
         if (dir == null) {
             Toast.makeText(this, R.string.msg_pick_dir_first, Toast.LENGTH_SHORT).show()
@@ -661,7 +661,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     private fun renderClipBar(s: FileClipboard.State = FileClipboard.state.value) {
-        b.clipBar.visibility = if (s.items.isEmpty() || copyDestinationSource() != null) View.GONE else View.VISIBLE
+        b.clipBar.visibility = if (s.items.isEmpty() || destinationSource() != null) View.GONE else View.VISIBLE
         if (s.items.isEmpty()) return
         b.tvClip.text =
             if (s.items.size == 1) getString(R.string.clip_bar_one, s.items[0].name)
@@ -696,28 +696,28 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             .show()
     }
 
-    private fun copyDestinationSource(): PaneFragment? = (0..1).mapNotNull(::paneAt)
-        .firstOrNull { it.isAdded && it.copyState.choosingDestination }
+    private fun destinationSource(): PaneFragment? = (0..1).mapNotNull(::paneAt)
+        .firstOrNull { it.isAdded && it.destinationState.choosingDestination }
 
-    override fun chooseCopyDestination(source: PaneFragment): Boolean {
-        val state = source.copyState
+    override fun chooseDestination(source: PaneFragment): Boolean {
+        val state = source.destinationState
         val target = siblingOf(source) ?: return false
         if (state.draft == null) return false
-        target.prepareCopyDestination()
-        val confirmation = source.childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) as? CopyConfirmDialog
+        target.prepareDestinationSelection()
+        val confirmation = source.childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as? androidx.fragment.app.DialogFragment
         state.returnToConfirmation = confirmation != null
         state.choosingDestination = true
         if (state.checkedSources.isEmpty()) state.checkedSources = source.checkedFiles()
         confirmation?.dismiss()
         setActiveIndex(1 - source.paneIndex, animateSwitch = true)
-        renderCopyDestination()
+        renderDestination()
         renderClipBar()
         syncStripEnabled()
         return true
     }
 
-    private fun renderCopyDestination(): XFile? {
-        val source = copyDestinationSource()
+    private fun renderDestination(): XFile? {
+        val source = destinationSource()
         b.copyDestinationBar.visibility = if (source == null) View.GONE else View.VISIBLE
         for ((index, container) in listOf(b.browser.paneA, b.browser.paneB).withIndex()) {
             val blocked = source?.paneIndex == index
@@ -727,10 +727,10 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             container.importantForAccessibility = if (blocked) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
                 else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         }
-        val draft = source?.copyState?.draft ?: return null
+        val draft = source?.destinationState?.draft ?: return null
         val target = siblingOf(source)?.viewModel?.currentDir
-        val reason = if (target?.isWritableDir() != true) R.string.msg_dest_not_writable
-            else FileClipboard.pasteBlockReason(target, draft.sources)
+        val reason = if (target == null) R.string.msg_dest_not_writable else draft.blockReason(target)
+        b.tvCopyDestinationLabel.setText(if (draft.compression == null) R.string.copy_to else R.string.compress_save_to)
         b.tvCopyDestinationLabel.visibility = if (target != null && reason == null) View.VISIBLE else View.GONE
         b.tvCopyDestination.text = when {
             target == null -> getString(R.string.picker_hint_dir, getString(R.string.copy_use_destination))
@@ -742,29 +742,29 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         return target?.takeIf { reason == null }
     }
 
-    private fun finishCopyDestination(cancelled: Boolean) {
-        val source = copyDestinationSource() ?: return
-        val state = source.copyState
+    private fun finishDestination(cancelled: Boolean) {
+        val source = destinationSource() ?: return
+        val state = source.destinationState
         val draft = state.draft ?: return
         if (!cancelled) {
-            draft.destination = renderCopyDestination() ?: return
+            draft.destination = renderDestination() ?: return
         }
         val confirm = !cancelled || state.returnToConfirmation
         state.choosingDestination = false
         state.returnToConfirmation = false
         if (!confirm) state.clear()
         setActiveIndex(source.paneIndex, animateSwitch = true)
-        renderCopyDestination()
+        renderDestination()
         renderClipBar()
         syncStripEnabled()
-        if (confirm) source.showCopyConfirmation()
+        if (confirm) source.showDestinationConfirmation()
     }
 
-    override fun onPickFile(file: XFile): Boolean = copyDestinationSource() != null
+    override fun onPickFile(file: XFile): Boolean = destinationSource() != null
 
-    override fun isChoosingCopyDestination(): Boolean = copyDestinationSource() != null
+    override fun isChoosingDestination(): Boolean = destinationSource() != null
 
-    override fun onPickNode(node: PaneViewModel.Node): Boolean = copyDestinationSource() != null &&
+    override fun onPickNode(node: PaneViewModel.Node): Boolean = destinationSource() != null &&
         (node is PaneViewModel.WebsiteNode || node is PaneViewModel.CompareNode)
 
     // ---- Layout mode ----
@@ -774,7 +774,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private fun applyLayoutMode(animateSwitch: Boolean = false) {
         val land = isLandscape()
-        copyDestinationSource()?.let { activeIndex = 1 - it.paneIndex }
+        destinationSource()?.let { activeIndex = 1 - it.paneIndex }
         b.browser.paneA.visibility = View.VISIBLE
         b.browser.paneB.visibility = View.VISIBLE
         b.browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
@@ -791,7 +791,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         b.browser.root.showPane(activeIndex, animateSwitch && !land)
         paneAt(0)?.setActive(activeIndex == 0)
         paneAt(1)?.setActive(activeIndex == 1)
-        renderCopyDestination()
+        renderDestination()
         renderClipBar() // active pane changed, the paste target follows
     }
 
@@ -811,7 +811,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     private fun setActiveIndex(i: Int, animateSwitch: Boolean = false) {
-        if (copyDestinationSource()?.paneIndex == i) return
+        if (destinationSource()?.paneIndex == i) return
         if (activeIndex != i) {
             activeIndex = i
             Prefs.setActivePane(this, i)
@@ -906,7 +906,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     override fun onClipTargetChanged() {
-        renderCopyDestination()
+        renderDestination()
         if (b.clipBar.visibility == View.VISIBLE) renderClipBar()
         syncStripEnabled()
     }
@@ -926,7 +926,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         // The first pane can render before the other pane's adapter is initialized.
         val pane = activePane()?.takeIf { it.isReady() }
         val actions = pane?.stripActions() ?: PaneFragment.StripActions()
-        val choosing = copyDestinationSource() != null
+        val choosing = destinationSource() != null
         val compare = pane?.viewModel?.currentDir?.isDir == true
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             setStripEnabled(s.asNewFolder, actions.create)

@@ -242,8 +242,10 @@ class StripWriteActionsTest {
             activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
             idle()
             pane.actionCompress()
-            assertEquals(activity.getString(R.string.msg_pick_other_dir_first),
-                org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+            assertTrue(activity.isChoosingDestination())
+            assertTrue(activity.isPaneActive(pane1()))
+            activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
+            idle()
         }
         pane.viewModel.toggle(PaneViewModel.GroupNode("fav", "Favorites", expanded = false))
         activity.onClipTargetChanged()

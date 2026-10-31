@@ -39,6 +39,22 @@
   long presses and landscape focus restoration;
   `StripWriteActionsTest` retains immediate-transfer and readable-root coverage.
 
+- **Compression also needs replaceable destinations (2026-10-31)**: reuse the resident
+  opposite-pane selection and its input guards through `DestinationState`, with separate
+  copy/move and compression confirmation dialogs. Compression options live only in the
+  draft: filename, format, password and move choice survive choosing/cancelling a
+  destination and Activity recreation. Disable saved state for those input views; never
+  serialize the password, and clear it when discarding the draft. Size planning keeps
+  its shared cancellation behavior. Hosts without resident-pane selection retain the
+  Activity picker fallback and restore the same form on cancellation.
+  A new archive may be written beside the selected files/directories, so skip the
+  copy-only same-parent restriction. Still reject writing inside a selected directory,
+  which would include the growing output archive in its own input. Revalidate at final
+  confirmation. Long-press compression remains immediate for valid defaults; otherwise
+  select a destination and confirm. `CopyDestinationTest` covers actual ZIP output,
+  replacement options passed to the transfer, field retention and cancellation across
+  recreation, initial cancellation, direct long presses and invalid/read-only targets.
+
 - **External multi-file row selection also selected folders (2026-10-31 review)**:
   the file-only picker's tap-to-select flag applied to every ordinary tree row,
   so tapping a folder name checked an entry that confirmation later discarded.

@@ -39,7 +39,7 @@ class CopyDestinationTest {
     private lateinit var target: File
     private fun entry(file: File) = XFile("file", file.path, file.isDirectory, file.length())
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
-    private fun state() = ViewModelProvider(pane())[CopyConfirmDialog.State::class.java]
+    private fun state() = ViewModelProvider(pane())[DestinationState::class.java]
     private fun confirmation() = pane().childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) as CopyConfirmDialog
     private fun dialog() = confirmation().requireDialog() as AlertDialog
     private fun open(move: Boolean = false, movable: Boolean = true, immediate: Boolean = false,
@@ -72,6 +72,29 @@ class CopyDestinationTest {
     private fun cancelPicker() {
         activity.findViewById<android.view.View>(R.id.btn_copy_destination_cancel).performClick()
         idle()
+    }
+
+    private fun openCompression(files: List<XFile> = listOf(entry(source)), immediate: Boolean = false,
+                                allowMove: Boolean = true) {
+        ReflectionHelpers.callInstanceMethod<Void>(pane(), "performCompress",
+            ReflectionHelpers.ClassParameter.from(List::class.java, files),
+            ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, allowMove),
+            ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, immediate))
+        pane().childFragmentManager.executePendingTransactions()
+        idle()
+    }
+
+    private fun compressionDialog() =
+        (pane().childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as CompressConfirmDialog)
+            .requireDialog() as AlertDialog
+
+    private fun compressionSession(): Transfers.Session {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (Transfers.active == null && System.nanoTime() < deadline) {
+            idle()
+            Thread.sleep(5)
+        }
+        return requireNotNull(Transfers.active)
     }
 
     @Before fun setup() {
@@ -128,6 +151,141 @@ class CopyDestinationTest {
         assertTrue(session.finished!!.isSuccess)
         assertEquals("payload", File(target, source.name).readText())
         assertTrue(source.exists())
+    }
+
+    @Test fun `compression can select its first destination and create an archive`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
+        pane(1).viewModel.currentDir = null
+        openCompression()
+        initialPicker()
+        choose()
+        val form = compressionDialog()
+        assertEquals("payload.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        idle()
+        val session = compressionSession()
+        val work = session.work as Transfers.Work.Compress
+        assertEquals(listOf(entry(source)), work.items)
+        assertEquals(target.path, work.destDir.path)
+        assertFalse(work.move)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished!!.isSuccess)
+        java.util.zip.ZipFile(File(work.target.path)).use { zip ->
+            assertEquals("payload", zip.getInputStream(zip.getEntry(source.name)).bufferedReader().use { it.readText() })
+        }
+        assertTrue(source.exists())
+    }
+
+    @Test fun `compression retains edited fields through destination cancellation and recreation`() {
+        openCompression()
+        var form = compressionDialog()
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("edited.7z")
+        form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+        form.findViewById<CheckBox>(R.id.cb_move)!!.isChecked = true
+        assertFalse(form.findViewById<android.widget.EditText>(R.id.et_password)!!.isSaveEnabled)
+        form.getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        idle()
+        initialPicker()
+        assertEquals(activity.getString(R.string.compress_save_to),
+            activity.findViewById<TextView>(R.id.tv_copy_destination_label).text.toString())
+        controller.recreate()
+        idle()
+        assertTrue(activity.isChoosingDestination())
+        cancelPicker()
+        form = compressionDialog()
+        assertEquals("edited.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals("secret", form.findViewById<android.widget.EditText>(R.id.et_password)!!.text.toString())
+        assertEquals(R.id.rb_7z, form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.checkedRadioButtonId)
+        assertTrue(form.findViewById<CheckBox>(R.id.cb_move)!!.isChecked)
+        assertEquals(target.path, state().draft!!.destination!!.path)
+        controller.recreate()
+        idle()
+        form = compressionDialog()
+        assertEquals("secret", form.findViewById<android.widget.EditText>(R.id.et_password)!!.text.toString())
+        assertEquals("edited.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        val options = state().draft!!.compression!!
+        form.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        assertNull(state().draft)
+        assertEquals("", options.password)
+        assertNull(Transfers.active)
+    }
+
+    @Test fun `replacement compression destination preserves options in the started work`() {
+        openCompression()
+        val form = compressionDialog()
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("chosen.zip")
+        form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+        form.findViewById<CheckBox>(R.id.cb_move)!!.isChecked = true
+        form.getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        idle()
+        val replacement = File(target.parentFile, "replacement").apply { mkdirs() }
+        choose(replacement)
+        compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        idle()
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals(replacement.path, work.destDir.path)
+        assertEquals("chosen.zip", work.target.name)
+        assertEquals("secret", work.password)
+        assertTrue(work.move)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Format.ZIP, work.format)
+    }
+
+    @Test fun `compression accepts the source parent but rejects source directories and readonly destinations`() {
+        val dir = source.parentFile!!
+        pane(1).viewModel.currentDir = null
+        openCompression(files = listOf(entry(dir)))
+        for (invalid in listOf(entry(dir), entry(dir).copy(path = dir.path + "/nested"), entry(target).copy(canWrite = false))) {
+            pane(1).viewModel.currentDir = invalid
+            activity.onClipTargetChanged()
+            assertFalse(activity.findViewById<android.view.View>(R.id.btn_copy_destination_confirm).isEnabled)
+        }
+        choose(dir.parentFile!!)
+        assertTrue(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertNull(Transfers.active)
+    }
+
+    @Test fun `immediate compression without a target asks first and Back cancels it`() {
+        pane(1).viewModel.currentDir = null
+        openCompression(immediate = true)
+        initialPicker()
+        activity.onBackPressed()
+        idle()
+        assertNull(state().draft)
+        assertTrue(activity.isPaneActive(pane()))
+        assertNull(Transfers.active)
+        assertTrue(source.exists())
+    }
+
+    @Test fun `immediate compression with a writable target keeps the direct transfer path`() {
+        openCompression(immediate = true)
+        assertFalse(activity.isChoosingDestination())
+        assertTrue(compressionSession().work is Transfers.Work.Compress)
+        assertNull(pane().childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG))
+    }
+
+    @Test fun `readonly compression sources cannot enable move and lost drafts restore no password`() {
+        openCompression(allowMove = false)
+        var form = compressionDialog()
+        assertEquals(android.view.View.GONE, form.findViewById<CheckBox>(R.id.cb_move)!!.visibility)
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("")
+        assertFalse(form.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("../escape.zip")
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        assertNotNull(form.findViewById<android.widget.EditText>(R.id.et_name)!!.error)
+        assertNull(Transfers.active)
+        form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+        state().clear()
+        controller.recreate()
+        idle()
+        assertNull(pane().childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG))
+        assertNull(Transfers.active)
     }
 
     @Test fun `canceling replacement picking after recreation preserves destination and move choice`() {
@@ -380,14 +538,14 @@ class CopyDestinationTest {
         activity.focusPane(pane(1))
         open(sourceSide = 1)
         assertTrue(activity.isPaneActive(pane(0)))
-        assertTrue(pane(1).copyState.choosingDestination)
+        assertTrue(pane(1).destinationState.choosingDestination)
         assertNull(shadowOf(activity).nextStartedActivity)
         pane(0).viewModel.currentDir = entry(target)
         activity.onClipTargetChanged()
         activity.findViewById<android.view.View>(R.id.btn_copy_destination_confirm).performClick()
         idle()
         assertTrue(activity.isPaneActive(pane(1)))
-        assertEquals(target.path, pane(1).copyState.draft!!.destination!!.path)
+        assertEquals(target.path, pane(1).destinationState.draft!!.destination!!.path)
         assertNotNull(pane(1).childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG))
     }
 
@@ -400,7 +558,7 @@ class CopyDestinationTest {
         assertEquals(android.view.View.GONE, activity.findViewById<android.view.View>(R.id.clip_bar).visibility)
         activity.onBackPressed()
         idle()
-        assertFalse(activity.isChoosingCopyDestination())
+        assertFalse(activity.isChoosingDestination())
         assertTrue(activity.isPaneActive(pane()))
         assertEquals(clipboard, FileClipboard.state.value)
         assertEquals(android.view.View.VISIBLE, activity.findViewById<android.view.View>(R.id.clip_bar).visibility)
@@ -422,7 +580,7 @@ class CopyDestinationTest {
         })
         idle()
         assertTrue(activity.isPaneActive(pane(1)))
-        assertTrue(activity.isChoosingCopyDestination())
+        assertTrue(activity.isChoosingDestination())
         val container = activity.findViewById<android.view.ViewGroup>(R.id.pane_a)
         assertEquals(android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS, container.descendantFocusability)
         assertEquals(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS, container.importantForAccessibility)
@@ -487,18 +645,18 @@ class CopyDestinationTest {
             return try { activity.dispatchTouchEvent(event) } finally { event.recycle() }
         }
         assertTrue(dispatch(android.view.MotionEvent.ACTION_DOWN, sourceBounds))
-        assertTrue(ReflectionHelpers.getField(activity, "ignoringCopySourceTouch"))
+        assertTrue(ReflectionHelpers.getField(activity, "ignoringSourceTouch"))
         assertTrue(dispatch(android.view.MotionEvent.ACTION_MOVE, targetBounds))
         assertTrue(dispatch(android.view.MotionEvent.ACTION_UP, targetBounds))
         assertEquals(0, sourceTouches)
         assertEquals(0, targetTouches)
         dispatch(android.view.MotionEvent.ACTION_DOWN, targetBounds)
-        assertFalse(ReflectionHelpers.getField(activity, "ignoringCopySourceTouch"))
+        assertFalse(ReflectionHelpers.getField(activity, "ignoringSourceTouch"))
         dispatch(android.view.MotionEvent.ACTION_UP, targetBounds)
         assertTrue(targetTouches > 0)
         cancelPicker()
         dispatch(android.view.MotionEvent.ACTION_DOWN, sourceBounds)
-        assertFalse(ReflectionHelpers.getField(activity, "ignoringCopySourceTouch"))
+        assertFalse(ReflectionHelpers.getField(activity, "ignoringSourceTouch"))
         dispatch(android.view.MotionEvent.ACTION_UP, sourceBounds)
     }
 }
