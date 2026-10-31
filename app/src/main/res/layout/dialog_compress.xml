@@ -110,14 +110,6 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp" />
 
-        <CheckBox
-            android:id="@+id/cb_source_directory"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/compress_source_directory"
-            android:textSize="14sp" />
-
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -160,6 +152,14 @@
             android:textColor="@color/text_secondary"
             android:textSize="14sp"
             android:visibility="gone" />
+
+        <CheckBox
+            android:id="@+id/cb_source_directory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/compress_source_directory"
+            android:textSize="14sp" />
 
         <CheckBox
             android:id="@+id/cb_move"
