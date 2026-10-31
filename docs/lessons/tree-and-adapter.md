@@ -582,3 +582,9 @@
   stay unknown with their arrow. Tests cover remote/archive cached counts, hidden
   entries, synthetic children, live failures/timeouts, no extra disabled-scope probes,
   and remote ordinary-listing recovery with counts disabled on API 24 and 34.
+
+- **File icon and thumbnail drifts bypassed Properties touch guards (2026-10-31 review)**:
+  file icons and grid thumbnails own click listeners, so their UP events never reach
+  the row's touch listener. Apply the same end-inside-button cancellation to these
+  clickable children, translating their coordinates into the row, and clear listeners
+  when recycling for other node types. `PropertiesButtonTest` checks list and grid boundary drifts.

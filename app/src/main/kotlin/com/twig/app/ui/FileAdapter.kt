@@ -419,15 +419,18 @@ class FileAdapter(
 
     /** A gesture starting outside the button must not click the row if it ends inside its touch bounds. */
     @android.annotation.SuppressLint("ClickableViewAccessibility") // Cancels a row click; the button owns normal/accessibility clicks.
-    private fun guardButtonClicks(row: ViewGroup, vararg buttons: View) {
+    private fun guardButtonClicks(row: ViewGroup, vararg buttons: View, receiver: View = row) {
         val bounds = Rect()
-        row.setOnTouchListener { view, event ->
+        val origin = Rect()
+        receiver.setOnTouchListener { view, event ->
             if (event.actionMasked != MotionEvent.ACTION_UP) return@setOnTouchListener false
+            origin.set(0, 0, 0, 0)
+            if (receiver !== row) row.offsetDescendantRectToMyCoords(receiver, origin)
             val inside = buttons.any { button ->
                 if (button.visibility != View.VISIBLE || !button.isClickable) false else {
                     button.getDrawingRect(bounds)
                     row.offsetDescendantRectToMyCoords(button, bounds)
-                    bounds.contains(event.x.toInt(), event.y.toInt())
+                    bounds.contains((event.x + origin.left).toInt(), (event.y + origin.top).toInt())
                 }
             }
             if (inside) {
@@ -473,6 +476,7 @@ class FileAdapter(
                 b.thumb.setOnClickListener(null)
                 b.thumb.isClickable = false
                 b.thumb.setOnLongClickListener(null)
+                b.thumb.setOnTouchListener(null)
                 b.thumb.isLongClickable = false
                 WebsiteIcons.bind(b.thumb, node.site)
                 b.root.isActivated = false
@@ -501,6 +505,7 @@ class FileAdapter(
             b.thumb.setOnClickListener { onClick(node) }
             b.thumb.setOnLongClickListener { onLongClick(node); true }
             guardButtonClicks(b.root, b.infoToggle, b.cellCheck, b.thumb)
+            guardButtonClicks(b.root, b.infoToggle, b.cellCheck, receiver = b.thumb)
             b.root.setOnClickListener { clickFileRow(node, ctx) }
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
@@ -890,6 +895,7 @@ class FileAdapter(
             b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
             b.icon.setOnClickListener(null)
+            b.icon.setOnTouchListener(null)
             b.icon.isClickable = false
             b.icon.setOnLongClickListener(null)
             b.icon.isLongClickable = false
@@ -940,6 +946,8 @@ class FileAdapter(
             }
             if (node is PaneViewModel.FileNode) {
                 guardButtonClicks(b.root, b.infoToggle, b.check, b.icon, b.indicator)
+                guardButtonClicks(b.root, b.infoToggle, b.check, receiver = b.icon)
+                guardButtonClicks(b.root, b.infoToggle, b.check, receiver = b.indicator)
             } else guardButtonClicks(b.root, b.infoToggle, b.check)
         }
 

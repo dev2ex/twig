@@ -170,4 +170,16 @@ class ArchiveOptionsTest {
         assertEquals("original archive", archive.readText())
         assertFalse(File(source, "existing.zip.twigpart").exists())
     }
+
+    @Test fun savingToTheSourceDirectoryCannotOverwriteASelectedPartialFile() {
+        for (format in ArchiveWriter.Format.entries) {
+            val archive = File(source, "existing.${format.ext}").apply { writeText("original archive") }
+            val input = File(source, "${archive.name}.twigpart").apply { writeText("selected source") }
+            assertThrows(com.twig.core.FsException::class.java) {
+                ArchiveWriter.compress(listOf(entry(input)), entry(source), entry(archive), format)
+            }
+            assertEquals("selected source", input.readText())
+            assertEquals("original archive", archive.readText())
+        }
+    }
 }

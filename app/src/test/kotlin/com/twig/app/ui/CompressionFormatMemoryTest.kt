@@ -45,6 +45,7 @@ class CompressionFormatMemoryTest {
                     listOf(XFile("file", source.path, false, size = source.length()))),
                 ReflectionHelpers.ClassParameter.from(java.lang.Boolean.TYPE, true),
                 ReflectionHelpers.ClassParameter.from(java.lang.Boolean.TYPE, false))
+            pane.childFragmentManager.executePendingTransactions()
             return ShadowDialog.getLatestDialog() as AlertDialog
         }
         try {
@@ -65,7 +66,8 @@ class CompressionFormatMemoryTest {
             assertFalse(reopened.findViewById<CheckBox>(R.id.cb_move)!!.isChecked)
             assertEquals("", reopened.findViewById<EditText>(R.id.et_password)!!.text.toString())
             reopened.findViewById<RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
-            reopened.dismiss()
+            reopened.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
             val zipAgain = open()
             assertEquals(R.id.rb_zip, zipAgain.findViewById<RadioGroup>(R.id.rg_format)!!.checkedRadioButtonId)
             assertEquals("report.zip", zipAgain.findViewById<EditText>(R.id.et_name)!!.text.toString())

@@ -78,6 +78,10 @@ object ArchiveWriter {
         val pw = password?.takeIf { it.isNotEmpty() }
         val destFs = FsRegistry.of(target)
         val name = target.name
+        if (items.any { !it.isDir && it.scheme == destDir.scheme &&
+                it.parentPath == destDir.path && it.name == "$name$PART_SUFFIX" }) {
+            throw FsException("Choose a different archive name: the temporary output is a selected source file")
+        }
         val part = destFs.createFile(destDir, "$name$PART_SUFFIX")
         val st = State(
             listener, cancelled,
