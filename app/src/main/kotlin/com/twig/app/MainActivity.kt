@@ -720,7 +720,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val source = destinationSource()
         b.copyDestinationBar.visibility = if (source == null) View.GONE else View.VISIBLE
         for ((index, container) in listOf(b.browser.paneA, b.browser.paneB).withIndex()) {
-            val blocked = source?.paneIndex == index
+            val blocked = source?.paneIndex == index || !Prefs.dualPane(this) && index != activeIndex
             container.descendantFocusability = if (blocked) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 else android.view.ViewGroup.FOCUS_BEFORE_DESCENDANTS
             if (blocked) container.clearFocus()
@@ -775,12 +775,13 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private fun applyLayoutMode(animateSwitch: Boolean = false) {
         val land = isLandscape()
+        val dual = Prefs.dualPane(this)
         destinationSource()?.let { activeIndex = 1 - it.paneIndex }
         b.browser.paneA.visibility = View.VISIBLE
         b.browser.paneB.visibility = View.VISIBLE
-        b.browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
+        b.browser.stripMid.root.visibility = if (dual) View.VISIBLE else View.GONE
         b.browser.stripLeft.root.visibility = View.GONE
-        b.browser.stripRight.root.visibility = if (!land) View.VISIBLE else View.GONE
+        b.browser.stripRight.root.visibility = if (!dual) View.VISIBLE else View.GONE
         // Landscape has no Toolbar (vertical space is precious); its right-side buttons move into the strip's top pinned row
         b.toolbar.visibility = if (land) View.GONE else View.VISIBLE
         com.twig.app.ui.ToolbarPlacement.apply(this, b.toolbar, Prefs.toolbarAtBottom(this))
@@ -789,7 +790,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             applyStripColumns(s, land)
             applyStripState(s, land)
         }
-        b.browser.root.showPane(activeIndex, animateSwitch && !land)
+        b.browser.root.showPane(activeIndex, animateSwitch && !dual)
+        b.browser.root.requestLayout()
         paneAt(0)?.setActive(activeIndex == 0)
         paneAt(1)?.setActive(activeIndex == 1)
         renderDestination()
@@ -898,12 +900,12 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == activeIndex
 
     override fun onPaneTouched(self: PaneFragment) {
-        if (isLandscape()) setActiveIndex(self.paneIndex)
+        if (Prefs.dualPane(this)) setActiveIndex(self.paneIndex)
     }
 
     override fun onPaneSwipe(velocityX: Float) {
         // Swipe left (negative velocity) → show right pane; swipe right → left pane
-        if (!isLandscape()) setActiveIndex(if (velocityX < 0) 1 else 0, animateSwitch = true)
+        if (!Prefs.dualPane(this)) setActiveIndex(if (velocityX < 0) 1 else 0, animateSwitch = true)
     }
 
     override fun onClipTargetChanged() {

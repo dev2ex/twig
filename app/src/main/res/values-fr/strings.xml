@@ -1173,6 +1173,10 @@
     <string name="settings_tap_row_to_select">Toucher les lignes pour sélectionner</string>
     <string name="settings_tap_row_to_select_desc">Si des éléments sont sélectionnés, toucher une ligne change sa sélection. Toucher son icône ou sa miniature pour ouvrir. Désactivé : sélection par les coches uniquement.</string>
     <string name="strip_duplicate">Dupliquer</string>
+    <string name="settings_pane_layout">Disposition des volets</string>
+    <string name="pane_layout_follow_orientation">Suivre l’orientation de l’écran</string>
+    <string name="pane_layout_single">Un volet</string>
+    <string name="pane_layout_dual">Deux volets</string>
     <string name="compress_level">Niveau de compression</string>
     <string name="compress_fast">Rapide</string>
     <string name="compress_standard">Standard</string>

@@ -1173,6 +1173,10 @@
     <string name="settings_tap_row_to_select">Zeilen zum Auswählen antippen</string>
     <string name="settings_tap_row_to_select_desc">Bei ausgewählten Einträgen schaltet ein Tippen auf die Zeile die Auswahl um. Symbol oder Vorschaubild öffnet den Eintrag. Aus: Auswahl nur über Häkchen.</string>
     <string name="strip_duplicate">Duplizieren</string>
+    <string name="settings_pane_layout">Bereichslayout</string>
+    <string name="pane_layout_follow_orientation">Bildschirmausrichtung folgen</string>
+    <string name="pane_layout_single">Ein Bereich</string>
+    <string name="pane_layout_dual">Zwei Bereiche</string>
     <string name="compress_level">Komprimierungsstufe</string>
     <string name="compress_fast">Schnell</string>
     <string name="compress_standard">Standard</string>

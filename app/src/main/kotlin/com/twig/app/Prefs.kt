@@ -521,6 +521,24 @@ object Prefs {
     fun folderCountsFor(ctx: Context, scheme: String): Boolean =
         folderCounts(ctx) && (scheme == "file" || !folderCountsLocalOnly(ctx))
 
+    const val PANE_LAYOUT_FOLLOW_ORIENTATION = 0
+    const val PANE_LAYOUT_SINGLE = 1
+    const val PANE_LAYOUT_DUAL = 2
+
+    fun paneLayout(ctx: Context): Int = sp(ctx).getInt("pane_layout", PANE_LAYOUT_FOLLOW_ORIENTATION)
+        .takeIf { it in PANE_LAYOUT_FOLLOW_ORIENTATION..PANE_LAYOUT_DUAL } ?: PANE_LAYOUT_FOLLOW_ORIENTATION
+
+    fun setPaneLayout(ctx: Context, mode: Int) {
+        sp(ctx).edit().putInt("pane_layout", mode.coerceIn(PANE_LAYOUT_FOLLOW_ORIENTATION, PANE_LAYOUT_DUAL)).apply()
+    }
+
+    /** Pane visibility is independent of the toolbar and strip density chosen for the orientation. */
+    fun dualPane(ctx: Context): Boolean = when (paneLayout(ctx)) {
+        PANE_LAYOUT_SINGLE -> false
+        PANE_LAYOUT_DUAL -> true
+        else -> ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    }
+
     /** Allow row taps to toggle selection while at least one item is checked; opt-in. */
     fun tapRowToSelect(ctx: Context): Boolean = sp(ctx).getBoolean("tap_row_to_select", false)
 
@@ -602,7 +620,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

@@ -1209,6 +1209,10 @@
     <string name="settings_tap_row_to_select">Выбор нажатием на строку</string>
     <string name="settings_tap_row_to_select_desc">Если есть выбранные элементы, нажатие на строку меняет её выделение. Значок или миниатюра открывает элемент. Выключено: выбор только флажками.</string>
     <string name="strip_duplicate">Дубликат</string>
+    <string name="settings_pane_layout">Расположение панелей</string>
+    <string name="pane_layout_follow_orientation">По ориентации экрана</string>
+    <string name="pane_layout_single">Одна панель</string>
+    <string name="pane_layout_dual">Две панели</string>
     <string name="compress_level">Уровень сжатия</string>
     <string name="compress_fast">Быстро</string>
     <string name="compress_standard">Стандартно</string>

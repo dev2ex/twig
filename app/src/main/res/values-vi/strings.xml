@@ -1172,6 +1172,10 @@
     <string name="settings_tap_row_to_select">Chạm vào hàng để chọn</string>
     <string name="settings_tap_row_to_select_desc">Khi có mục được chọn, chạm vào hàng để chọn hoặc bỏ chọn. Chạm vào biểu tượng hoặc hình thu nhỏ để mở. Khi tắt, chỉ chọn bằng nút đánh dấu.</string>
     <string name="strip_duplicate">Nhân bản</string>
+    <string name="settings_pane_layout">Bố cục bảng</string>
+    <string name="pane_layout_follow_orientation">Theo hướng màn hình</string>
+    <string name="pane_layout_single">Một bảng</string>
+    <string name="pane_layout_dual">Hai bảng</string>
     <string name="compress_level">Mức nén</string>
     <string name="compress_fast">Nhanh</string>
     <string name="compress_standard">Tiêu chuẩn</string>

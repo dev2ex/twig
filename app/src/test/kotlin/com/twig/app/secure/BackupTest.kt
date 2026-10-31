@@ -332,9 +332,11 @@ class BackupTest {
             .putFloat("f", 1.5f).putString("s", "x")
             .putStringSet("ss", setOf("a", "b")).commit()
 
+        Prefs.setPaneLayout(ctx, Prefs.PANE_LAYOUT_DUAL)
         val raw = export(null)
         freshDevice()
         Backup.import(ctx, raw, null)
+        assertEquals(Prefs.PANE_LAYOUT_DUAL, Prefs.paneLayout(ctx))
 
         val back = ctx.getSharedPreferences("twig_prefs", Context.MODE_PRIVATE)
         assertEquals(true, back.getBoolean("b", false))

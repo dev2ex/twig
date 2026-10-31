@@ -182,6 +182,13 @@ class SettingsActivity : TwigActivity() {
             titleIcon = R.drawable.ic_translate,
         )
         choiceRow(
+            getString(R.string.settings_pane_layout),
+            arrayOf(getString(R.string.pane_layout_follow_orientation),
+                getString(R.string.pane_layout_single), getString(R.string.pane_layout_dual)),
+            get = { Prefs.paneLayout(this) },
+            set = { Prefs.setPaneLayout(this, it) },
+        )
+        choiceRow(
             getString(R.string.settings_date_format),
             arrayOf(
                 getString(R.string.date_format_system), getString(R.string.date_format_ymd),

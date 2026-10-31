@@ -1173,6 +1173,10 @@
     <string name="settings_tap_row_to_select">Ketuk baris untuk memilih</string>
     <string name="settings_tap_row_to_select_desc">Saat ada item terpilih, ketuk baris untuk memilih atau membatalkan pilihan. Ketuk ikon atau gambar mini untuk membuka. Nonaktif: pilih hanya dengan tanda centang.</string>
     <string name="strip_duplicate">Duplikat</string>
+    <string name="settings_pane_layout">Tata letak panel</string>
+    <string name="pane_layout_follow_orientation">Ikuti orientasi layar</string>
+    <string name="pane_layout_single">Satu panel</string>
+    <string name="pane_layout_dual">Dua panel</string>
     <string name="compress_level">Tingkat kompresi</string>
     <string name="compress_fast">Cepat</string>
     <string name="compress_standard">Standar</string>

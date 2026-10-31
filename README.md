@@ -234,9 +234,10 @@ The compression dialog remembers the last ZIP/7Z format across launches, even if
   Choose root-item visibility separately for each pane; private space is visible by default.
 - **Always expand in place, never "enter" a directory.** The current directory is
   the last one you tapped, and it is the target for new folders, copies and moves.
-- Single pane in portrait (swipe to switch), **dual pane side by side in
-  landscape**, with animated pane switching. Long-press the pane-switch button to
-  pin the current directory on the other side and switch to it.
+- **Pane layout** in Settings → Display chooses Follow screen orientation (the default),
+  Single pane or Dual pane. Dual panes sit side by side, including on portrait tablets;
+  single-pane mode supports animated swipe switching in either orientation. Long-press
+  the pane-switch button to pin the current directory on the other side and switch to it.
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
   files through the system chooser. The path bar shows the checked-item count.

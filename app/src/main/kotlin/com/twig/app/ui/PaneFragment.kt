@@ -428,7 +428,7 @@ class PaneFragment : Fragment() {
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) {
             adapter.setDirectoryCountsActive(
-                resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE ||
+                Prefs.dualPane(requireContext()) ||
                     (host?.isPaneActive(this) ?: (paneIndex == 0)))
             adapter.refreshDefaultAppIcons()
             adapter.refreshPlaybackProgress(requireContext())
@@ -445,7 +445,7 @@ class PaneFragment : Fragment() {
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
         if (::adapter.isInitialized) adapter.setDirectoryCountsActive(
-            active || resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+            active || Prefs.dualPane(requireContext()))
         v.alpha = if (active) 1f else 0.5f
         v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
     }

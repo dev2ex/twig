@@ -159,7 +159,11 @@ its listing size must still describe the followed stream for copy/resume checks.
 ### Key UI classes (`:app`)
 
 - `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
-  toggling + fling gestures, same layout in portrait and landscape).
+  toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
+  single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
+  directory-count subscriptions across Main and both pickers. Toolbar visibility and
+  action-strip density still follow orientation. The setting participates in
+  `uiSignature` and configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   Expanding a directory reuses its cached children immediately, then re-lists in the background
   (`relistQuietly`) on every backend, including server and favorite roots. Only changed listings
@@ -330,8 +334,8 @@ its listing size must still describe the followed stream for copy/resume checks.
   data URIs remain forbidden by `IncomingUri`; attachments take precedence over text
   captions. Text sources are self-contained so retries need no Activity or cache file.
   File picking, the share destination picker and the main screen share `view_panes.xml`,
-  `PaneLayout` and the `PaneSwitch` toolbar control: portrait uses one continuous track with the
-  strip between panes; landscape shows both panes around the middle strip.
+  `PaneLayout` and the `PaneSwitch` toolbar control: single-pane mode uses one continuous
+  track with the strip between panes; dual-pane mode shows both panes around the middle strip.
   `PickerBrowser` shares both picker screens' navigation, strip actions and pane-switch
   behavior. File picking also supports locked-source panes and retains its file/path/directory
   result modes. Each picker keeps independent root visibility and navigation; the toolbar

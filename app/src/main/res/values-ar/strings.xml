@@ -1177,6 +1177,10 @@
     <string name="settings_tap_row_to_select">اضغط على الصفوف للتحديد</string>
     <string name="settings_tap_row_to_select_desc">عند وجود عناصر محددة، اضغط على الصف لتحديده أو إلغاء تحديده. اضغط على الأيقونة أو الصورة المصغرة للفتح. عند التعطيل، يتم التحديد بعلامات الاختيار فقط.</string>
     <string name="strip_duplicate">تكرار</string>
+    <string name="settings_pane_layout">تخطيط اللوحات</string>
+    <string name="pane_layout_follow_orientation">اتباع اتجاه الشاشة</string>
+    <string name="pane_layout_single">لوحة واحدة</string>
+    <string name="pane_layout_dual">لوحتان</string>
     <string name="compress_level">مستوى الضغط</string>
     <string name="compress_fast">سريع</string>
     <string name="compress_standard">قياسي</string>

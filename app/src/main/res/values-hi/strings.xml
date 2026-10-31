@@ -1173,6 +1173,10 @@
     <string name="settings_tap_row_to_select">चुनने के लिए पंक्ति पर टैप करें</string>
     <string name="settings_tap_row_to_select_desc">कोई आइटम चुना होने पर पंक्ति पर टैप करके चुनें या चयन हटाएँ। खोलने के लिए आइकन या थंबनेल पर टैप करें। बंद होने पर केवल चेक बटन से चुनें।</string>
     <string name="strip_duplicate">डुप्लिकेट</string>
+    <string name="settings_pane_layout">पैनल लेआउट</string>
+    <string name="pane_layout_follow_orientation">स्क्रीन की दिशा के अनुसार</string>
+    <string name="pane_layout_single">एक पैनल</string>
+    <string name="pane_layout_dual">दो पैनल</string>
     <string name="compress_level">संपीड़न स्तर</string>
     <string name="compress_fast">तेज़</string>
     <string name="compress_standard">मानक</string>

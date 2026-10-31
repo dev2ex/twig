@@ -63,6 +63,21 @@
   level preferences affect later compressions; source-directory/password/name-encryption
   choices remain local to this draft. The expanded form scrolls on short screens.
 
+- **Portrait tablets could not show both panes (2026-10-31, #49)**: pane visibility
+  was tied directly to orientation in the layout, hosts and count subscriptions.
+  `Prefs.paneLayout` selects Follow screen orientation (the existing default), Single
+  pane or Dual pane. `Prefs.dualPane` is the shared visibility decision for Main,
+  both picker hosts, `PaneLayout`, touch/swipe handling and count subscriptions.
+  Orientation still controls toolbar visibility, pinned actions and strip columns.
+  Single-pane mode keeps its continuous sliding track in either orientation;
+  dual-pane mode keeps both sides visible around the middle strip. Hidden panes
+  cannot receive keyboard or accessibility focus. Picker resume reapplies changed
+  layout settings without replacing fragments or changing the active side; Main
+  includes the preference in `uiSignature`. The setting is included in `twig_prefs`
+  configuration backups. `PaneLayoutTest` checks all six orientation/mode combinations;
+  `PaneDisplayModeTest` covers measured Main/file-picker/share-picker layouts,
+  touch/swipe activation, destination gating, visible count subscriptions and recreation.
+
 - **External multi-file row selection also selected folders (2026-10-31 review)**:
   the file-only picker's tap-to-select flag applied to every ordinary tree row,
   so tapping a folder name checked an entry that confirmation later discarded.

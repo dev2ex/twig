@@ -1173,6 +1173,10 @@
     <string name="settings_tap_row_to_select">Tocca le righe per selezionare</string>
     <string name="settings_tap_row_to_select_desc">Se ci sono elementi selezionati, tocca una riga per selezionarla o deselezionarla. Tocca icona o miniatura per aprire. Disattivato: selezione solo con le caselle.</string>
     <string name="strip_duplicate">Duplica</string>
+    <string name="settings_pane_layout">Disposizione dei pannelli</string>
+    <string name="pane_layout_follow_orientation">Segui orientamento dello schermo</string>
+    <string name="pane_layout_single">Un pannello</string>
+    <string name="pane_layout_dual">Due pannelli</string>
     <string name="compress_level">Livello di compressione</string>
     <string name="compress_fast">Veloce</string>
     <string name="compress_standard">Standard</string>

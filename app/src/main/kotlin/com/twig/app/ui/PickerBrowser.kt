@@ -23,6 +23,8 @@ internal class PickerBrowser(
         private set
     val isLandscape: Boolean
         get() = activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    private var appliedDualPane: Boolean? = null
+    private var appliedLandscape: Boolean? = null
     val pane: PaneFragment? get() = paneAt(activeIndex)
 
     init {
@@ -73,11 +75,14 @@ internal class PickerBrowser(
         activeIndex = index
         refreshStripItems()
         val land = isLandscape
+        val dual = Prefs.dualPane(activity)
+        appliedDualPane = dual
+        appliedLandscape = land
         browser.paneA.visibility = View.VISIBLE
         browser.paneB.visibility = View.VISIBLE
         browser.stripLeft.root.visibility = View.GONE
-        browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
-        browser.stripRight.root.visibility = if (land) View.GONE else View.VISIBLE
+        browser.stripMid.root.visibility = if (dual) View.VISIBLE else View.GONE
+        browser.stripRight.root.visibility = if (dual) View.GONE else View.VISIBLE
         for (strip in listOf(browser.stripLeft, browser.stripMid, browser.stripRight)) {
             strip.asGrid.setColumns(if (land) 2 else 1)
             strip.asGrid.dividers = Prefs.rowDivider(activity)
@@ -85,10 +90,24 @@ internal class PickerBrowser(
                 width = ((if (land) 104 else 52) * activity.resources.displayMetrics.density).toInt()
             }
         }
-        for (i in 0..1) paneAt(i)?.setActive(i == activeIndex)
-        browser.root.showPane(activeIndex, animate && !land)
+        for ((i, container) in listOf(browser.paneA, browser.paneB).withIndex()) {
+            paneAt(i)?.setActive(i == activeIndex)
+            val hidden = !dual && i != activeIndex
+            container.descendantFocusability = if (hidden) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                else android.view.ViewGroup.FOCUS_BEFORE_DESCENDANTS
+            if (hidden) container.clearFocus()
+            container.importantForAccessibility = if (hidden) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+        browser.root.showPane(activeIndex, animate && !dual)
+        browser.root.requestLayout()
         PaneSwitch.update(toolbar.menu.findItem(MENU_SWITCH), toolbar, activeIndex)
         onPaneChanged()
+    }
+
+    fun refreshLayout() {
+        if (appliedDualPane != Prefs.dualPane(activity) || appliedLandscape != isLandscape) switchPane(activeIndex)
+        else refreshStripItems()
     }
 
     fun refreshStripItems() {
@@ -97,11 +116,11 @@ internal class PickerBrowser(
     }
 
     fun onPaneTouched(pane: PaneFragment) {
-        if (isLandscape && pane.paneIndex != activeIndex) switchPane(pane.paneIndex)
+        if (Prefs.dualPane(activity) && pane.paneIndex != activeIndex) switchPane(pane.paneIndex)
     }
 
     fun onPaneSwipe(velocityX: Float) {
-        if (!isLandscape) switchPane(if (velocityX < 0) 1 else 0, animate = true)
+        if (!Prefs.dualPane(activity)) switchPane(if (velocityX < 0) 1 else 0, animate = true)
     }
 
     fun refreshTrees() { for (i in 0..1) paneAt(i)?.viewModel?.refreshTree() }
