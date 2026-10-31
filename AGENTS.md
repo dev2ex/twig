@@ -762,6 +762,7 @@ add its symptom here.
   *Explains*: music opening in the single-track player, no thumbnails or PDF previews, the
   green highlight disappearing on "Up", "why is there no *go to the containing folder* here",
   a local-to-SAF copy creating an empty document but writing to a bogus local path.
+  Removable-volume grants also route the original local entry through SAF when direct access is restricted (#47).
 - **[Trash and deletion](docs/lessons/trash.md)** — sync the recovery record before moving,
   never replace a failed trash move with permanent deletion, preserve offline/corrupt
   entries, and purge symlinks without following them.

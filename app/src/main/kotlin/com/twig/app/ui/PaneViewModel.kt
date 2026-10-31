@@ -1793,6 +1793,43 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         children.remove(fileKey(dir))
     }
 
+    private val storageAccess = HashMap<String, XFile>()
+    private var documentAccessGeneration = 0
+
+    private fun storageRoot(path: String): XFile = storageAccess[path] ?: XFile("file", path, true,
+        canWrite = AndroidDataAccess.instance?.route(path)?.writable() ?: true)
+
+    /** Grants are global: drop obsolete listing permissions in both resident panes. */
+    fun refreshDocumentAccess() {
+        val generation = ++documentAccessGeneration
+        val targets = expandedSnapshot().mapNotNull { key ->
+            keyFile[key]?.takeIf { it.isDir && it.scheme in setOf("file", "saf") }?.let { key to it }
+        }
+        val roots = StorageVolumes.cached(getApplication()).map { XFile("file", it.path, true) }
+        val selected = currentDir
+        viewModelScope.launch {
+            val fresh = HashMap<String, Listing>()
+            val metadata = HashMap<XFile, XFile>()
+            withContext(io) {
+                for (file in (roots + listOfNotNull(selected)).distinct()) {
+                    if (file.scheme !in setOf("file", "saf")) continue
+                    metadata[file] = runCatching { FsRegistry.of(file).stat(file.path) }.getOrNull()
+                        ?: file.copy(canRead = false, canWrite = false)
+                }
+                for ((key, file) in targets) runCatching { fresh[key] = listChildren(file) }
+            }
+            if (generation != documentAccessGeneration) return@launch
+            for (root in roots) metadata[root]?.let { storageAccess[root.path] = it }
+            for ((key, file) in targets) {
+                DirectoryCounts.invalidate(file)
+                children.remove(key)
+                fresh[key]?.let { putListing(key, it) }
+            }
+            if (currentDir == selected) selected?.let { metadata[it]?.let { updated -> currentDir = updated } }
+            rebuild()
+        }
+    }
+
     /** Refresh after a mutation: re-list every expanded directory. */
     fun refresh() {
         refreshTrashRoot()
@@ -3055,7 +3092,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
             addNextRoot()
             for (v in volumes) {
-                addFile(rows, XFile("file", v.path, isDir = true), 0, v.label, capacity(v.path))
+                addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
             }
             addNextRoot()
             if (trashEnabled && (!trashPresenceLoaded ||
@@ -3092,6 +3129,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 if (currentKey == "search:$k") currentKey = null // The highlight used to point at it; if the row is gone, don't leave it dangling.
             }
         }
+        rows.filterIsInstance<FileNode>().firstOrNull {
+            it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
+        }?.let { currentDir = it.file }
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
             restoring || revealLoadingKey != null, revealLoadingKey ?: scrollKey)
     }

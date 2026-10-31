@@ -4,6 +4,25 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **A removable volume's SAF grant did not apply to its original row (2026-10-31,
+  #47)**: the volume menu saved a valid document-tree grant, but local routing only
+  accepted `Android/data`. Android 10 could therefore write through the SAF group
+  while the original memory-card entry still failed. External-storage grants now
+  cover their exact removable-volume subtree, including whole-volume IDs ending in
+  `:` and known `/mnt/media_rw` aliases. Keep ordinary writable native paths direct;
+  an unreadable/unwritable granted subtree uses the existing local-to-SAF route.
+  Returned children and creations retain real SAF URIs, so copy/replace/rename/delete
+  share the provider path. An accessible native parent must stat a routed child through
+  its provider so its write flags reflect the grant. Read-only grants stay read-only;
+  revoked/failed reads are unknown, never empty success. Grant changes refresh cached
+  listings, volume metadata and the selected destination in both panes; late access
+  refreshes cannot overwrite a newer grant state. Volume authorization keeps the user's
+  place instead of opening the SAF group, including across Activity recreation.
+  SAF-routed deletions remain permanent through the existing trash eligibility check.
+  `AndroidDataAccessTest` covers Android 10/14, whole-card and subfolder boundaries,
+  provider mutations and copy replacement, read-only/revoked access, both pane caches,
+  native access and volume aliases.
+
 - **Android/data may allow probing a known child while denying enumeration** (2026-10-19):
   the authorization dialog lists user-installed app paths and opens SAF at the exact child.
   Existence checks can fail, so probing is an optional filter, off by default.

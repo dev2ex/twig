@@ -69,7 +69,7 @@ class LocalFileSystem(
         val children = f.listFiles()
             ?: return elevated(dir.path)?.let { sorted(it) }
                 ?: throw FsException("Cannot read directory (permission?): ${dir.path}")
-        return sorted(children.map { toXFile(it) })
+        return sorted(children.map { documents(it.path)?.stat(it.path) ?: toXFile(it) })
     }
 
     /**

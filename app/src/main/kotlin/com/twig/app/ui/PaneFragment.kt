@@ -117,6 +117,7 @@ class PaneFragment : Fragment() {
 
         /** Open the SAF folder-grant picker (jumps straight there if [initial] is non-null); only the main UI accepts this. */
         fun openSafPicker(initial: android.net.Uri?) {}
+        fun onSafGrantsChanged() { refreshTrees() }
     }
 
 
@@ -2451,7 +2452,7 @@ class PaneFragment : Fragment() {
                     toast(getString(R.string.saf_remove_failed)); return@setPositiveButton
                 }
                 viewModel.forgetSaf(file)
-                host?.refreshTrees() // The grant is global, so the row in the other pane has to vanish too.
+                host?.onSafGrantsChanged() // Refresh cached local routes and both panes as well as the SAF roots.
             }
             .show()
     }

@@ -205,14 +205,22 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             )
         }
 
+    private var safFromVolume = false
     private val safPickerLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            val fromVolume = safFromVolume
+            safFromVolume = false
             if (uri != null) {
                 val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                val persisted = runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                    .recoverCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                if (persisted.isFailure) {
+                    Toast.makeText(this, getString(R.string.saf_failed, persisted.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+                    return@registerForActivityResult
+                }
                 AndroidDataAccess.instance?.refresh()
-                refreshTrees()
-                activePane()?.viewModel?.expandGroup("saf")
+                onSafGrantsChanged()
+                if (!fromVolume) activePane()?.viewModel?.expandGroup("saf")
             }
         }
 
@@ -235,8 +243,14 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         return inlineSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("safFromVolume", safFromVolume)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        safFromVolume = savedInstanceState?.getBoolean("safFromVolume") ?: false
         if (Prefs.rememberLocation(this)) activeIndex = Prefs.activePane(this)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
@@ -433,6 +447,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         syncShareIcon()
         // SD cards / USB drives are usually inserted/removed while the app isn't in the foreground; rescan on return — only refresh the tree if something changed
         rescanVolumes()
+        if (AndroidDataAccess.instance?.refresh() == true) onSafGrantsChanged()
         pollVolumes()
     }
 
@@ -456,7 +471,11 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     /** Rescan removable volumes, refresh the volume row on both trees when something changed. One binder IPC, done on the main thread. */
     private fun rescanVolumes() {
-        if (StorageVolumes.refresh(this)) refreshTrees()
+        if (StorageVolumes.refresh(this)) {
+            AndroidDataAccess.instance?.refresh()
+            refreshTrees()
+            onSafGrantsChanged()
+        }
     }
 
     /** Plug/unplug while in foreground: refresh the volume row on both trees when something changed.
@@ -935,6 +954,11 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         v.alpha = if (enabled) 1f else DISABLED_ALPHA
     }
 
+    override fun onSafGrantsChanged() {
+        paneAt(0)?.viewModel?.refreshDocumentAccess()
+        paneAt(1)?.viewModel?.refreshDocumentAccess()
+    }
+
     override fun refreshTrees() {
         paneAt(0)?.viewModel?.refreshTree()
         paneAt(1)?.viewModel?.refreshTree()
@@ -958,8 +982,10 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
 
     /** When [initial] is non-null, the system picker opens straight at that location (used by the removable volume's "Authorise this volume with SAF" entry). */
     override fun openSafPicker(initial: Uri?) {
+        safFromVolume = initial != null
         runCatching { safPickerLauncher.launch(initial) }
             .onFailure {
+                safFromVolume = false
                 Toast.makeText(this, getString(R.string.saf_failed, it.message ?: ""), Toast.LENGTH_LONG).show()
             }
     }
