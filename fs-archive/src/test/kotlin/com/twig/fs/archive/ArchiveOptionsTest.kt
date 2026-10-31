@@ -49,6 +49,10 @@ class ArchiveOptionsTest {
             }
             SevenZFile.builder().setFile(archive).setPassword("secret").get().use { sz ->
                 val entries = sz.entries.associateBy { it.name }
+                for (entry in entries.values) {
+                    assertTrue("Missing Attributes for ${entry.name}", entry.hasWindowsAttributes)
+                    assertEquals(entry.name, entry.isDirectory, entry.windowsAttributes and 0x10 != 0)
+                }
                 assertTrue(entries.getValue("source/empty-directory").isDirectory)
                 assertEquals(0L, entries.getValue("source/empty.txt").size)
                 assertArrayEquals(data, sz.getInputStream(entries.getValue("source/private-中文.txt")).readBytes())

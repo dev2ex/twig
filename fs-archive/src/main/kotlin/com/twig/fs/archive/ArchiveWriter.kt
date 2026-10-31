@@ -235,6 +235,10 @@ object ArchiveWriter {
         private fun entry(name: String, isDir: Boolean, time: Long) = SevenZArchiveEntry().apply {
             this.name = name
             this.isDirectory = isDir
+            // File Roller's 7z backend determines directories from the Attributes field
+            // in `7z l -slt`, rather than the format's separate empty-directory flag.
+            setHasWindowsAttributes(true)
+            windowsAttributes = if (isDir) 0x10 else 0x20 // DIRECTORY / ARCHIVE
             // 7z timestamps go through java.nio.file.attribute.FileTime (API 26+); on older devices it is not available, so skip it
             if (time > 0) runCatching { lastModifiedDate = java.util.Date(time) }
         }

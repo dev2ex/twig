@@ -26,6 +26,14 @@
     7z uses LZMA2 preset 1 with a 1 MB dictionary / preset 6 capped at 4 MB / COPY.
     Saving beside sources must reject a target that is itself a selected input file;
     silently excluding it and replacing it would lose that input, especially with move enabled.
+  - **File Roller showed 7z directories as duplicate zero-byte files (2026-10-31)**:
+    Commons Compress's `isDirectory` flag is readable by 7-Zip/libarchive, but File
+    Roller's command backend identifies directories from `7z l -slt`'s Attributes
+    field. Without Windows attributes it treats the explicit directory entry as a
+    file alongside the directory inferred from child paths. Set both
+    `hasWindowsAttributes` and DIRECTORY (0x10), with ARCHIVE (0x20) for files.
+    Keep genuine empty files distinct, preserve explicit empty directories, and
+    check the independent command listing as well as the library's directory flag.
   - Progress/cancellation reuse `CopyEngine.ProgressListener`/`Cancelled`, and the read/write
     pipeline reuses `CopyEngine.pipe` (extracted from the original `pump`), which is why
     copying and compressing share the same `PaneFragment.ProgressBox`.
