@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.17.0-beta.2** (versionCode 316) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.17.0-beta.3** (versionCode 317) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -224,7 +224,7 @@ Network sources connect on expand, support multiple servers (each gets a unique
 scheme), and persist their configuration. Extraction is just a cross-source copy;
 so is compression, which is why "compress a folder on SMB into a local archive"
 needs no special case.
-The compression dialog remembers the last ZIP/7Z format across launches, even if cancelled.
+The compression dialog remembers the last ZIP/7z format and Fast / Standard / Store level across launches, even if cancelled. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible; ZIP file names remain visible.
 
 ### Browsing
 
@@ -856,5 +856,9 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   opposite-pane copy/move destination selection, tap-to-select and numbered duplicates.
   Permission notation choices and configuration resets; improved folder counts, focus,
   OLED contrast and Shizuku detection.
+
+- **1.17.0-beta.3** — Preview: single/dual panes in either orientation, compression
+  destination selection and levels, optional 7z file-name encryption and saving beside sources.
+  Fix removable-storage SAF routing, 7z directory attributes and tree-label localization.
 
 </details>

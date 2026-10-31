@@ -6,16 +6,16 @@ Browse local storage, archives, FTP, SFTP, SMB, WebDAV, S3, restic and Jellyfin/
 
 <b>Small and resource-conscious</b>
 
-The 1.16.1 libre APK measures 10.48 MiB for arm64-v8a and x86_64 together, including the terminal and media player. Dependency size is measured before inclusion.
+The 1.16.1 libre APK measures 10.48 MiB for arm64-v8a and x86_64 together, including the terminal and media player.
 
 <b>Features</b>
 
 <ul>
-<li>Independent panes; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and link targets; per-folder sorting/views</li>
+<li>Single/dual panes in either orientation; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and link targets; per-folder sorting/views</li>
 <li>Choose copy/move targets in the opposite pane; numbered duplicates; background transfers; retry unfinished transfers, resume supported writes or skip failed items; local trash with batch restore/purge</li>
 <li>Dual-pane file picking and shared file/text saving; prepare remote selections and shares with progress and reusable cache</li>
 <li>Batch rename with text/regex replacement, numbering and previews</li>
-<li>Read/create encrypted ZIP/7z and remember the last format; browse tar and gz/xz/bz2/zst</li>
+<li>Read/create encrypted ZIP/7z; compression levels, optional 7z name encryption and saving beside sources; browse tar and gz/xz/bz2/zst</li>
 <li>Folder compare and sync between any two sources</li>
 <li>Disk usage treemap with pinch zoom; bottom toolbar, Back navigation/exit choices, completion vibration and foreground notifications</li>
 <li>Private space excluded from backups and configuration exports; files are deleted when Twig is uninstalled</li>
@@ -45,7 +45,7 @@ The 1.16.1 libre APK measures 10.48 MiB for arm64-v8a and x86_64 together, inclu
 
 F-Droid distributes the free-software <i>libre</i> build without RAR. The developer’s <i>full</i> build adds read-only RAR through junrar, whose UnRAR license has non-free restrictions. Other features are identical.
 
-Twig includes no advertising, no analytics and no telemetry. Network access follows your actions: configured connections, opened websites and their resources, downloads and sharing. Websites may load their own ads or trackers.
+Twig has no ads, analytics or telemetry. Network access follows your actions: configured connections, opened websites and their resources, downloads and sharing. Websites may load their own ads or trackers.
 
 Optional microphone, camera and location permissions require your consent for each website and are configured separately. Saved bookmarks can remember decisions; temporary pages always ask.
 

@@ -10,7 +10,7 @@
 一个要「进去」的界面。原生 Kotlin + XML View,不引入 Material 库,依赖压到最低。
 能手写就手写——WebDAV、S3 签名、git、restic 全部从零实现。
 
-**版本 1.17.0-beta.2**(versionCode 316)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**版本 1.17.0-beta.3**(versionCode 317)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -202,7 +202,7 @@ Bouncy Castle 数据中有 1.16 MiB 来自 `picnic` 后量子签名算法的三�
 
 网络来源展开即连接,支持多服务器(每台一个唯一 scheme),配置持久化。解压就是一次
 跨来源复制,压缩也是——所以"把 SMB 上的目录压缩到本地"不需要任何特例代码。
-压缩弹窗记住上次选择的 ZIP/7Z 格式，即使取消或重启应用也保留。
+压缩弹窗记住上次选择的 ZIP/7z 格式和快速／标准／仅存储级别，即使取消或重启应用也保留。可在对侧面板选择目标，或保存到源目录。设置密码的 7z 默认加密文件名，也可关闭；ZIP 文件名始终可见。
 
 ### 浏览
 
@@ -668,5 +668,8 @@ I have read the CLA (CLA.md) and I agree to its terms.
 
 - **1.17.0-beta.2** —— 预览版：Android 15+ 加密 PDF、静态 SVG 查看、对侧面板选择复制/移动目标、
   点按多选与编号副本。权限表示方式切换、配置重置；改进目录计数、键盘焦点、OLED 对比度及 Shizuku 识别。
+
+- **1.17.0-beta.3** —— 预览版：横竖屏单／双面板、压缩目标选择与级别、可选的 7z 文件名加密及保存到源目录。
+  修复移动存储 SAF 路由、7z 目录属性及目录树标签语言。
 
 </details>
