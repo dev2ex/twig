@@ -242,9 +242,10 @@ class StripWriteActionsTest {
             activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
             idle()
             pane.actionCompress()
-            assertTrue(activity.isChoosingDestination())
-            assertTrue(activity.isPaneActive(pane1()))
-            activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
+            pane.childFragmentManager.executePendingTransactions()
+            val compression = pane.childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as CompressConfirmDialog
+            (compression.requireDialog() as androidx.appcompat.app.AlertDialog)
+                .getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
             idle()
         }
         pane.viewModel.toggle(PaneViewModel.GroupNode("fav", "Favorites", expanded = false))

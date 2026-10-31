@@ -428,7 +428,7 @@ class PaneFragment : Fragment() {
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) {
             adapter.setDirectoryCountsActive(
-                resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE ||
+                Prefs.dualPane(requireContext()) ||
                     (host?.isPaneActive(this) ?: (paneIndex == 0)))
             adapter.refreshDefaultAppIcons()
             adapter.refreshPlaybackProgress(requireContext())
@@ -445,7 +445,7 @@ class PaneFragment : Fragment() {
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
         if (::adapter.isInitialized) adapter.setDirectoryCountsActive(
-            active || resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
+            active || Prefs.dualPane(requireContext()))
         v.alpha = if (active) 1f else 0.5f
         v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
     }
@@ -1515,6 +1515,7 @@ class PaneFragment : Fragment() {
         if (picked) {
             draft.destination = XFile(scheme!!, path!!, true,
                 displayName = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME))
+            draft.compression?.saveToSource = false
         }
         val confirm = picked || state.returnToConfirmation
         state.returnToConfirmation = false
@@ -1631,15 +1632,23 @@ class PaneFragment : Fragment() {
         val dest = host?.siblingOf(this)?.viewModel?.currentDir
         val format = Prefs.compressFormat(requireContext())
         val name = "${defaultArchiveName(sel)}.${format.ext}"
+        val parents = sel.map { file ->
+            viewModel.renameParent(file) ?: file.takeIf { it.path.startsWith("/") && it.path != "/" }
+                ?.let { XFile(it.scheme, it.parentPath, isDir = true) }
+        }
+        val sourceDirectory = parents.firstOrNull()?.takeIf { first ->
+            first.isWritableDir() && parents.all { it?.scheme == first.scheme && it.path == first.path }
+        }
+        val level = Prefs.compressLevel(requireContext())
         val draft = DestinationState.Draft(sel.toList(), dest, move = false,
             movable = allowMove && sel.all { it.isMovableSource() },
-            compression = DestinationState.Compression(name, format))
+            compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory))
         if (immediate && dest != null && draft.blockReason(dest) == null) {
-            startCompress(sel, dest, name, format, false, null, "")
+            startCompress(sel, dest, name, format, false, null, "", level)
             return
         }
         destinationState.prepare(draft)
-        if (dest?.isWritableDir() == true) showDestinationConfirmation() else chooseDestination()
+        showDestinationConfirmation()
     }
 
     /** Single item → that item's name (file strips extension); multiple items → containing directory name. */
@@ -1662,6 +1671,8 @@ class PaneFragment : Fragment() {
         move: Boolean,
         plan0: CopyEngine.Plan?,
         password: String,
+        level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
+        hideNames: Boolean = true,
     ) {
         viewLifecycleOwner.lifecycleScope.launch {
             val destFs = FsRegistry.of(dest)
@@ -1676,11 +1687,11 @@ class PaneFragment : Fragment() {
                     .setMessage(getString(R.string.compress_overwrite, name))
                     .setNegativeButton(R.string.dialog_cancel, null)
                     .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                        runCompress(sel, dest, target, format, move, plan0, password)
+                        runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
                     }
                     .show()
             } else {
-                runCompress(sel, dest, target, format, move, plan0, password)
+                runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
             }
         }
     }
@@ -1694,10 +1705,12 @@ class PaneFragment : Fragment() {
         move: Boolean,
         plan0: CopyEngine.Plan?,
         password: String,
+        level: ArchiveWriter.Level,
+        hideNames: Boolean,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }),
+                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }, level, hideNames),
                 R.string.progress_compress,
                 pathLabel(target), pathIcon(target), plan0,
             ),

@@ -54,12 +54,23 @@ class DestinationState : ViewModel() {
         val movable: Boolean,
         val compression: Compression? = null,
     ) {
+        fun effectiveDestination(): XFile? =
+            if (compression?.saveToSource == true) compression.sourceDirectory else destination
+
         fun blockReason(destination: XFile): Int? =
             if (!destination.isWritableDir()) R.string.msg_dest_not_writable
             else FileClipboard.pasteBlockReason(destination, sources, allowSameDirectory = compression != null)
     }
 
-    class Compression(var name: String, var format: ArchiveWriter.Format, var password: String = "")
+    class Compression(
+        var name: String,
+        var format: ArchiveWriter.Format,
+        var password: String = "",
+        var level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
+        var hideNames: Boolean = true,
+        val sourceDirectory: XFile? = null,
+        var saveToSource: Boolean = false,
+    )
 
     companion object {
         const val CONFIRMATION_TAG = "destination-confirmation"

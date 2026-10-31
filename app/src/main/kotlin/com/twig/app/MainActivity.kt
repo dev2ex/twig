@@ -748,6 +748,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val draft = state.draft ?: return
         if (!cancelled) {
             draft.destination = renderDestination() ?: return
+            draft.compression?.saveToSource = false
         }
         val confirm = !cancelled || state.returnToConfirmation
         state.choosingDestination = false

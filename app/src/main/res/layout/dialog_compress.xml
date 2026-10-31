@@ -1,129 +1,172 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:paddingStart="20dp"
-    android:paddingEnd="20dp"
-    android:paddingTop="12dp">
-
-    <!-- Archive file name (with extension; changes when the format is switched) -->
-    <EditText
-        android:id="@+id/et_name"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="@string/hint_name"
-        android:importantForAutofill="no"
-        android:inputType="text"
-        android:singleLine="true"
-        android:textSize="16sp" />
-
-    <RadioGroup
-        android:id="@+id/rg_format"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:orientation="horizontal">
-
-        <RadioButton
-            android:id="@+id/rb_zip"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:checked="true"
-            android:text="ZIP"
-            android:textSize="14sp" />
-
-        <RadioButton
-            android:id="@+id/rb_7z"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
-            android:text="7Z"
-            android:textSize="14sp" />
-    </RadioGroup>
-
-    <!-- Password: leave empty = no encryption (see ArchiveWriter) -->
-    <EditText
-        android:id="@+id/et_password"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:hint="@string/compress_password_hint"
-        android:importantForAutofill="no"
-        android:inputType="textPassword"
-        android:singleLine="true"
-        android:textSize="16sp" />
-
-    <!-- Note shown only after a password is entered (encrypted archives are read-only — say so up front) -->
-    <TextView
-        android:id="@+id/tv_encrypt_note"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/compress_encrypt_note"
-        android:textColor="@color/text_secondary"
-        android:textSize="12sp"
-        android:visibility="gone" />
-
-    <!-- Source: name (single) or "N items" + total size -->
-    <TextView
-        android:id="@+id/tv_src"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="middle"
-        android:maxLines="3"
-        android:textColor="@color/text_secondary"
-        android:textSize="14sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/compress_save_to"
-        android:textColor="@color/text_primary"
-        android:textSize="16sp" />
+    android:layout_height="wrap_content">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="12dp">
 
-        <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
-        <ImageView
-            android:id="@+id/iv_dest"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:contentDescription="@null"
-            android:src="@drawable/ic_storage" />
-
-        <TextView
-            android:id="@+id/tv_dest"
+        <!-- Archive file name (with extension; changes when the format is switched) -->
+        <EditText
+            android:id="@+id/et_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:ellipsize="start"
+            android:hint="@string/hint_name"
+            android:importantForAutofill="no"
+            android:inputType="text"
             android:singleLine="true"
+            android:textSize="16sp" />
+
+        <RadioGroup
+            android:id="@+id/rg_format"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/rb_zip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="ZIP"
+                android:textSize="14sp" />
+
+            <RadioButton
+                android:id="@+id/rb_7z"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="24dp"
+                android:text="7Z"
+                android:textSize="14sp" />
+        </RadioGroup>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:labelFor="@id/sp_level"
+                android:text="@string/compress_level"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp" />
+
+            <Spinner
+                android:id="@+id/sp_level"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp" />
+        </LinearLayout>
+
+        <!-- Password: leave empty = no encryption (see ArchiveWriter) -->
+        <EditText
+            android:id="@+id/et_password"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:hint="@string/compress_password_hint"
+            android:importantForAutofill="no"
+            android:inputType="textPassword"
+            android:singleLine="true"
+            android:textSize="16sp" />
+
+        <!-- Note shown only after a password is entered (encrypted archives are read-only — say so up front) -->
+        <TextView
+            android:id="@+id/tv_encrypt_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/compress_encrypt_note"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <CheckBox
+            android:id="@+id/cb_hide_names"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/compress_hide_names"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <!-- Source: name (single) or "N items" + total size -->
+        <TextView
+            android:id="@+id/tv_src"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="middle"
+            android:maxLines="3"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <CheckBox
+            android:id="@+id/cb_source_directory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/compress_source_directory"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/compress_save_to"
             android:textColor="@color/text_primary"
-            android:textSize="15sp" />
+            android:textSize="16sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
+            <ImageView
+                android:id="@+id/iv_dest"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_storage" />
+
+            <TextView
+                android:id="@+id/tv_dest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:ellipsize="start"
+                android:singleLine="true"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_dest_error"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <CheckBox
+            android:id="@+id/cb_move"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/compress_move_mode"
+            android:textSize="14sp" />
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/tv_dest_error"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="14sp"
-        android:visibility="gone" />
-
-    <CheckBox
-        android:id="@+id/cb_move"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/compress_move_mode"
-        android:textSize="14sp" />
-</LinearLayout>
+</ScrollView>

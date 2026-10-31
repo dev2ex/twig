@@ -22,6 +22,14 @@ object Prefs {
         sp(ctx).edit().putString("compress_format", format.name).apply()
     }
 
+    fun compressLevel(ctx: Context): ArchiveWriter.Level =
+        ArchiveWriter.Level.entries.firstOrNull { it.name == sp(ctx).getString("compress_level", null) }
+            ?: ArchiveWriter.Level.STANDARD
+
+    fun setCompressLevel(ctx: Context, level: ArchiveWriter.Level) {
+        sp(ctx).edit().putString("compress_level", level.name).apply()
+    }
+
     fun toolbarAtBottom(ctx: Context): Boolean = sp(ctx).getBoolean("toolbar_at_bottom", false)
 
     fun setToolbarAtBottom(ctx: Context, bottom: Boolean) {

@@ -1209,4 +1209,11 @@
     <string name="settings_tap_row_to_select">Выбор нажатием на строку</string>
     <string name="settings_tap_row_to_select_desc">Если есть выбранные элементы, нажатие на строку меняет её выделение. Значок или миниатюра открывает элемент. Выключено: выбор только флажками.</string>
     <string name="strip_duplicate">Дубликат</string>
+    <string name="compress_level">Уровень сжатия</string>
+    <string name="compress_fast">Быстро</string>
+    <string name="compress_standard">Стандартно</string>
+    <string name="compress_store">Без сжатия</string>
+    <string name="compress_source_directory">Сохранить в исходную папку</string>
+    <string name="compress_hide_names">Шифровать имена файлов</string>
+    <string name="compress_destination_missing">Выберите место сохранения</string>
 </resources>

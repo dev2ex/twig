@@ -27,17 +27,42 @@ class CompressConfirmDialog : DialogFragment() {
         val draft = state.draft
         val options = draft?.compression
         // Sources and passwords are deliberately not restored after process death.
-        if (draft?.destination == null || options == null) return AlertDialog.Builder(requireContext()).create()
+        if (draft == null || options == null) return AlertDialog.Builder(requireContext()).create()
         val form = DialogCompressBinding.inflate(layoutInflater)
         binding = form
         form.etName.setText(options.name)
         form.etPassword.setText(options.password)
-        form.tvEncryptNote.visibility = if (options.password.isEmpty()) View.GONE else View.VISIBLE
+        fun updateEncryptionOptions() {
+            form.tvEncryptNote.visibility = if (options.password.isEmpty()) View.GONE else View.VISIBLE
+            form.cbHideNames.visibility = if (options.password.isNotEmpty() && options.format == ArchiveWriter.Format.SEVEN_Z)
+                View.VISIBLE else View.GONE
+        }
+        updateEncryptionOptions()
+        form.cbHideNames.isChecked = options.hideNames
+        form.cbHideNames.setOnCheckedChangeListener { _, checked -> options.hideNames = checked }
+        form.cbSourceDirectory.isChecked = options.saveToSource
+        form.cbSourceDirectory.isEnabled = options.sourceDirectory?.let { draft.blockReason(it) == null } == true
+        form.cbSourceDirectory.setOnCheckedChangeListener { _, checked ->
+            options.saveToSource = checked
+            updateDestination()
+        }
+        val levels = listOf(R.string.compress_fast, R.string.compress_standard, R.string.compress_store)
+        form.spLevel.adapter = android.widget.ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,
+            levels.map(::getString)).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        form.spLevel.setSelection(options.level.ordinal)
+        form.spLevel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                options.level = ArchiveWriter.Level.entries[position]
+                Prefs.setCompressLevel(requireContext(), options.level)
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+        }
         form.rgFormat.check(if (options.format == ArchiveWriter.Format.SEVEN_Z) R.id.rb_7z else R.id.rb_zip)
         form.cbMove.isChecked = draft.move
         form.cbMove.visibility = if (draft.movable) View.VISIBLE else View.GONE
         // The in-memory draft owns these values, including the password; never put them in a Bundle.
-        for (view in listOf(form.etName, form.etPassword, form.rbZip, form.rb7z, form.cbMove)) {
+        for (view in listOf(form.etName, form.etPassword, form.rbZip, form.rb7z, form.cbMove,
+                            form.spLevel, form.cbHideNames, form.cbSourceDirectory)) {
             view.isSaveEnabled = false
         }
         form.cbMove.setOnCheckedChangeListener { _, checked -> draft.move = checked }
@@ -47,11 +72,12 @@ class CompressConfirmDialog : DialogFragment() {
         }
         form.etPassword.doAfterTextChanged {
             options.password = it.toString()
-            form.tvEncryptNote.visibility = if (it.isNullOrEmpty()) View.GONE else View.VISIBLE
+            updateEncryptionOptions()
         }
         form.rgFormat.setOnCheckedChangeListener { _, id ->
             options.format = if (id == R.id.rb_7z) ArchiveWriter.Format.SEVEN_Z else ArchiveWriter.Format.ZIP
             Prefs.setCompressFormat(requireContext(), options.format)
+            updateEncryptionOptions()
             val name = form.etName.text.toString()
             val extension = ArchiveWriter.Format.entries.firstOrNull { name.endsWith(".${it.ext}", ignoreCase = true) }
             val stem = if (extension == null) name else name.dropLast(extension.ext.length + 1)
@@ -79,7 +105,7 @@ class CompressConfirmDialog : DialogFragment() {
         val draft = state.draft
         val options = draft?.compression
         val form = binding
-        if (draft?.destination == null || options == null || form == null) { dismiss(); return }
+        if (draft == null || options == null || form == null) { dismiss(); return }
         val dialog = requireDialog() as AlertDialog
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             (requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
@@ -97,7 +123,8 @@ class CompressConfirmDialog : DialogFragment() {
             val plan = state.plan.value
             state.clear()
             dismiss()
-            pane.startCompress(draft.sources, destination, name, options.format, draft.movable && draft.move, plan, password)
+            pane.startCompress(draft.sources, destination, name, options.format, draft.movable && draft.move,
+                plan, password, options.level, options.hideNames)
         }
         updateDestination()
         form.etName.requestFocus()
@@ -108,16 +135,16 @@ class CompressConfirmDialog : DialogFragment() {
 
     private fun updateDestination(): XFile? {
         val draft = state.draft ?: return null
-        val destination = draft.destination ?: return null
+        val destination = draft.effectiveDestination()
         val form = binding ?: return null
-        form.tvDest.text = pane.displayPath(destination)
-        form.ivDest.setImageResource(FileIcons.sourceIconRes(destination.scheme))
-        val reason = draft.blockReason(destination)
+        form.tvDest.text = destination?.let(pane::displayPath) ?: getString(R.string.compress_destination_missing)
+        form.ivDest.setImageResource(destination?.let { FileIcons.sourceIconRes(it.scheme) } ?: R.drawable.ic_folder)
+        val reason = destination?.let(draft::blockReason)
         form.tvDestError.text = reason?.let(::getString)
         form.tvDestError.visibility = if (reason == null) View.GONE else View.VISIBLE
         (dialog as? AlertDialog)?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled =
-            reason == null && draft.compression?.name?.isNotBlank() == true
-        return destination.takeIf { reason == null }
+            destination != null && reason == null && draft.compression?.name?.isNotBlank() == true
+        return destination?.takeIf { reason == null }
     }
 
     override fun onCancel(dialog: DialogInterface) {

@@ -346,7 +346,7 @@ its listing size must still describe the followed stream for copy/resume checks.
   but can choose another writable directory directly in the opposite resident pane.
   Main temporarily pins that pane active and shows a destination bar; source touch,
   keyboard/accessibility focus and destructive/context actions are blocked while choosing.
-  Missing/read-only defaults choose first, followed by confirmation; Cancel/Back returns
+  Copy/move choose missing/read-only defaults first, followed by confirmation; Cancel/Back returns
   to the source, restoring an existing confirmation or keeping the checked files.
   Preserve the clipboard independently. A pane-owned in-memory draft retains sources,
   mode and choosing flags across rotation; process death discards it. Other hosts keep
@@ -356,6 +356,10 @@ its listing size must still describe the followed stream for copy/resume checks.
   while still rejecting selected directory subtrees. Its separate `CompressConfirmDialog`
   retains filename, format, move mode and password in the shared `DestinationState` draft;
   passwords never enter saved view state and are cleared when the draft is discarded.
+  Compression opens its form without a target too; "Save to source folder" uses the
+  known writable common parent and leaves the other target intact until replaced.
+  ZIP/7z offer Fast / Standard / Store, with the level remembered. Password-protected
+  7z defaults to encrypted file names, with an opt-out; ZIP file names stay visible.
   Long-press transfers remain immediate for valid targets;
   otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
   Outgoing system sharing sends directly readable local files and known-size remote

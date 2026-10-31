@@ -88,6 +88,12 @@ class CopyDestinationTest {
         (pane().childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as CompressConfirmDialog)
             .requireDialog() as AlertDialog
 
+    private fun launchCompressionPicker() {
+        compressionDialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        idle()
+        initialPicker()
+    }
+
     private fun compressionSession(): Transfers.Session {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
         while (Transfers.active == null && System.nanoTime() < deadline) {
@@ -103,6 +109,7 @@ class CopyDestinationTest {
         shadowOf(app).grantPermissions(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
             "${app.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
         Prefs.setRememberLocation(app, false)
+        Prefs.setCompressLevel(app, com.twig.fs.archive.ArchiveWriter.Level.STANDARD)
         controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         idle()
         val root = File(activity.cacheDir, "copy-destination-test").apply { deleteRecursively(); mkdirs() }
@@ -157,7 +164,8 @@ class CopyDestinationTest {
         Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
         pane(1).viewModel.currentDir = null
         openCompression()
-        initialPicker()
+        assertFalse(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        launchCompressionPicker()
         choose()
         val form = compressionDialog()
         assertEquals("payload.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
@@ -241,6 +249,7 @@ class CopyDestinationTest {
         val dir = source.parentFile!!
         pane(1).viewModel.currentDir = null
         openCompression(files = listOf(entry(dir)))
+        launchCompressionPicker()
         for (invalid in listOf(entry(dir), entry(dir).copy(path = dir.path + "/nested"), entry(target).copy(canWrite = false))) {
             pane(1).viewModel.currentDir = invalid
             activity.onClipTargetChanged()
@@ -251,16 +260,86 @@ class CopyDestinationTest {
         assertNull(Transfers.active)
     }
 
-    @Test fun `immediate compression without a target asks first and Back cancels it`() {
+    @Test fun `immediate compression without a target opens settings and can be cancelled`() {
         pane(1).viewModel.currentDir = null
         openCompression(immediate = true)
-        initialPicker()
-        activity.onBackPressed()
+        compressionDialog().cancel()
         idle()
         assertNull(state().draft)
         assertTrue(activity.isPaneActive(pane()))
         assertNull(Transfers.active)
         assertTrue(source.exists())
+    }
+
+    @Test fun `source directory level and name encryption choices survive recreation and reach the worker`() {
+        pane(1).viewModel.currentDir = null
+        openCompression()
+        var form = compressionDialog()
+        val sourceCheck = form.findViewById<CheckBox>(R.id.cb_source_directory)!!
+        assertTrue(sourceCheck.isEnabled)
+        sourceCheck.isChecked = true
+        assertTrue(form.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertEquals(source.parentFile!!.path, form.findViewById<TextView>(R.id.tv_dest)!!.text.toString())
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
+        assertEquals(android.view.View.GONE, form.findViewById<CheckBox>(R.id.cb_hide_names)!!.visibility)
+        form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+        val hide = form.findViewById<CheckBox>(R.id.cb_hide_names)!!
+        assertEquals(android.view.View.VISIBLE, hide.visibility)
+        assertTrue(hide.isChecked)
+        hide.isChecked = false
+        form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.setSelection(0)
+        idle()
+        controller.recreate()
+        idle()
+        form = compressionDialog()
+        assertTrue(form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertFalse(form.findViewById<CheckBox>(R.id.cb_hide_names)!!.isChecked)
+        assertEquals(0, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        launchCompressionPicker()
+        cancelPicker()
+        form = compressionDialog()
+        assertTrue(form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals(source.parentFile!!.path, work.destDir.path)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.FAST, work.level)
+        assertFalse(work.hideNames)
+        assertEquals("secret", work.password)
+    }
+
+    @Test fun `choosing another directory replaces the source directory choice and retains stored level`() {
+        openCompression()
+        var form = compressionDialog()
+        form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked = true
+        form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.setSelection(2)
+        idle()
+        launchCompressionPicker()
+        choose()
+        form = compressionDialog()
+        assertFalse(form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, Prefs.compressLevel(activity))
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals(target.path, work.destDir.path)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, work.level)
+    }
+
+    @Test fun `source directory cannot select unrelated parents or readonly sources`() {
+        openCompression(files = listOf(entry(source), entry(File(target, "elsewhere.txt"))))
+        assertFalse(compressionDialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isEnabled)
+        compressionDialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        val scheme = "readonly-compression-options"
+        FsRegistry.register(FakeFileSystem(scheme, mapOf("/dir" to listOf("file")), mapOf("/dir/file" to "data")))
+        try {
+            openCompression(files = listOf(XFile(scheme, "/dir/file", false)))
+            val form = compressionDialog()
+            assertFalse(form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isEnabled)
+            form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+            form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
+            assertEquals(android.view.View.GONE, form.findViewById<CheckBox>(R.id.cb_hide_names)!!.visibility)
+        } finally { FsRegistry.unregister(scheme) }
     }
 
     @Test fun `immediate compression with a writable target keeps the direct transfer path`() {

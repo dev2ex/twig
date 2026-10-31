@@ -1173,4 +1173,11 @@
     <string name="settings_tap_row_to_select">Toucher les lignes pour sélectionner</string>
     <string name="settings_tap_row_to_select_desc">Si des éléments sont sélectionnés, toucher une ligne change sa sélection. Toucher son icône ou sa miniature pour ouvrir. Désactivé : sélection par les coches uniquement.</string>
     <string name="strip_duplicate">Dupliquer</string>
+    <string name="compress_level">Niveau de compression</string>
+    <string name="compress_fast">Rapide</string>
+    <string name="compress_standard">Standard</string>
+    <string name="compress_store">Sans compression</string>
+    <string name="compress_source_directory">Enregistrer dans le dossier source</string>
+    <string name="compress_hide_names">Chiffrer les noms de fichiers</string>
+    <string name="compress_destination_missing">Choisissez une destination</string>
 </resources>

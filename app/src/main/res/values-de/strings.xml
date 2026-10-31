@@ -1173,4 +1173,11 @@
     <string name="settings_tap_row_to_select">Zeilen zum Auswählen antippen</string>
     <string name="settings_tap_row_to_select_desc">Bei ausgewählten Einträgen schaltet ein Tippen auf die Zeile die Auswahl um. Symbol oder Vorschaubild öffnet den Eintrag. Aus: Auswahl nur über Häkchen.</string>
     <string name="strip_duplicate">Duplizieren</string>
+    <string name="compress_level">Komprimierungsstufe</string>
+    <string name="compress_fast">Schnell</string>
+    <string name="compress_standard">Standard</string>
+    <string name="compress_store">Nur speichern</string>
+    <string name="compress_source_directory">Im Quellordner speichern</string>
+    <string name="compress_hide_names">Dateinamen verschlüsseln</string>
+    <string name="compress_destination_missing">Speicherort auswählen</string>
 </resources>

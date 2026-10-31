@@ -103,6 +103,8 @@ object Transfers {
             val move: Boolean,
             /** Non-null means encrypted (AES-256); null means the dialog was left blank. */
             val password: String? = null,
+            val level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
+            val hideNames: Boolean = true,
         ) : Work()
     }
 
@@ -393,7 +395,7 @@ object Transfers {
                 is Work.Compress -> {
                     ArchiveWriter.compress(
                         w.items, w.destDir, w.target, w.format, listener,
-                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password,
+                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password, w.level, w.hideNames,
                     )
                     // Only touch the source files on a successful pack; on cancel/failure
                     // the partial output is already gone, so the sources must stay.

@@ -1173,4 +1173,11 @@
     <string name="settings_tap_row_to_select">Tocca le righe per selezionare</string>
     <string name="settings_tap_row_to_select_desc">Se ci sono elementi selezionati, tocca una riga per selezionarla o deselezionarla. Tocca icona o miniatura per aprire. Disattivato: selezione solo con le caselle.</string>
     <string name="strip_duplicate">Duplica</string>
+    <string name="compress_level">Livello di compressione</string>
+    <string name="compress_fast">Veloce</string>
+    <string name="compress_standard">Standard</string>
+    <string name="compress_store">Senza compressione</string>
+    <string name="compress_source_directory">Salva nella cartella di origine</string>
+    <string name="compress_hide_names">Cifra i nomi dei file</string>
+    <string name="compress_destination_missing">Scegli una destinazione</string>
 </resources>

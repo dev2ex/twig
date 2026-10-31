@@ -1172,4 +1172,11 @@
     <string name="settings_tap_row_to_select">點擊列選取</string>
     <string name="settings_tap_row_to_select_desc">有選取項目時，點擊列可選取或取消選取，點擊圖示或縮圖開啟。關閉時，只能透過勾選按鈕選取。</string>
     <string name="strip_duplicate">建立副本</string>
+    <string name="compress_level">壓縮等級</string>
+    <string name="compress_fast">快速</string>
+    <string name="compress_standard">標準</string>
+    <string name="compress_store">僅儲存</string>
+    <string name="compress_source_directory">儲存到來源目錄</string>
+    <string name="compress_hide_names">加密檔案名稱</string>
+    <string name="compress_destination_missing">請選擇儲存位置</string>
 </resources>

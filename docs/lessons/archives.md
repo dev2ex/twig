@@ -18,8 +18,14 @@
     before writing a local destination.
   - **Do not use LZMA2's default 8 MB dictionary**: the encoder needs roughly 11× the
     dictionary in memory (~90 MB of Java heap), which OOMs easily on a phone when compressing
-    large files; set 4 MB explicitly (`ArchiveWriter.LZMA2`), at a marginal cost in
+    large files; cap Standard at 4 MB explicitly, at a marginal cost in
     compression ratio.
+  - Packing levels are Fast / Standard / Store. ZIP uses DEFLATE 1 / 6 / method 0;
+    STORED ZIP entries stream through `ZipWriter` with data descriptors instead of
+    pre-reading each source for CRC/size. AES extras must carry the real method, including 0.
+    7z uses LZMA2 preset 1 with a 1 MB dictionary / preset 6 capped at 4 MB / COPY.
+    Saving beside sources must reject a target that is itself a selected input file;
+    silently excluding it and replacing it would lose that input, especially with move enabled.
   - Progress/cancellation reuse `CopyEngine.ProgressListener`/`Cancelled`, and the read/write
     pipeline reuses `CopyEngine.pipe` (extracted from the original `pump`), which is why
     copying and compressing share the same `PaneFragment.ProgressBox`.
@@ -66,6 +72,17 @@
   encrypted archives), but **the whole zip side is hand-written** — commons-compress and
   `java.util.zip` cannot even *read* encrypted zips, and zip4j is a few hundred KB of APK.
   Settled decisions:
+  - **7z file-name encryption (2026-10-31, #48)**: `SevenZHeaders` wraps the writer's
+    trailing header in a standard AES-256 EncodedHeader before committing/uploading the
+    `.twigpart`. Overwrite all plaintext header bytes, including the old tail; stream
+    bounded chunks rather than buffering another full header. The password KDF is 7z's
+    salted SHA-256 counter loop, with a fresh salt/IV and AES-CBC zero padding; retain
+    the original length and CRC in the descriptor. Check cancellation during the KDF
+    and header rewrite, without interrupting shared backend connections. ZIP does not
+    gain name encryption. The UI enables it by default for password-protected 7z and
+    allows opting out. No new dependency, reflection or alternate archive writer.
+    Verify generated archives with an independent `7z t`, not only a round-trip through
+    Commons Compress; tests cover both password checks and multi-buffer/empty-only headers.
   - **The AES-CTR counter is little-endian and starts at 1**, while the JDK's `AES/CTR` is
     big-endian — using it directly yields garbage. Encrypt counter blocks with `AES/ECB` and
     XOR them yourself (`ZipAes.Ctr`). The HMAC authentication code is computed over the

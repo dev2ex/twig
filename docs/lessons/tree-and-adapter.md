@@ -54,6 +54,14 @@
   select a destination and confirm. `CopyDestinationTest` covers actual ZIP output,
   replacement options passed to the transfer, field retention and cancellation across
   recreation, initial cancellation, direct long presses and invalid/read-only targets.
+  Compression now opens its form even without a default destination so "Save to source
+  folder" is directly available. Enable that checkbox only for one known, writable common
+  parent, using cached tree parents for opaque paths rather than slicing document URIs.
+  The checkbox changes the effective destination without discarding the prior target;
+  cancelling replacement selection retains it, while choosing a new directory unchecks it.
+  Retain compression level and 7z name-encryption choices in the same draft. Format and
+  level preferences affect later compressions; source-directory/password/name-encryption
+  choices remain local to this draft. The expanded form scrolls on short screens.
 
 - **External multi-file row selection also selected folders (2026-10-31 review)**:
   the file-only picker's tap-to-select flag applied to every ordinary tree row,

@@ -30,13 +30,13 @@ import java.util.zip.ZipOutputStream
  *    write it directly there; otherwise write to [tmpDir] then ship the whole archive over.
  *
  * With a password: zip swaps to our handwritten [ZipWriter] (WinZip AES-256; java.util.zip does
- * not support encryption at all); 7z uses commons-compress's built-in AES-256. Both leave file
- * names **unencrypted** — encrypting names would prevent other tools from even listing the archive,
- * and the common need here is only "don't let the content be glanced at".
+ * not support encryption at all); 7z uses commons-compress's built-in AES-256, optionally
+ * followed by [SevenZHeaders] to encrypt names too. ZIP names remain visible.
  */
 object ArchiveWriter {
 
     enum class Format(val ext: String) { ZIP("zip"), SEVEN_Z("7z") }
+    enum class Level { FAST, STANDARD, STORE }
 
     /** Cancelled (as opposed to a real failure): the caller uses this to say "cancelled" instead of erroring. */
     class Cancelled : RuntimeException("Cancelled")
@@ -68,8 +68,13 @@ object ArchiveWriter {
         plannedBytes: Long = -1,
         tmpDir: File? = null,
         password: String? = null,
+        level: Level = Level.STANDARD,
+        hideNames: Boolean = false,
     ) {
         if (items.isEmpty()) throw FsException("Nothing to compress")
+        if (items.any { !it.isDir && it.scheme == target.scheme && it.path == target.path }) {
+            throw FsException("Choose a different archive name: the target is a selected source file")
+        }
         val pw = password?.takeIf { it.isNotEmpty() }
         val destFs = FsRegistry.of(target)
         val name = target.name
@@ -84,13 +89,20 @@ object ArchiveWriter {
                 Format.ZIP -> destFs.openOutput(part, append = false).use { out ->
                     // Without encryption still goes through java.util.zip: it is battle-tested, and there is no reason
                     // to replace the old path just for the sake of consistency.
-                    if (pw == null) {
-                        ZipOutputStream(out).use { zos -> writeAll(items, ZipSink(zos), st) }
+                    if (pw == null && level != Level.STORE) {
+                        ZipOutputStream(out).use { zos ->
+                            zos.setLevel(if (level == Level.FAST) 1 else 6)
+                            writeAll(items, ZipSink(zos), st)
+                        }
                     } else {
-                        ZipWriter(out, pw).use { zw -> writeAll(items, EncryptedZipSink(zw), st) }
+                        ZipWriter(out, pw, compressionLevel = when (level) {
+                            Level.FAST -> 1
+                            Level.STANDARD -> 6
+                            Level.STORE -> 0
+                        }).use { zw -> writeAll(items, EncryptedZipSink(zw), st) }
                     }
                 }
-                Format.SEVEN_Z -> writeSevenZ(items, part, st, tmpDir, pw)
+                Format.SEVEN_Z -> writeSevenZ(items, part, st, tmpDir, pw, level, hideNames)
             }
         } catch (t: Throwable) {
             // Only clean up our own partial file; the existing same-name archive is user data and not our business
@@ -111,7 +123,8 @@ object ArchiveWriter {
      * temp file and ship the whole archive over to the target.
      * The [target] here is the `.twigpart` already created by [compress], not the user-visible final file.
      */
-    private fun writeSevenZ(items: List<XFile>, target: XFile, st: State, tmpDir: File?, password: String?) {
+    private fun writeSevenZ(items: List<XFile>, target: XFile, st: State, tmpDir: File?, password: String?,
+                            level: Level, hideNames: Boolean) {
         val local = target.scheme == LOCAL_SCHEME
         val file = if (local) File(target.path) else File.createTempFile("twig7z", ".7z", tmpDir)
         try {
@@ -120,10 +133,22 @@ object ArchiveWriter {
             // provide the FileChannel ourselves so minSdk 24 works too
             RandomAccessFile(file, "rw").channel.use { ch ->
                 SevenZOutputFile(ch, password?.toCharArray()).use { szo ->
-                    szo.setContentMethods(listOf(LZMA2))
+                    val method = if (level == Level.STORE) {
+                        org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration(
+                            org.apache.commons.compress.archivers.sevenz.SevenZMethod.COPY)
+                    } else {
+                        org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration(
+                            org.apache.commons.compress.archivers.sevenz.SevenZMethod.LZMA2,
+                            org.tukaani.xz.LZMA2Options(if (level == Level.FAST) 1 else 6).apply {
+                                // Keep the mobile memory cap: the encoder needs roughly 11x the dictionary.
+                                dictSize = if (level == Level.FAST) 1 shl 20 else 1 shl 22
+                            })
+                    }
+                    szo.setContentMethods(listOf(method))
                     writeAll(items, SevenZSink(szo), st)
                 }
             }
+            if (password != null && hideNames) SevenZHeaders.encrypt(file, password, st.cancelled)
             if (!local) {
                 val destFs = FsRegistry.of(target)
                 file.inputStream().use { input ->
@@ -244,14 +269,4 @@ object ArchiveWriter {
     /** Suffix for an in-progress archive; renamed to the user's filename only when fully written (see [compress]). */
     private const val PART_SUFFIX = ".twigpart"
 
-    /**
-     * 7z compression method: LZMA2 with a 4 MB dictionary. **Do not use the default 8 MB** — the
-     * LZMA2 encoder needs roughly 11× the dictionary in memory, and the default immediately burns
-     * ~90 MB of Java heap; compressing big files on a phone OOMs easily. 4 MB is ~46 MB and the
-     * compression ratio barely moves.
-     */
-    private val LZMA2 = org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration(
-        org.apache.commons.compress.archivers.sevenz.SevenZMethod.LZMA2,
-        org.tukaani.xz.LZMA2Options().apply { dictSize = 1 shl 22 },
-    )
 }

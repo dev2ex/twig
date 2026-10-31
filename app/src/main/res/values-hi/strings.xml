@@ -1173,4 +1173,11 @@
     <string name="settings_tap_row_to_select">चुनने के लिए पंक्ति पर टैप करें</string>
     <string name="settings_tap_row_to_select_desc">कोई आइटम चुना होने पर पंक्ति पर टैप करके चुनें या चयन हटाएँ। खोलने के लिए आइकन या थंबनेल पर टैप करें। बंद होने पर केवल चेक बटन से चुनें।</string>
     <string name="strip_duplicate">डुप्लिकेट</string>
+    <string name="compress_level">संपीड़न स्तर</string>
+    <string name="compress_fast">तेज़</string>
+    <string name="compress_standard">मानक</string>
+    <string name="compress_store">बिना संपीड़न</string>
+    <string name="compress_source_directory">स्रोत फ़ोल्डर में सहेजें</string>
+    <string name="compress_hide_names">फ़ाइल नाम एन्क्रिप्ट करें</string>
+    <string name="compress_destination_missing">सहेजने का स्थान चुनें</string>
 </resources>

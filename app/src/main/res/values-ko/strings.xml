@@ -1173,4 +1173,11 @@
     <string name="settings_tap_row_to_select">행을 눌러 선택</string>
     <string name="settings_tap_row_to_select_desc">선택된 항목이 있으면 행을 눌러 선택하거나 해제합니다. 아이콘이나 미리보기를 누르면 열립니다. 끄면 체크 버튼으로만 선택합니다.</string>
     <string name="strip_duplicate">복제</string>
+    <string name="compress_level">압축 수준</string>
+    <string name="compress_fast">빠르게</string>
+    <string name="compress_standard">표준</string>
+    <string name="compress_store">압축 안 함</string>
+    <string name="compress_source_directory">원본 폴더에 저장</string>
+    <string name="compress_hide_names">파일 이름 암호화</string>
+    <string name="compress_destination_missing">저장 위치를 선택하세요</string>
 </resources>
