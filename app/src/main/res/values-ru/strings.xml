@@ -1214,8 +1214,8 @@
     <string name="pane_layout_single">Одна панель</string>
     <string name="pane_layout_dual">Две панели</string>
     <string name="compress_level">Уровень сжатия</string>
-    <string name="compress_fast">Быстро</string>
-    <string name="compress_standard">Стандартно</string>
+    <string name="compress_fast">Быстрый</string>
+    <string name="compress_standard">Стандартный</string>
     <string name="compress_store">Без сжатия</string>
     <string name="compress_source_directory">Сохранить в исходную папку</string>
     <string name="compress_hide_names">Шифровать имена файлов</string>
