@@ -769,6 +769,7 @@ class PaneFragment : Fragment() {
     fun reveal(target: XFile, focus: XFile? = null) {
         if (mapMode) exitTreemap()
         pendingScrollToCurrent = true
+        if (focus != null && viewModel.revealViewedFile(focus)) return
         viewModel.revealPath(target, focus)
     }
 
