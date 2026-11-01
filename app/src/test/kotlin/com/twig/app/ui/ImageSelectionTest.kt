@@ -43,7 +43,8 @@ class ImageSelectionTest {
             ShadowToast.reset()
             checkbox.performClick()
             assertFalse(checkbox.isChecked)
-            assertEquals("0", count.text.toString())
+            assertEquals("", count.text.toString())
+            assertNull(count.contentDescription)
             assertNull(ShadowToast.getTextOfLatestToast())
             val result = ImageViewerActivity.takeResult()!!
             assertEquals(emptyList<XFile>(), result.selection)

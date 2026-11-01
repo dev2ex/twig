@@ -457,8 +457,8 @@ class ImageViewerActivity : TwigActivity() {
     private fun updateSelection() {
         val file = images.getOrNull(current) ?: return
         b.btnSelect.isChecked = picked.containsKey(file.scheme to file.path)
-        b.selectionCount.text = picked.size.toString()
-        b.selectionCount.contentDescription = getString(R.string.title_selected_count, picked.size)
+        b.selectionCount.text = if (picked.isEmpty()) "" else picked.size.toString()
+        b.selectionCount.contentDescription = if (picked.isEmpty()) null else getString(R.string.title_selected_count, picked.size)
     }
 
     private fun publishResult() {
