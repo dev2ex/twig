@@ -605,6 +605,7 @@
 - **Destination chooser buttons consumed excessive dialog space (2026-11-01, #35)**:
   long translations made the neutral “Choose another location” button stack below
   OK/Cancel. Copy/move and compression now share a clickable destination field
-  with an outline, edit icon and wrapping action hint. Keep the full field focusable
+  with an edit icon as the visible action cue, without a border or extra hint text.
+  Keep the full row focusable and at least 48 dp tall for touch access,
   and announce the action plus current path for accessibility. Reuse the existing
   destination draft/picker flow, including source-folder mode and rotation handling.
