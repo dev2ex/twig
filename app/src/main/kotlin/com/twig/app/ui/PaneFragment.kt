@@ -575,7 +575,7 @@ class PaneFragment : Fragment() {
             OpenFiles.isImage(file) -> {
                 val (images, index) = viewModel.imageSiblings(file)
                 awaitingImageResult = true
-                ImageViewerActivity.start(requireContext(), images, index)
+                ImageViewerActivity.start(requireContext(), images, index, selection = adapter.selectedItems())
             }
             // xapk/apks/apkm: base + splits in one zip, which the system installer cannot
             // take. Streamed into a PackageInstaller session instead, see ApkBundleInstall.
@@ -615,7 +615,7 @@ class PaneFragment : Fragment() {
                 OpenFiles.isText(typed) -> TextViewerActivity.start(ctx, file)
                 OpenFiles.isImage(typed) -> {
                     awaitingImageResult = true
-                    ImageViewerActivity.start(ctx, listOf(file), 0)
+                    ImageViewerActivity.start(ctx, listOf(file), 0, selection = adapter.selectedItems())
                 }
                 // Straight to the player rather than the music queue: the queue is rebuilt
                 // from its tracks' names, which would not say "audio".
@@ -2302,14 +2302,14 @@ class PaneFragment : Fragment() {
     private var awaitingImageResult = false
 
     /**
-     * Pick up the image viewer's result: the checked images there sync to multi-selection on the tree; if any were deleted, refresh. The viewer's
-     * selection can cross directories (slideshow scans recursively), we don't filter it here — multi-selection on the tree already allows cross-directory (see mapSelected).
+     * Apply the viewer's updated pane checks, including an empty selection after the last image is unchecked.
+     * A null selection means checks were disabled (e.g. slideshow); deletions still request a refresh.
      */
     private fun takeImageViewerResult() {
         if (!awaitingImageResult || !::adapter.isInitialized) return
         awaitingImageResult = false
         val r = ImageViewerActivity.takeResult() ?: return
-        if (r.selection.isNotEmpty()) adapter.setSelection(r.selection)
+        r.selection?.let { adapter.setSelection(it) }
         if (r.changed) viewModel.refresh()
     }
 

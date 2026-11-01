@@ -73,8 +73,8 @@ class ImageViewerActivity : TwigActivity() {
     private var wantAutoPlay = false              // slideshow mode: start playing automatically once an image is ready
     private var canSelect = true                 // Only same-directory browsing can sync selection back to the tree
 
-    /** Images ticked in the viewer (deduped by path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
-    private val picked = LinkedHashMap<String, XFile>()
+    /** Pane selection, updated by the viewer (deduped by scheme/path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
+    private val picked = LinkedHashMap<Pair<String, String>, XFile>()
     private var changed = false                  // an image was deleted, the file panel needs a refresh
 
     /** Capacity by byte count: with the downsampling cap relaxed, a single bitmap can reach tens of MB; "6 of those" would OOM. */
@@ -156,7 +156,7 @@ class ImageViewerActivity : TwigActivity() {
 
         val mode = intent.getIntExtra(EXTRA_MODE, MODE_FIXED)
         canSelect = mode == MODE_FIXED && intent.getBooleanExtra(EXTRA_ALLOW_SELECT, true)
-        b.btnSelect.visibility = if (canSelect) View.VISIBLE else View.INVISIBLE
+        b.selectSlot.visibility = if (canSelect) View.VISIBLE else View.INVISIBLE
         b.btnDelete.visibility = if (mode == MODE_SCAN) View.INVISIBLE else View.VISIBLE
         when (mode) {
             MODE_SCAN -> {
@@ -168,10 +168,11 @@ class ImageViewerActivity : TwigActivity() {
                 startScan(XFile(scheme, rootPath, isDir = true))
             }
             else -> {
-                val list = pendingImages
+                val pending = pendingImages
                 pendingImages = null
-                if (list.isNullOrEmpty()) return finish()
-                images = list.toMutableList()
+                if (pending == null || pending.images.isEmpty()) return finish()
+                images = pending.images.toMutableList()
+                if (canSelect) pending.selection.forEach { picked[it.scheme to it.path] = it }
                 order = images.indices.toMutableList()
                 pos = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, images.lastIndex)
                 b.btnShuffle.alpha = 0.5f
@@ -389,7 +390,7 @@ class ImageViewerActivity : TwigActivity() {
      *  during shuffle the sequence number jumps around, but it reflects this image's actual position in the directory. */
     private fun updateTitle() {
         val f = images.getOrNull(current) ?: return
-        b.btnSelect.isChecked = picked.containsKey(f.path)
+        updateSelection()
         b.toolbar.title = "${current + 1}/${images.size}  ${f.name}"
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(f.name))
     }
@@ -408,7 +409,7 @@ class ImageViewerActivity : TwigActivity() {
         val labels = ArrayList<String>()
         val acts = ArrayList<() -> Unit>()
         if (canSelect) {
-            val on = picked.containsKey(file.path)
+            val on = picked.containsKey(file.scheme to file.path)
             labels += getString(if (on) R.string.action_unselect else R.string.action_select)
             acts += { togglePick(file) }
         }
@@ -428,9 +429,8 @@ class ImageViewerActivity : TwigActivity() {
     /** Tick / untick the current image; result is published to [pendingResult] as it changes, picked up by the file panel when it returns to the foreground. */
     private fun togglePick(file: XFile) {
         if (!canSelect) return
-        if (picked.remove(file.path) == null) picked[file.path] = file
-        b.btnSelect.isChecked = picked.containsKey(file.path)
-        toast(getString(R.string.title_selected_count, picked.size))
+        if (picked.remove(file.scheme to file.path) == null) picked[file.scheme to file.path] = file
+        updateSelection()
         publishResult()
     }
 
@@ -442,7 +442,7 @@ class ImageViewerActivity : TwigActivity() {
                 val idx = images.indexOfFirst { it.path == file.path && it.scheme == file.scheme }
                 if (idx >= 0) {
                     cache.remove(file.path)
-                    picked.remove(file.path)
+                    picked.remove(file.scheme to file.path)
                     images.removeAt(idx)
                     order = order.filter { it != idx }.map { if (it > idx) it - 1 else it }.toMutableList()
                     changed = true
@@ -454,10 +454,15 @@ class ImageViewerActivity : TwigActivity() {
         }
     }
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun updateSelection() {
+        val file = images.getOrNull(current) ?: return
+        b.btnSelect.isChecked = picked.containsKey(file.scheme to file.path)
+        b.selectionCount.text = picked.size.toString()
+        b.selectionCount.contentDescription = getString(R.string.title_selected_count, picked.size)
+    }
 
     private fun publishResult() {
-        pendingResult = Result(picked.values.toList(), changed)
+        pendingResult = Result(if (canSelect) picked.values.toList() else null, changed)
     }
 
     // ---- hi-res region after zooming in (BitmapRegionDecoder) ----
@@ -504,15 +509,17 @@ class ImageViewerActivity : TwigActivity() {
         /** In-process one-shot transfer slot for fixed-list mode: avoids passing a large list via Intent extras, which
          * triggers TransactionTooLargeException (binder's single-transaction cap is 1MB; a few thousand images' path +
          * filename array in a single directory easily exceeds it). Cleared immediately after onCreate reads it. */
-        @Volatile private var pendingImages: List<XFile>? = null
+        private class PendingImages(val images: List<XFile>, val selection: List<XFile>)
+
+        @Volatile private var pendingImages: PendingImages? = null
 
         /**
-         * Result from operations in the viewer: ticked images ([selection]) and whether any image was deleted ([changed]).
+         * Result from operations in the viewer: pane checks ([selection], null when selection is disabled) and whether any image was deleted ([changed]).
          * Picked up once by [PaneFragment] via [takeResult] when it returns to the foreground — the viewer is started
          * with a plain startActivity (the image list goes through [pendingImages] in-process, not through Intent),
          * and the result is returned via the same in-process slot, avoiding an extra ActivityResult contract.
          */
-        class Result(val selection: List<XFile>, val changed: Boolean)
+        class Result(val selection: List<XFile>?, val changed: Boolean)
 
         @Volatile private var pendingResult: Result? = null
 
@@ -520,11 +527,18 @@ class ImageViewerActivity : TwigActivity() {
 
         /**
          * Fixed image list (e.g. sibling images in the same directory, already in memory), starts at index, doesn't auto-play.
+         * [selection] carries all pane checks so changes preserve files outside this image list.
          * [allowSelect] = false is for external content:// opens (no file tree to sync, so no "Select").
          */
-        fun start(context: Context, images: List<XFile>, startIndex: Int, allowSelect: Boolean = true) {
+        fun start(
+            context: Context,
+            images: List<XFile>,
+            startIndex: Int,
+            allowSelect: Boolean = true,
+            selection: List<XFile> = emptyList(),
+        ) {
             if (images.isEmpty()) return
-            pendingImages = images
+            pendingImages = PendingImages(images, selection)
             pendingResult = null // any stale result nobody picked up last round is discarded here
             context.startActivity(
                 Intent(context, ImageViewerActivity::class.java).apply {
