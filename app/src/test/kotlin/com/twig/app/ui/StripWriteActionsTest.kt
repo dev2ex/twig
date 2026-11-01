@@ -353,7 +353,7 @@ class StripWriteActionsTest {
         val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
         val input = editInputs(dialog.window!!.decorView).single()
         assertEquals("photo_2.jpg", input.text.toString())
-        assertEquals("photo_2", input.text.substring(input.selectionStart, input.selectionEnd))
+        assertEquals("_2", input.text.substring(input.selectionStart, input.selectionEnd))
         assertTrue(Transfers.active == null)
         assertEquals("image", original.readText())
         input.setText("vacation.jpg")
@@ -448,6 +448,7 @@ class StripWriteActionsTest {
         for (index in sources.indices) {
             val input = editInputs(list.findViewHolderForAdapterPosition(index)!!.itemView).single()
             assertEquals(if (index == 0) "one_1.txt" else "two_1.txt", input.text.toString())
+            assertEquals("_1", input.text.substring(input.selectionStart, input.selectionEnd))
             input.setText("copy-$index.txt")
         }
         assertTrue(Transfers.active == null)

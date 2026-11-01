@@ -41,6 +41,14 @@ internal object DuplicateConfirmDialog {
             setSingleLine()
             if (Build.VERSION.SDK_INT >= 26) importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
         }
+        fun selectNumber(input: EditText, file: XFile) {
+            val name = input.text.toString()
+            val end = if (file.isDir) name.length else name.lastIndexOf('.').takeIf { it > 0 } ?: name.length
+            val start = name.lastIndexOf('_', end - 1)
+            if (start >= 0 && start + 1 < end && name.substring(start + 1, end).all { it in '0'..'9' }) {
+                input.setSelection(start, end)
+            }
+        }
         var singleInput: EditText? = null
         if (pairs.size == 1) {
             val file = pairs.single().first
@@ -85,6 +93,7 @@ internal object DuplicateConfirmDialog {
                         holder.label.text = file.name
                         holder.input.contentDescription = file.name
                         holder.input.setText(names.getValue(file.toUri()))
+                        selectNumber(holder.input, file)
                     }
                 }
             }
@@ -99,8 +108,10 @@ internal object DuplicateConfirmDialog {
             .setNegativeButton(R.string.dialog_cancel, null).setPositiveButton(R.string.dialog_ok, null).create()
         var validating: Job? = null
         dialog.setOnDismissListener { validating?.cancel() }
-        if (singleInput != null) dialog.showNameInput(singleInput, selectStem = !pairs.single().first.isDir)
-        else dialog.show()
+        if (singleInput != null) {
+            dialog.showNameInput(singleInput, selectStem = !pairs.single().first.isDir)
+            selectNumber(singleInput, pairs.single().first)
+        } else dialog.show()
         val confirm = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
         confirm.setOnClickListener {
             if (validating?.isActive == true) return@setOnClickListener
