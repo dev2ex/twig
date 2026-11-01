@@ -99,7 +99,7 @@ F-Droid 自动跟踪正式版标签，完成构建与仓库发布流程后提供
 Jellyfin/Emby 媒体库都就地展开。两侧可以放不同来源:把 SMB 上的目录压成本地 zip,
 或把远程压缩包里的文件直接复制到 FTP 服务器。
 
-**体积小，资源友好。** 1.16.1 full 构建的 arm64-v8a 单设备下载实测为 8.40 MiB,包含终端、
+**体积小，资源友好。** 1.17.0 full 构建的 arm64-v8a 单设备下载实测为 8.59 MiB,包含终端、
 网络存储后端和媒体播放器。新增依赖前先测量 APK 增量。
 
 **这些工具可以一起用。**
@@ -129,26 +129,26 @@ Jellyfin/Emby 媒体库都就地展开。两侧可以放不同来源:把 SMB 上
 
 ## 体积
 
-1.16.1 正式签名 release APK 实测(R8 + 资源裁剪;1 MiB = 1,048,576 字节):
+1.17.0 正式签名 release APK 实测(R8 + 资源裁剪;1 MiB = 1,048,576 字节):
 
 | | 大小 |
 |---|---|
-| Full APK(`arm64-v8a` + `x86_64`) | 10.54 MiB |
-| Libre APK(`arm64-v8a` + `x86_64`) | 10.48 MiB |
-| **Full APK，仅 `arm64-v8a`** | **8.40 MiB** |
-| Full APK，仅 `x86_64` | 8.52 MiB |
-| Full APK，仅 `armeabi-v7a`（实验性） | 8.16 MiB |
+| Full APK(`arm64-v8a` + `x86_64`) | 10.73 MiB |
+| Libre APK(`arm64-v8a` + `x86_64`) | 10.66 MiB |
+| **Full APK，仅 `arm64-v8a`** | **8.59 MiB** |
+| Full APK，仅 `x86_64` | 8.71 MiB |
+| Full APK，仅 `armeabi-v7a`（实验性） | 8.35 MiB |
 
 构成(full `arm64-v8a` APK 内条目的压缩后大小):
 
 | 组件 | 大小 |
 |---|---|
-| `classes*.dex`(自研代码 + 全部 JVM 依赖) | 3.11 MiB |
+| `classes*.dex`(自研代码 + 全部 JVM 依赖) | 3.21 MiB |
 | `libffmpegJNI.so` | 1.39 MiB |
 | Bouncy Castle 的数据文件 | 1.18 MiB |
-| 资源(`resources.arsc` + `res`) | 1.84 MiB |
+| 资源(`resources.arsc` + `res`) | 1.93 MiB |
 | `libsamba_jni.so`(libsmb2) | 485 KiB |
-| `libtwigzstd` / `libtermux` / `libtwigpty` | 109 KiB |
+| `libtwigzstd` / `libtermux` / `libtwigpty` | 110 KiB |
 
 Bouncy Castle 数据中有 1.16 MiB 来自 `picnic` 后量子签名算法的三张查找表
 (`lowmcL{1,3,5}.bin.properties`)。引入完整 Bouncy Castle 只是因为 Android 自带的
