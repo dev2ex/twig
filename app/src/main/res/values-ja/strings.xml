@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">%1$s で実行するコマンド</string>
     <string name="cmd_title_server">%1$s のコマンド</string>
     <string name="cmd_label">ショートカット名</string>
-    <string name="cmd_command">コマンド</string>
+    <string name="cmd_command">コマンド（空欄でこの場所のターミナルを開く）</string>
     <string name="cmd_workdir">作業ディレクトリ（空欄：ログイン時の既定）</string>
     <string name="cmd_pick_script">スクリプトを選択…</string>
     <string name="cmd_in_terminal">ターミナルで実行（オフ：バックグラウンド）</string>
     <string name="cmd_create">ホーム画面に追加</string>
     <string name="cmd_run_now">今すぐ実行</string>
-    <string name="cmd_empty">先にコマンドを入力してください</string>
     <string name="cmd_pin_unsupported">このランチャーはショートカットの固定に対応していません</string>
     <string name="cmd_started">開始：%1$s</string>
     <string name="cmd_login_shell">ログインシェル経由で実行（.profile／.zprofileを読み込み、既定シェルを使用）</string>

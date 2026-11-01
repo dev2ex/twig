@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">%1$s में कमांड</string>
     <string name="cmd_title_server">%1$s पर कमांड</string>
     <string name="cmd_label">शॉर्टकट का नाम</string>
-    <string name="cmd_command">कमांड</string>
+    <string name="cmd_command">कमांड (यहाँ टर्मिनल खोलने के लिए खाली छोड़ें)</string>
     <string name="cmd_workdir">कार्य डायरेक्टरी (खाली = लॉगिन डिफ़ॉल्ट)</string>
     <string name="cmd_pick_script">स्क्रिप्ट चुनें…</string>
     <string name="cmd_in_terminal">टर्मिनल में चलाएँ (वरना पृष्ठभूमि में)</string>
     <string name="cmd_create">होम स्क्रीन पर जोड़ें</string>
     <string name="cmd_run_now">अभी चलाएँ</string>
-    <string name="cmd_empty">पहले कमांड लिखें</string>
     <string name="cmd_pin_unsupported">यह लॉन्चर पिन किए शॉर्टकट समर्थित नहीं करता</string>
     <string name="cmd_started">शुरू हुआ: %1$s</string>
     <string name="cmd_login_shell">लॉगिन शेल से चलाएँ (.profile / .zprofile लोड; डिफ़ॉल्ट शेल)</string>

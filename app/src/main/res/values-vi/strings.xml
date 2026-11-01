@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Lệnh trong %1$s</string>
     <string name="cmd_title_server">Lệnh trên %1$s</string>
     <string name="cmd_label">Tên lối tắt</string>
-    <string name="cmd_command">Lệnh</string>
+    <string name="cmd_command">Lệnh (để trống để mở cửa sổ dòng lệnh tại đây)</string>
     <string name="cmd_workdir">Thư mục làm việc (trống = mặc định đăng nhập)</string>
     <string name="cmd_pick_script">Chọn tập lệnh…</string>
     <string name="cmd_in_terminal">Chạy trong dòng lệnh (nếu không thì chạy nền)</string>
     <string name="cmd_create">Thêm vào màn hình chính</string>
     <string name="cmd_run_now">Chạy ngay</string>
-    <string name="cmd_empty">Nhập lệnh trước</string>
     <string name="cmd_pin_unsupported">Trình khởi chạy này không hỗ trợ ghim lối tắt</string>
     <string name="cmd_started">Đã bắt đầu: %1$s</string>
     <string name="cmd_login_shell">Chạy qua shell đăng nhập (tải .profile / .zprofile; dùng shell mặc định)</string>

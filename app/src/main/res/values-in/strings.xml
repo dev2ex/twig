@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Perintah di %1$s</string>
     <string name="cmd_title_server">Perintah pada server %1$s</string>
     <string name="cmd_label">Nama pintasan</string>
-    <string name="cmd_command">Perintah</string>
+    <string name="cmd_command">Perintah (kosongkan untuk membuka terminal di sini)</string>
     <string name="cmd_workdir">Direktori kerja (kosong = bawaan login)</string>
     <string name="cmd_pick_script">Pilih skrip…</string>
     <string name="cmd_in_terminal">Jalankan di terminal (jika tidak, di latar belakang)</string>
     <string name="cmd_create">Tambah ke layar utama</string>
     <string name="cmd_run_now">Jalankan sekarang</string>
-    <string name="cmd_empty">Masukkan perintah dahulu</string>
     <string name="cmd_pin_unsupported">Peluncur tidak mendukung pintasan yang disematkan</string>
     <string name="cmd_started">Dimulai: %1$s</string>
     <string name="cmd_login_shell">Gunakan shell login (memuat .profile / .zprofile; shell bawaan)</string>

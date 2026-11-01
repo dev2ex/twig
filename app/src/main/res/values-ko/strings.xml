@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">%1$s에서 실행할 명령</string>
     <string name="cmd_title_server">%1$s 서버의 명령</string>
     <string name="cmd_label">바로가기 이름</string>
-    <string name="cmd_command">명령</string>
+    <string name="cmd_command">명령 (비워 두면 여기서 터미널 열기)</string>
     <string name="cmd_workdir">작업 디렉터리 (비우면 로그인 기본값)</string>
     <string name="cmd_pick_script">스크립트 선택…</string>
     <string name="cmd_in_terminal">터미널에서 실행 (끄면 백그라운드 실행)</string>
     <string name="cmd_create">홈 화면에 추가</string>
     <string name="cmd_run_now">지금 실행</string>
-    <string name="cmd_empty">먼저 명령을 입력하세요</string>
     <string name="cmd_pin_unsupported">이 런처는 바로가기 고정을 지원하지 않습니다</string>
     <string name="cmd_started">시작됨: %1$s</string>
     <string name="cmd_login_shell">로그인 셸로 실행 (.profile / .zprofile 불러오기; 기본 셸 사용)</string>

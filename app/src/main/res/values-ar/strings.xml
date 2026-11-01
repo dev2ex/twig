@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">أمر في %1$s</string>
     <string name="cmd_title_server">أمر على %1$s</string>
     <string name="cmd_label">اسم الاختصار</string>
-    <string name="cmd_command">الأمر</string>
+    <string name="cmd_command">الأمر (اتركه فارغا لفتح الطرفية هنا)</string>
     <string name="cmd_workdir">مجلد العمل (فارغ = افتراضي الدخول)</string>
     <string name="cmd_pick_script">اختيار نص برمجي…</string>
     <string name="cmd_in_terminal">تشغيل في طرفية (وإلا في الخلفية)</string>
     <string name="cmd_create">إضافة للشاشة الرئيسية</string>
     <string name="cmd_run_now">تشغيل الآن</string>
-    <string name="cmd_empty">أدخل أمرا أولا</string>
     <string name="cmd_pin_unsupported">هذا المشغل لا يدعم الاختصارات المثبتة</string>
     <string name="cmd_started">بدأ: %1$s</string>
     <string name="cmd_login_shell">تشغيل عبر صدفة دخول (تحميل .profile / .zprofile؛ صدفتك الافتراضية)</string>

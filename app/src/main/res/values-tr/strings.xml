@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">%1$s içinde komut</string>
     <string name="cmd_title_server">%1$s üzerinde komut</string>
     <string name="cmd_label">Kısayol adı</string>
-    <string name="cmd_command">Komut</string>
+    <string name="cmd_command">Komut (burada terminal açmak için boş bırakın)</string>
     <string name="cmd_workdir">Çalışma dizini (boş = giriş varsayılanı)</string>
     <string name="cmd_pick_script">Betik seç…</string>
     <string name="cmd_in_terminal">Terminalde çalıştır (aksi halde arka planda)</string>
     <string name="cmd_create">Ana ekrana ekle</string>
     <string name="cmd_run_now">Şimdi çalıştır</string>
-    <string name="cmd_empty">Önce bir komut girin</string>
     <string name="cmd_pin_unsupported">Bu başlatıcı sabit kısayolları desteklemiyor</string>
     <string name="cmd_started">Başlatıldı: %1$s</string>
     <string name="cmd_login_shell">Giriş kabuğuyla çalıştır (.profile / .zprofile yüklenir; varsayılan kabuk)</string>

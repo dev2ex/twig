@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Comando in %1$s</string>
     <string name="cmd_title_server">Comando sul server %1$s</string>
     <string name="cmd_label">Nome scorciatoia</string>
-    <string name="cmd_command">Comando</string>
+    <string name="cmd_command">Comando (lascia vuoto per aprire il terminale qui)</string>
     <string name="cmd_workdir">Cartella di lavoro (vuoto = predefinita di accesso)</string>
     <string name="cmd_pick_script">Scegli script…</string>
     <string name="cmd_in_terminal">Esegui nel terminale (altrimenti in background)</string>
     <string name="cmd_create">Aggiungi alla schermata iniziale</string>
     <string name="cmd_run_now">Esegui ora</string>
-    <string name="cmd_empty">Inserisci prima un comando</string>
     <string name="cmd_pin_unsupported">Il launcher non supporta scorciatoie fissate</string>
     <string name="cmd_started">Avviato: %1$s</string>
     <string name="cmd_login_shell">Usa shell di login (carica .profile / .zprofile; shell predefinita)</string>

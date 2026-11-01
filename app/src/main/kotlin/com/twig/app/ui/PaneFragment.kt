@@ -20,6 +20,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.fragment.app.Fragment
@@ -2682,6 +2683,13 @@ class PaneFragment : Fragment() {
             textSize = 14f
             setOnCheckedChangeListener { _, on -> cbLogin.visibility = if (on || conn == null) View.GONE else View.VISIBLE }
         }
+        fun updateCommandMode() {
+            val hasCommand = etCommand.text.toString().isNotBlank()
+            if (!hasCommand) cbTerminal.isChecked = true
+            cbTerminal.isEnabled = hasCommand
+        }
+        etCommand.doAfterTextChanged { updateCommandMode() }
+        updateCommandMode()
         val privilegedTarget = com.twig.app.Privileged.commandTarget()
         val cbPrivileged = android.widget.CheckBox(ctx).apply {
             val identity = when (privilegedTarget) {
@@ -2726,9 +2734,8 @@ class PaneFragment : Fragment() {
             addView(cbLogin)
         }
 
-        fun collect(): com.twig.app.RemoteCmd? {
+        fun collect(): com.twig.app.RemoteCmd {
             val command = etCommand.text.toString().trim()
-            if (command.isEmpty()) { toast(getString(R.string.cmd_empty)); return null }
             return com.twig.app.RemoteCmd(
                 connLabel = conn?.label().orEmpty(),
                 target = if (cbPrivileged.isChecked) requireNotNull(privilegedTarget) else target,
@@ -2736,7 +2743,7 @@ class PaneFragment : Fragment() {
                 command = command,
                 inTerminal = cbTerminal.isChecked,
                 loginShell = cbLogin.isChecked,
-                label = etLabel.text.toString().trim().ifEmpty { command.take(24) },
+                label = etLabel.text.toString().trim().ifEmpty { command.take(24).ifEmpty { conn?.shortLabel() ?: title } },
             )
         }
 
@@ -2746,11 +2753,11 @@ class PaneFragment : Fragment() {
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(if (host?.shortcutResult != null) R.string.picker_confirm else R.string.cmd_create, null)
         if (host?.shortcutResult == null && conn != null) {
-            builder.setNeutralButton(R.string.cmd_run_now) { _, _ -> collect()?.let { runCommandNow(conn, scheme, it) } }
+            builder.setNeutralButton(R.string.cmd_run_now) { _, _ -> runCommandNow(conn, scheme, collect()) }
         }
         val dialog = builder.show()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val cmd = collect() ?: return@setOnClickListener
+            val cmd = collect()
             if (host?.shortcutResult != null) deliverShortcut(com.twig.app.RemoteCmd.shortcut(ctx, cmd))
             else if (!com.twig.app.RemoteCmd.pin(ctx, cmd)) toast(getString(R.string.cmd_pin_unsupported))
             dialog.dismiss()

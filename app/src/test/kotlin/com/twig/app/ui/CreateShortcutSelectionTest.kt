@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.Intent
 import android.os.Looper
 import android.view.View
+import android.widget.CheckBox
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.test.core.app.ApplicationProvider
@@ -145,22 +146,33 @@ class CreateShortcutSelectionTest {
         pane.createNodeShortcut(node, command = true)
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         assertFalse(dialog.getButton(AlertDialog.BUTTON_NEUTRAL).visibility == View.VISIBLE)
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
-        assertTrue("Empty commands keep the editor open", dialog.isShowing)
         val fields = mutableListOf<EditText>()
+        val checks = mutableListOf<CheckBox>()
         fun visit(view: View) {
             if (view is EditText) fields += view
+            if (view is CheckBox) checks += view
             if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
         }
         visit(dialog.window!!.decorView)
-        fields[0].setText("Status")
+        val terminal = checks.single { it.text == act.getString(R.string.cmd_in_terminal) }
+        assertTrue(terminal.isChecked)
+        assertFalse(terminal.isEnabled)
         fields[1].setText("pwd")
+        assertTrue(terminal.isEnabled)
+        terminal.performClick()
+        assertFalse(terminal.isChecked)
+        fields[1].setText("  ")
+        assertTrue(terminal.isChecked)
+        assertFalse(terminal.isEnabled)
+        // An empty label must also get a usable launcher name for terminal-only shortcuts.
+        fields[0].setText("")
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         @Suppress("DEPRECATION")
         val relay = shadowOf(act).resultIntent.getParcelableExtra<Intent>(Intent.EXTRA_SHORTCUT_INTENT)!!
         val command = RemoteCmd.fromShortcut(act, LauncherShortcutActivity.load(act, relay)!!)!!
         assertEquals(conn.label(), command.connLabel)
-        assertEquals("pwd", command.command)
+        assertEquals("", command.command)
+        assertEquals(conn.shortLabel(), command.label)
         assertTrue(command.inTerminal)
         assertNull(shadowOf(act).nextStartedActivity)
         controller.pause().stop().destroy()

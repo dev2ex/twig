@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Befehl in %1$s</string>
     <string name="cmd_title_server">Befehl auf %1$s</string>
     <string name="cmd_label">Verknüpfungsname</string>
-    <string name="cmd_command">Befehl</string>
+    <string name="cmd_command">Befehl (leer lassen, um hier ein Terminal zu öffnen)</string>
     <string name="cmd_workdir">Arbeitsordner (leer = Login-Standard)</string>
     <string name="cmd_pick_script">Skript wählen…</string>
     <string name="cmd_in_terminal">Im Terminal ausführen (sonst im Hintergrund)</string>
     <string name="cmd_create">Zum Startbildschirm hinzufügen</string>
     <string name="cmd_run_now">Jetzt ausführen</string>
-    <string name="cmd_empty">Zuerst einen Befehl eingeben</string>
     <string name="cmd_pin_unsupported">Launcher unterstützt keine angehefteten Verknüpfungen</string>
     <string name="cmd_started">Gestartet: %1$s</string>
     <string name="cmd_login_shell">Über Login-Shell ausführen (.profile / .zprofile laden; Standardshell)</string>

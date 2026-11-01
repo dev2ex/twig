@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Comando em %1$s</string>
     <string name="cmd_title_server">Comando no servidor %1$s</string>
     <string name="cmd_label">Nome do atalho</string>
-    <string name="cmd_command">Comando</string>
+    <string name="cmd_command">Comando (deixe em branco para abrir o terminal aqui)</string>
     <string name="cmd_workdir">Diretório de trabalho (vazio = padrão do login)</string>
     <string name="cmd_pick_script">Escolher script…</string>
     <string name="cmd_in_terminal">Executar no terminal (senão em segundo plano)</string>
     <string name="cmd_create">Adicionar à tela inicial</string>
     <string name="cmd_run_now">Executar agora</string>
-    <string name="cmd_empty">Insira um comando primeiro</string>
     <string name="cmd_pin_unsupported">O launcher não permite fixar atalhos</string>
     <string name="cmd_started">Iniciado: %1$s</string>
     <string name="cmd_login_shell">Usar shell de login (carrega .profile / .zprofile; shell padrão)</string>

@@ -629,13 +629,12 @@
     <string name="cmd_title_dir">在 %1$s 裡執行命令</string>
     <string name="cmd_title_server">在 %1$s 上執行命令</string>
     <string name="cmd_label">快捷方式名稱</string>
-    <string name="cmd_command">命令</string>
+    <string name="cmd_command">命令（留空則在此開啟終端機）</string>
     <string name="cmd_workdir">工作目錄(留空 = 登入預設目錄)</string>
     <string name="cmd_pick_script">選擇指令碼…</string>
     <string name="cmd_in_terminal">在終端中開啟(否則後臺靜默執行)</string>
     <string name="cmd_create">新增到桌面</string>
     <string name="cmd_run_now">立即執行</string>
-    <string name="cmd_empty">先填寫命令</string>
     <string name="cmd_pin_unsupported">當前桌面不支援固定快捷方式</string>
     <string name="cmd_started">已開始執行:%1$s</string>
     <string name="cmd_login_shell">用登入 shell 執行(載入 .profile / .zprofile;跟隨你的預設 shell)</string>

@@ -652,13 +652,12 @@
     <string name="cmd_title_dir">Команда в %1$s</string>
     <string name="cmd_title_server">Команда на %1$s</string>
     <string name="cmd_label">Название ярлыка</string>
-    <string name="cmd_command">Команда</string>
+    <string name="cmd_command">Команда (оставьте пустым, чтобы открыть терминал здесь)</string>
     <string name="cmd_workdir">Рабочий каталог (пусто = логин по умолчанию)</string>
     <string name="cmd_pick_script">Выберите скрипт…</string>
     <string name="cmd_in_terminal">Запустить в терминале (иначе работать в фоновом режиме)</string>
     <string name="cmd_create">Добавить на главный экран</string>
     <string name="cmd_run_now">Запустить сейчас</string>
-    <string name="cmd_empty">Сначала введите команду</string>
     <string name="cmd_pin_unsupported">Этот лаунчер не поддерживает закреплённые ярлыки</string>
     <string name="cmd_started">Начато: %1$s</string>
     <string name="cmd_login_shell">Запуск через login shell (загружает .profile / .zprofile; использует вашу оболочку по умолчанию)</string>

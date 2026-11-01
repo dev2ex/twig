@@ -669,13 +669,12 @@
     <string name="cmd_title_dir">Command in %1$s</string>
     <string name="cmd_title_server">Command on %1$s</string>
     <string name="cmd_label">Shortcut name</string>
-    <string name="cmd_command">Command</string>
+    <string name="cmd_command">Command (leave blank to open terminal here)</string>
     <string name="cmd_workdir">Working directory (blank = login default)</string>
     <string name="cmd_pick_script">Pick a script…</string>
     <string name="cmd_in_terminal">Run in a terminal (otherwise run in the background)</string>
     <string name="cmd_create">Add to home screen</string>
     <string name="cmd_run_now">Run now</string>
-    <string name="cmd_empty">Enter a command first</string>
     <string name="cmd_pin_unsupported">This launcher does not support pinned shortcuts</string>
     <string name="cmd_started">Started: %1$s</string>
     <string name="cmd_login_shell">Run through a login shell (loads .profile / .zprofile; uses your default shell)</string>

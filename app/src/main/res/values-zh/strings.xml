@@ -649,13 +649,12 @@
     <string name="cmd_title_dir">在 %1$s 里执行命令</string>
     <string name="cmd_title_server">在 %1$s 上执行命令</string>
     <string name="cmd_label">快捷方式名称</string>
-    <string name="cmd_command">命令</string>
+    <string name="cmd_command">命令（留空则在此打开终端）</string>
     <string name="cmd_workdir">工作目录(留空 = 登录默认目录)</string>
     <string name="cmd_pick_script">选择脚本…</string>
     <string name="cmd_in_terminal">在终端中打开(否则后台静默执行)</string>
     <string name="cmd_create">添加到桌面</string>
     <string name="cmd_run_now">立即执行</string>
-    <string name="cmd_empty">先填写命令</string>
     <string name="cmd_pin_unsupported">当前桌面不支持固定快捷方式</string>
     <string name="cmd_started">已开始执行:%1$s</string>
     <string name="cmd_login_shell">用登录 shell 执行(加载 .profile / .zprofile;跟随你的默认 shell)</string>

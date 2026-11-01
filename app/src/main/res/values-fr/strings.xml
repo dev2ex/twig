@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Commande dans %1$s</string>
     <string name="cmd_title_server">Commande sur %1$s</string>
     <string name="cmd_label">Nom du raccourci</string>
-    <string name="cmd_command">Commande</string>
+    <string name="cmd_command">Commande (laisser vide pour ouvrir le terminal ici)</string>
     <string name="cmd_workdir">Dossier de travail (vide = défaut de connexion)</string>
     <string name="cmd_pick_script">Choisir un script…</string>
     <string name="cmd_in_terminal">Exécuter dans un terminal (sinon en arrière-plan)</string>
     <string name="cmd_create">Ajouter à l’écran d’accueil</string>
     <string name="cmd_run_now">Exécuter maintenant</string>
-    <string name="cmd_empty">Saisissez d’abord une commande</string>
     <string name="cmd_pin_unsupported">Ce lanceur ne prend pas en charge les raccourcis épinglés</string>
     <string name="cmd_started">Démarré : %1$s</string>
     <string name="cmd_login_shell">Utiliser un shell de connexion (charge .profile / .zprofile ; shell par défaut)</string>

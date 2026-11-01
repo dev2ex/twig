@@ -628,13 +628,12 @@
     <string name="cmd_title_dir">Comando en %1$s</string>
     <string name="cmd_title_server">Comando en el servidor %1$s</string>
     <string name="cmd_label">Nombre del acceso directo</string>
-    <string name="cmd_command">Comando</string>
+    <string name="cmd_command">Comando (dejar vacío para abrir el terminal aquí)</string>
     <string name="cmd_workdir">Directorio de trabajo (vacío = inicio de sesión)</string>
     <string name="cmd_pick_script">Elegir script…</string>
     <string name="cmd_in_terminal">Ejecutar en terminal (si no, en segundo plano)</string>
     <string name="cmd_create">Añadir a inicio</string>
     <string name="cmd_run_now">Ejecutar ahora</string>
-    <string name="cmd_empty">Introduce primero un comando</string>
     <string name="cmd_pin_unsupported">Este lanzador no admite accesos directos fijados</string>
     <string name="cmd_started">Iniciado: %1$s</string>
     <string name="cmd_login_shell">Usar shell de inicio (carga .profile / .zprofile; shell predeterminada)</string>

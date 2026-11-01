@@ -13,8 +13,10 @@ object LocalCommands {
             else -> null
         }
         val guard = if (expectedUid != null) "[ \"\$(id -u)\" = $expectedUid ] || exit 1\n" else ""
-        val body = if (cmd.workdir.isEmpty()) cmd.command
-            else "cd " + RemoteCmd.sq(cmd.workdir) + " && {\n" + cmd.command + "\n}"
+        // A terminal-only shortcut still needs a nonempty shell group after cd.
+        val command = cmd.command.ifBlank { ":" }
+        val body = if (cmd.workdir.isEmpty()) command
+            else "cd " + RemoteCmd.sq(cmd.workdir) + " && {\n" + command + "\n}"
         return guard + body + if (terminal) "\nexec /system/bin/sh -i" else "\n"
     }
 
