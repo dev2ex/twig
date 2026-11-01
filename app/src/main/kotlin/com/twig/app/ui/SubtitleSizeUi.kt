@@ -68,7 +68,7 @@ internal object SubtitleSizeUi {
                 textSize = 12f
                 minimumWidth = 0
                 minWidth = 0
-                setPadding((4 * density).toInt(), paddingTop, (12 * density).toInt(), paddingBottom)
+                setPadding((12 * density).toInt(), paddingTop, (12 * density).toInt(), paddingBottom)
             }
             fun refresh() {
                 val swatch = GradientDrawable().apply {
