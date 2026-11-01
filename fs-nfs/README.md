@@ -1,4 +1,11 @@
-# NFS evaluation backend
+# Optional NFS backend
+
+App builds exclude this module by default. Use
+`./gradlew :app:assembleFullRelease -PwithNfs=true` (or the equivalent libre/debug
+task) to enable it. Enabled APK filenames end in `-nfs.apk`. The switch selects
+an app source directory and dependency, rather than changing the distribution
+flavors; full and libre still differ only in RAR. NFS JNI keep rules are supplied
+by this module, so ordinary builds have no dependency on its classes or native library.
 
 Vendored libnfs: https://github.com/sahlberg/libnfs
 Commit: 2d368ade3e30c4782d54a63efc4d029c6fc75dff

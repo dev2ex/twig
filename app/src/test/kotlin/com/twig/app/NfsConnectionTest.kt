@@ -32,7 +32,26 @@ class NfsConnectionTest {
         assertTrue(custom.copy(host = "::1").label().startsWith("nfs://[::1]:3050/"))
     }
 
+    @Test fun disabledBuildPreservesSavedConnectionsAndRefusesToConnect() {
+        org.junit.Assume.assumeFalse(NfsSupport.enabled)
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val conn = SavedConnection("nfs", "2001:db8::1", share = "/export", nfsPort = 3050)
+        ConnectionStore.save(app, conn)
+        assertEquals(conn, ConnectionStore.all(app).single { it.type == "nfs" })
+        assertEquals("nfs://[2001:db8::1]:3050/export?version=3&uid=65534&gid=65534", conn.label())
+        assertFalse(RootItems.ordered(listOf("nfs", "fav")).any { it.id == "nfs" })
+        val scheme = Connections.schemeOf(conn)
+        try {
+            Connections.ensure(app, conn)
+            fail("A build without NFS must reject saved NFS locations")
+        } catch (_: com.twig.core.FsException) {
+            assertFalse(com.twig.core.FsRegistry.all().any { it.scheme == scheme })
+        }
+        assertEquals(conn, ConnectionStore.all(app).single { it.type == "nfs" })
+    }
+
     @Test fun dialogSplitsPastedAddressesAndPreservesManualPortTyping() {
+        org.junit.Assume.assumeTrue(NfsSupport.enabled)
         val app = ApplicationProvider.getApplicationContext<Application>()
         shadowOf(app).grantPermissions(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
         Prefs.setRememberLocation(app, false)

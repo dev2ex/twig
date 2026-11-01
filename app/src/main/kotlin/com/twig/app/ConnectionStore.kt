@@ -71,9 +71,15 @@ data class SavedConnection(
     /** Whether it is a media server (Jellyfin / Emby): these two types behave identically everywhere, judgement centralised here. */
     fun isMediaServer(): Boolean = type == "jellyfin" || type == "emby"
 
+    // Keep identity/backup formatting available even when the backend is not compiled in.
+    private fun nfsAuthority(): String {
+        val address = if (':' in host) "[$host]" else host
+        return if (nfsPort == 2049) address else "$address:$nfsPort"
+    }
+
     /** Unique identifier for deduplication and persistence keys; for display use [displayLabel]. */
     fun label(): String = when (type) {
-        "nfs" -> "nfs://${com.twig.fs.nfs.NfsEndpoint(host, nfsPort).authority()}/${share.trim('/')}?version=$nfsVersion&uid=$nfsUid&gid=$nfsGid"
+        "nfs" -> "nfs://${nfsAuthority()}/${share.trim('/')}?version=$nfsVersion&uid=$nfsUid&gid=$nfsGid"
         "smb" -> "smb://$host/$share"
         "sftp" -> "sftp://${user.ifEmpty { "root" }}@$host:$port" + rootSuffix()
         "webdav" -> host
@@ -105,7 +111,7 @@ data class SavedConnection(
      * you can't tell which server a given line points at.
      */
     fun rawShortLabel(): String = when (type) {
-        "nfs" -> "${com.twig.fs.nfs.NfsEndpoint(host, nfsPort).authority()}/${share.trim('/')}"
+        "nfs" -> "${nfsAuthority()}/${share.trim('/')}"
         "smb" -> if (share.isEmpty()) host else "$host/$share"
         "webdav" -> host.substringAfter("://").trimEnd('/')
         "s3" -> host.substringAfter("://").trimEnd('/') + if (share.isEmpty()) "" else "/$share"

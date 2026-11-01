@@ -9,6 +9,7 @@ android {
     buildToolsVersion = "36.1.0"
     ndkVersion = "26.1.10909125"
     defaultConfig {
+        consumerProguardFiles("consumer-rules.pro")
         minSdk = 24
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
     }

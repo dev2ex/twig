@@ -1,4 +1,5 @@
 import java.util.Properties
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
 
 plugins {
     alias(libs.plugins.android.application)
@@ -46,6 +47,9 @@ val debugSign = (
 // see splits { abi {} } below.
 val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
 
+// Optional in both distributions; ordinary builds keep NFS out of the dependency graph.
+val withNfs = providers.gradleProperty("withNfs").map { it.toBooleanStrict() }.getOrElse(false)
+
 android {
     namespace = "com.twig.app"
     compileSdk = 36
@@ -79,6 +83,20 @@ android {
     productFlavors {
         register("full") { dimension = "distribution"; isDefault = true }
         register("libre") { dimension = "distribution" }
+    }
+
+    sourceSets.getByName("main") {
+        java.srcDir(if (withNfs) "src/withNfs/kotlin" else "src/withoutNfs/kotlin")
+        if (withNfs) res.srcDir("src/withNfs/res")
+    }
+
+    if (withNfs) {
+        applicationVariants.all {
+            outputs.all {
+                val output = this as BaseVariantOutputImpl
+                output.outputFileName = output.outputFileName.replace(".apk", "-nfs.apk")
+            }
+        }
     }
 
     signingConfigs {
@@ -201,7 +219,7 @@ dependencies {
     implementation(project(":fs-network"))
     implementation(libs.okhttp) // Already shipped by fs-network; website downloads share its TLS policy.
     implementation(project(":fs-smb"))
-    implementation(project(":fs-nfs"))
+    if (withNfs) implementation(project(":fs-nfs"))
     implementation(project(":fs-restic"))
     implementation(project(":fs-zstd"))
     implementation(project(":git-lite"))

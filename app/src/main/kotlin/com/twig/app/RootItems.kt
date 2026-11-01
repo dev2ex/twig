@@ -18,7 +18,7 @@ object RootItems {
         Item("saf", R.string.group_saf, R.drawable.ic_document_tree),
         Item("websites", R.string.group_websites, R.drawable.ic_website),
         Item("apps", R.string.apps_root, R.drawable.ic_file_apk),
-    )
+    ).filter { it.id != "nfs" || NfsSupport.enabled }
 
     private val byId = all.associateBy { it.id }
 

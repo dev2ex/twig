@@ -634,6 +634,20 @@ Use JDK 21 and the Android SDK/NDK versions pinned in `app/build.gradle.kts`.
 ./gradlew :app:assembleFullRelease -PabiSplit=true  # three single-ABI APKs
 ```
 
+NFS is excluded by default from both full and libre builds. Add `-PwithNfs=true`
+to any app build task to include the NFS backend and its connection editor:
+
+```bash
+./gradlew :app:assembleFullRelease -PwithNfs=true
+```
+
+These APKs use an `-nfs.apk` filename suffix (for example,
+`app/build/outputs/apk/full/release/app-full-release-nfs.apk` when signed).
+The package name, version and signing configuration stay the same. Saved NFS
+connections remain in configuration backups when using a build without NFS,
+but their root and connection editor are hidden until NFS is enabled again.
+
+
 By default, release builds are signed only if a `keystore.properties` file exists at the repo
 root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). Without it the
 release tasks emit an **unsigned** APK — `app-<flavor>-release-unsigned.apk` —

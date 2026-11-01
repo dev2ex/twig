@@ -505,6 +505,19 @@ UDP 探测让另一台 Twig 扫一下就能把它存成连接。
 ./gradlew :app:assembleFullRelease -PabiSplit=true  # 三个单 ABI APK
 ```
 
+full 和 libre 默认均不包含 NFS。在应用构建命令后加上 `-PwithNfs=true`，
+即可包含 NFS 后端和连接编辑器：
+
+```bash
+./gradlew :app:assembleFullRelease -PwithNfs=true
+```
+
+此类 APK 的文件名以 `-nfs.apk` 结尾，例如签名后的
+`app/build/outputs/apk/full/release/app-full-release-nfs.apk`。
+包名、版本和签名配置保持一致。不支持 NFS 的构建仍保留已保存的 NFS 连接及其配置备份，
+但隐藏 NFS 根节点和连接编辑器，换回支持 NFS 的构建即可使用。
+
+
 默认情况下，release 只有在仓库根存在 `keystore.properties` 时才签名(内含 `storeFile` /
 `storePassword` / `keyAlias` / `keyPassword`)。没有它时产出的是**无签名包**
 `app-<flavor>-release-unsigned.apk`,**不会**回落到公开的 Android debug key。

@@ -95,9 +95,9 @@ class PrivateSpaceTest {
         right.bootstrap()
         assertFalse(left.state.value.rows.any { it.key == "g:lan" })
         assertTrue(right.state.value.rows.any { it.key == "g:lan" })
-        assertTrue(RootItems.all.any { it.id == "nfs" })
+        assertEquals(com.twig.app.NfsSupport.enabled, RootItems.all.any { it.id == "nfs" })
         assertFalse(left.state.value.rows.any { it.key == "g:nfs" })
-        assertTrue(right.state.value.rows.any { it.key == "g:nfs" })
+        assertEquals(com.twig.app.NfsSupport.enabled, right.state.value.rows.any { it.key == "g:nfs" })
         assertTrue(RootItems.all.filter { it.id !in setOf("private", "lan", "nfs") }.all { Prefs.rootItemVisible(app, 0, it.id) })
     }
 

@@ -29,6 +29,9 @@ Views, no Material library, minimal dependencies.
 #      F-Droid build.
 ./gradlew :app:assembleFullRelease
 
+# Optional NFS build (full/libre both exclude NFS by default; APK suffix: -nfs.apk)
+./gradlew :app:assembleFullRelease -PwithNfs=true
+
 # Verify the version with aapt (★ never trust the pipeline's exit code —
 # a failed build can still leave you installing the previous APK)
 "$ANDROID_HOME"/build-tools/36.1.0/aapt dump badging \
