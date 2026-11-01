@@ -34,7 +34,7 @@ internal object SubtitleSizeUi {
         }
         content.addView(row)
         val sizeColumn = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
-        row.addView(sizeColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f))
+        row.addView(sizeColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         val label = TextView(ctx).apply {
             text = ctx.getString(R.string.player_subtitle_size_value, Prefs.subtitleSize(ctx))
         }
@@ -59,11 +59,12 @@ internal object SubtitleSizeUi {
             orientation = LinearLayout.VERTICAL
             setPadding((8 * density).toInt(), 0, 0, 0)
         }
-        row.addView(colors, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(colors, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         fun addColorControl(title: Int, get: () -> Int, set: (Int) -> Unit) {
             val button = Button(ctx).apply {
                 setText(title)
                 isAllCaps = false
+                setSingleLine(true)
                 textSize = 12f
                 minimumWidth = 0
                 minWidth = 0

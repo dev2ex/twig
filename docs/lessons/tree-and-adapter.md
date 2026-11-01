@@ -588,3 +588,9 @@
   the row's touch listener. Apply the same end-inside-button cancellation to these
   clickable children, translating their coordinates into the row, and clear listeners
   when recycling for other node types. `PropertiesButtonTest` checks list and grid boundary drifts.
+
+- **Subtitle color labels wrapped into narrow columns (2026-11-01, #35)**:
+  the size/color row used fixed 3:1 weights, squeezing “Text color” into several
+  lines on some devices. Measure the single-line color control at its natural width
+  and give the size label/slider the remaining space. Native text-layout tests cover
+  English, German and Russian at normal and enlarged font scales.
