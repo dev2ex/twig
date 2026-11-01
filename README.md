@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.17.0-beta.3** (versionCode 317) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.17.0** (versionCode 318) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -457,7 +457,9 @@ all work the same way.
   where the system provides it (Android 15+). Encrypted PDFs can be opened on
   Android 15+, with optional password memory
 - Static SVG viewing with sharp zoom. Image viewer with downsampling, horizontal or vertical swipes to switch images,
-  plus a slideshow that starts on the first image found while still scanning
+  plus a slideshow that starts on the first image found while still scanning. Selection
+  stays in sync with the file pane, shows its count in the viewer, and returning locates
+  the current image in the tree
 - **Video/audio player** (media3 + FFmpeg software decoding) supporting AVI,
   M2TS, HDMV audio tracks and PGS subtitles, with two-stage
   automatic fallback when a system decoder crashes. Seeking in M2TS can be slow
@@ -551,7 +553,8 @@ here, and `org.json` ships with Android.
   terminal colours also apply to the extra-key bar, independently of the app theme.
 - **Keep screen on** can keep the session visible; the display dims after the system's
   idle timeout and returns to its previous brightness on interaction.
-- **Command shortcuts**: attach a command to an SFTP directory, server or local directory,
+- **Command shortcuts**: leave the command blank to open a terminal at the chosen
+  location, or attach a command to an SFTP directory, server or local directory,
   run it in a terminal or silently in the background, and pin it to the home screen.
   Local commands use the app uid unless the default-off **Use privileged session** is selected.
 
@@ -848,18 +851,14 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   sharing with background preparation and reusable files. Selection counts, folder
   icons and long-press actions for browsing, music and terminals. Fix image zoom
   opening menus, Back exit confirmation and thumbnail refresh.
-- **1.17.0-beta.1** — Preview: OLED theme; reorder roots, favorites, websites and action
-  buttons; M3U/directory playlist imports; Unix properties and symbolic-link targets.
-  Configurable Back behavior and subtitle appearance, video control auto-hide, dual-pane
-  file picking and remote selection preparation; folder count and trash improvements.
-
-- **1.17.0-beta.2** — Preview: encrypted PDFs on Android 15+, static SVG viewing,
-  opposite-pane copy/move destination selection, tap-to-select and numbered duplicates.
-  Permission notation choices and configuration resets; improved folder counts, focus,
-  OLED contrast and Shizuku detection.
-
-- **1.17.0-beta.3** — Preview: single/dual panes in either orientation, compression
-  destination selection and levels, optional 7z file-name encryption and saving beside sources.
-  Fix removable-storage SAF routing, 7z directory attributes and tree-label localization.
+- **1.17** — OLED theme and single/dual panes in either orientation; reorder roots,
+  favorites, websites and actions. Choose copy/move/compression targets in the opposite
+  pane, tune compression levels and 7z name encryption, or save beside sources. Unix
+  properties, permission notation and link targets; M3U/folder playlist imports, static
+  SVG and encrypted PDFs on Android 15+. Configurable Back behavior and subtitles,
+  image selection sync and return positioning, numbered copies/quick renames, and
+  terminal-only command shortcuts. Improve folder counts, trash, pickers, removable
+  storage SAF access and localization; protect compression sources from temporary-output
+  collisions.
 
 </details>
