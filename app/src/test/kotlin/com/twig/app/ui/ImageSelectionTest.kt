@@ -19,9 +19,9 @@ import org.robolectric.shadows.ShadowToast
 class ImageSelectionTest {
     private val image = XFile("file", "/pictures/a.jpg", isDir = false)
 
-    private fun withViewer(selection: List<XFile>, block: (ImageViewerActivity, CheckBox) -> Unit) {
+    private fun withViewer(selection: List<XFile>, images: List<XFile> = listOf(image), block: (ImageViewerActivity, CheckBox) -> Unit) {
         val host = Robolectric.buildActivity(Activity::class.java).setup()
-        ImageViewerActivity.start(host.get(), listOf(image), 0, selection = selection)
+        ImageViewerActivity.start(host.get(), images, 0, selection = selection)
         val controller = Robolectric.buildActivity(
             ImageViewerActivity::class.java, shadowOf(host.get()).nextStartedActivity,
         ).setup()
@@ -68,6 +68,18 @@ class ImageSelectionTest {
         withViewer(listOf(image)) { _, checkbox ->
             assertTrue(checkbox.isChecked)
             assertNull(ImageViewerActivity.takeResult())
+        }
+    }
+
+    @Test fun `return reports the last viewed image even without editing checks`() {
+        val next = image.copy(path = "/pictures/b.jpg")
+        withViewer(emptyList(), listOf(image, next)) { activity, _ ->
+            activity.findViewById<android.view.View>(R.id.btn_next).performClick()
+            activity.finish()
+            val result = ImageViewerActivity.takeResult()!!
+            assertEquals(next, result.currentImage)
+            assertEquals(emptyList<XFile>(), result.selection)
+            assertFalse(result.changed)
         }
     }
 }

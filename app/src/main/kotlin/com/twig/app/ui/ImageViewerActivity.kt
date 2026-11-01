@@ -462,7 +462,11 @@ class ImageViewerActivity : TwigActivity() {
     }
 
     private fun publishResult() {
-        pendingResult = Result(if (canSelect) picked.values.toList() else null, changed)
+        pendingResult = Result(
+            if (canSelect) picked.values.toList() else null,
+            changed,
+            order.getOrNull(pos)?.let { images.getOrNull(it) },
+        )
     }
 
     // ---- hi-res region after zooming in (BitmapRegionDecoder) ----
@@ -480,6 +484,11 @@ class ImageViewerActivity : TwigActivity() {
             if (token != hiResToken || bmp == null) return@launch
             if (shown === d && shownRot == rot) b.image.setHiRes(bmp, rect)
         }
+    }
+
+    override fun finish() {
+        if (images.isNotEmpty() || changed) publishResult()
+        super.finish()
     }
 
     override fun onPause() {
@@ -514,12 +523,13 @@ class ImageViewerActivity : TwigActivity() {
         @Volatile private var pendingImages: PendingImages? = null
 
         /**
-         * Result from operations in the viewer: pane checks ([selection], null when selection is disabled) and whether any image was deleted ([changed]).
+         * Result from operations in the viewer: pane checks ([selection], null when selection is disabled) whether any image was deleted ([changed]),
+         * and the image to locate on return ([currentImage]).
          * Picked up once by [PaneFragment] via [takeResult] when it returns to the foreground — the viewer is started
          * with a plain startActivity (the image list goes through [pendingImages] in-process, not through Intent),
          * and the result is returned via the same in-process slot, avoiding an extra ActivityResult contract.
          */
-        class Result(val selection: List<XFile>?, val changed: Boolean)
+        class Result(val selection: List<XFile>?, val changed: Boolean, val currentImage: XFile?)
 
         @Volatile private var pendingResult: Result? = null
 

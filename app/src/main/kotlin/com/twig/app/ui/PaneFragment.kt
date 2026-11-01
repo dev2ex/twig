@@ -2311,6 +2311,11 @@ class PaneFragment : Fragment() {
         val r = ImageViewerActivity.takeResult() ?: return
         r.selection?.let { adapter.setSelection(it) }
         if (r.changed) viewModel.refresh()
+        r.currentImage?.let { file ->
+            if (mapMode) exitTreemap()
+            pendingScrollToCurrent = true
+            if (!viewModel.revealViewedFile(file)) pendingScrollToCurrent = false
+        }
     }
 
     /**

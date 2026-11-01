@@ -929,6 +929,23 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return images to idx
     }
 
+    /** Return from a viewer without rebuilding an already-visible branch, including opaque and mounted sources. */
+    fun revealViewedFile(file: XFile): Boolean {
+        val row = _state.value.rows.filterIsInstance<FileNode>()
+            .firstOrNull { it.file.scheme == file.scheme && it.file.path == file.path }
+        val parent = parentRow(file)
+        if (row != null && parent != null) {
+            currentKey = parent.first
+            currentDir = mountRoots[parent.first] ?: parent.second
+            scrollKey = row.key
+            rebuild()
+            return true
+        }
+        if (!MusicDialogs.canLocate(file)) return false
+        revealPath(XFile(file.scheme, file.parentPath, isDir = true), focus = file)
+        return true
+    }
+
     /** Audio list of [file]'s directory (using the panel's current sort) + this file's index (used by the music play queue). */
     fun audioSiblings(file: XFile): Pair<List<XFile>, Int> {
         val audios = visible(children[siblingsKey(file)]).filter { !it.isDir && OpenFiles.isAudio(it) }
