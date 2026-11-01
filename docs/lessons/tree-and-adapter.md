@@ -594,3 +594,10 @@
   lines on some devices. Measure the single-line color control at its natural width
   and give the size label/slider the remaining space. Native text-layout tests cover
   English, German and Russian at normal and enlarged font scales.
+
+- **Directory-scope labels lost their second line (2026-11-01, #35)**:
+  horizontal RadioGroup baseline alignment could leave the group shorter than its
+  weighted, multiline radio buttons. Disable baseline alignment so the group grows
+  with its children in both Sort and View dialogs. Checking a TextView's own height
+  is insufficient: assert that its parent also contains its bottom edge. Native
+  layout tests reproduce the old clipping and cover narrow widths and larger fonts.
