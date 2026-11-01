@@ -11,6 +11,8 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.RectF
 import android.media.ExifInterface
+import android.graphics.drawable.Animatable
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -26,6 +28,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.OpenFiles
 import com.twig.app.Prefs
@@ -85,6 +88,7 @@ class ImageViewerActivity : TwigActivity() {
     }
 
     private var shown: Decoded? = null // currently displayed decoded result
+    private var animation: AnimatedImage? = null
     private var shownRot = 0           // total rotation angle of the displayed bitmap relative to the original file (EXIF + autoFit)
     private var hiResToken = 0
     private val handler = Handler(Looper.getMainLooper())
@@ -185,7 +189,7 @@ class ImageViewerActivity : TwigActivity() {
         autoFit = !autoFit
         Prefs.setImageAutoFit(this, autoFit)
         b.btnFit.alpha = if (autoFit) 1f else 0.5f
-        if (order.isNotEmpty()) cache.get(images[current].path)?.let { show(it) } // immediately redraw the current image
+        redrawCurrent() // immediately redraw the current image
     }
 
     // ---- fullscreen immersive ----
@@ -199,7 +203,7 @@ class ImageViewerActivity : TwigActivity() {
         super.onConfigurationChanged(newConfig)
         // Device rotation doesn't recreate, but we do need to re-rotate-fit the current image to the new screen orientation
         if (order.isEmpty()) return
-        cache.get(images[current].path)?.let { b.image.post { show(it) } }
+        b.image.post { redrawCurrent() }
     }
 
     private fun immersive() {
@@ -274,6 +278,7 @@ class ImageViewerActivity : TwigActivity() {
     }
 
     private fun loadCurrent() {
+        (animation?.drawable as? Animatable)?.stop()
         val idx = current
         val path = images[idx].path
         updateTitle()
@@ -288,10 +293,20 @@ class ImageViewerActivity : TwigActivity() {
         // Keep the current image (don't clear it); the spinner in the top-right shows it's downloading / loading
         currentLoading = true; updateSpinner()
         lifecycleScope.launch {
-            val bmp = runCatching { withContext(Dispatchers.IO) { decodeImage(this@ImageViewerActivity, images[idx]) } }.getOrNull()
+            val result = runCatching { withContext(Dispatchers.IO) {
+                val file = images[idx]
+                if (Build.VERSION.SDK_INT >= 28 && animationCandidate(file)) {
+                    val local = OpenFiles.materialize(this@ImageViewerActivity, file)
+                    val animated = runCatching { decodeAnimation(this@ImageViewerActivity, local) }.getOrNull()
+                    if (animated != null) null to animated
+                    else decodeImage(this@ImageViewerActivity, file, local) to null
+                } else decodeImage(this@ImageViewerActivity, file) to null
+            } }.getOrNull()
             if (token != loadToken) return@launch // already switched to a different image
             currentLoading = false; updateSpinner()
-            if (bmp != null) { cache.put(path, bmp); show(bmp) }
+            val (bmp, animated) = result ?: (null to null)
+            if (animated != null) showAnimation(animated)
+            else if (bmp != null) { cache.put(path, bmp); show(bmp) }
             onCurrentReady()
         }
     }
@@ -305,23 +320,47 @@ class ImageViewerActivity : TwigActivity() {
 
     /** Display the image: rotate to fit the screen orientation (don't change the screen orientation, only rotate the image content); pass in the actual size multiplier. */
     private fun show(d: Decoded) {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = null
+        ++hiResToken
         val extra = if (autoFit) screenFitRotation(d.bmp) else 0
         shown = d
         shownRot = (d.exifRot + extra) % 360
         b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual, d.vector != null)
     }
 
+    private fun redrawCurrent() {
+        animation?.let { showAnimation(it); return }
+        shown?.let { show(it) }
+    }
+
+    private fun showAnimation(image: AnimatedImage) {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = image
+        shown = null
+        ++hiResToken
+        val drawable = image.drawable
+        val extra = if (autoFit) screenFitRotation(drawable.intrinsicWidth, drawable.intrinsicHeight) else 0
+        // Detach before wrapping: ImageView clears the old drawable's callback on replacement.
+        b.image.setImageDrawable(null)
+        b.image.setAnimatedImage(if (extra == 0) drawable else RotatedImageDrawable(drawable), image.actual)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) (drawable as? Animatable)?.start()
+    }
+
     /** Rotate by 90° when the image's orientation doesn't match the screen's, to fill the current screen "horizontally/vertically". */
-    private fun screenFitRotation(bmp: Bitmap): Int {
+    private fun screenFitRotation(bmp: Bitmap): Int = screenFitRotation(bmp.width, bmp.height)
+
+    private fun screenFitRotation(width: Int, height: Int): Int {
         val screenLandscape = resources.displayMetrics.widthPixels >= resources.displayMetrics.heightPixels
-        val imgLandscape = bmp.width > bmp.height
-        return if (imgLandscape == screenLandscape || bmp.width == bmp.height) 0 else 90
+        val imgLandscape = width > height
+        return if (imgLandscape == screenLandscape || width == height) 0 else 90
     }
 
     /** Prefetch the next image into the cache (with spinner); if the current image is still loading, don't prefetch — avoid "downloading ahead". */
     private fun prefetchNext() {
         if (currentLoading || order.isEmpty()) return
         val i = order[(pos + 1) % order.size]
+        if (animationCandidate(images[i])) return // Do not retain idle animation decoders.
         val p = images[i].path
         if (cache.get(p) != null) return
         prefetching = true; updateSpinner()
@@ -491,12 +530,20 @@ class ImageViewerActivity : TwigActivity() {
         super.finish()
     }
 
+    override fun onResume() {
+        super.onResume()
+        (animation?.drawable as? Animatable)?.start()
+    }
+
     override fun onPause() {
+        (animation?.drawable as? Animatable)?.stop()
         super.onPause()
         stop()
     }
 
     override fun onDestroy() {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = null
         super.onDestroy()
         handler.removeCallbacks(advance)
         handler.removeCallbacks(scanTick)

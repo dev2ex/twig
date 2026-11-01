@@ -7,6 +7,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Region
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -66,6 +67,7 @@ class ZoomableImageView @JvmOverloads constructor(
     /** Bitmap → original image pixels ratio (decoded down-sampling ratio); the actual-size mode scales up by this to render the image at its true size. */
     private var actualScale = 1f
     private var vectorImage = false
+    private var animatedImage = false
 
     private var hiRes: Bitmap? = null
     private var hiResRect: RectF? = null // in displayed bitmap coordinates, corresponds 1:1 with hiRes
@@ -164,11 +166,24 @@ class ZoomableImageView @JvmOverloads constructor(
      *   used by the "actual size" mode to render the image at its true size.
      */
     fun setImage(bmp: Bitmap, actual: Float = 1f, vector: Boolean = false) {
+        animatedImage = false
         clearHiRes()
         setImageBitmap(bmp)
         imgW = bmp.width.toFloat(); imgH = bmp.height.toFloat()
         actualScale = actual
         vectorImage = vector
+        mode = initialMode
+        if (width > 0) applyMode()
+    }
+
+    /** Animated frames share the ordinary pan/zoom matrix, without static region overlays. */
+    fun setAnimatedImage(image: Drawable, actual: Float) {
+        clearHiRes()
+        animatedImage = true
+        vectorImage = false
+        setImageDrawable(image)
+        imgW = image.intrinsicWidth.toFloat(); imgH = image.intrinsicHeight.toFloat()
+        actualScale = actual
         mode = initialMode
         if (width > 0) applyMode()
     }
@@ -212,6 +227,7 @@ class ZoomableImageView @JvmOverloads constructor(
     /** Request a hi-res region after zoom/pan settles; drop it when zoomed back out so the bitmap isn't interpolated, saving memory. */
     private fun scheduleHiRes() {
         removeCallbacks(hiResReq)
+        if (animatedImage) return
         if ((!vectorImage && actualScale <= 1f) || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
             if (hiRes != null) { clearHiRes(); invalidate() }
             return

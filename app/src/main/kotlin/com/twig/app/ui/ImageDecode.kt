@@ -13,6 +13,7 @@ import android.media.ExifInterface
 import com.caverock.androidsvg.SVG
 import com.twig.app.OpenFiles
 import com.twig.core.XFile
+import java.io.File
 import java.io.InputStream
 import kotlin.math.roundToInt
 
@@ -48,8 +49,7 @@ class Decoded(
     val vector: Picture? = null,
 )
 
-internal fun decodeImage(ctx: Context, file: XFile): Decoded? {
-    val local = OpenFiles.materialize(ctx, file)
+internal fun decodeImage(ctx: Context, file: XFile, local: File = OpenFiles.materialize(ctx, file)): Decoded? {
     if (file.extension == "svg") {
         val dm = ctx.resources.displayMetrics
         return local.inputStream().use {

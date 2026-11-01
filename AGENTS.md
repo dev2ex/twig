@@ -274,6 +274,12 @@ its listing size must still describe the followed stream for copy/resume checks.
   regardless of whether a master password is configured.
 - Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
   `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
+  The image viewer plays GIF and animated WebP on Android 9+ using the platform decoder;
+  Android 7/8 and image comparison retain static frames. Only the displayed animation
+  owns a decoder, outside the bitmap cache and prefetch. Pause it when leaving the
+  foreground or switching images; never overlay static hi-res regions on live frames.
+  Rotation wraps the live drawable and forwards invalidations. Detach the previous
+  drawable before wrapping it, so ImageView does not clear the new callback chain.
   Music inside mounted restic repositories and archives uses an in-memory queue
   (`Playlist.TEMP`), with same-directory siblings and ordinary playback controls.
   These tracks cannot be favorited, saved into playlists or exported; player exit
