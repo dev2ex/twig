@@ -78,6 +78,7 @@
 | `Twig-<版本>-libre.apk` | 想要彻底的自由软件——不含 RAR,因为 `junrar` 不是自由软件 |
 | `Twig-<版本>-full-arm64-v8a.apk` / `-x86_64.apk` | 只要单一架构、下载更小 |
 | `Twig-<版本>-full-armeabi-v7a.apk` | 32 位 ARM 设备——实验性,未在真机上测试 |
+| `Twig-<版本>-full-nfs-arm64-v8a.apk` | 64 位 ARM 设备，需要 NFS 支持 |
 
 全部用同一把密钥签名,可以互相覆盖安装。证书 SHA-256 为
 `196f633e942bf4f32f875b98c8ff181138256ba329a63364e3a39f154c1a5e62`。
@@ -510,6 +511,8 @@ full 和 libre 默认均不包含 NFS。在应用构建命令后加上 `-PwithNf
 
 ```bash
 ./gradlew :app:assembleFullRelease -PwithNfs=true
+# 只构建 arm64 NFS APK（release.sh 使用此方式）：
+./gradlew :app:assembleFullRelease -PwithNfs=true -PabiSplit=true -Pabis=arm64-v8a
 ```
 
 此类 APK 的文件名以 `-nfs.apk` 结尾，例如签名后的
@@ -536,8 +539,9 @@ full 和 libre 默认均不包含 NFS。在应用构建命令后加上 `-PwithNf
 构建实验性的 `armeabi-v7a` APK。R8 开启,libsmb2 与 zstd 的 JNI 入口按名 keep。
 
 准备发布时，在已提交且干净的工作区配置正式签名后，运行 `tools/release.sh`。脚本会
-构建并校验五种 APK，在 `build/release/<版本>/` 生成安装包和双语发布说明，不打标签也不推送。
+构建并校验六种 APK（五种常规包，加一个支持 NFS 的 arm64-v8a full 包），在 `build/release/<版本>/` 生成安装包和双语发布说明，不打标签也不推送。
 `tools/release.sh --publish` 还会打标签、推送并创建 GitHub Release。
+重建尚无 NFS 编译选项的旧标签时，仍只生成原有的五种 APK。
 
 ### 加一种新来源
 

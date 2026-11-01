@@ -46,6 +46,13 @@ val debugSign = (
 // separate per-ABI APKs (armeabi-v7a too) for size/compatibility comparison —
 // see splits { abi {} } below.
 val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
+// Release packaging can request just one architecture instead of rebuilding every split.
+val buildAbis = providers.gradleProperty("abis").map { it.split(',') }.getOrElse(
+    if (abiSplit) listOf("armeabi-v7a", "arm64-v8a", "x86_64") else listOf("arm64-v8a", "x86_64"),
+)
+require(buildAbis.isNotEmpty() && buildAbis.all { it in setOf("armeabi-v7a", "arm64-v8a", "x86_64") }) {
+    "abis must be a comma-separated list of armeabi-v7a, arm64-v8a or x86_64"
+}
 
 // Optional in both distributions; ordinary builds keep NFS out of the dependency graph.
 val withNfs = providers.gradleProperty("withNfs").map { it.toBooleanStrict() }.getOrElse(false)
@@ -68,7 +75,7 @@ android {
         // ABIs from `splits { abi {} }` below instead.
         if (!abiSplit) {
             // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+            ndk { abiFilters += buildAbis }
         }
         // libtwigpty: PTY allocation inside the privileged process (see cpp/twigpty.c top comment)
         externalNativeBuild { cmake { arguments("-DANDROID_STL=none") } }
@@ -138,7 +145,7 @@ android {
         abi {
             isEnable = abiSplit
             reset()
-            if (abiSplit) include("armeabi-v7a", "arm64-v8a", "x86_64")
+            if (abiSplit) include(*buildAbis.toTypedArray())
             isUniversalApk = false
         }
     }
