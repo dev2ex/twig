@@ -95,7 +95,6 @@ class CompressConfirmDialog : DialogFragment() {
             .setTitle(R.string.compress_title)
             .setView(form.root)
             .setNegativeButton(R.string.dialog_cancel) { _, _ -> state.clear() }
-            .setNeutralButton(R.string.copy_choose_destination, null)
             .setPositiveButton(R.string.dialog_ok, null)
             .create()
     }
@@ -107,7 +106,7 @@ class CompressConfirmDialog : DialogFragment() {
         val form = binding
         if (draft == null || options == null || form == null) { dismiss(); return }
         val dialog = requireDialog() as AlertDialog
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+        form.destinationPicker.root.setOnClickListener {
             (requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager)
                 ?.hideSoftInputFromWindow(form.root.windowToken, 0)
             pane.chooseDestination()
@@ -137,8 +136,9 @@ class CompressConfirmDialog : DialogFragment() {
         val draft = state.draft ?: return null
         val destination = draft.effectiveDestination()
         val form = binding ?: return null
-        form.tvDest.text = destination?.let(pane::displayPath) ?: getString(R.string.compress_destination_missing)
-        form.ivDest.setImageResource(destination?.let { FileIcons.sourceIconRes(it.scheme) } ?: R.drawable.ic_folder)
+        form.destinationPicker.tvDest.text = destination?.let(pane::displayPath) ?: getString(R.string.compress_destination_missing)
+        form.destinationPicker.ivDest.setImageResource(destination?.let { FileIcons.sourceIconRes(it.scheme) } ?: R.drawable.ic_folder)
+        form.destinationPicker.root.contentDescription = getString(R.string.copy_choose_destination) + ": " + form.destinationPicker.tvDest.text
         val reason = destination?.let(draft::blockReason)
         form.tvDestError.text = reason?.let(::getString)
         form.tvDestError.visibility = if (reason == null) View.GONE else View.VISIBLE

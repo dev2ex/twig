@@ -118,31 +118,9 @@
             android:textColor="@color/text_primary"
             android:textSize="16sp" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <!-- Icon is set by destination source type (FileIcons.sourceIconRes); this is just a placeholder -->
-            <ImageView
-                android:id="@+id/iv_dest"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:contentDescription="@null"
-                android:src="@drawable/ic_storage" />
-
-            <TextView
-                android:id="@+id/tv_dest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:ellipsize="start"
-                android:singleLine="true"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp" />
-        </LinearLayout>
+        <include
+            android:id="@+id/destination_picker"
+            layout="@layout/view_destination_picker" />
 
         <TextView
             android:id="@+id/tv_dest_error"

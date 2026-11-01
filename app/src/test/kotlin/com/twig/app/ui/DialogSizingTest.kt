@@ -50,4 +50,21 @@ class DialogSizingTest {
                 group.height >= label.bottom)
         }
     }
+
+    @Test fun destinationActionHintWrapsWithoutClippingOrTakingSpaceFromThePath() {
+        for (language in listOf("en", "de", "ru", "ar")) {
+            val root = LayoutInflater.from(context(language, 1.5f)).inflate(R.layout.view_destination_picker, null)
+            val path = root.findViewById<TextView>(R.id.tv_dest)
+            path.text = "/storage/emulated/0/Documents/a-very-long-destination-folder"
+            measure(root, 260)
+            val hint = root.findViewById<TextView>(R.id.destination_hint)
+            assertEquals(root.context.getString(R.string.copy_choose_destination), hint.text.toString())
+            assertTrue(root.isClickable)
+            assertTrue(root.isFocusable)
+            assertTrue("$language hint clipped", hint.height >=
+                hint.layout.getLineBottom(hint.lineCount - 1) + hint.compoundPaddingTop + hint.compoundPaddingBottom)
+            assertTrue("$language hint extends outside the selector", root.height >= hint.bottom)
+            assertTrue("$language path squeezed out", path.width > 80 * root.resources.displayMetrics.density)
+        }
+    }
 }

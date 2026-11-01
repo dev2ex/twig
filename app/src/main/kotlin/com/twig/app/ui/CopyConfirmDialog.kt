@@ -38,7 +38,6 @@ class CopyConfirmDialog : DialogFragment() {
             .setTitle(R.string.copy_title)
             .setView(form.root)
             .setNegativeButton(R.string.dialog_cancel) { _, _ -> state.clear() }
-            .setNeutralButton(R.string.copy_choose_destination, null)
             .setPositiveButton(R.string.dialog_ok, null)
             .create()
     }
@@ -46,8 +45,9 @@ class CopyConfirmDialog : DialogFragment() {
     override fun onStart() {
         super.onStart()
         if (state.draft?.destination == null) { dismiss(); return }
+        val form = binding ?: return
         val dialog = requireDialog() as AlertDialog
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+        form.destinationPicker.root.setOnClickListener {
             pane.chooseDestination()
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
@@ -66,8 +66,9 @@ class CopyConfirmDialog : DialogFragment() {
         val form = binding ?: return null
         val draft = state.draft ?: return null
         val destination = draft.destination ?: return null
-        form.tvDest.text = pane.displayPath(destination)
-        form.ivDest.setImageResource(FileIcons.sourceIconRes(destination.scheme))
+        form.destinationPicker.tvDest.text = pane.displayPath(destination)
+        form.destinationPicker.ivDest.setImageResource(FileIcons.sourceIconRes(destination.scheme))
+        form.destinationPicker.root.contentDescription = getString(R.string.copy_choose_destination) + ": " + form.destinationPicker.tvDest.text
         val reason = draft.blockReason(destination)
         form.tvDestError.text = reason?.let(::getString)
         form.tvDestError.visibility = if (reason == null) View.GONE else View.VISIBLE

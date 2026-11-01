@@ -601,3 +601,10 @@
   with its children in both Sort and View dialogs. Checking a TextView's own height
   is insufficient: assert that its parent also contains its bottom edge. Native
   layout tests reproduce the old clipping and cover narrow widths and larger fonts.
+
+- **Destination chooser buttons consumed excessive dialog space (2026-11-01, #35)**:
+  long translations made the neutral “Choose another location” button stack below
+  OK/Cancel. Copy/move and compression now share a clickable destination field
+  with an outline, edit icon and wrapping action hint. Keep the full field focusable
+  and announce the action plus current path for accessibility. Reuse the existing
+  destination draft/picker flow, including source-folder mode and rotation handling.

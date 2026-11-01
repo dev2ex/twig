@@ -53,7 +53,12 @@ class CopyDestinationTest {
         idle()
     }
     private fun launchPicker() {
-        dialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        val picker = dialog().findViewById<android.view.View>(R.id.destination_picker)!!
+        assertTrue(picker.isClickable)
+        assertTrue(picker.isFocusable)
+        assertTrue(picker.contentDescription.contains(activity.getString(R.string.copy_choose_destination)))
+        assertEquals(android.view.View.GONE, dialog().getButton(AlertDialog.BUTTON_NEUTRAL).visibility)
+        picker.performClick()
         idle()
         initialPicker()
     }
@@ -89,7 +94,7 @@ class CopyDestinationTest {
             .requireDialog() as AlertDialog
 
     private fun launchCompressionPicker() {
-        compressionDialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        compressionDialog().findViewById<android.view.View>(R.id.destination_picker)!!.performClick()
         idle()
         initialPicker()
     }
@@ -196,7 +201,7 @@ class CopyDestinationTest {
         form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
         form.findViewById<CheckBox>(R.id.cb_move)!!.isChecked = true
         assertFalse(form.findViewById<android.widget.EditText>(R.id.et_password)!!.isSaveEnabled)
-        form.getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        form.findViewById<android.view.View>(R.id.destination_picker)!!.performClick()
         idle()
         initialPicker()
         assertEquals(activity.getString(R.string.compress_save_to),
@@ -231,7 +236,7 @@ class CopyDestinationTest {
         form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("chosen.zip")
         form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
         form.findViewById<CheckBox>(R.id.cb_move)!!.isChecked = true
-        form.getButton(AlertDialog.BUTTON_NEUTRAL).performClick()
+        form.findViewById<android.view.View>(R.id.destination_picker)!!.performClick()
         idle()
         val replacement = File(target.parentFile, "replacement").apply { mkdirs() }
         choose(replacement)
