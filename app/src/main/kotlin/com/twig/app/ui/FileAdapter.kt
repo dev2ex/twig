@@ -44,6 +44,7 @@ import com.twig.app.databinding.ItemInfoCardBinding
 import com.twig.app.databinding.ItemThumbCellBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.core.UnixPermissions
 
 /**
  * The whole tree's adapter (files / directories / storages / groups / servers / action rows),
@@ -71,7 +72,12 @@ class FileAdapter(
     /** Text size tier (0/1/2), independent of [density]; defaults to follow row height, see `Prefs.textSize`. */
     private val textSize: Int = density,
     private val onInfo: (PaneViewModel.FileNode) -> Unit = {},
+    private val onInfoLongClick: (PaneViewModel.FileNode) -> Unit = {},
+    /** External multi-file picking always selects rows, regardless of the normal selection preference. */
+    private val selectFilesByRow: Boolean = false,
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
+
+    var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
 
     private val rowH = intArrayOf(36, 44, 54)[density]
     private val iconDp = rowIconDp(density)
@@ -125,7 +131,7 @@ class FileAdapter(
             currentList[position] !is PaneViewModel.InfoNode && !isCell(currentList[position])
 
     private fun isCell(n: PaneViewModel.Node): Boolean = when (n) {
-        is PaneViewModel.WebsiteNode -> gridMode == 2
+        is PaneViewModel.WebsiteNode -> gridMode == 2 && !n.reordering
         is PaneViewModel.FileNode -> (if (n.gridMode >= 0) n.gridMode else gridMode).let { mode ->
             mode > 0 && n.label == null && !n.file.isDir && !n.expandable &&
                 !n.file.scheme.startsWith("git") && (mode == 2 || Thumbs.canThumb(n.file))
@@ -146,6 +152,14 @@ class FileAdapter(
             .map { it.file }
 
     fun isSelected(node: PaneViewModel.FileNode): Boolean = selected.contains(node.key)
+
+    /** Read selection state at click time: selection payloads deliberately keep listeners intact. */
+    private fun clickFileRow(node: PaneViewModel.FileNode, ctx: Context) {
+        val selectByRow = if (selectFilesByRow) !node.file.isDir
+            else selected.isNotEmpty() && Prefs.tapRowToSelect(ctx)
+        if (node.label == null && selectByRow) toggleSelection(node)
+        else onClick(node)
+    }
 
     fun clearSelection() {
         if (selected.isEmpty()) return
@@ -285,16 +299,48 @@ class FileAdapter(
         }
     }
 
+    private val attachedCountRows = HashSet<VH>()
+    private var directoryCountsActive = true
+
+    fun setDirectoryCountsActive(active: Boolean) {
+        if (directoryCountsActive == active) return
+        directoryCountsActive = active
+        attachedCountRows.forEach { holder ->
+            if (active) holder.refreshDirectoryCounts() else holder.releaseDirectoryCounts()
+        }
+    }
+
+    override fun onViewAttachedToWindow(holder: RecyclerView.ViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        if (holder is VH) {
+            attachedCountRows.add(holder)
+            holder.refreshDirectoryCounts()
+        }
+    }
+
+    override fun onViewDetachedFromWindow(holder: RecyclerView.ViewHolder) {
+        if (holder is VH) {
+            attachedCountRows.remove(holder)
+            holder.releaseDirectoryCounts()
+        }
+        super.onViewDetachedFromWindow(holder)
+    }
+
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         (holder.itemView as? InfoCardLayout)?.resetPage()
-        holder.itemView.findViewById<View>(R.id.folderCounts)?.setTag(R.id.directory_count, null)
+        if (holder is VH) {
+            attachedCountRows.remove(holder)
+            holder.releaseDirectoryCounts()
+        }
         holder.itemView.findViewById<View>(R.id.meta)?.setTag(R.id.size_probe, null)
+        holder.itemView.findViewById<android.widget.TextView>(R.id.sub)?.let(LinkTargets::clear)
+        holder.itemView.findViewById<android.widget.TextView>(R.id.link_target)?.let(LinkTargets::clear)
         super.onViewRecycled(holder)
     }
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder) {
-            is VH -> holder.bind(getItem(position))
+            is VH -> holder.bind(getItem(position), position)
             is InfoVH -> holder.bind(getItem(position) as PaneViewModel.InfoNode)
             is CellVH -> holder.bind(getItem(position))
         }
@@ -366,22 +412,25 @@ class FileAdapter(
      * (the checkbox in cells has a darker background, give alpha separately). */
     private fun tintCheck(v: ImageView, on: Boolean, offAlpha: Float = IDLE_CHECK_ALPHA) {
         v.setColorFilter(
-            ContextCompat.getColor(v.context, if (on) R.color.accent else R.color.text_secondary),
+            ContextCompat.getColor(v.context, if (on) R.color.action_text else R.color.text_secondary),
         )
         v.alpha = if (on) 1f else offAlpha
     }
 
     /** A gesture starting outside the button must not click the row if it ends inside its touch bounds. */
     @android.annotation.SuppressLint("ClickableViewAccessibility") // Cancels a row click; the button owns normal/accessibility clicks.
-    private fun guardButtonClicks(row: ViewGroup, vararg buttons: View) {
+    private fun guardButtonClicks(row: ViewGroup, vararg buttons: View, receiver: View = row) {
         val bounds = Rect()
-        row.setOnTouchListener { view, event ->
+        val origin = Rect()
+        receiver.setOnTouchListener { view, event ->
             if (event.actionMasked != MotionEvent.ACTION_UP) return@setOnTouchListener false
+            origin.set(0, 0, 0, 0)
+            if (receiver !== row) row.offsetDescendantRectToMyCoords(receiver, origin)
             val inside = buttons.any { button ->
-                if (button.visibility != View.VISIBLE) false else {
+                if (button.visibility != View.VISIBLE || !button.isClickable) false else {
                     button.getDrawingRect(bounds)
                     row.offsetDescendantRectToMyCoords(button, bounds)
-                    bounds.contains(event.x.toInt(), event.y.toInt())
+                    bounds.contains((event.x + origin.left).toInt(), (event.y + origin.top).toInt())
                 }
             }
             if (inside) {
@@ -415,24 +464,34 @@ class FileAdapter(
                 b.cellName.visibility = View.GONE
             }
             // Placeholder: ordinary type icon centred with inset; once the thumbnail is filled in, it automatically switches to full-cell centerCrop
+            LinkTargets.clear(b.linkTarget)
+            b.linkTarget.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.thumb.resetThumbnail()
+            b.thumb.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.thumb.tag = null
             b.thumb.scaleType = ImageView.ScaleType.FIT_CENTER
             val pad = edge / 5
             b.thumb.setPadding(pad, pad, pad, pad)
             if (node is PaneViewModel.WebsiteNode) {
+                b.thumb.setOnClickListener(null)
+                b.thumb.isClickable = false
+                b.thumb.setOnLongClickListener(null)
+                b.thumb.setOnTouchListener(null)
+                b.thumb.isLongClickable = false
                 WebsiteIcons.bind(b.thumb, node.site)
                 b.root.isActivated = false
                 b.cellCheck.visibility = View.GONE
                 b.infoToggle.visibility = View.GONE
                 b.cellCheck.setOnClickListener(null)
                 b.infoToggle.setOnClickListener(null)
+                b.infoToggle.setOnLongClickListener(null)
                 b.root.setOnTouchListener(null)
                 b.root.setOnClickListener { onClick(node) }
                 b.root.setOnLongClickListener { onLongClick(node); true }
                 return
             }
             node as PaneViewModel.FileNode
+            if (gridNames) LinkTargets.bind(b.linkTarget, node.file)
             FileIcons.bind(b.thumb, node.file, onTyped(this, node.file))
             if (thumbs) Thumbs.bind(b.thumb, node.file)
             bindPlaybackProgress(node)
@@ -442,8 +501,12 @@ class FileAdapter(
             bindSelection(node)
             b.cellCheck.setOnClickListener { toggleSelection(node) }
             b.infoToggle.setOnClickListener { onInfo(node) }
-            guardButtonClicks(b.root, b.infoToggle, b.cellCheck)
-            b.root.setOnClickListener { onClick(node) }
+            b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
+            b.thumb.setOnClickListener { onClick(node) }
+            b.thumb.setOnLongClickListener { onLongClick(node); true }
+            guardButtonClicks(b.root, b.infoToggle, b.cellCheck, b.thumb)
+            guardButtonClicks(b.root, b.infoToggle, b.cellCheck, receiver = b.thumb)
+            b.root.setOnClickListener { clickFileRow(node, ctx) }
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
@@ -455,7 +518,7 @@ class FileAdapter(
     }
 
     /**
-     * Info card: one tab per information section + a "hash" tab at the file's tail, ✕ to close.
+     * Info card: one tab per information section + Hash for readable files, Unix last, ✕ to close.
      * The tab title bar is a thin strip that indents along with the tree, with its left edge aligned to
      * the file row's icon (row-start indent 2+depth*14 + chevron 16 + icon margin 2, minus the card's
      * outer margin 4), so it looks like a node in the tree; the content box does not indent and fills
@@ -469,16 +532,15 @@ class FileAdapter(
         }
 
         fun bind(node: PaneViewModel.InfoNode) {
-            val sections = node.details?.sections.orEmpty()
-            val count = sections.size + if (node.selection || node.file.isDir || sections.isEmpty()) 0 else 1
+            val tabs = FileInfo.tabs(b.root.context, node.file, node.details, node.selection)
+            val count = tabs.size
             val tab = node.tab.coerceIn(0, (count - 1).coerceAtLeast(0))
             b.root.swipeEnabled = count > 1
             b.root.onSwipe = { step ->
                 val target = tab + step
                 if (target in 0 until count) onInfoTab(node, target)
             }
-            val page = sections.getOrNull(tab)?.title
-                ?: if (count > 0 && !node.file.isDir) b.root.context.getString(R.string.info_tab_hash) else null
+            val page = tabs.getOrNull(tab)?.title
             b.root.showPage(node.key, page, tab, b.infoContent) { bindContent(node) }
         }
 
@@ -494,7 +556,9 @@ class FileAdapter(
             b.appGroups.removeAllViews()
             // Persistent spinner for directory stats or the currently selected section's metadata.
             // It overlays the bottom-right of the content box; when spinning, give the text a bit of right padding so it doesn't cover the value on the last line
-            val spinning = node.scanning || node.details?.sections?.getOrNull(node.tab)?.loading == true
+            val pages = FileInfo.tabs(ctx, node.file, node.details, node.selection)
+            val pageSection = pages.getOrNull(node.tab)?.section
+            val spinning = node.scanning || pageSection?.let { node.details?.sections?.getOrNull(it)?.loading } == true
             b.scanSpin.visibility = if (spinning) View.VISIBLE else View.GONE
             b.infoBody.setPaddingRelative(
                 b.infoBody.paddingStart, b.infoBody.paddingTop,
@@ -511,13 +575,11 @@ class FileAdapter(
                 return
             }
 
-            val titles = ArrayList(d.sections.map { it.title })
-            val hashIdx = if (node.selection || node.file.isDir || !node.file.canRead) -1 else titles.size
-            if (hashIdx >= 0) titles += ctx.getString(R.string.info_tab_hash)
-            val cur = node.tab.coerceIn(0, titles.size - 1)
-            buildTabs(node, titles, cur)
+            val cur = node.tab.coerceIn(0, pages.size - 1)
+            buildTabs(node, pages.map { it.title }, cur)
+            val sectionIndex = pages[cur].section
 
-            if (cur == hashIdx) {
+            if (sectionIndex == null) {
                 when {
                     node.hashing -> b.infoBody.text = ctx.getString(R.string.info_hash_computing)
                     node.hashRows != null -> b.infoBody.text = renderRows(node.hashRows)
@@ -530,18 +592,18 @@ class FileAdapter(
             } else {
                 // Directory's recursive stats are appended at the end of the "basic" section, updating in real time as scanning progresses
                 val stat = node.dirStat
-                val rows = if (cur == 0 && stat != null) {
+                val rows = if (sectionIndex == 0 && stat != null) {
                     d.sections[0].rows + FileInfo.dirStatRows(ctx, stat)
                 } else {
-                    d.sections[cur].rows
+                    d.sections[sectionIndex].rows
                 }
-                val section = d.sections[cur]
+                val section = d.sections[sectionIndex]
                 b.infoBody.text = when {
                     section.loading -> ctx.getString(R.string.info_loading)
                     rows.isEmpty() && section.appGroups.isEmpty() -> ctx.getString(R.string.info_failed)
                     else -> renderRows(rows)
                 }
-                if (d.sections[cur].appGroups.isNotEmpty()) renderAppGroups(node, d.sections[cur].appGroups)
+                if (section.appGroups.isNotEmpty()) renderAppGroups(node, section.appGroups)
             }
         }
 
@@ -690,7 +752,8 @@ class FileAdapter(
         private fun renderRows(rows: List<Pair<String, String>>): CharSequence {
             val ctx = b.root.context
             val label = ContextCompat.getColor(ctx, R.color.text_secondary)
-            val copyable = setOf(ctx.getString(R.string.info_name), ctx.getString(R.string.info_path))
+            val linkTarget = ctx.getString(R.string.info_link_target)
+            val copyable = setOf(ctx.getString(R.string.info_name), ctx.getString(R.string.info_path), linkTarget)
             val sb = SpannableStringBuilder()
             rows.forEachIndexed { i, (k, v) ->
                 if (i > 0) sb.append("\n")
@@ -716,7 +779,8 @@ class FileAdapter(
                 }, s, s + k.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 val indent = kotlin.math.ceil(android.text.Layout.getDesiredWidth(sb, s, sb.length, b.infoBody.paint).toDouble()).toInt()
                 sb.append(v)
-                if (k in copyable && v.isNotEmpty()) appendCopyIcon(sb, v)
+                if (k in copyable && v.isNotEmpty() &&
+                    (k != linkTarget || v != ctx.getString(R.string.info_unavailable))) appendCopyIcon(sb, v)
                 // Explicit value newlines need indentation on their first line too.
                 var start = s
                 while (start < sb.length) {
@@ -783,12 +847,19 @@ class FileAdapter(
     }
 
     inner class VH(private val b: ItemFileBinding) : RecyclerView.ViewHolder(b.root) {
+        private var countNode: PaneViewModel.FileNode? = null
+        private var countPosition = RecyclerView.NO_POSITION
+
+        fun refreshDirectoryCounts() { countNode?.let(::bindDirectoryCounts) }
+
         fun bindDefaultAppIcon(node: PaneViewModel.FileNode) { FileIcons.bind(b.icon, node.file) }
         fun bindPlaybackProgress(node: PaneViewModel.FileNode) {
             b.icon.playbackFraction = playbackFraction(b.root.context, node.file)
         }
 
-        fun bind(node: PaneViewModel.Node) {
+        fun bind(node: PaneViewModel.Node, position: Int = RecyclerView.NO_POSITION) {
+            countNode = node as? PaneViewModel.FileNode
+            countPosition = position
             val ctx = b.root.context
             val dpi = ctx.resources.displayMetrics.density
 
@@ -798,20 +869,36 @@ class FileAdapter(
             b.meta.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             for (count in listOf(b.directoryCount, b.fileCount)) {
                 count.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
-                // Equal slots stay fixed across rows, including when one count is hidden.
-                count.layoutParams = count.layoutParams.apply { width = (count.textSize * 3.5f).toInt() }
+                // Equal slots fit the icon plus 999+ and stay fixed even when a count is hidden.
+                count.layoutParams = count.layoutParams.apply { width = (count.textSize * 4f).toInt() }
             }
             b.folderCounts.alpha = IDLE_CHECK_ALPHA
             b.folderCounts.visibility = View.GONE
+            b.permissions.visibility = View.GONE
+            b.folderCounts.layoutParams = (b.folderCounts.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                marginEnd = (8 * dpi).toInt()
+            }
+            b.permissions.text = ""
+            b.permissions.setCompoundDrawablesRelative(null, null, null, null)
+            b.permissions.compoundDrawablePadding = 0
+            b.permissions.alpha = b.folderCounts.alpha
+            b.permissions.setTextColor(b.directoryCount.currentTextColor)
+            b.permissions.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.folderCounts.contentDescription = null
-            b.folderCounts.setTag(R.id.directory_count, null)
+            if (node !is PaneViewModel.FileNode) releaseDirectoryCounts()
             b.meta.setTag(R.id.size_probe, null)
             b.rowContent.setPaddingRelative(
                 ((2 + node.depth * 14) * dpi).toInt(), 0, 0, 0,
             )
             // Reset reusable state
             b.icon.resetThumbnail()
+            b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
+            b.icon.setOnClickListener(null)
+            b.icon.setOnTouchListener(null)
+            b.icon.isClickable = false
+            b.icon.setOnLongClickListener(null)
+            b.icon.isLongClickable = false
             b.icon.scaleType = ImageView.ScaleType.FIT_CENTER // thumbnail rows switch to centerCrop when filled in
             b.icon.setPadding(0, 0, 0, 0)
             b.icon.clearColorFilter() // compare-favorite rows are tinted temporarily; clear before reuse or it leaks to other rows
@@ -819,7 +906,7 @@ class FileAdapter(
             b.name.setTextColor(ContextCompat.getColor(ctx, R.color.text_primary))
             b.name.alpha = 1f
             b.appVersion.visibility = View.GONE // only app entries open it (see bindApp)
-            b.sub.visibility = View.GONE
+            LinkTargets.clear(b.sub)
             b.appVersion.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.sub.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.root.isActivated = false
@@ -827,7 +914,23 @@ class FileAdapter(
             // Hiding a live RippleDrawable ends its animation, even when shown again in this bind.
             b.infoToggle.visibility = if (node is PaneViewModel.FileNode) View.VISIBLE else View.INVISIBLE
             b.infoToggle.setOnClickListener(null)
+            b.infoToggle.setOnLongClickListener(null)
             b.root.setOnTouchListener(null)
+            b.indicator.setOnTouchListener(null)
+            b.indicator.setOnClickListener(null)
+            b.indicator.isClickable = false
+            b.indicator.contentDescription = null
+            val sortingItem = node.reordering
+            val indicatorPadding = if (sortingItem) (4 * dpi).toInt() else 0
+            b.indicator.setPadding(indicatorPadding, indicatorPadding, indicatorPadding, indicatorPadding)
+            val indicatorWidth = ((if (sortingItem) 32 else 16) * dpi).toInt()
+            val indicatorHeight = if (sortingItem) ViewGroup.LayoutParams.MATCH_PARENT else (16 * dpi).toInt()
+            val indicatorLayout = b.indicator.layoutParams
+            if (indicatorLayout.width != indicatorWidth || indicatorLayout.height != indicatorHeight) {
+                indicatorLayout.width = indicatorWidth
+                indicatorLayout.height = indicatorHeight
+                b.indicator.layoutParams = indicatorLayout
+            }
 
             when (node) {
                 is PaneViewModel.FileNode -> bindFile(node)
@@ -841,7 +944,11 @@ class FileAdapter(
                 is PaneViewModel.SearchNode -> bindSearch(node)
                 is PaneViewModel.InfoNode -> Unit // routes to InfoVH, never reaches here
             }
-            guardButtonClicks(b.root, b.infoToggle, b.check)
+            if (node is PaneViewModel.FileNode) {
+                guardButtonClicks(b.root, b.infoToggle, b.check, b.icon, b.indicator)
+                guardButtonClicks(b.root, b.infoToggle, b.check, receiver = b.icon)
+                guardButtonClicks(b.root, b.infoToggle, b.check, receiver = b.indicator)
+            } else guardButtonClicks(b.root, b.infoToggle, b.check)
         }
 
         /**
@@ -907,20 +1014,35 @@ class FileAdapter(
                 bindSelection(node)
                 b.check.setOnClickListener { toggleChildrenSelection(node) }
             }
-            b.root.setOnClickListener { onClick(node) }
-            b.root.setOnLongClickListener { onLongClick(node); true }
+            bindItemActions(node)
+        }
+
+        private fun bindItemActions(node: PaneViewModel.Node) {
+            if (node.reordering) {
+                b.indicator.visibility = View.VISIBLE
+                b.indicator.setImageResource(R.drawable.ic_drag_handle)
+                b.indicator.contentDescription = b.root.context.getString(R.string.root_drag_to_reorder)
+                b.indicator.setOnTouchListener { _, event ->
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) onItemDrag?.invoke(this)
+                    false
+                }
+                b.root.setOnClickListener(null)
+                b.root.setOnLongClickListener(null)
+            } else {
+                b.root.setOnClickListener { onClick(node) }
+                b.root.setOnLongClickListener { onLongClick(node); true }
+            }
         }
 
         /** Compare-favorite row: not expandable, click jumps straight to the compare page; no selection state (not an object that can be copied or deleted).
-         *  The dedicated icon is reserved for the "compare favorites" root group above ([bindGroup]); this row's icon reuses the same black [R.drawable.ic_compare] as the action bar,
-         *  but is tinted with the row title's [R.color.text_primary] —
-         *  both light and dark themes follow the text colour, no longer fixed black that turns into a smear in the dark theme. */
+         *  The dedicated icon is reserved for the "compare favorites" root group above ([bindGroup]);
+         *  this row reuses [R.drawable.ic_compare], tinted with [R.color.primary] like other tree icons. */
         private fun bindCompareFavorite(node: PaneViewModel.CompareNode) {
             val ctx = b.root.context
             b.name.text = node.session.label
             setMeta(null)
             b.icon.setImageResource(R.drawable.ic_compare)
-            b.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_primary))
+            b.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.primary))
             setIndicator(null)
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
@@ -971,24 +1093,66 @@ class FileAdapter(
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
+        fun releaseDirectoryCounts() {
+            DirectoryCounts.release(b.folderCounts)
+            DirectoryCounts.release(b.indicator)
+        }
+
+        private fun bindDirectoryCounts(node: PaneViewModel.FileNode) {
+            val ctx = b.root.context
+            val file = node.file
+            val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
+            val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
+            val localDirectory = file.scheme == "file" && file.isDir
+            if (DirectoryCounts.supports(file)) {
+                fun applyCount(count: DirectoryCounts.Count) {
+                    if (showCounts) setCounts(count)
+                    // Keep the row clickable as a destination even when there is nothing to expand.
+                    // Synthetic children (search, Git, access hints) must keep their indicator.
+                    if (!node.loading && !node.hasVirtualChildren) {
+                        setIndicator(if (node.expandable && (count.directories > 0 || count.files > 0))
+                            node.expanded else null)
+                    }
+                }
+                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::applyCount)
+                if ((showCounts || localDirectory) && !node.loading && directoryCountsActive && this in attachedCountRows) {
+                    val owner = if (showCounts) b.folderCounts else b.indicator
+                    DirectoryCounts.release(if (showCounts) b.indicator else b.folderCounts)
+                    DirectoryCounts.request(owner, file, Prefs.showHidden(ctx), order = {
+                        bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
+                            ?: countPosition.takeIf { it != RecyclerView.NO_POSITION } ?: Int.MAX_VALUE
+                    }, deliver = ::applyCount)
+                } else releaseDirectoryCounts()
+            } else releaseDirectoryCounts()
+        }
+
         private fun bindFile(node: PaneViewModel.FileNode) {
             val ctx = b.root.context
             val file = node.file
             b.infoToggle.setOnClickListener { onInfo(node) }
+            b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
 
             b.name.text = node.label ?: file.name
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
+            if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
+            file.unixMode?.takeIf { Prefs.unixPermissions(ctx) }?.let { mode ->
+                val octal = Prefs.unixPermissionsOctal(ctx)
+                b.permissions.text = if (octal) UnixPermissions.octal(mode) else UnixPermissions.symbolic(mode)
+                if (octal) bindMetadataIcon(b.permissions, R.drawable.ic_count_permissions)
+                b.permissions.visibility = View.VISIBLE
+                // Count slots already include spacing; the next metadata icon needs no extra gap.
+                b.folderCounts.layoutParams = (b.folderCounts.layoutParams as ViewGroup.MarginLayoutParams).apply {
+                    marginEnd = 0
+                }
+                // Reserve both count slots for files and pending/empty directory counts too.
+                if (Prefs.folderCountsFor(ctx, file.scheme)) b.folderCounts.visibility = View.INVISIBLE
+            }
             setMeta(
                 node.capacity ?: when {
                     file.isDir -> dateMeta(file)
                     else -> fileMeta(file)
                 },
             )
-            val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
-            if (!storageRoot && Prefs.folderCounts(ctx) && DirectoryCounts.supports(file)) {
-                (node.directoryCount ?: DirectoryCounts.known(file, Prefs.showHidden(ctx)))?.let(::setCounts)
-                if (!node.loading) DirectoryCounts.request(b.folderCounts, file, Prefs.showHidden(ctx), ::setCounts)
-            }
             // A source that cannot report a size in its listing (media server photos) is asked
             // for this row's, in the background; the answer rewrites this row's meta line only.
             if (node.capacity == null) {
@@ -1064,6 +1228,8 @@ class FileAdapter(
                 setIndicator(null)
             }
 
+            bindDirectoryCounts(node)
+
             // Top-level storage nodes don't take part in multi-select; ordinary entries show a grey checkbox
             if (node.label == null) {
                 b.check.visibility = View.VISIBLE
@@ -1073,7 +1239,10 @@ class FileAdapter(
                 b.check.visibility = View.GONE
             }
 
-            b.root.setOnClickListener { onClick(node) }
+            b.icon.setOnClickListener { onClick(node) }
+            b.icon.setOnLongClickListener { onLongClick(node); true }
+            if (node.expandable) b.indicator.setOnClickListener { onClick(node) }
+            b.root.setOnClickListener { clickFileRow(node, ctx) }
             b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
@@ -1103,7 +1272,7 @@ class FileAdapter(
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
             b.root.setOnLongClickListener {
-                if (node.id == "websites") { onLongClick(node); true } else false
+                if (node.id == "websites" || node.id == "fav") { onLongClick(node); true } else false
             }
         }
 
@@ -1138,8 +1307,7 @@ class FileAdapter(
             WebsiteIcons.bind(b.icon, node.site)
             setIndicator(null)
             b.check.visibility = View.GONE
-            b.root.setOnClickListener { onClick(node) }
-            b.root.setOnLongClickListener { onLongClick(node); true }
+            bindItemActions(node)
         }
 
         private fun bindAction(node: PaneViewModel.ActionNode) {
@@ -1217,21 +1385,25 @@ class FileAdapter(
             }
         }
 
+        private fun bindMetadataIcon(view: android.widget.TextView, res: Int) {
+            val drawable = ContextCompat.getDrawable(b.root.context, res)!!.mutate()
+            drawable.setTint(b.meta.currentTextColor)
+            val edge = (view.textSize * 1.2f).toInt().coerceAtLeast(1)
+            drawable.setBounds(0, 0, edge, edge)
+            view.setCompoundDrawablesRelative(drawable, null, null, null)
+            view.compoundDrawablePadding = (view.textSize * 0.25f).toInt()
+        }
+
         private fun setCounts(count: DirectoryCounts.Count) {
             fun bindCount(view: android.widget.TextView, res: Int, number: Int) {
-                val drawable = ContextCompat.getDrawable(b.root.context, res)!!.mutate()
-                drawable.setTint(b.meta.currentTextColor)
-                val edge = (view.textSize * 1.2f).toInt().coerceAtLeast(1)
-                drawable.setBounds(0, 0, edge, edge)
-                view.setCompoundDrawablesRelative(drawable, null, null, null)
-                view.compoundDrawablePadding = (view.textSize * 0.25f).toInt()
-                view.text = number.toString()
+                bindMetadataIcon(view, res)
+                view.text = if (number > 999) "999+" else number.toString()
                 view.visibility = if (number == 0) View.INVISIBLE else View.VISIBLE
             }
             bindCount(b.directoryCount, R.drawable.ic_count_folder, count.directories)
             bindCount(b.fileCount, R.drawable.ic_count_file, count.files)
             b.folderCounts.contentDescription = b.root.context.getString(R.string.folder_counts_description,
-                count.directories, count.files)
+                b.directoryCount.text, b.fileCount.text)
             b.folderCounts.visibility = View.VISIBLE
             b.metaRow.visibility = View.VISIBLE
         }
@@ -1243,7 +1415,8 @@ class FileAdapter(
                 b.meta.visibility = View.VISIBLE
                 b.meta.text = text
             }
-            b.metaRow.visibility = if (b.meta.visibility == View.VISIBLE || b.folderCounts.visibility == View.VISIBLE)
+            b.metaRow.visibility = if (b.meta.visibility == View.VISIBLE || b.folderCounts.visibility == View.VISIBLE ||
+                b.permissions.visibility == View.VISIBLE)
                 View.VISIBLE else View.GONE
         }
 

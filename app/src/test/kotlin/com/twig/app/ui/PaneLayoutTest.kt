@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import androidx.test.core.app.ApplicationProvider
+import com.twig.app.Prefs
 import com.twig.app.R
 import java.time.Duration
 import org.junit.Assert.*
@@ -22,20 +23,22 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [34], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 class PaneLayoutTest {
-    private fun layout(landscape: Boolean = false): PaneLayout {
+    private fun layout(landscape: Boolean = false, mode: Int = Prefs.PANE_LAYOUT_FOLLOW_ORIENTATION): PaneLayout {
         val app = ApplicationProvider.getApplicationContext<Application>()
+        Prefs.setPaneLayout(app, mode)
         val config = Configuration(app.resources.configuration).apply {
             orientation = if (landscape) Configuration.ORIENTATION_LANDSCAPE else Configuration.ORIENTATION_PORTRAIT
         }
         val ctx = app.createConfigurationContext(config)
+        val dual = Prefs.dualPane(ctx)
         return PaneLayout(ctx).apply {
             for (id in intArrayOf(R.id.strip_left, R.id.pane_a, R.id.strip_mid, R.id.pane_b, R.id.strip_right)) {
                 addView(View(ctx).apply {
                     this.id = id
                     visibility = when (id) {
                         R.id.strip_left -> View.GONE
-                        R.id.strip_mid -> if (landscape) View.VISIBLE else View.GONE
-                        R.id.strip_right -> if (landscape) View.GONE else View.VISIBLE
+                        R.id.strip_mid -> if (dual) View.VISIBLE else View.GONE
+                        R.id.strip_right -> if (dual) View.GONE else View.VISIBLE
                         else -> View.VISIBLE
                     }
                 }, ViewGroup.LayoutParams(if (id == R.id.pane_a || id == R.id.pane_b) 0 else 52, 600))
@@ -43,6 +46,24 @@ class PaneLayoutTest {
             measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY))
             layout(0, 0, 400, 600)
+        }
+    }
+
+    @Test fun `all display modes measure and scroll according to visibility rather than orientation`() {
+        for (landscape in listOf(false, true)) {
+            for (mode in listOf(Prefs.PANE_LAYOUT_FOLLOW_ORIENTATION, Prefs.PANE_LAYOUT_SINGLE, Prefs.PANE_LAYOUT_DUAL)) {
+                val dual = mode == Prefs.PANE_LAYOUT_DUAL || mode == Prefs.PANE_LAYOUT_FOLLOW_ORIENTATION && landscape
+                val pages = layout(landscape, mode)
+                val a = pages.findViewById<View>(R.id.pane_a)
+                val b = pages.findViewById<View>(R.id.pane_b)
+                assertEquals(if (dual) 174 else 348, a.width)
+                assertEquals(if (dual) 400 else 748, b.right)
+                pages.showPane(1, false)
+                pages.finishTransition()
+                assertEquals(if (dual) 0 else 348, pages.scrollX)
+                pages.showPane(0, false)
+                assertEquals(0, pages.scrollX)
+            }
         }
     }
 

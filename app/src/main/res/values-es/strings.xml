@@ -217,6 +217,8 @@
     <string name="player_brightness">Brillo %1$d%%</string>
     <string name="player_volume">Volumen %1$d%%</string>
     <string name="player_subtitle">Subtítulo</string>
+    <string name="player_subtitle_size">Tamaño de subtítulos de texto</string>
+    <string name="player_subtitle_size_value">Tamaño de subtítulos de texto: %1$d sp</string>
     <string name="player_subtitle_close">Desactivado</string>
     <string name="player_embedded_sub">Subtítulo integrado %1$d</string>
     <string name="player_audio_track">Pista de audio</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">Copiando…</string>
     <string name="progress_move">Moviendo…</string>
     <string name="copy_title">Copiar</string>
+    <string name="copy_use_destination">Usar carpeta</string>
+    <string name="copy_choose_destination">Elegir otra ubicación</string>
     <string name="copy_to">Copiar a</string>
     <string name="copy_move_mode">Mover (eliminar archivos originales)</string>
     <string name="copy_items">%1$d elementos</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">Comando en %1$s</string>
     <string name="cmd_title_server">Comando en el servidor %1$s</string>
     <string name="cmd_label">Nombre del acceso directo</string>
-    <string name="cmd_command">Comando</string>
+    <string name="cmd_command">Comando (dejar vacío para abrir el terminal aquí)</string>
     <string name="cmd_workdir">Directorio de trabajo (vacío = inicio de sesión)</string>
     <string name="cmd_pick_script">Elegir script…</string>
     <string name="cmd_in_terminal">Ejecutar en terminal (si no, en segundo plano)</string>
     <string name="cmd_create">Añadir a inicio</string>
     <string name="cmd_run_now">Ejecutar ahora</string>
-    <string name="cmd_empty">Introduce primero un comando</string>
     <string name="cmd_pin_unsupported">Este lanzador no admite accesos directos fijados</string>
     <string name="cmd_started">Iniciado: %1$s</string>
     <string name="cmd_login_shell">Usar shell de inicio (carga .profile / .zprofile; shell predeterminada)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">Reinicia Twig para aplicar todos los ajustes.</string>
     <string name="backup_working">Procesando…</string>
     <string name="backup_locked">Desbloquea primero con contraseña maestra</string>
-    <string name="picker_hint_dir">Abre la carpeta de destino y toca Aceptar</string>
+    <string name="picker_hint_dir">Abre la carpeta que quieras seleccionar y toca %1$s</string>
     <string name="backup_pick_dir">Guardar copia en</string>
     <string name="backup_pick_file">Elegir copia de respaldo</string>
     <string name="backup_exported_at">Exportado a %1$s</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">Lista temporal</string>
     <string name="smb1_mode">Compatibilidad SMB1 (solo dispositivos antiguos)</string>
     <string name="settings_folder_counts">Recuento de elementos</string>
-    <string name="settings_folder_counts_desc">Mostrar el número de subcarpetas y archivos directos en carpetas locales y SMB. SMB puede requerir consultas adicionales.</string>
-    <string name="folder_counts_description">Carpetas: %1$d, archivos: %2$d</string>
+    <string name="settings_folder_counts_desc">Mostrar el número de subcarpetas y archivos directos.</string>
+    <string name="settings_folder_counts_local_only">Contar elementos solo en carpetas locales</string>
+    <string name="settings_folder_counts_local_only_desc">Desactivar para contar también carpetas de otros servicios. Puede requerir consultas adicionales.</string>
+    <string name="folder_counts_description">Carpetas: %1$s, archivos: %2$s</string>
     <string name="info_activity_failed">No se pudo abrir esta Activity</string>
     <string name="info_app_shortcuts_limited">Android restringe el acceso a los accesos directos dinámicos de otras aplicaciones. Solo se muestran los accesos directos declarados por la aplicación.</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">Abrir URL</string>
     <string name="website_user_agent_global_hint">Vacío = User-Agent global o valor móvil/escritorio</string>
     <string name="website_global_settings_hint">Cada sitio puede sustituir el User-Agent global. JavaScript, CSS, elementos ocultos y bloqueo de solicitudes se combinan con la configuración global. Las opciones de visualización son valores predeterminados para sitios nuevos.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">Añadir NFS</string>
+    <string name="nfs_host">Dirección del servidor NFS</string>
+    <string name="nfs_export">Ruta de exportación (p. ej., /volume1/public)</string>
+    <string name="nfs_version">Versión de NFS (3 o 4)</string>
+    <string name="nfs_uid">UID (predeterminado: 65534)</string>
+    <string name="nfs_gid">GID (predeterminado: 65534)</string>
     <string name="website_media_permission">Permitir que %1$s use:</string>
     <string name="website_microphone">Micrófono</string>
     <string name="website_camera">Cámara</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">Elige un punto entre la introducción y los créditos.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Mostrar/ocultar elementos raíz</string>
+    <string name="action_root_items">Configuración de elementos raíz</string>
     <string name="private_space">Espacio privado</string>
     <string name="private_space_create_failed">No se pudo crear el espacio privado</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">Notificaciones al finalizar en primer plano</string>
     <string name="settings_foreground_completion_desc">Notificar también al usar Twig. En segundo plano y con la pantalla bloqueada siempre se notifica.</string>
 
-    <string name="settings_exit_on_back">Salir al volver atrás</string>
-    <string name="settings_exit_on_back_desc">Salir de Twig cuando Atrás cierre la pantalla principal. Pedir confirmación si hay tareas en curso.</string>
+    <string name="settings_back_action">Atrás en la pantalla principal</string>
+    <string name="settings_back_close">Cerrar pantalla (predeterminado)</string>
+    <string name="settings_back_exit">Salir de la aplicación (con confirmación)</string>
+    <string name="settings_back_up">Subir un nivel (cerrar pantalla en la raíz)</string>
+    <string name="settings_back_up_exit">Subir un nivel (salir de la aplicación en la raíz)</string>
     <string name="share_text_filename">Texto compartido.txt</string>
     <string name="settings_toolbar_bottom">Barra de herramientas abajo</string>
     <string name="settings_toolbar_bottom_desc">Mover la barra de herramientas del explorador de archivos abajo para facilitar el uso con una mano</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">No hay espacio suficiente para preparar los archivos.</string>
     <string name="share_prepare_incomplete">El archivo cambió o no se pudo leer por completo.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">Arrastrar para reordenar</string>
+    <string name="root_reorder_hint">Arrastra los controles para reordenar los elementos raíz de ambos paneles.</string>
+    <string name="action_sort_favorites">Ordenar favoritos</string>
+    <string name="action_sort_websites">Ordenar sitios web</string>
+    <string name="conn_section_login">Inicio de sesión</string>
+    <string name="conn_section_options">Opciones</string>
+    <string name="music_import_playlist">Importar desde archivo de lista</string>
+    <string name="music_import_directory">Importar desde carpeta (recursivo)</string>
+    <string name="music_importing">Importando música…</string>
+    <string name="music_import_progress">%1$d pistas · %2$s</string>
+    <string name="music_import_done">Se añadieron %1$d pistas</string>
+    <string name="music_import_failed">No se pudo importar la música: %1$s</string>
+    <string name="music_import_playlist_only">Elige una lista M3U o M3U8</string>
+    <string name="music_import_source_unsupported">Esta fuente no se puede guardar en una lista</string>
+    <string name="info_track_number">Número de pista</string>
+    <string name="settings_action_strip">Panel de acciones</string>
+    <string name="strip_reorder_hint">Arrastra los controles para reordenar las acciones. Desmárcalas para ocultarlas.</string>
+    <string name="info_symbolic_link">Enlace simbólico</string>
+    <string name="info_link_target">Apunta a</string>
+    <string name="info_unavailable">No disponible</string>
+    <string name="info_permissions">Permisos</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Último acceso</string>
+    <string name="info_changed">Cambio de estado</string>
+    <string name="info_selinux_context">Contexto SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Mostrar permisos Unix</string>
+    <string name="settings_unix_permissions_desc">Mostrar los permisos disponibles en las listas de archivos. Los detalles completos están en la pestaña Unix de las propiedades.</string>
+    <string name="player_subtitle_appearance">Aspecto de subtítulos</string>
+    <string name="player_subtitle_text_color">Color del texto</string>
+    <string name="pdf_password">Contraseña del PDF</string>
+    <string name="pdf_password_retry">La contraseña no se ha aceptado o el PDF usa un cifrado no compatible. Inténtalo de nuevo.</string>
+    <string name="pdf_password_unsupported">Este PDF requiere una contraseña o usa un cifrado no compatible. Esta versión de Android no puede desbloquearlo en Twig. Prueba otra aplicación de PDF.</string>
+    <string name="theme_oled">Negro (OLED)</string>
+    <string name="transfer_retry">Reintentar elementos pendientes</string>
+    <string name="transfer_retry_detail">Reintenta solo los elementos pendientes. Se omiten los archivos completados y se reanudan los parciales cuando es compatible.</string>
+    <string name="transfer_failed_target">Destino: %1$s</string>
+    <string name="transfer_skip_failed">Omitir este elemento</string>
+    <string name="dialog_reset">Restablecer</string>
+    <string name="settings_unix_permissions_octal">Mostrar permisos en octal</string>
+    <string name="settings_unix_permissions_octal_desc">Activado: 0755; desactivado: rwxr-xr-x. Solo afecta a las listas de archivos.</string>
+    <string name="settings_tap_row_to_select">Tocar filas para seleccionar</string>
+    <string name="settings_tap_row_to_select_desc">Si hay elementos seleccionados, toca una fila para seleccionarla o deseleccionarla. Toca el icono o la miniatura para abrir. Desactivado: selecciona solo con las casillas.</string>
+    <string name="strip_duplicate">Duplicar</string>
+    <string name="settings_pane_layout">Diseño de paneles</string>
+    <string name="pane_layout_follow_orientation">Seguir la orientación de la pantalla</string>
+    <string name="pane_layout_single">Un panel</string>
+    <string name="pane_layout_dual">Dos paneles</string>
+    <string name="compress_level">Nivel de compresión</string>
+    <string name="compress_fast">Rápido</string>
+    <string name="compress_standard">Estándar</string>
+    <string name="compress_store">Sin comprimir</string>
+    <string name="compress_source_directory">Guardar en la carpeta de origen</string>
+    <string name="compress_hide_names">Cifrar nombres de archivo</string>
+    <string name="compress_destination_missing">Elige un destino</string>
 </resources>

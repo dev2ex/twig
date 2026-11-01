@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
 /**
  * Playlist side drawer (shared by the player page [MusicPlayerActivity] and the list page
  * [PlaylistActivity]): lists Now Playing / Favorites / user playlists + "New"; tapping opens the
- * corresponding list page, long-press to resume / export / rename / delete; [exitRow] is the bottom "Exit
+ * corresponding list page, long-press to import / resume / export / rename / delete; [exitRow] is the bottom "Exit
  * player" row.
  */
 @UnstableApi
@@ -37,6 +37,8 @@ class PlaylistDrawer(
     private val drawer: DrawerLayout,
     private val list: RecyclerView,
     exitRow: View,
+    private val onImport: (String, Boolean) -> Unit = { id, directory -> PlaylistActivity.startImport(activity, id, directory) },
+    private val onRenamed: (String, Playlist) -> Unit = { _, _ -> },
 ) {
     private val adapter = Adapter()
     class ExportState : ViewModel() { var id: String? = null }
@@ -120,9 +122,10 @@ class PlaylistDrawer(
     private fun rowMenu(pl: Playlist) {
         val opts = ArrayList<Pair<String, () -> Unit>>()
         opts += activity.getString(R.string.music_resume) to { resume(pl) }
-        if (!pl.temporary) opts += activity.getString(R.string.music_export) to {
-            exportId = pl.id
-            exportPicker.launch(PickerActivity.dirIntent(activity, activity.getString(R.string.music_export)))
+        if (!pl.temporary) {
+            opts += activity.getString(R.string.music_import_playlist) to { import(pl, directory = false) }
+            opts += activity.getString(R.string.music_import_directory) to { import(pl, directory = true) }
+            opts += activity.getString(R.string.music_export) to { export(pl) }
         }
         // "Now Playing" is a temporary list; renaming it means "save" it as a normal list — the menu label changes accordingly.
         if (!pl.isFav && !pl.temporary) opts += activity.getString(if (pl.isNow) R.string.music_save else R.string.music_rename) to { rename(pl) }
@@ -131,6 +134,17 @@ class PlaylistDrawer(
             .setTitle(pl.name)
             .setItems(opts.map { it.first }.toTypedArray()) { _, which -> opts[which].second() }
             .show()
+    }
+
+    private fun import(pl: Playlist, directory: Boolean) {
+        drawer.closeDrawers()
+        onImport(pl.id, directory)
+    }
+
+    fun export(pl: Playlist) {
+        if (pl.temporary) return
+        exportId = pl.id
+        exportPicker.launch(PickerActivity.dirIntent(activity, activity.getString(R.string.music_export)))
     }
 
     private fun export(id: String, dir: XFile) {
@@ -180,14 +194,15 @@ class PlaylistDrawer(
         }
     }
 
-    private fun resume(pl: Playlist) {
+    fun resume(pl: Playlist) {
         val fresh = PlaylistStore.get(activity, pl.id) ?: return
         if (fresh.tracks.isEmpty()) return
         MusicEngine.play(activity, fresh, fresh.lastIndex, fresh.lastPosMs, autoPlay = true)
         drawer.closeDrawers()
     }
 
-    private fun rename(pl: Playlist) {
+    fun rename(pl: Playlist) {
+        if (pl.isFav || pl.temporary) return
         val input = android.widget.EditText(activity).apply { setText(pl.name) }
         AlertDialog.Builder(activity)
             .setTitle(if (pl.isNow) R.string.music_save else R.string.music_rename)
@@ -200,7 +215,10 @@ class PlaylistDrawer(
                     // promoted to a new uuid and the original "now" is removed from the store),
                     // sync queueId to the new id, otherwise the player page's "current playlist"
                     // button would look up the list with the old id and fail to open it.
-                    if (promoted != null) MusicEngine.onQueueRenamed(pl.id, promoted.id)
+                    if (promoted != null) {
+                        MusicEngine.onQueueRenamed(pl.id, promoted.id)
+                        onRenamed(pl.id, promoted)
+                    }
                     reload()
                 }
             }

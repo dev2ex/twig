@@ -46,16 +46,27 @@ class DirectoryViewDialogTest {
         }
     }
 
-    private fun withDialog(directory: XFile? = dir, viewOnly: Boolean = false, run: (AlertDialog) -> Unit) {
+    private fun withDialog(directory: XFile? = dir, viewOnly: Boolean = false, selectedDirectory: Boolean = false, run: (AlertDialog) -> Unit) {
         val controller = Robolectric.buildActivity(SettingsActivity::class.java).setup()
         try {
             if (viewOnly) SortDialog.showView(controller.get(), directory) {}
-            else SortDialog.show(controller.get(), directory) {}
+            else SortDialog.show(controller.get(), directory, selectedDirectory) {}
             run(ShadowDialog.getLatestDialog() as AlertDialog)
             shadowOf(Looper.getMainLooper()).idle()
         } finally {
             ShadowDialog.getLatestDialog()?.dismiss()
             controller.pause().stop().destroy()
+        }
+    }
+
+    @Test
+    fun `sorting shortcut opens selected directory and falls back when none is selected`() {
+        withDialog(selectedDirectory = true) { dialog ->
+            assertEquals(R.id.scope_directory, dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.checkedRadioButtonId)
+            assertEquals(View.VISIBLE, dialog.findViewById<View>(R.id.cb_custom_sort)!!.visibility)
+        }
+        withDialog(directory = null, selectedDirectory = true) { dialog ->
+            assertEquals(R.id.scope_default, dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.checkedRadioButtonId)
         }
     }
 

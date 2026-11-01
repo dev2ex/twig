@@ -1,12 +1,15 @@
 package com.twig.fs.network
 
 import com.twig.core.FileSystem
+import com.twig.core.DirectoryCountSource
+import com.twig.core.ChildCounts
 import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.XFile
 import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.sshj.DefaultConfig
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
 import net.schmizz.sshj.sftp.Response
@@ -56,7 +59,7 @@ data class SftpConfig(
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem, com.twig.core.ResumableWrite {
+) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource {
 
     /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
     private val base = config.path.trim('/')
@@ -493,26 +496,77 @@ class SftpFileSystem(
     override fun list(dir: XFile): List<XFile> =
         retry { it.ls(serverPath(dir.path)) }
             .map { info ->
-                XFile(
-                    scheme = scheme,
-                    path = join(dir.path, info.name),
-                    isDir = info.isDirectory,
-                    size = if (info.isDirectory) 0L else info.attributes.size,
-                    lastModified = info.attributes.mtime * 1000L,
-                )
+                toXFile(join(dir.path, info.name), info.attributes)
             }
             .sortedWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
 
-    /** One stat round trip (`statExistence`), instead of listing the whole parent directory. */
+    private class StopCounting : RuntimeException(null, null, false, false)
+
+    override fun countChildren(dir: XFile, limit: Int, keepGoing: () -> Boolean): ChildCounts? {
+        require(limit > 0)
+        if (!keepGoing()) return null
+        return retry { c ->
+            // Reset on reconnect: a partial traversal must not be counted twice.
+            var directories = 0
+            var files = 0
+            var visibleDirectories = 0
+            var visibleFiles = 0
+            if (!keepGoing()) return@retry null
+            try {
+                // SSHJ closes this directory handle even when the filter throws. Returning
+                // false only avoids retaining entries; it does not stop READDIR requests.
+                c.ls(serverPath(dir.path)) { info ->
+                    if (!keepGoing()) throw StopCounting()
+                    val isDir = if (info.attributes.type == FileMode.Type.SYMLINK) {
+                        runCatching { c.stat(serverPath(join(dir.path, info.name))).type }
+                            .getOrNull() == FileMode.Type.DIRECTORY
+                    } else info.attributes.type == FileMode.Type.DIRECTORY
+                    if (isDir) directories = (directories + 1).coerceAtMost(limit)
+                    else files = (files + 1).coerceAtMost(limit)
+                    if (!info.name.startsWith('.')) {
+                        if (isDir) visibleDirectories = (visibleDirectories + 1).coerceAtMost(limit)
+                        else visibleFiles = (visibleFiles + 1).coerceAtMost(limit)
+                    }
+                    if (visibleDirectories >= limit && visibleFiles >= limit) throw StopCounting()
+                    false
+                }
+            } catch (_: StopCounting) {
+                // Catch inside retry: stopping is not a transport failure and must not reconnect.
+            }
+            if (keepGoing()) ChildCounts(directories, files, visibleDirectories, visibleFiles) else null
+        }
+    }
+
+    /** Read the entry itself; only links need a separate stat for their stream metadata. */
     override fun stat(path: String): XFile? {
-        val attrs = runCatching { retry { it.statExistence(serverPath(path)) } }.getOrNull() ?: return null
+        val attrs = runCatching { retry { it.lstat(serverPath(path)) } }.getOrNull() ?: return null
+        return toXFile(path, attrs)
+    }
+
+    private fun toXFile(path: String, attrs: FileAttributes): XFile {
+        val link = attrs.type == FileMode.Type.SYMLINK
+        val sp = serverPath(path)
+        val followed = if (link) runCatching { retry { it.stat(sp) } }.getOrNull() else attrs
+        val directory = followed?.type == FileMode.Type.DIRECTORY
         return XFile(
             scheme = scheme,
             path = path,
-            isDir = attrs.type == FileMode.Type.DIRECTORY,
-            size = if (attrs.type == FileMode.Type.DIRECTORY) 0L else attrs.size,
-            lastModified = attrs.mtime * 1000L,
+            isDir = directory,
+            // Reads follow links; link length is not the size of the stream being copied.
+            size = if (directory) 0L else followed?.size ?: -1L,
+            lastModified = (followed ?: attrs).mtime * 1000L,
+            isSymbolicLink = link,
+            linkTarget = if (link) runCatching { retry { it.readlink(sp) } }.getOrNull() else null,
+            unixMode = attrs.takeIf { it.has(FileAttributes.Flag.MODE) }?.mode?.mask,
         )
+    }
+
+    /** Unlike statExistence, a dangling link still exists. Other server errors must propagate. */
+    private fun entryExists(client: SFTPClient, serverPath: String): Boolean = try {
+        client.lstat(serverPath)
+        true
+    } catch (e: SFTPException) {
+        if (e.statusCode == Response.StatusCode.NO_SUCH_FILE) false else throw e
     }
 
     override fun openInput(file: XFile): InputStream {
@@ -598,13 +652,15 @@ class SftpFileSystem(
     }
 
     override fun delete(file: XFile) {
-        if (file.isDir) {
+        // Directory links are browsable, but deletion must never recurse into their targets.
+        val link = retry { it.lstat(serverPath(file.path)) }.type == FileMode.Type.SYMLINK
+        if (file.isDir && !link) {
             for (child in list(file)) delete(child)
             val sp = serverPath(file.path)
-            mutate({ it.rmdir(sp) }, { it.statExistence(sp) == null })
+            mutate({ it.rmdir(sp) }, { !entryExists(it, sp) })
         } else {
             val sp = serverPath(file.path)
-            mutate({ it.rm(sp) }, { it.statExistence(sp) == null })
+            mutate({ it.rm(sp) }, { !entryExists(it, sp) })
         }
     }
 
@@ -612,12 +668,12 @@ class SftpFileSystem(
         val to = join(file.parentPath, newName)
         val from = serverPath(file.path)
         val dest = serverPath(to)
-        mutate({ it.rename(from, dest) }, { it.statExistence(from) == null && it.statExistence(dest) != null })
+        mutate({ it.rename(from, dest) }, { !entryExists(it, from) && entryExists(it, dest) })
         return file.copy(path = to)
     }
 
     override fun exists(file: XFile): Boolean =
-        runCatching { cli().statExistence(serverPath(file.path)) != null }.getOrDefault(false)
+        runCatching { retry { entryExists(it, serverPath(file.path)) } }.getOrDefault(false)
 
     override fun setModifiedTime(file: XFile, time: Long): Boolean = runCatching {
         val sec = time / 1000

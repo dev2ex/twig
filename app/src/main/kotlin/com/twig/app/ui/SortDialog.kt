@@ -17,16 +17,16 @@ import com.twig.core.XFile
 
 /** Default and directory-specific sorting/view settings, shared with the destination picker. */
 object SortDialog {
-    fun show(activity: AppCompatActivity, directory: XFile?,
+    fun show(activity: AppCompatActivity, directory: XFile?, selectedDirectory: Boolean = false,
         parentOf: (XFile) -> XFile? = DirectoryViewStore::pathParent, onChanged: () -> Unit) =
-        showOptions(activity, directory, viewOnly = false, parentOf, onChanged)
+        showOptions(activity, directory, viewOnly = false, parentOf, onChanged, selectedDirectory)
 
     fun showView(activity: AppCompatActivity, directory: XFile?,
         parentOf: (XFile) -> XFile? = DirectoryViewStore::pathParent, onChanged: () -> Unit) =
         showOptions(activity, directory, viewOnly = true, parentOf, onChanged)
 
     private fun showOptions(activity: AppCompatActivity, directory: XFile?, viewOnly: Boolean,
-        parentOf: (XFile) -> XFile?, onChanged: () -> Unit) {
+        parentOf: (XFile) -> XFile?, onChanged: () -> Unit, selectedDirectory: Boolean = false) {
         val views = DirectoryViewStore.load(activity)
         val inherited = DirectoryViewStore.resolve(views, directory, includeOwn = false, parentOf = parentOf)
         val d = DialogSortBinding.inflate(activity.layoutInflater)
@@ -36,7 +36,7 @@ object SortDialog {
         )
         d.sortOptions.visibility = if (viewOnly) View.GONE else View.VISIBLE
         d.viewOptions.visibility = if (viewOnly) View.VISIBLE else View.GONE
-        var scope = 0
+        var scope = if (selectedDirectory && directory != null) 1 else 0
         var filling = false
         lateinit var dialog: AlertDialog
 
@@ -115,7 +115,7 @@ object SortDialog {
 
         d.scopeDirectory.isEnabled = directory != null
         d.directoryPath.text = directory?.let { Format.pathLabel(it) }
-        d.rgScope.check(R.id.scope_default)
+        d.rgScope.check(if (scope == 1) R.id.scope_directory else R.id.scope_default)
         dialog = AlertDialog.Builder(activity)
             .setTitle(if (viewOnly) R.string.action_view_mode else R.string.action_sort)
             .setView(d.root)

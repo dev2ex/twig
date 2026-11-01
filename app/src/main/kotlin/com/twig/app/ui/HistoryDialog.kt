@@ -25,6 +25,7 @@ internal object HistoryDialog {
         ctx: Context,
         openLocation: (HistoryEntry) -> Unit,
         openVideo: (PlaybackMark, Boolean) -> Unit,
+        continueWatching: Boolean = false,
     ): AlertDialog {
         val inflater = LayoutInflater.from(ctx)
         val b = DialogHistoryBinding.inflate(inflater)
@@ -132,7 +133,7 @@ internal object HistoryDialog {
                 }.setNegativeButton(android.R.string.cancel, null).show()
             true
         }
-        selectTab(false)
+        selectTab(continueWatching)
         dialog.show()
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
             // Clear only the visible tab; video positions remain available for resuming.

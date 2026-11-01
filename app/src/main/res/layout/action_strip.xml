@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="52dp"
     android:layout_height="match_parent"
-    android:background="@color/bar"
+    android:background="?attr/twigBar"
     android:orientation="vertical">
 
     <!-- Top fixed area: when the Toolbar is hidden in landscape, the buttons that were
@@ -46,7 +46,7 @@
         android:id="@+id/as_top_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="@color/divider"
+        android:background="?attr/twigDivider"
         android:visibility="gone" />
 
     <ScrollView
@@ -90,9 +90,15 @@
         </LinearLayout>
 
         <LinearLayout android:id="@+id/as_copy" style="@style/StripItem">
-            <ImageView style="@style/StripIcon" android:src="@drawable/ic_copy"
+            <ImageView android:id="@+id/as_copy_icon" style="@style/StripIcon" android:src="@drawable/ic_copy"
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_copy" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_duplicate" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_duplicate"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_duplicate" />
         </LinearLayout>
 
         <LinearLayout android:id="@+id/as_move" style="@style/StripItem">
@@ -117,6 +123,12 @@
             <ImageView style="@style/StripIcon" android:src="@drawable/ic_delete"
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_delete" />
+        </LinearLayout>
+
+        <LinearLayout android:id="@+id/as_info" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_info"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/file_info" />
         </LinearLayout>
 
         <LinearLayout android:id="@+id/as_compare" style="@style/StripItem">
@@ -150,6 +162,11 @@
                 android:src="@drawable/ic_share_wifi"
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_share" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/as_exit" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_exit"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/action_exit" />
         </LinearLayout>
     </com.twig.app.ui.StripGrid>
     </ScrollView>

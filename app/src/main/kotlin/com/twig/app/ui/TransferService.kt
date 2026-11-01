@@ -53,7 +53,9 @@ object Transfers {
     sealed class Work {
         abstract val items: List<XFile>
 
-        class Share(override val items: List<XFile>) : Work()
+        class Share(override val items: List<XFile>, val pickerId: String? = null) : Work() {
+            var abandoned = false
+        }
 
         internal class Download(val task: WebsiteDownloadTask, val dest: XFile) : Work() {
             override val items: List<XFile> = emptyList()
@@ -86,7 +88,10 @@ object Transfers {
         class Sync(
             val pairs: List<Pair<XFile, XFile>>,
             val move: Boolean,
+            val duplicate: Boolean = false,
         ) : Work() {
+            // Keep generated destinations stable across retries, including partially copied directories.
+            var targetNames: Map<String, String>? = null
             override val items: List<XFile> get() = pairs.map { it.first }
         }
 
@@ -98,6 +103,8 @@ object Transfers {
             val move: Boolean,
             /** Non-null means encrypted (AES-256); null means the dialog was left blank. */
             val password: String? = null,
+            val level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
+            val hideNames: Boolean = true,
         ) : Work()
     }
 
@@ -181,7 +188,31 @@ object Transfers {
     // Shares retain their prepared files until a resumed screen can hand them to the recipient.
     private val pendingShares = java.util.ArrayDeque<Session>()
     @Synchronized internal fun hasPendingShare(): Boolean = pendingShares.isNotEmpty()
-    @Synchronized internal fun consumeShare(): Session? = pendingShares.pollFirst()
+    @Synchronized internal fun consumeShare(pickerId: String? = null): Session? {
+        val iterator = pendingShares.iterator()
+        while (iterator.hasNext()) {
+            val session = iterator.next()
+            if ((session.work as Work.Share).pickerId == pickerId) {
+                iterator.remove()
+                return session
+            }
+        }
+        return null
+    }
+
+    /** A picker result belongs to its original caller, even while another Twig screen resumes. */
+    @Synchronized internal fun abandonPickerShare(pickerId: String) {
+        active?.takeIf { (it.work as? Work.Share)?.pickerId == pickerId }?.let {
+            (it.work as Work.Share).abandoned = true
+            it.cancel()
+        }
+        var session = consumeShare(pickerId)
+        while (session != null) {
+            session.preparedShare?.release()
+            session.preparedShare = null
+            session = consumeShare(pickerId)
+        }
+    }
 
     @Volatile var ui: Ui? = null
         private set
@@ -335,6 +366,9 @@ object Transfers {
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                 )
                 is Work.Sync -> {
+                    if (w.duplicate && w.targetNames == null) {
+                        w.targetNames = DuplicateEntries.names(w.pairs) { s.cancelled.get() }
+                    }
                     // Group by destination and move one group at a time. Each group reports
                     // its progress starting from 0; the `base` offset stitches them into a
                     // continuous line — otherwise the bar jumps back every time we switch
@@ -353,6 +387,7 @@ object Transfers {
                         CopyEngine.transfer(
                             srcs, dest, w.move, offset,
                             { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
+                            targetNames = w.targetNames.orEmpty(),
                         )
                         base += lastCopied
                     }
@@ -360,7 +395,7 @@ object Transfers {
                 is Work.Compress -> {
                     ArchiveWriter.compress(
                         w.items, w.destDir, w.target, w.format, listener,
-                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password,
+                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password, w.level, w.hideNames,
                     )
                     // Only touch the source files on a successful pack; on cancel/failure
                     // the partial output is already gone, so the sources must stay.
@@ -441,7 +476,7 @@ object Transfers {
                     s.preparedShare?.release()
                     s.preparedShare = null
                 }
-                synchronized(this) { pendingShares.addLast(s) }
+                synchronized(this) { if (!(s.work as Work.Share).abandoned) pendingShares.addLast(s) }
             } else if (u == null) pendingResult = s
             val error = s.finished?.exceptionOrNull()
             val cancelled = s.cancelled.get() || error is ArchiveWriter.Cancelled
@@ -462,6 +497,7 @@ object Transfers {
                 cancelled = cancelled, openIntent = MainActivity.transferIntent(ctx),
                 showToast = !s.isShare || (error != null && !cancelled),
                 allowVibration = s.preparedShare?.cacheOnly != true,
+                failed = error != null,
             )
             onComplete()
             u?.onFinished(s)

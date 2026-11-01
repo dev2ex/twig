@@ -217,6 +217,8 @@
     <string name="player_brightness">밝기 %1$d%%</string>
     <string name="player_volume">음량 %1$d%%</string>
     <string name="player_subtitle">자막</string>
+    <string name="player_subtitle_size">텍스트 자막 크기</string>
+    <string name="player_subtitle_size_value">텍스트 자막 크기: %1$d sp</string>
     <string name="player_subtitle_close">끄기</string>
     <string name="player_embedded_sub">내장 자막 %1$d</string>
     <string name="player_audio_track">오디오 트랙</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">복사 중…</string>
     <string name="progress_move">이동 중…</string>
     <string name="copy_title">복사</string>
+    <string name="copy_use_destination">이 폴더 사용</string>
+    <string name="copy_choose_destination">다른 위치 선택</string>
     <string name="copy_to">복사 대상</string>
     <string name="copy_move_mode">이동 모드 (원본 파일 삭제)</string>
     <string name="copy_items">%1$d개 항목</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">%1$s에서 실행할 명령</string>
     <string name="cmd_title_server">%1$s 서버의 명령</string>
     <string name="cmd_label">바로가기 이름</string>
-    <string name="cmd_command">명령</string>
+    <string name="cmd_command">명령 (비워 두면 여기서 터미널 열기)</string>
     <string name="cmd_workdir">작업 디렉터리 (비우면 로그인 기본값)</string>
     <string name="cmd_pick_script">스크립트 선택…</string>
     <string name="cmd_in_terminal">터미널에서 실행 (끄면 백그라운드 실행)</string>
     <string name="cmd_create">홈 화면에 추가</string>
     <string name="cmd_run_now">지금 실행</string>
-    <string name="cmd_empty">먼저 명령을 입력하세요</string>
     <string name="cmd_pin_unsupported">이 런처는 바로가기 고정을 지원하지 않습니다</string>
     <string name="cmd_started">시작됨: %1$s</string>
     <string name="cmd_login_shell">로그인 셸로 실행 (.profile / .zprofile 불러오기; 기본 셸 사용)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">모든 설정을 적용하려면 Twig를 다시 시작하세요</string>
     <string name="backup_working">처리 중…</string>
     <string name="backup_locked">먼저 마스터 비밀번호로 잠금을 해제하세요</string>
-    <string name="picker_hint_dir">저장할 폴더를 열고 확인 누르기</string>
+    <string name="picker_hint_dir">선택할 폴더를 연 다음 %1$s 버튼을 누르세요</string>
     <string name="backup_pick_dir">백업 저장 위치</string>
     <string name="backup_pick_file">백업 파일 선택</string>
     <string name="backup_exported_at">%1$s(으)로 내보냄</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">임시 재생목록</string>
     <string name="smb1_mode">SMB1 호환 모드 (구형 기기 전용)</string>
     <string name="settings_folder_counts">폴더 항목 수</string>
-    <string name="settings_folder_counts_desc">로컬 및 SMB 폴더의 바로 아래 폴더와 파일 수를 표시합니다. SMB는 추가 폴더 조회가 필요할 수 있습니다.</string>
-    <string name="folder_counts_description">폴더: %1$d, 파일: %2$d</string>
+    <string name="settings_folder_counts_desc">폴더의 바로 아래 폴더와 파일 수를 표시합니다.</string>
+    <string name="settings_folder_counts_local_only">로컬 폴더의 항목만 집계</string>
+    <string name="settings_folder_counts_local_only_desc">끄면 다른 서비스의 폴더도 집계합니다. 추가 폴더 조회가 필요할 수 있습니다.</string>
+    <string name="folder_counts_description">폴더: %1$s, 파일: %2$s</string>
     <string name="info_activity_failed">이 Activity를 열 수 없습니다</string>
     <string name="info_app_shortcuts_limited">Android는 다른 앱의 동적 바로가기에 대한 접근을 제한합니다. 앱에 선언된 바로가기만 표시됩니다.</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">URL 열기</string>
     <string name="website_user_agent_global_hint">비어 있으면 전역 User-Agent, 없으면 모바일/데스크톱 기본값</string>
     <string name="website_global_settings_hint">사이트별 User-Agent로 전역 값을 덮어쓸 수 있습니다. JavaScript, CSS, 숨김 요소와 요청 차단은 전역 설정과 합쳐집니다. 표시 옵션은 새 사이트의 기본값입니다.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">NFS 추가</string>
+    <string name="nfs_host">NFS 서버 주소</string>
+    <string name="nfs_export">내보내기 경로 (예: /volume1/public)</string>
+    <string name="nfs_version">NFS 버전 (3 또는 4)</string>
+    <string name="nfs_uid">UID (기본값 65534)</string>
+    <string name="nfs_gid">GID (기본값 65534)</string>
     <string name="website_media_permission">%1$s에 사용 허용:</string>
     <string name="website_microphone">마이크</string>
     <string name="website_camera">카메라</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">오프닝과 엔딩 사이의 지점을 선택하세요.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">루트 항목 표시/숨기기</string>
+    <string name="action_root_items">루트 항목 설정</string>
     <string name="private_space">비공개 공간</string>
     <string name="private_space_create_failed">비공개 공간을 만들 수 없습니다</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">포그라운드 완료 알림</string>
     <string name="settings_foreground_completion_desc">Twig 사용 중에도 알립니다. 백그라운드 및 화면 잠금 상태에서는 항상 알립니다.</string>
 
-    <string name="settings_exit_on_back">뒤로 가기로 종료</string>
-    <string name="settings_exit_on_back_desc">뒤로 가기로 메인 화면을 닫을 때 Twig를 종료합니다. 실행 중인 작업이 있으면 확인합니다.</string>
+    <string name="settings_back_action">메인 화면의 뒤로 버튼</string>
+    <string name="settings_back_close">화면 닫기 (기본값)</string>
+    <string name="settings_back_exit">앱 종료 (확인 필요)</string>
+    <string name="settings_back_up">한 단계 위로 (최상위에서 화면 닫기)</string>
+    <string name="settings_back_up_exit">한 단계 위로 (최상위에서 앱 종료)</string>
     <string name="share_text_filename">공유 텍스트.txt</string>
     <string name="settings_toolbar_bottom">도구 모음을 하단에 배치</string>
     <string name="settings_toolbar_bottom_desc">한 손으로 쉽게 사용할 수 있도록 파일 탐색기의 도구 모음을 하단으로 이동</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">공유할 파일을 준비할 공간이 부족합니다.</string>
     <string name="share_prepare_incomplete">파일이 변경되었거나 완전히 읽을 수 없습니다.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">드래그하여 순서 변경</string>
+    <string name="root_reorder_hint">핸들을 드래그하여 두 창의 루트 항목 순서를 변경하세요.</string>
+    <string name="action_sort_favorites">즐겨찾기 순서 변경</string>
+    <string name="action_sort_websites">웹사이트 순서 변경</string>
+    <string name="conn_section_login">로그인 정보</string>
+    <string name="conn_section_options">옵션</string>
+    <string name="music_import_playlist">재생목록 파일에서 가져오기</string>
+    <string name="music_import_directory">폴더에서 가져오기 (하위 폴더 포함)</string>
+    <string name="music_importing">음악을 가져오는 중…</string>
+    <string name="music_import_progress">%1$d곡 · %2$s</string>
+    <string name="music_import_done">%1$d곡 추가됨</string>
+    <string name="music_import_failed">음악을 가져올 수 없습니다: %1$s</string>
+    <string name="music_import_playlist_only">M3U 또는 M3U8 재생목록을 선택하세요</string>
+    <string name="music_import_source_unsupported">이 소스는 재생목록에 저장할 수 없습니다</string>
+    <string name="info_track_number">트랙 번호</string>
+    <string name="settings_action_strip">작업 패널</string>
+    <string name="strip_reorder_hint">핸들을 드래그하여 작업 순서를 변경하세요. 선택을 해제하면 숨겨집니다.</string>
+    <string name="info_symbolic_link">심볼릭 링크</string>
+    <string name="info_link_target">대상 경로</string>
+    <string name="info_unavailable">확인할 수 없음</string>
+    <string name="info_permissions">권한</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">접근 시간</string>
+    <string name="info_changed">상태 변경 시간</string>
+    <string name="info_selinux_context">SELinux 컨텍스트</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix 권한 표시</string>
+    <string name="settings_unix_permissions_desc">파일 목록에 확인 가능한 권한을 표시합니다. 자세한 정보는 속성의 Unix 탭에서 확인할 수 있습니다.</string>
+    <string name="player_subtitle_appearance">자막 모양</string>
+    <string name="player_subtitle_text_color">글자 색상</string>
+    <string name="pdf_password">PDF 비밀번호</string>
+    <string name="pdf_password_retry">비밀번호가 올바르지 않거나 지원하지 않는 암호화 방식입니다. 다시 시도하세요.</string>
+    <string name="pdf_password_unsupported">이 PDF는 비밀번호가 필요하거나 지원하지 않는 암호화를 사용합니다. 이 Android 버전에서는 Twig로 잠금을 해제할 수 없습니다. 다른 PDF 앱을 사용하세요.</string>
+    <string name="theme_oled">검정 (OLED)</string>
+    <string name="transfer_retry">미완료 항목 다시 시도</string>
+    <string name="transfer_retry_detail">미완료 항목만 다시 시도합니다. 완료된 파일은 건너뛰고 지원되는 경우 부분 파일 전송을 이어서 진행합니다.</string>
+    <string name="transfer_failed_target">대상: %1$s</string>
+    <string name="transfer_skip_failed">이 항목 건너뛰기</string>
+    <string name="dialog_reset">초기화</string>
+    <string name="settings_unix_permissions_octal">권한을 8진수로 표시</string>
+    <string name="settings_unix_permissions_octal_desc">켬: 0755, 끔: rwxr-xr-x. 파일 목록에만 적용됩니다.</string>
+    <string name="settings_tap_row_to_select">행을 눌러 선택</string>
+    <string name="settings_tap_row_to_select_desc">선택된 항목이 있으면 행을 눌러 선택하거나 해제합니다. 아이콘이나 미리보기를 누르면 열립니다. 끄면 체크 버튼으로만 선택합니다.</string>
+    <string name="strip_duplicate">복제</string>
+    <string name="settings_pane_layout">패널 레이아웃</string>
+    <string name="pane_layout_follow_orientation">화면 방향에 맞춤</string>
+    <string name="pane_layout_single">단일 패널</string>
+    <string name="pane_layout_dual">이중 패널</string>
+    <string name="compress_level">압축 수준</string>
+    <string name="compress_fast">빠르게</string>
+    <string name="compress_standard">표준</string>
+    <string name="compress_store">압축 안 함</string>
+    <string name="compress_source_directory">원본 폴더에 저장</string>
+    <string name="compress_hide_names">파일 이름 암호화</string>
+    <string name="compress_destination_missing">저장 위치를 선택하세요</string>
 </resources>

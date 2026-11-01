@@ -12,6 +12,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -21,7 +22,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.view.GravityCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -39,7 +40,10 @@ import java.util.concurrent.Executors
 
 /** Main music player UI (UI shell; state all in [MusicEngine]/[MusicService]; onDestroy does not release the player). */
 @UnstableApi
-class MusicPlayerActivity : AppCompatActivity() {
+class MusicPlayerActivity : TwigActivity() {
+    companion object {
+        const val EXTRA_AUTO_PLAY = "auto_play"
+    }
 
     private lateinit var b: ActivityMusicPlayerBinding
     private val handler = Handler(Looper.getMainLooper())
@@ -102,22 +106,31 @@ class MusicPlayerActivity : AppCompatActivity() {
         // "exit"); the buttons on the notification also keep working — but **entering this screen
         // requires the master password**: playlists, which server each track came from, and
         // "locate in file manager" all live behind it.
-        SecurityUi.gate(this) { restoreLastQueue() }
+        SecurityUi.gate(this) { restoreLastQueue(intent.getBooleanExtra(EXTRA_AUTO_PLAY, false)) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        SecurityUi.gate(this) { restoreLastQueue(intent.getBooleanExtra(EXTRA_AUTO_PLAY, false)) }
     }
 
     /**
-     * Loads "the queue that was actually being played last time" (no auto-play): could be NOW,
+     * Loads "the queue that was actually being played last time" (auto-play only for the explicit shortcut): could be NOW,
      * could be some named playlist. Locates by [Prefs.lastQueueId], not by blindly taking NOW —
      * otherwise a cold-start while a named list was being played jumps to the wrong list.
      */
-    private fun restoreLastQueue() {
-        if (MusicEngine.hasQueue() || MusicEngine.loadingQueue) return
+    private fun restoreLastQueue(autoPlay: Boolean = false) {
+        if (MusicEngine.hasQueue() || MusicEngine.loadingQueue) {
+            if (autoPlay) MusicEngine.resumePlayback(this)
+            return
+        }
         val lastId = Prefs.lastQueueId(this)
         val pl = lastId?.let { PlaylistStore.get(this, it) }
             ?: PlaylistStore.get(this, Playlist.NOW)
             ?: PlaylistStore.all(this).firstOrNull { it.tracks.isNotEmpty() }
         if (pl != null && pl.tracks.isNotEmpty()) {
-            MusicEngine.play(this, pl, pl.lastIndex, pl.lastPosMs, autoPlay = false)
+            MusicEngine.play(this, pl, pl.lastIndex, pl.lastPosMs, autoPlay = autoPlay)
         }
     }
 
@@ -150,7 +163,26 @@ class MusicPlayerActivity : AppCompatActivity() {
     /** Button/gesture listeners — must be wired both in onCreate and after every re-inflate on orientation switch. */
     private fun wireViews() {
         b.btnDrawer.setOnClickListener { b.drawer.openDrawer(GravityCompat.START) }
+        b.drawerMore.setOnClickListener { anchor ->
+            androidx.appcompat.widget.PopupMenu(this, anchor).apply {
+                menu.add(R.string.action_pin_shortcut).setOnMenuItemClickListener {
+                    Shortcuts.pinMusic(this@MusicPlayerActivity)
+                    true
+                }
+                show()
+            }
+        }
         b.btnMore.setOnClickListener { overflowMenu() }
+        b.btnMore.setOnLongClickListener {
+            MusicEngine.currentFile()?.takeIf(MusicDialogs::canLocate)?.let { MusicDialogs.locateInFileManager(this, it) }
+            true
+        }
+        b.btnQueue.setOnLongClickListener {
+            MusicEngine.currentTrack()?.takeUnless { it.temporary }?.let { MusicDialogs.sendToPlaylist(this, listOf(it)) }
+            true
+        }
+        b.btnFav.setOnLongClickListener { MusicEngine.currentFile()?.let { MusicDialogs.showInfo(this, it) }; true }
+        b.btnRepeat.setOnLongClickListener { removeCurrentTrack(); true }
         b.btnPlay.setOnClickListener { MusicEngine.togglePlay() }
         b.btnNext.setOnClickListener { MusicEngine.next() }
         b.btnPrev.setOnClickListener { MusicEngine.prev() }
@@ -505,6 +537,12 @@ class MusicPlayerActivity : AppCompatActivity() {
 
     // ---- overflow menu ----
 
+    private fun removeCurrentTrack() {
+        val track = MusicEngine.currentTrack() ?: return
+        PlaylistStore.removeTrack(this, MusicEngine.queueId, track.id)
+        MusicEngine.removeFromQueue(track.id)
+    }
+
     private fun overflowMenu() {
         val track = MusicEngine.currentTrack() ?: return
         val file = MusicEngine.currentFile() ?: return
@@ -524,11 +562,7 @@ class MusicPlayerActivity : AppCompatActivity() {
             getString(R.string.music_add_fav)
         }
         if (!track.temporary) items += favLabel to { toggleFav() }
-        items += getString(R.string.music_remove_from) to {
-            val id = MusicEngine.queueId
-            PlaylistStore.removeTrack(this, id, track.id)
-            MusicEngine.removeFromQueue(track.id)
-        }
+        items += getString(R.string.music_remove_from) to { removeCurrentTrack() }
         AlertDialog.Builder(this)
             .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
             .show()

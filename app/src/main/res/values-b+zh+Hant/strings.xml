@@ -166,6 +166,7 @@
     <string name="theme_system">跟隨系統</string>
     <string name="theme_light">淺色</string>
     <string name="theme_dark">深色</string>
+    <string name="theme_oled">純黑（OLED）</string>
     <string name="conn_connect">連線</string>
     <string name="conn_delete">刪除</string>
     <string name="no_saved_connections">暫無已儲存連線</string>
@@ -217,6 +218,8 @@
     <string name="player_brightness">亮度 %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
     <string name="player_subtitle">字幕</string>
+    <string name="player_subtitle_size">文字字幕大小</string>
+    <string name="player_subtitle_size_value">文字字幕大小: %1$d sp</string>
     <string name="player_subtitle_close">關閉</string>
     <string name="player_embedded_sub">內嵌字幕 %1$d</string>
     <string name="player_audio_track">音軌</string>
@@ -234,6 +237,8 @@
     <string name="progress_copy">正在複製…</string>
     <string name="progress_move">正在移動…</string>
     <string name="copy_title">複製</string>
+    <string name="copy_use_destination">選為目標</string>
+    <string name="copy_choose_destination">另選位置</string>
     <string name="copy_to">複製到</string>
     <string name="copy_move_mode">移動模式(刪除原始檔)</string>
     <string name="copy_items">%1$d 項</string>
@@ -624,13 +629,12 @@
     <string name="cmd_title_dir">在 %1$s 裡執行命令</string>
     <string name="cmd_title_server">在 %1$s 上執行命令</string>
     <string name="cmd_label">快捷方式名稱</string>
-    <string name="cmd_command">命令</string>
+    <string name="cmd_command">命令（留空則在此開啟終端機）</string>
     <string name="cmd_workdir">工作目錄(留空 = 登入預設目錄)</string>
     <string name="cmd_pick_script">選擇指令碼…</string>
     <string name="cmd_in_terminal">在終端中開啟(否則後臺靜默執行)</string>
     <string name="cmd_create">新增到桌面</string>
     <string name="cmd_run_now">立即執行</string>
-    <string name="cmd_empty">先填寫命令</string>
     <string name="cmd_pin_unsupported">當前桌面不支援固定快捷方式</string>
     <string name="cmd_started">已開始執行:%1$s</string>
     <string name="cmd_login_shell">用登入 shell 執行(載入 .profile / .zprofile;跟隨你的預設 shell)</string>
@@ -847,7 +851,7 @@
     <string name="backup_restart_note">重啟 Twig 後全部設定才會生效。</string>
     <string name="backup_working">正在處理…</string>
     <string name="backup_locked">請先用主密碼解鎖</string>
-    <string name="picker_hint_dir">點開要儲存到的目錄,再按「確定」</string>
+    <string name="picker_hint_dir">開啟要選擇的目錄，再按「%1$s」</string>
     <string name="backup_pick_dir">備份儲存到</string>
     <string name="backup_pick_file">選擇備份檔案</string>
     <string name="backup_exported_at">已匯出到 %1$s</string>
@@ -881,8 +885,10 @@
     <string name="music_temporary_playlist">臨時播放列表</string>
     <string name="smb1_mode">SMB1 相容模式（僅限舊裝置）</string>
     <string name="settings_folder_counts">目錄項計數</string>
-    <string name="settings_folder_counts_desc">顯示本機和 SMB 目錄內的直接子目錄及檔案數量。SMB 計數可能需要額外讀取目錄。</string>
-    <string name="folder_counts_description">目錄：%1$d，檔案：%2$d</string>
+    <string name="settings_folder_counts_desc">顯示目錄內的直接子目錄及檔案數量。</string>
+    <string name="settings_folder_counts_local_only">目錄項計數僅限本機</string>
+    <string name="settings_folder_counts_local_only_desc">關閉後也統計其他服務的目錄，可能需要額外讀取目錄。</string>
+    <string name="folder_counts_description">目錄：%1$s，檔案：%2$s</string>
     <string name="info_activity_failed">無法開啟此 Activity</string>
     <string name="info_app_shortcuts_limited">Android 限制讀取其他應用程式的動態捷徑。此處僅顯示應用程式宣告的捷徑。</string>
 
@@ -1086,7 +1092,7 @@
     <string name="player_skip_invalid">請選擇片頭與片尾之間的時間點。</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">顯示/隱藏根節點</string>
+    <string name="action_root_items">根節點設定</string>
     <string name="private_space">私有空間</string>
     <string name="private_space_create_failed">無法建立私有空間</string>
 
@@ -1097,8 +1103,11 @@
     <string name="settings_foreground_completion">前景操作完成通知</string>
     <string name="settings_foreground_completion_desc">在 Twig 內操作時也保留完成通知。背景和鎖定螢幕時一律通知。</string>
 
-    <string name="settings_exit_on_back">返回時退出</string>
-    <string name="settings_exit_on_back_desc">返回關閉主畫面時退出 Twig；有執行中的工作時會先確認。</string>
+    <string name="settings_back_action">主畫面返回鍵</string>
+    <string name="settings_back_close">關閉畫面（預設）</string>
+    <string name="settings_back_exit">退出應用程式（需確認）</string>
+    <string name="settings_back_up">返回上層（頂層時關閉畫面）</string>
+    <string name="settings_back_up_exit">返回上層（頂層時退出應用程式）</string>
     <string name="share_text_filename">分享的文字.txt</string>
     <string name="settings_toolbar_bottom">工具列置於底部</string>
     <string name="settings_toolbar_bottom_desc">將檔案瀏覽畫面的工具列移到底部，方便單手操作</string>
@@ -1119,4 +1128,59 @@
     <string name="share_prepare_space">空間不足，無法準備要分享的檔案。</string>
     <string name="share_prepare_incomplete">檔案已變更或未能完整讀取。</string>
     <string name="nfs_port">連接埠（預設 2049）</string>
+    <string name="root_drag_to_reorder">拖動排序</string>
+    <string name="root_reorder_hint">拖動把手調整兩欄的根項目順序。</string>
+    <string name="action_sort_favorites">排序收藏項</string>
+    <string name="action_sort_websites">排序網站</string>
+    <string name="conn_section_login">登入資訊</string>
+    <string name="conn_section_options">更多選項</string>
+    <string name="music_import_playlist">匯入-播放清單</string>
+    <string name="music_import_directory">匯入-目錄（遞迴）</string>
+    <string name="music_importing">正在匯入音樂…</string>
+    <string name="music_import_progress">%1$d 首 · %2$s</string>
+    <string name="music_import_done">已新增 %1$d 首歌曲</string>
+    <string name="music_import_failed">匯入音樂失敗：%1$s</string>
+    <string name="music_import_playlist_only">請選擇 M3U 或 M3U8 播放清單</string>
+    <string name="music_import_source_unsupported">此來源無法儲存至播放清單</string>
+    <string name="info_track_number">曲號</string>
+    <string name="settings_action_strip">操作列</string>
+    <string name="strip_reorder_hint">拖動把手調整操作順序，取消勾選即可隱藏。</string>
+    <string name="info_symbolic_link">符號連結</string>
+    <string name="info_link_target">指向</string>
+    <string name="info_unavailable">無法取得</string>
+    <string name="info_permissions">權限</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">存取時間</string>
+    <string name="info_changed">狀態變更時間</string>
+    <string name="info_selinux_context">SELinux 上下文</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">顯示 Unix 權限</string>
+    <string name="settings_unix_permissions_desc">在檔案清單中顯示可取得的權限位元。完整資訊可在內容的 Unix 分頁中查看。</string>
+    <string name="player_subtitle_appearance">字幕樣式</string>
+    <string name="player_subtitle_text_color">字體顏色</string>
+    <string name="pdf_password">PDF 密碼</string>
+    <string name="pdf_password_retry">密碼未被接受，或此 PDF 使用了不支援的加密方式。請重試。</string>
+    <string name="pdf_password_unsupported">此 PDF 需要密碼或使用了不支援的加密方式。目前的 Android 版本無法在 Twig 中解鎖，請嘗試其他 PDF 應用程式。</string>
+    <string name="transfer_retry">重試未完成的項目</string>
+    <string name="transfer_retry_detail">僅重試未完成的項目。已完成的檔案會略過；支援時續傳未完成的檔案。</string>
+    <string name="transfer_failed_target">目標：%1$s</string>
+    <string name="transfer_skip_failed">略過此項目</string>
+    <string name="dialog_reset">重設</string>
+    <string name="settings_unix_permissions_octal">以八進位顯示權限</string>
+    <string name="settings_unix_permissions_octal_desc">開啟顯示 0755，關閉顯示 rwxr-xr-x。僅影響檔案清單。</string>
+    <string name="settings_tap_row_to_select">點擊列選取</string>
+    <string name="settings_tap_row_to_select_desc">有選取項目時，點擊列可選取或取消選取，點擊圖示或縮圖開啟。關閉時，只能透過勾選按鈕選取。</string>
+    <string name="strip_duplicate">建立副本</string>
+    <string name="settings_pane_layout">面板配置</string>
+    <string name="pane_layout_follow_orientation">跟隨螢幕方向</string>
+    <string name="pane_layout_single">單面板</string>
+    <string name="pane_layout_dual">雙面板</string>
+    <string name="compress_level">壓縮等級</string>
+    <string name="compress_fast">快速</string>
+    <string name="compress_standard">標準</string>
+    <string name="compress_store">僅儲存</string>
+    <string name="compress_source_directory">儲存到來源目錄</string>
+    <string name="compress_hide_names">加密檔案名稱</string>
+    <string name="compress_destination_missing">請選擇儲存位置</string>
 </resources>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dim empty fields without changing entered text, selection or the focused accent. -->
+    <style name="TwigEditText" parent="Widget.AppCompat.EditText">
+        <item name="android:textColorHint">#757575</item>
+        <item name="android:backgroundTint">@color/input_underline_dark</item>
+        <item name="backgroundTint">@color/input_underline_dark</item>
+    </style>
+</resources>

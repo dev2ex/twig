@@ -13,8 +13,9 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
+import com.twig.app.OpenFiles
 import com.twig.app.R
 import com.twig.app.SavedConnection
 import com.twig.app.StreamProvider
@@ -33,16 +34,22 @@ import com.twig.core.XFile
  * - **External**: when another app sends `ACTION_GET_CONTENT`, list Twig in the chooser. The
  *   returned URI carries `FLAG_GRANT_READ_URI_PERMISSION`, the system grants the caller a
  *   temporary read permission on return (StreamProvider is `exported=false`, only reachable via
- *   this grant).
+ *   this grant). Large or unknown-size remote selections are prepared locally with transfer
+ *   progress before returning; internal callers keep streaming.
  *
  * Single-select: tapping a file returns it; with `EXTRA_ALLOW_MULTIPLE` it becomes "check a few,
  * then confirm"; multiple results go into ClipData as per the convention.
  */
-open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
+open class PickerActivity : TwigActivity(), PaneFragment.Host {
 
     protected lateinit var b: ActivityPickerBinding
+    private lateinit var browser: PickerBrowser
+    private lateinit var fullscreenLayout: StatusBarFullscreen
+    private var directoryObserver: kotlinx.coroutines.Job? = null
     private var allowMultiple = false
     private var pickDir = false
+    internal var sharePickerId: String = java.util.UUID.randomUUID().toString()
+        private set
 
     /**
      * true = return the selected file's scheme+path instead of content://. For use cases like
@@ -71,38 +78,49 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
             }
         }
 
+    private val inlineSortTouch = InlineSortTouch()
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean =
+        inlineSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sharePickerId = savedInstanceState?.getString("sharePickerId") ?: sharePickerId
         allowMultiple = intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
         returnPath = intent.getBooleanExtra(EXTRA_RETURN_PATH, false)
         pickDir = intent.getBooleanExtra(EXTRA_PICK_DIR, false)
 
         b = ActivityPickerBinding.inflate(layoutInflater)
         setContentView(b.root)
+        fullscreenLayout = StatusBarFullscreen(this, b.root)
+        fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+        ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
         b.toolbar.title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.picker_title)
         b.toolbar.setNavigationOnClickListener { cancel() }
-        b.tvSummary.text = getString(
-            when {
-                pickDir -> R.string.picker_hint_dir
-                allowMultiple -> R.string.picker_hint_multi
-                else -> R.string.picker_hint_single
-            },
-        )
+        b.tvSummary.text = if (pickDir) {
+            getString(R.string.picker_hint_dir, getString(R.string.picker_confirm))
+        } else {
+            getString(if (allowMultiple) R.string.picker_hint_multi else R.string.picker_hint_single)
+        }
 
         TwigApp.registerBaseFs(this)
 
-        // File-picking scenarios don't need modification actions, only navigation
-        b.strip.sizeIconsLikeRows(this)
-        b.strip.asSort.visibility = View.GONE
-        b.strip.asCopy.visibility = View.GONE
-        b.strip.asMove.visibility = View.GONE
-        b.strip.asRename.visibility = View.GONE
-        b.strip.asDelete.visibility = View.GONE
-        b.strip.asCompare.visibility = View.GONE
-        b.strip.asMap.visibility = View.GONE
-        b.strip.asNewFolder.visibility = View.GONE
-        b.strip.asUp.setOnClickListener { pane()?.actionUp() }
-        b.strip.asRefresh.setOnClickListener { pane()?.actionRefresh() }
+        browser = PickerBrowser(this, b.toolbar, b.browser, savedInstanceState,
+            tag = { if (it == 0) PANE_TAG else "${PANE_TAG}_$it" },
+            createPane = { index ->
+                val lock = intent.getStringExtra(EXTRA_START_SCHEME)
+                if (lock == null) PaneFragment.newInstance(index)
+                else PaneFragment.locked(lock, intent.getStringExtra(EXTRA_START_PATH).orEmpty(),
+                    intent.getStringExtra(EXTRA_START_LABEL), index)
+            },
+            onPaneChanged = {
+                directoryObserver?.cancel()
+                if (pickDir) directoryObserver = pane()?.let {
+                    if (intent.getBooleanExtra(EXTRA_REQUIRE_WRITABLE_DIR, true)) enableOnWritableDir(it, b.btnConfirm)
+                    else enableOnReadableDir(it, b.btnConfirm)
+                }
+                onPaneReady()
+            })
 
         b.btnCancel.setOnClickListener { cancel() }
         // Single-select returns on file tap; "Confirm" only matters for multi-select and directory-pick
@@ -112,38 +130,53 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         SecurityUi.gate(this) { ensurePermissionThenInit() }
     }
 
-    protected fun pane(): PaneFragment? =
-        supportFragmentManager.findFragmentByTag(PANE_TAG) as? PaneFragment
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("sharePickerId", sharePickerId)
+        browser.saveState(outState)
+    }
 
-    private fun initPaneIfNeeded() {
-        if (supportFragmentManager.findFragmentByTag(PANE_TAG) != null) {
-            onPaneReady()
-            return
-        }
-        val lock = intent.getStringExtra(EXTRA_START_SCHEME)
-        // When a source is specified, use a locked panel: the tree only contains that server,
-        // so other places aren't even visible or selectable
-        val fragment = if (lock != null) {
-            PaneFragment.locked(
-                lock,
-                intent.getStringExtra(EXTRA_START_PATH).orEmpty(),
-                intent.getStringExtra(EXTRA_START_LABEL),
-            )
-        } else {
-            PaneFragment.newInstance(0)
-        }
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.pane, fragment, PANE_TAG)
-            .commitNow() // synchronous commit; we need the viewModel immediately below
-        if (pickDir) pane()?.let { enableOnWritableDir(it, b.btnConfirm) }
-        onPaneReady()
+    override fun onResume() {
+        super.onResume()
+        if (::browser.isInitialized) browser.refreshLayout()
+        if (::b.isInitialized) ToolbarPlacement.apply(this, b.toolbar, com.twig.app.Prefs.toolbarAtBottom(this))
+        if (::fullscreenLayout.isInitialized) fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+        ShareTransfers.attach(this)
+    }
+
+    override fun onDestroy() {
+        if (isFinishing) Transfers.abandonPickerShare(sharePickerId)
+        super.onDestroy()
+    }
+
+    protected fun pane(): PaneFragment? = browser.pane
+
+    private fun initPaneIfNeeded() = browser.initPanes()
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        browser.switchPane(browser.activeIndex)
+        fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::fullscreenLayout.isInitialized) fullscreenLayout.apply(com.twig.app.Prefs.fullscreen(this))
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::b.isInitialized) b.browser.root.finishTransition()
     }
 
     protected open fun onPaneReady() {}
 
     // ---- Selection ----
 
-    /** Single-select: tap a file to return; multi-select: return false to let it open normally (checkboxes go through "Confirm"). */
+    override val selectFilesByRow: Boolean
+        get() = intent.action == Intent.ACTION_GET_CONTENT && allowMultiple && !pickDir && !returnPath
+
+    /** Single-select returns files directly; multi-select icon taps open previews, then Confirm returns checked files. */
     override fun onPickFile(file: XFile): Boolean {
         if (allowMultiple || pickDir) return false
         if (file.isDir) return false
@@ -168,8 +201,7 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
      * tap adds a step. Same idea as [ShareTargetActivity]'s "copy to here".
      */
     private fun confirmDir() {
-        // The button is gated by enableOnWritableDir, can't be tapped on a non-writable dir —
-        // this is just a fallback
+        // The directory observer gates confirmation according to this picker's access mode.
         val dir = pane()?.viewModel?.currentDir ?: return
         deliver(listOf(dir))
     }
@@ -201,6 +233,14 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
             finish()
             return
         }
+        if (intent.action == Intent.ACTION_GET_CONTENT && OpenFiles.needsSharePreparation(files)) {
+            ShareTransfers.start(this, files)
+            return
+        }
+        deliverPrepared(files)
+    }
+
+    internal fun deliverPrepared(files: List<XFile>) {
         val uris = files.map { StreamProvider.uriFor(this, it) }
         val data = Intent().apply {
             if (uris.size == 1) {
@@ -228,9 +268,9 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         if (pane()?.handleBack() != true) cancel()
     }
 
-    // ---- PaneFragment.Host: single pane; the other callbacks are meaningless ----
+    // ---- PaneFragment.Host: actions follow the active pane ----
 
-    override fun siblingOf(self: PaneFragment): PaneFragment? = null
+    override fun siblingOf(self: PaneFragment): PaneFragment? = browser.paneAt(1 - self.paneIndex)
 
     override fun onAddServer(type: String) {
         if (type == "saf") {
@@ -247,11 +287,11 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         Toast.makeText(this, getString(R.string.share_add_server_hint), Toast.LENGTH_SHORT).show()
     }
 
-    override fun onPaneTouched(self: PaneFragment) {}
-    override fun onPaneSwipe(velocityX: Float) {}
-    override fun refreshTrees() { pane()?.viewModel?.refreshTree() }
-    override fun isPaneActive(self: PaneFragment): Boolean = true
-    override fun focusPane(pane: PaneFragment) {}
+    override fun onPaneTouched(self: PaneFragment) = browser.onPaneTouched(self)
+    override fun onPaneSwipe(velocityX: Float) = browser.onPaneSwipe(velocityX)
+    override fun refreshTrees() = browser.refreshTrees()
+    override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == browser.activeIndex
+    override fun focusPane(pane: PaneFragment) = browser.switchPane(pane.paneIndex)
 
     // ---- Storage permissions (same decision logic as MainActivity / ShareTargetActivity) ----
 
@@ -312,6 +352,7 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
         private const val EXTRA_START_PATH = "start_path"
         private const val EXTRA_START_LABEL = "start_label"
         private const val EXTRA_PICK_DIR = "pick_dir"
+        private const val EXTRA_REQUIRE_WRITABLE_DIR = "require_writable_dir"
         const val EXTRA_PICKED_SCHEME = "picked_scheme"
         const val EXTRA_PICKED_PATH = "picked_path"
         const val EXTRA_PICKED_NAME = "picked_name"
@@ -352,10 +393,12 @@ open class PickerActivity : AppCompatActivity(), PaneFragment.Host {
          * Doesn't lock the source — this way "where to save" matches what's reachable on the
          * tree, so backups can land directly on SMB/WebDAV without first saving locally and
          * copying.
+         * Source imports set [requireWritable] to false to allow readable, read-only directories.
          */
-        fun dirIntent(ctx: Context, title: String?): Intent =
+        fun dirIntent(ctx: Context, title: String?, requireWritable: Boolean = true): Intent =
             intent(ctx, title)
                 .putExtra(EXTRA_RETURN_PATH, true)
                 .putExtra(EXTRA_PICK_DIR, true)
+                .putExtra(EXTRA_REQUIRE_WRITABLE_DIR, requireWritable)
     }
 }

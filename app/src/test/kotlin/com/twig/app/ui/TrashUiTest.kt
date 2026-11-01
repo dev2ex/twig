@@ -117,6 +117,45 @@ class TrashUiTest {
         } finally { host.pause().stop().destroy() }
     }
 
+    @Test fun `long press recycles eligible local files without confirmation`() {
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        val finished = AtomicBoolean()
+        try {
+            DeleteUi.confirm(host.get(), host.get(), listOf(file()), skipTrashConfirmation = true) {
+                assertTrue(it); finished.set(true)
+            }
+            executeConfirmedDeletion()
+            waitFor { finished.get() }
+            assertFalse(original.exists())
+            val store = TrashStore(app)
+            store.restore(store.snapshot().entries.single())
+            assertEquals("keep me", original.readText())
+        } finally { host.pause().stop().destroy() }
+    }
+
+    @Test fun `long press still confirms disabled trash and mixed backend deletion`() {
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        try {
+            Prefs.setTrashEnabled(app, false)
+            val before = ShadowDialog.getLatestDialog()
+            DeleteUi.confirm(host.get(), host.get(), listOf(file()), skipTrashConfirmation = true) {
+                fail("cancel must not delete")
+            }
+            val disabled = dialogAfter(before)
+            disabled.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            Prefs.setTrashEnabled(app, true)
+            FsRegistry.register(object : com.twig.core.FileSystem by LocalFileSystem() {
+                override val scheme = "trash-test-remote"
+            })
+            DeleteUi.confirm(host.get(), host.get(), listOf(file(), file().copy(scheme = "trash-test-remote")),
+                skipTrashConfirmation = true) { fail("cancel must not delete") }
+            val mixed = dialogAfter(disabled)
+            assertTrue(mixed.findViewById<android.widget.CheckBox>(android.R.id.checkbox)!!.isChecked)
+            mixed.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            assertEquals("keep me", original.readText())
+        } finally { host.pause().stop().destroy() }
+    }
+
     @Test fun `a failed planned trash move never falls back to permanent deletion`() {
         val host = Robolectric.buildActivity(Host::class.java).setup()
         var permanentDeletes = 0

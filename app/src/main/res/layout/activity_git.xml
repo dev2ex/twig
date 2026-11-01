@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg">
+    android:background="?attr/twigBg">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
@@ -12,7 +12,7 @@
         android:layout_height="?attr/actionBarSize"
         app:titleTextAppearance="@style/CompactToolbarTitle"
         app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         app:titleTextColor="@color/white"
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
@@ -22,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="42dp"
         android:orientation="horizontal"
-        android:background="@color/bar">
+        android:background="?attr/twigBar">
 
         <TextView
             android:id="@+id/tab_changes"

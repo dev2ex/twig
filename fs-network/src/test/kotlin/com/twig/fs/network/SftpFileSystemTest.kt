@@ -2,6 +2,7 @@ package com.twig.fs.network
 
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
+import com.twig.core.UnixPermissions
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.apache.sshd.common.file.virtualfs.VirtualFileSystemFactory
@@ -12,6 +13,8 @@ import org.apache.sshd.server.auth.password.PasswordAuthenticator
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider
 import org.apache.sshd.server.session.ServerSession
 import org.apache.sshd.sftp.server.SftpEventListener
+import org.apache.sshd.sftp.server.DirectoryHandle
+import org.apache.sshd.sftp.SftpModuleProperties
 import org.apache.sshd.sftp.server.SftpSubsystemFactory
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -23,6 +26,8 @@ import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.atomic.AtomicInteger
 
 class SftpFileSystemTest {
@@ -33,6 +38,7 @@ class SftpFileSystemTest {
 
     @Volatile private var dropAfterCreate = false
     private val sessions = AtomicInteger()
+    private val directoryReads = AtomicInteger()
 
     @Before
     fun setup() {
@@ -47,6 +53,9 @@ class SftpFileSystemTest {
             subsystemFactories = listOf(
                 SftpSubsystemFactory().apply {
                     addSftpEventListener(object : SftpEventListener {
+                        override fun readingEntries(session: ServerSession, remoteHandle: String, handle: DirectoryHandle) {
+                            directoryReads.incrementAndGet()
+                        }
                         override fun created(session: ServerSession, path: Path, attrs: MutableMap<String, *>, thrown: Throwable?) {
                             // Simulates "the request landed, the reply never made it back"
                             if (thrown == null && dropAfterCreate) {
@@ -86,6 +95,63 @@ class SftpFileSystemTest {
         val text = fs.openInput(XFile("sftp", "/hello.txt", false))
             .bufferedReader().use { it.readText() }
         assertEquals("hi-sftp", text)
+    }
+
+    @Test
+    fun countChildrenSaturatesBothKindsWithoutClosingTheConnection() {
+        SftpModuleProperties.MAX_READDIR_DATA_SIZE.set(server, 1024)
+        repeat(120) {
+            File(home, "dir-$it").mkdir()
+            File(home, "file-$it").writeText("")
+        }
+        val counts = fs.countChildren(fs.root(), 2) { true }!!
+        assertEquals(2, counts.directories)
+        assertEquals(2, counts.files)
+        assertEquals(2, counts.visibleDirectories)
+        assertEquals(2, counts.visibleFiles)
+        val connections = sessions.get()
+        val countReads = directoryReads.get()
+        assertEquals(240, fs.list(fs.root()).size)
+        assertTrue("bounded count must stop before an ordinary listing", directoryReads.get() - countReads > countReads)
+        assertEquals(connections, sessions.get())
+    }
+
+    @Test
+    fun countChildrenKeepsTheRareKindExactAndCachesHiddenCountsSeparately() {
+        File(home, "dir").mkdir()
+        File(home, ".hidden-dir").mkdir()
+        repeat(12) { File(home, "file-$it").writeText("") }
+        File(home, ".hidden-file").writeText("")
+        val counts = fs.countChildren(fs.root(), 2) { true }!!
+        assertEquals(2, counts.directories)
+        assertEquals(2, counts.files)
+        assertEquals(1, counts.visibleDirectories)
+        assertEquals(2, counts.visibleFiles)
+    }
+
+    @Test
+    fun countChildrenCanCancelDuringEnumerationAndKeepTheSharedConnection() {
+        repeat(40) { File(home, "file-$it").writeText("") }
+        var checks = 0
+        assertNull(fs.countChildren(fs.root(), 1000) { ++checks < 8 })
+        assertEquals(9, checks)
+        val connections = sessions.get()
+        assertEquals(40, fs.list(fs.root()).size)
+        assertEquals(connections, sessions.get())
+    }
+
+    @Test
+    fun countChildrenFollowsDirectoryLinksAndHonorsTheMountedRoot() {
+        File(home, "mounted/dir").mkdirs()
+        File(home, "mounted/file").writeText("")
+        File(home, "outside").writeText("")
+        Files.createSymbolicLink(File(home, "mounted/link").toPath(), Path.of("dir"))
+        val sub = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "mounted"))
+        try {
+            val counts = sub.countChildren(sub.root(), 1000) { true }!!
+            assertEquals(2, counts.directories)
+            assertEquals(1, counts.files)
+        } finally { sub.disconnect() }
     }
 
     @Test
@@ -184,6 +250,76 @@ class SftpFileSystemTest {
         assertTrue("mtime should be filled in", f.lastModified > 0)
         assertTrue(fs.stat("/sub")!!.isDir)
         assertNull(fs.stat("/nope.txt"))
+    }
+
+    @Test
+    fun listingAndStatCarryUnixPermissions() {
+        val file = File(home, "a.txt").apply { writeText("hello") }
+        val dir = File(home, "sub").apply { mkdirs() }
+        Files.setPosixFilePermissions(file.toPath(), PosixFilePermissions.fromString("rw-r-----"))
+        Files.setPosixFilePermissions(dir.toPath(), PosixFilePermissions.fromString("rwxr-x---"))
+
+        val listed = fs.list(fs.root()).associateBy { it.name }
+        for ((name, permissions) in mapOf("a.txt" to "rw-r-----", "sub" to "rwxr-x---")) {
+            assertEquals(permissions, UnixPermissions.symbolic(listed.getValue(name).unixMode!!))
+            assertEquals(permissions, UnixPermissions.symbolic(fs.stat("/$name")!!.unixMode!!))
+        }
+    }
+
+    @Test
+    fun symbolicLinksKeepTheirIdentityAndFollowTargetsForBrowsingAndReading() {
+        File(home, "target.txt").writeText("payload")
+        File(home, "target-dir").mkdirs()
+        File(home, "target-dir/keep.txt").writeText("keep")
+        Files.createSymbolicLink(File(home, "file-link").toPath(), Path.of("target.txt"))
+        Files.createSymbolicLink(File(home, "dir-link").toPath(), Path.of("target-dir"))
+        Files.createSymbolicLink(File(home, "broken-link").toPath(), Path.of("missing.txt"))
+
+        val listed = fs.list(fs.root()).associateBy { it.name }
+        for (name in listOf("file-link", "dir-link", "broken-link")) {
+            val entry = listed.getValue(name)
+            assertTrue(entry.isSymbolicLink)
+            assertEquals(0xA000, entry.unixMode!! and 0xF000)
+            assertEquals(entry, fs.stat("/$name"))
+        }
+        assertEquals("target.txt", listed.getValue("file-link").linkTarget)
+        assertEquals(7L, listed.getValue("file-link").size)
+        assertEquals("payload", fs.openInput(listed.getValue("file-link")).bufferedReader().use { it.readText() })
+        assertTrue(listed.getValue("dir-link").isDir)
+        assertEquals(listOf("keep.txt"), fs.list(listed.getValue("dir-link")).map { it.name })
+        assertEquals("missing.txt", listed.getValue("broken-link").linkTarget)
+        assertFalse(listed.getValue("broken-link").isDir)
+        assertEquals(-1L, listed.getValue("broken-link").size)
+        assertTrue(fs.exists(listed.getValue("broken-link")))
+        assertFalse(listed.getValue("target.txt").isSymbolicLink)
+
+        // Deletion must be safe even for callers holding a navigation stub without link metadata.
+        fs.delete(XFile("sftp", "/dir-link", isDir = true))
+        assertEquals("keep", File(home, "target-dir/keep.txt").readText())
+        assertNull(fs.stat("/dir-link"))
+        val renamed = fs.rename(listed.getValue("broken-link"), "renamed-link")
+        assertNull(fs.stat("/broken-link"))
+        assertTrue(fs.exists(renamed))
+        assertEquals("missing.txt", fs.stat("/renamed-link")!!.linkTarget)
+        fs.delete(renamed)
+        assertNull(fs.stat("/renamed-link"))
+    }
+
+    @Test
+    fun rootedConnectionPreservesRawLinkTargets() {
+        File(home, "srv").mkdirs()
+        File(home, "srv/target.txt").writeText("data")
+        Files.createSymbolicLink(File(home, "srv/link").toPath(), Path.of("target.txt"))
+        val sub = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "srv"))
+        try {
+            val link = sub.list(sub.root()).single { it.name == "link" }
+            assertEquals("/link", link.path)
+            assertEquals("target.txt", link.linkTarget)
+            assertEquals(4L, link.size)
+            assertEquals(link, sub.stat("/link"))
+        } finally {
+            sub.disconnect()
+        }
     }
 
     // ---- retries (2026-09-17 review) ----

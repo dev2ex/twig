@@ -124,6 +124,23 @@ Before adding a capability, decide whether *every* backend should be able to ans
 if yes it belongs in `FileSystem`, otherwise it goes here; don't make 20 implementations
 each write `= null`.
 
+`UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
+Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
+failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
+folder counts and before size/time, without bind-time filesystem calls.
+`Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic
+notation. Octal labels have an outline shield matching count-icon size, tint and opacity.
+The format choice participates in `uiSignature` and configuration backups. The independent,
+default-off `Prefs.unixPermissions` display setting controls this row only, participates
+in `uiSignature` and is included in configuration backups. The Unix properties tab stays
+available with the setting off. When counts are enabled, reserve both count slots for rows
+with permissions, including files and pending directory counts. The counts container exposes its first child's baseline so all metadata
+text aligns across the nested layout. Numeric permissions, UID/GID, access/status-change times and available SELinux context belong in a dedicated
+Unix properties tab, after all other tabs including Hash. Its initial loading tab uses listing metadata only;
+unsupported backends have no Unix tab. General retains modification time and link targets.
+`ctime` is inode status change, never creation time. Symlink attributes describe the link;
+its listing size must still describe the followed stream for copy/resume checks.
+
 ### Modules
 
 | Module | Purpose |
@@ -142,15 +159,45 @@ each write `= null`.
 ### Key UI classes (`:app`)
 
 - `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
-  toggling + fling gestures, same layout in portrait and landscape).
+  toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
+  single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
+  directory-count subscriptions across Main and both pickers. Toolbar visibility and
+  action-strip density still follow orientation. The setting participates in
+  `uiSignature` and configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   Expanding a directory reuses its cached children immediately, then re-lists in the background
   (`relistQuietly`) on every backend, including server and favorite roots. Only changed listings
   update the rows. Expanded local directories stay live through inotify
   (`PaneFragment.syncObservers`); resume also re-lists the current directory on any backend.
   The tree always expands/collapses **in place**, it never "enters" a directory.
+- Directory counts (`DirectoryCounts`) use separate background workers for direct local
+  storage and other sources. Only attached rows in visible panes request probes;
+  prefetch does not enumerate directories. Detaching/recycling a row, hiding its pane
+  or stopping its screen releases that row's subscription, while another pane's
+  subscription to the same directory remains valid. Pending work without subscribers
+  is dropped. Queued counts follow live adapter positions, from top to bottom in the
+  displayed sort order, including after pane activation or a resort. Local entry
+  processing checks cancellation; an already-running blocking
+  backend call may finish, without holding up the local count worker. Ordinary listings
+  populate the shared cache, and failed reads stay unknown rather than becoming zero.
+  `DirectoryCountSource` optionally provides streaming count-only enumeration. SFTP
+  checks cancellation per entry, skips unused metadata and stops once both visible
+  counts reach 1000 (`999+`); rarer categories still require reaching the end to be exact.
+  Hidden and all-entry counts are cached separately. Never cap ordinary `list` results.
+  Probes have a three-second soft deadline starting when IO begins, excluding queue
+  wait. Streaming/local entry processing checks it; late blocking results are discarded.
+  Timeouts keep existing cache entries, deliver no zero and share the failure cooldown.
+  Ordinary expansion/refresh listings can still populate counts after any duration.
+  Confirmed empty directories hide their row chevron across supported backends,
+  retaining click/destination behavior and arrows for synthetic children. Reuse
+  ordinary listings even with counts disabled; extra nonlocal probes remain opt-in.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
+  Favorites and websites keep their stored order. Long-pressing either heading offers
+  inline reordering with drag handles; favorite children are temporarily hidden, websites
+  temporarily use list rows even in grid mode, and drops
+  save the order for both panes. A tap outside the drag handles or Back restores normal
+  expansion; scrolling leaves sorting active.
   `SortDialog` provides separate sorting and view dialogs, each with defaults or overrides
   for the selected directory. Resetting one leaves the other unchanged.
   Defaults remain in `twig_sort` / `twig_prefs`; `DirectoryViewStore` stores only explicit
@@ -170,8 +217,11 @@ each write `= null`.
   Internal `scheme:path` keys remain separate from display text.
 - Private space: `PrivateSpace` uses `applicationInfo.dataDir/private_space` through
   the ordinary local filesystem. The main menu's root-item visibility choices are
-  stored per pane in one dialog with left/right columns; Private space defaults
-  visible; an explicit hidden choice is retained. Its files are excluded from all
+  stored per pane in one dialog with left/right columns. Dragging its handles saves a
+  shared order for configurable roots; fixed entries retain their slots. Private space defaults
+  visible; an explicit hidden choice is retained. Root-item and action-panel dialogs
+  offer Reset for their draft order and visibility; only OK persists it, and Cancel
+  retains the saved configuration. Its files are excluded from all
   system backup/transfer channels, and
   configuration-only `.twigbak` never includes them. Known ancestors of Twig's data
   directory get UI-only navigation hints when Android denies enumeration;
@@ -224,6 +274,12 @@ each write `= null`.
   regardless of whether a master password is configured.
 - Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
   `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
+  The image viewer plays GIF and animated WebP on Android 9+ using the platform decoder;
+  Android 7/8 and image comparison retain static frames. Only the displayed animation
+  owns a decoder, outside the bitmap cache and prefetch. Pause it when leaving the
+  foreground or switching images; never overlay static hi-res regions on live frames.
+  Rotation wraps the live drawable and forwards invalidations. Detach the previous
+  drawable before wrapping it, so ImageView does not clear the new callback chain.
   Music inside mounted restic repositories and archives uses an in-memory queue
   (`Playlist.TEMP`), with same-directory siblings and ordinary playback controls.
   These tracks cannot be favorited, saved into playlists or exported; player exit
@@ -283,17 +339,39 @@ each write `= null`.
   UTF-8 bytes carried by `ShareSourceFileSystem` as an internal data URI. Incoming
   data URIs remain forbidden by `IncomingUri`; attachments take precedence over text
   captions. Text sources are self-contained so retries need no Activity or cache file.
-  The share destination picker and main screen share `view_panes.xml`, `PaneLayout`
-  and the `PaneSwitch` toolbar control: portrait uses one continuous track with the
-  strip between panes; landscape shows both panes around the middle strip.
-  The picker keeps independent root visibility and navigation; the toolbar switch
-  or horizontal swipe changes the active pane. Only
-  that pane controls the destination button, through a replaceable `enableOnWritableDir`
+  File picking, the share destination picker and the main screen share `view_panes.xml`,
+  `PaneLayout` and the `PaneSwitch` toolbar control: single-pane mode uses one continuous
+  track with the strip between panes; dual-pane mode shows both panes around the middle strip.
+  `PickerBrowser` shares both picker screens' navigation, strip actions and pane-switch
+  behavior. File picking also supports locked-source panes and retains its file/path/directory
+  result modes. Each picker keeps independent root visibility and navigation; the toolbar
+  switch or horizontal swipe changes the active pane. Only that pane controls the destination
+  button, through a replaceable `enableOnWritableDir`
   observer. The active side and edited filename survive Activity recreation.
   `SortDialog` is shared with the main screen; picker strip actions delegate search
   and history to the active pane, while compress and WiFi sharing stay hidden.
-  The share picker follows `Prefs.fullscreen` through `StatusBarFullscreen`, including
+  Both pickers follow `Prefs.fullscreen` through `StatusBarFullscreen`, including
   resume and window-focus changes.
+  Copy/move and compression confirmation default to the other pane's directory
+  but can choose another writable directory directly in the opposite resident pane.
+  Main temporarily pins that pane active and shows a destination bar; source touch,
+  keyboard/accessibility focus and destructive/context actions are blocked while choosing.
+  Copy/move choose missing/read-only defaults first, followed by confirmation; Cancel/Back returns
+  to the source, restoring an existing confirmation or keeping the checked files.
+  Preserve the clipboard independently. A pane-owned in-memory draft retains sources,
+  mode and choosing flags across rotation; process death discards it. Other hosts keep
+  the directory-picker fallback through `PickerActivity`.
+  Confirm only writable targets outside the source directory/subtree, using the shared
+  clipboard destination checks. Compression permits the sources' containing directory,
+  while still rejecting selected directory subtrees. Its separate `CompressConfirmDialog`
+  retains filename, format, move mode and password in the shared `DestinationState` draft;
+  passwords never enter saved view state and are cleared when the draft is discarded.
+  Compression opens its form without a target too; "Save to source folder" uses the
+  known writable common parent and leaves the other target intact until replaced.
+  ZIP/7z offer Fast / Standard / Store, with the level remembered. Password-protected
+  7z defaults to encrypted file names, with an opt-out; ZIP file names stay visible.
+  Long-press transfers remain immediate for valid targets;
+  otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
   Outgoing system sharing sends directly readable local files and known-size remote
   files up to 512 KiB directly. If a batch includes a larger or unknown-size nonlocal
   file, prepare its nonlocal sources in a separate cache as `Transfers.Work.Share`, using `TransferService` and `TransferBox`
@@ -304,6 +382,11 @@ each write `= null`.
   the success toast; notification and vibration follow ordinary operation preferences,
   except an entirely cached share does not vibrate.
   Preparation errors still show a toast.
+  External `ACTION_GET_CONTENT` selections in `PickerActivity` use the same preparation
+  policy before returning granted URIs to the caller. Each picker owns its result by a
+  saved ID: other resumed screens cannot consume it or launch a share chooser. Finishing
+  the picker cancels its preparation and releases unclaimed results; internal imports
+  and path/directory selections keep their existing streaming/path behavior.
   Completed files are reused by scheme/path/name/size/mtime when size and time are
   known; partial files are removed on failure/cancellation. Cache hits refresh the
   24-hour idle retention, and the next preparation prunes expired files except those
@@ -328,6 +411,27 @@ each write `= null`.
 - Security: `secure/Secrets` (two-layer Keystore/master-password encryption of sensitive
   fields) + `secure/Backup` (`.twigbak` config backup) + `ui/SecurityUi` (dialogs).
   See [docs/lessons/security.md](docs/lessons/security.md).
+- Themes: AppCompat screens and transparent relays inherit `TwigActivity`, which selects
+  the complete theme before `super.onCreate`. `AppTheme` lifecycle callbacks only track
+  screens for theme changes; do not apply palettes or patch window colors there.
+  OLED has separate opaque and translucent styles. Keep its window background as a
+  resource reference: older `PhoneWindow` versions cannot use an inline color there.
+- Action panel: `StripItems` defines stable action identities; `StripItemsDialog` in
+  the main menu uses drag handles and shared visibility choices.
+  Order and visibility live in `twig_prefs` and are included in configuration backups. `StripGrid.applyItems`
+  reorders existing views while resetting GridLayout specs; retain listeners and
+  orientation changes. Main and picker screens apply the same configuration, with
+  pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
+  Duplicate defaults to hidden; tapping confirms editable copy names, while holding
+  copies selected entries immediately into their own parents with `_1`, `_2`, … suffixes.
+  Holding Rename applies the same numbering as an immediate rename of the originals.
+  Existing numeric suffixes advance instead of stacking (file_1.txt → file_2.txt). File
+  extensions are retained; dotted directory names stay whole. Duplicate copies use ordinary
+  background transfers and retain their generated names across retries.
+  Properties defaults to hidden and toggles the current/checked items; long-press
+  requests the second page after metadata finishes loading, falling back to Basic
+  for one-page cards. Quit is appended to the default action order and hidden by
+  default; tapping uses the menu confirmation policy, while holding quits immediately.
 - Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
   view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
   `ToolbarPlacement` moves the existing browser toolbar below content and matches
@@ -335,9 +439,13 @@ each write `= null`.
   the main landscape layout keeps the toolbar hidden and the strip centered.
   The preference is included in `uiSignature` so returning from settings recreates
   the main layout while retaining pane ViewModels.
-  The default-off `Prefs.exitOnBack` applies
-  only to the main screen: after pane-local Back handling, it reuses `confirmExit`
-  (active tasks require confirmation). Music keeps its long-press Shuffle exit shortcut.
+  `Prefs.backAction` applies only to the main screen after pane-local Back handling:
+  close the screen (default), exit via `confirmExit`, or use the pane's Up action
+  until the tree top, then close the screen or confirm exit (two separate choices).
+  Legacy `exit_on_back=true` maps to Exit;
+  false/absent maps to Close until an explicit choice is saved. Back-triggered exits
+  always require confirmation; explicit exit shortcuts ask only with active tasks.
+  Music keeps its long-press Shuffle exit shortcut.
   Layout-affecting preferences (row height,
   grid, thumbnails) go through `Prefs.uiSignature` — `MainActivity.onResume` compares the
   signature and calls `recreate()` on change; in `PaneFragment.onViewCreated`, **when the
@@ -345,7 +453,8 @@ each write `= null`.
   recreate the VM survives, and a second bootstrap is either skipped by an internal guard
   or breaks position restoration).
 - Transfer retries: failed copy/move/sync operations offer “Retry unfinished items” directly in
-  the failure dialog, along with the exact failing destination and “Skip this item”. Skipping
+  the failure dialog, along with the exact failing destination and “Skip this item”. Outside
+  touches must not dismiss this dialog or discard its partial files. Skipping
   continues the remaining entries and keeps the skipped source (including its containing move
   directory); repeated failures identify the next entry independently. `TransferCheckpoint` belongs
   to that operation in memory only; there is no task history or persisted queue. Completed roots/files are skipped on retry; owned UUID
@@ -358,7 +467,9 @@ each write `= null`.
   screen/keyguard state; a detached progress dialog does not mean the app is in the
   background. Foreground completion notifications and completion vibration are
   independent, default-off preferences. Background/locked-screen results retain a
-  notification; completion also requests a toast regardless of app visibility.
+  notification; transfer failures also retain a notification in the foreground, independently of the
+  successful-completion notification preference. Cancellation still suppresses result alerts.
+  Completion also requests a toast regardless of app visibility.
   Running transfers always keep their progress notification.
   `Transfers.finish` handles feedback and service shutdown on the main thread before
   notifying UI observers, which only refresh their views. Never decide whether to
@@ -591,8 +702,9 @@ add its symptom here.
   never matches); AVI needs its samples repaired before any decoder sees them — MP3 is a byte
   stream to be cut back into frames (with a double-sync check), and MPEG-4 arrives in coding
   order, sometimes two VOPs to a chunk, sometimes as 1-byte stuffing; episode queues come from
-  the backend first, file names second.
-  *Explains*: music notifications lingering after app exit, history video taps appearing unresponsive before the player opens, fast lyric swipes
+  the backend first, file names second. Imported songs missing from the live queue
+  during a playlist switch come from deduplicating against the previous queue.
+  *Explains*: playlist info/share doing nothing before metadata loads, music notifications lingering after app exit, history video taps appearing unresponsive before the player opens, fast lyric swipes
   seeking or toggling the cover, properties stuck loading on a damaged MKV, an AVI that plays as 300 ms of audio, no sound on a TrueHD Blu-ray, "m2ts
   seeks slowly", black AVI thumbnails, "half my AVIs open at 13 seconds and then freeze",
   "the picture keeps shaking", "this one plays at two thirds speed", "this one will not open
@@ -669,10 +781,12 @@ add its symptom here.
   *Explains*: music opening in the single-track player, no thumbnails or PDF previews, the
   green highlight disappearing on "Up", "why is there no *go to the containing folder* here",
   a local-to-SAF copy creating an empty document but writing to a bogus local path.
+  Removable-volume grants also route the original local entry through SAF when direct access is restricted (#47).
 - **[Trash and deletion](docs/lessons/trash.md)** — sync the recovery record before moving,
   never replace a failed trash move with permanent deletion, preserve offline/corrupt
   entries, and purge symlinks without following them.
-  *Explains*: how to recover interrupted moves and why Robolectric needs real lstat semantics.
+  *Explains*: how to recover interrupted moves, why Robolectric needs real lstat semantics,
+  and Android 11 FUSE rejecting no-replace moves with EINVAL.
 - **[Removable storage](docs/lessons/removable-storage.md)** — `getStorageVolumes()` does
   return invisible volumes, the event channels do not fire for them (the foreground UI
   polls), filter by `isPrimary` rather than `isRemovable`, and `/mnt/media_rw` needs
@@ -695,14 +809,16 @@ add its symptom here.
   DiffUtil pick the wrong row; for async expansion the later tap wins, and "do not
   accordionExpand" ≠ "do not expand"; writes are gated by `isMutable()` /
   `isWritableDir()` at six entry points; selection changes use payloads, never
-  `notifyDataSetChanged`.
-  *Explains*: a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
+  `notifyDataSetChanged`. Source-directory imports require read access; reusing the
+  writable-destination gate makes read-only music directories impossible to select.
+  *Explains*: directory-tree labels staying in the system language after an app-language change on Android 11, a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
   spinner that never stops, the whole list flickering when you tick a box, collapsing
   Apps / Installed crashing after an app APK was opened as an archive and restored,
   the Properties ripple disappearing on the first tap with folder counts enabled,
   fast pane swipes also clicking a node, website refresh firing midway through a fixed-header page,
   webpage video fullscreen buttons doing nothing, website fullscreen adding an extra Back step,
-  batch-rename preview columns shifting until scrolling, content-read errors offered as sync differences.
+  batch-rename preview columns shifting until scrolling, content-read errors offered as sync differences,
+  external multi-file folder taps selecting entries instead of expanding them.
 - **[Website background execution](docs/lessons/website-background.md)** — skipping
   WebView.onPause does not protect a cached host process from Android freezing. Opted-in
   website sessions hold a general foreground service until closed; register from
@@ -710,7 +826,8 @@ add its symptom here.
   *Explains*: website music stopping after backgrounding and resuming when the page returns.
 - **[Text handling and editing](docs/lessons/text-handling.md)** — one decoding entry
   point (`TextCodec`), where order is priority; write back in the encoding the file was
-  read with and never silently substitute `?`.
+  read with and never silently substitute `?`; cap highlighting by longest line as well
+  as file size to avoid minified-code measurement ANRs.
   *Explains*: mojibake in subtitles but not in the viewer, another program showing garbage
   after you edited one line, an invisible caret, a caret sitting on the last character.
 - **[Other backends and odds and ends](docs/lessons/other-backends.md)** — launcher

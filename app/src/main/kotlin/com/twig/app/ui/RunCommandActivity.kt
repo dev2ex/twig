@@ -1,6 +1,6 @@
 package com.twig.app.ui
 
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import android.os.Bundle
 import android.widget.Toast
 import com.twig.app.Connections
@@ -20,10 +20,8 @@ import com.twig.app.TwigApp
  * could make Twig run arbitrary commands on the user's saved credentials. See the
  * class comment on RemoteCmdStore.
  *
- * ★ Must be a plain [Activity] instead of AppCompatActivity: it uses
- * `Theme.Translucent.NoTitleBar` (the transparent theme a headless relay needs),
- * which is not a descendant of any AppCompat theme, and AppCompatActivity throws
- * "You need to use a Theme.AppCompat theme" from onPostCreate and crashes.
+ * The transparent Twig theme must remain AppCompat-based so the unlock dialog
+ * can be shown even though this relay has no content view of its own.
  *
  * When going through the terminal the connection has to be built on demand — the
  * shortcut may have been tapped while the process is cold-starting and that server
@@ -32,7 +30,7 @@ import com.twig.app.TwigApp
  * to open the terminal page. The background path hands off to [CmdService] (the
  * foreground service — see its notes).
  */
-class RunCommandActivity : AppCompatActivity() {
+class RunCommandActivity : TwigActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

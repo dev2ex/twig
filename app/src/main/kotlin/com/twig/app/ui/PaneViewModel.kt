@@ -99,6 +99,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     sealed interface Node {
         val key: String
         val depth: Int
+        val reordering: Boolean get() = false
     }
 
     /** Real file/directory (also including the storage top-level nodes, SAF tree roots, archives). */
@@ -126,6 +127,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val directoryCount: DirectoryCounts.Count? = null,
         /** Effective view of the containing directory; -1 uses the adapter default for virtual rows. */
         val gridMode: Int = -1,
+        /** Synthetic children are independent of the directory's visible file count. */
+        val hasVirtualChildren: Boolean = false,
     ) : Node {
         override val key: String get() = keyPrefix + fileKey(file)
     }
@@ -147,7 +150,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val key: String get() = "s:${conn.label()}"
     }
 
-    data class WebsiteNode(val site: com.twig.app.Website) : Node {
+    data class WebsiteNode(val site: com.twig.app.Website, override val reordering: Boolean = false) : Node {
         override val depth: Int get() = 1
         override val key: String get() = "website:${site.id}"
     }
@@ -170,6 +173,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         override val depth: Int,
         val expanded: Boolean,
         val connecting: Boolean,
+        override val reordering: Boolean = false,
     ) : Node {
         override val key: String get() = "fav:${fav.id}"
     }
@@ -432,6 +436,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val infoLoads = HashMap<String, kotlinx.coroutines.Job>()
     /** Currently selected tab on the card, already-computed hashes, keys currently computing. */
     private val infoTab = HashMap<String, Int>()
+    private val requestedInfoTab = HashMap<String, Int>()
     private val hashCache = HashMap<String, List<Pair<String, String>>>()
     private val hashing = HashSet<String>()
     /** Recursive stats for a directory properties card: directory fileKey -> live state (the card closing/folding cancels — see [rebuild]). */
@@ -515,7 +520,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun rememberCounts(key: String, list: List<XFile>) {
-        if (Prefs.folderCounts(getApplication())) keyFile[key]?.let { DirectoryCounts.remember(it, list) }
+        keyFile[key]?.let { file ->
+            DirectoryCounts.remember(file, list)
+        }
     }
 
     /** Change the sort: re-sort all cached children and rebuild. */
@@ -920,6 +927,23 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             .takeIf { l -> l.any { it.path == file.path } } ?: listOf(file)
         val idx = images.indexOfFirst { it.path == file.path }.coerceAtLeast(0)
         return images to idx
+    }
+
+    /** Return from a viewer without rebuilding an already-visible branch, including opaque and mounted sources. */
+    fun revealViewedFile(file: XFile): Boolean {
+        val row = _state.value.rows.filterIsInstance<FileNode>()
+            .firstOrNull { it.file.scheme == file.scheme && it.file.path == file.path }
+        val parent = parentRow(file)
+        if (row != null && parent != null) {
+            currentKey = parent.first
+            currentDir = mountRoots[parent.first] ?: parent.second
+            scrollKey = row.key
+            rebuild()
+            return true
+        }
+        if (!MusicDialogs.canLocate(file)) return false
+        revealPath(XFile(file.scheme, file.parentPath, isDir = true), focus = file)
+        return true
     }
 
     /** Audio list of [file]'s directory (using the panel's current sort) + this file's index (used by the music play queue). */
@@ -1604,7 +1628,6 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 expanded.remove(key)
                 Thumbs.cancelPending(descendantFilesByKey(key))
                 SizeProbes.cancelPending(descendantFilesByKey(key))
-                DirectoryCounts.cancelPending(descendantFilesByKey(key))
                 val conn = serverScheme[key]?.let { schemeToConn[it] }
                 currentKey = conn?.let { "g:${groupIdFor(it)}" }
                 currentDir = null
@@ -1789,6 +1812,43 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         children.remove(fileKey(dir))
     }
 
+    private val storageAccess = HashMap<String, XFile>()
+    private var documentAccessGeneration = 0
+
+    private fun storageRoot(path: String): XFile = storageAccess[path] ?: XFile("file", path, true,
+        canWrite = AndroidDataAccess.instance?.route(path)?.writable() ?: true)
+
+    /** Grants are global: drop obsolete listing permissions in both resident panes. */
+    fun refreshDocumentAccess() {
+        val generation = ++documentAccessGeneration
+        val targets = expandedSnapshot().mapNotNull { key ->
+            keyFile[key]?.takeIf { it.isDir && it.scheme in setOf("file", "saf") }?.let { key to it }
+        }
+        val roots = StorageVolumes.cached(getApplication()).map { XFile("file", it.path, true) }
+        val selected = currentDir
+        viewModelScope.launch {
+            val fresh = HashMap<String, Listing>()
+            val metadata = HashMap<XFile, XFile>()
+            withContext(io) {
+                for (file in (roots + listOfNotNull(selected)).distinct()) {
+                    if (file.scheme !in setOf("file", "saf")) continue
+                    metadata[file] = runCatching { FsRegistry.of(file).stat(file.path) }.getOrNull()
+                        ?: file.copy(canRead = false, canWrite = false)
+                }
+                for ((key, file) in targets) runCatching { fresh[key] = listChildren(file) }
+            }
+            if (generation != documentAccessGeneration) return@launch
+            for (root in roots) metadata[root]?.let { storageAccess[root.path] = it }
+            for ((key, file) in targets) {
+                DirectoryCounts.invalidate(file)
+                children.remove(key)
+                fresh[key]?.let { putListing(key, it) }
+            }
+            if (currentDir == selected) selected?.let { metadata[it]?.let { updated -> currentDir = updated } }
+            rebuild()
+        }
+    }
+
     /** Refresh after a mutation: re-list every expanded directory. */
     fun refresh() {
         refreshTrashRoot()
@@ -1858,6 +1918,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun toggleInfo(n: FileNode) = toggleInfo(n.file)
 
+    /** Open or focus properties; shortcut page indices refer to the final section list. */
+    fun showInfo(file: XFile, tab: Int = 0) {
+        val key = fileKey(file)
+        requestedInfoTab[key] = tab
+        if (file.isDir && tab != 0 && dirScan[key]?.scanning == true) stopDirScan(key)
+        if (key !in infoOpen) toggleInfo(file, tab)
+        if (key !in infoLoads) applyRequestedInfoTab(key, file)
+    }
+
+    private fun applyRequestedInfoTab(key: String, file: XFile) {
+        val requested = requestedInfoTab.remove(key) ?: return
+        val details = infoCache[key] ?: return
+        val last = com.twig.app.FileInfo.tabs(getApplication(), file, details).lastIndex.coerceAtLeast(0)
+        selectInfoTab(InfoNode(file, 0, details), requested.coerceIn(0, last))
+    }
+
     /** Snapshot the selection and attach its aggregate properties above the first selected row. */
     fun toggleSelectionInfo(targets: List<XFile>, anchorKey: String? = null) {
         val selectedKeys = targets.mapTo(HashSet()) { fileKey(it) }
@@ -1891,11 +1967,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */
-    fun toggleInfo(file: XFile) {
+    fun toggleInfo(file: XFile) = toggleInfo(file, 0)
+
+    private fun toggleInfo(file: XFile, initialTab: Int) {
         val key = fileKey(file)
         if (!infoOpen.remove(key)) {
             infoOpen.add(key)
-            if (file.isDir) startDirScan(key, file)
+            if (file.isDir && initialTab == 0) startDirScan(key, file)
             if (!infoCache.containsKey(key)) {
                 val job = viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
                     try {
@@ -1903,7 +1981,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             runCatching { com.twig.app.FileInfo.initial(getApplication(), file) }
                                 .getOrElse { com.twig.app.FileInfo.Details(emptyList(), it.message ?: str(R.string.info_failed)) }
                         }
-                        publishInfo(key, initial)
+                        publishInfo(key, file, initial)
                         if (initial.sections.isEmpty()) return@launch
                         val d = try {
                             kotlinx.coroutines.runInterruptible(io) { com.twig.app.FileInfo.load(getApplication(), file) }
@@ -1913,9 +1991,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             // Preserve basic fields and finish any loading placeholder on failure.
                             initial.copy(sections = initial.sections.map { it.copy(loading = false) })
                         }
-                        publishInfo(key, d)
+                        publishInfo(key, file, d)
                     } finally {
-                        if (infoLoads[key] === coroutineContext[kotlinx.coroutines.Job]) infoLoads.remove(key)
+                        if (infoLoads[key] === coroutineContext[kotlinx.coroutines.Job]) {
+                            infoLoads.remove(key)
+                            if (key in infoOpen) applyRequestedInfoTab(key, file)
+                        }
                     }
                 }
                 infoLoads[key] = job
@@ -1927,15 +2008,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
     }
 
-    private fun publishInfo(key: String, details: com.twig.app.FileInfo.Details) {
+    private fun publishInfo(key: String, file: XFile, details: com.twig.app.FileInfo.Details) {
         if (key !in infoOpen) return
         val previous = infoCache[key]
         val selected = infoTab[key] ?: 0
-        if (previous != null && selected == previous.sections.size) {
-            infoTab[key] = details.sections.size // Keep Hash selected when extra tabs appear.
-        } else if (previous != null) {
-            previous.sections.getOrNull(selected)?.title?.let { title ->
-                infoTab[key] = details.sections.indexOfFirst { it.title == title }.coerceAtLeast(0)
+        if (previous != null) {
+            com.twig.app.FileInfo.tabs(getApplication(), file, previous).getOrNull(selected)?.title?.let { title ->
+                infoTab[key] = com.twig.app.FileInfo.tabs(getApplication(), file, details)
+                    .indexOfFirst { it.title == title }.coerceAtLeast(0)
             }
         }
         infoCache[key] = details
@@ -1944,7 +2024,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Recursive stats for a directory's properties card (file count / dir count /
-     * total size): scan begins as soon as the card opens, refreshing along the way.
+     * total size): scan begins when the Basic tab is selected, refreshing along the way.
+     * Leaving Basic cancels unfinished work; completed stats remain until the card closes.
      * Closing the card (toggling via [toggleInfo] again / ✕) or collapsing the
      * directory (clean-up inside [rebuild]) cancels it — scanning large trees,
      * especially on network sources, is expensive and shouldn't keep running
@@ -1979,15 +2060,21 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (selectionInfo?.scan?.job?.isActive == true) 1 else 0
 
     /**
-     * Switch the properties card's tab. Switching to the "Hash" tab (index == section
-     * count) auto-starts computation for local files; network files wait for the user
+     * Switch the properties card's tab. Switching to Hash auto-starts computation
+     * for local files; network files wait for the user
      * to tap "Compute" (a whole-file read — bandwidth/time is up to the user).
      */
     fun selectInfoTab(n: InfoNode, idx: Int) {
         if (n.selection) return // Aggregate properties have only the Basic tab, with no single-file hash.
         val key = fileKey(n.file)
+        requestedInfoTab.remove(key) // A manual tab choice supersedes a pending shortcut.
         infoTab[key] = idx
-        val isHash = !n.file.isDir && idx == (n.details?.sections?.size ?: 0)
+        if (n.file.isDir) {
+            if (idx == 0 && key !in dirScan) startDirScan(key, n.file)
+            else if (idx != 0 && dirScan[key]?.scanning == true) stopDirScan(key)
+        }
+        val page = com.twig.app.FileInfo.tabs(getApplication(), n.file, n.details, n.selection).getOrNull(idx)
+        val isHash = page != null && page.section == null
         if (isHash && n.file.scheme == "file" && !hashCache.containsKey(key) && !hashing.contains(key)) {
             startHash(key, n.file)
         }
@@ -2177,7 +2264,6 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFilesByKey(key))
                 SizeProbes.cancelPending(descendantFilesByKey(key))
-                DirectoryCounts.cancelPending(descendantFilesByKey(key))
                 // When collapsing this directory, also remove the search virtual
                 // directory hanging under it (it doesn't naturally disappear from
                 // rows — its render ignores exp, see addFile — so it would sit
@@ -2275,7 +2361,6 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             expanded.remove(key) -> {
                 Thumbs.cancelPending(descendantFilesByKey(key))
                 SizeProbes.cancelPending(descendantFilesByKey(key))
-                DirectoryCounts.cancelPending(descendantFilesByKey(key))
                 // When collapsing a server, also drop any search results hanging under
                 // it (attached-row rendering ignores expansion state — see
                 // addServer/addAttachments), same as toggleFile for a regular
@@ -2424,7 +2509,6 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (expanded.remove(node.key)) {
             Thumbs.cancelPending(descendantFilesByKey(node.key))
             SizeProbes.cancelPending(descendantFilesByKey(node.key))
-            DirectoryCounts.cancelPending(descendantFilesByKey(node.key))
             rebuild()
         } else {
             accordionExpand(node.key); rebuild()
@@ -2470,6 +2554,50 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             else -> null
         }
+    }
+
+    private var favoriteSortOrder: List<String>? = null
+    private var websiteSortOrder: List<String>? = null
+    val sortingFavorites: Boolean get() = favoriteSortOrder != null
+    val sortingWebsites: Boolean get() = websiteSortOrder != null
+    val sortingItems: Boolean get() = sortingFavorites || sortingWebsites
+
+    fun startItemSorting(group: String) {
+        require(group == "fav" || group == "websites")
+        saveItemOrder()
+        favoriteSortOrder = if (group == "fav") FavoritesStore.all(getApplication()).map { it.id } else null
+        websiteSortOrder = if (group == "websites") com.twig.app.WebsiteStore.all(getApplication()).map { it.id } else null
+        expanded.add("g:$group")
+        rebuild()
+    }
+
+    fun finishItemSorting() {
+        saveItemOrder()
+        favoriteSortOrder = null
+        websiteSortOrder = null
+        rebuild()
+    }
+
+    /** Move only after the adapter has caught up with the preceding tree update. */
+    fun moveSortedItem(source: String, target: String, displayedKeys: List<String>): Boolean {
+        if (!sortingItems) return false
+        val nodes = state.value.rows.filter { it.reordering }
+        val keys = nodes.map { it.key }
+        if (keys != displayedKeys) return false
+        val from = keys.indexOf(source)
+        val to = keys.indexOf(target)
+        if (from < 0 || to < 0 || from == to) return false
+        val moved = nodes.toMutableList().apply { add(to, removeAt(from)) }
+        if (sortingFavorites) favoriteSortOrder = moved.filterIsInstance<FavoriteNode>().map { it.fav.id }
+        else websiteSortOrder = moved.filterIsInstance<WebsiteNode>().map { it.site.id }
+        rebuild()
+        return true
+    }
+
+    /** Persist on drop; ordinary directory expansion never writes ordering. */
+    fun saveItemOrder() {
+        favoriteSortOrder?.let { FavoritesStore.reorder(getApplication(), it) }
+        websiteSortOrder?.let { com.twig.app.WebsiteStore.reorder(getApplication(), it) }
     }
 
     fun addFavorite(fav: Favorite) {
@@ -2541,6 +2669,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * dialog to retry).
      */
     fun toggleFavorite(node: FavoriteNode, password: String?, onResult: (Boolean, String?) -> Unit) {
+        if (sortingFavorites) return
         val key = node.key
         currentKey = key
         claimExpand(key)
@@ -2952,7 +3081,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val ext = Environment.getExternalStorageDirectory().absolutePath
             val volumes = StorageVolumes.cached(getApplication())
             // Register all shortcut identities before rendering any expanded subtree:
-            // Root now precedes volume shortcuts, whose paths may also appear below it.
+            // Their paths may also appear below another root, regardless of root order.
             storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
             if (rootVisible("root")) storageShortcutKeys.add(fileKey(XFile("file", "/", isDir = true)))
             volumes.forEach { storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true))) }
@@ -2960,39 +3089,36 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (rootVisible("private")) storageShortcutKeys.add(fileKey(privateDir))
             // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
             externalMount?.let { addFile(rows, it, 0, externalLabel, keyPrefix = EXTERNAL_KEY_PREFIX) }
-            addGroup(rows, "fav", str(R.string.group_fav))
-            // Saved comparisons have no dedicated empty state — if none were ever saved, don't show the group at all (saves space).
+            val orderedRoots = Prefs.rootItemOrder(getApplication()).iterator()
+            // Only configurable roots trade places. Fixed entries retain their slots,
+            // and each moved root is rendered together with its expanded subtree.
+            fun addNextRoot() {
+                val item = orderedRoots.next()
+                if (!rootVisible(item.id)) return
+                when (item.id) {
+                    "root" -> addFile(rows, XFile("file", "/", isDir = true), 0,
+                        str(R.string.group_root), capacity("/"))
+                    "private" -> addFile(rows, privateDir, 0, str(R.string.private_space))
+                    "apps" -> addFile(rows, XFile(AppsFileSystem.SCHEME, "/", isDir = true, canWrite = false),
+                        0, str(R.string.apps_root))
+                    else -> addGroup(rows, item.id, str(item.label))
+                }
+            }
+            addNextRoot()
             if (CompareStore.all(getApplication()).isNotEmpty()) {
                 addGroup(rows, "cmp", str(R.string.compare_saved))
             }
             addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
-            if (rootVisible("root")) addFile(rows, XFile("file", "/", isDir = true), 0, str(R.string.group_root), capacity("/"))
-            // Keep built-in locations together, followed by removable volumes. Use the
-            // cached list: rebuild runs on every render, so it must not rescan storage.
+            addNextRoot()
             for (v in volumes) {
-                addFile(rows, XFile("file", v.path, isDir = true), 0, v.label, capacity(v.path))
+                addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
             }
-            if (rootVisible("private")) addFile(rows, privateDir, 0, str(R.string.private_space))
+            addNextRoot()
             if (trashEnabled && (!trashPresenceLoaded ||
                     children[fileKey(XFile("trash", "/", isDir = true))]?.isNotEmpty() != false || trashNotices.isNotEmpty())) {
                 addFile(rows, XFile("trash", "/", isDir = true, canWrite = false), 0, str(R.string.trash_title))
             }
-            addGroup(rows, "lan", str(R.string.group_lan))
-            addGroup(rows, "nfs", str(R.string.group_nfs))
-            addGroup(rows, "ftp", str(R.string.group_ftp))
-            addGroup(rows, "sftp", str(R.string.group_sftp))
-            addGroup(rows, "dav", str(R.string.group_webdav))
-            addGroup(rows, "s3", str(R.string.group_s3))
-            addGroup(rows, "media", str(R.string.group_media))
-            addGroup(rows, "saf", str(R.string.group_saf))
-            addGroup(rows, "websites", str(R.string.group_websites))
-            // Apps management: virtual read-only source, like a storage node it's an in-place expandable tree (installed / system).
-            if (rootVisible("apps")) addFile(
-                rows,
-                XFile(AppsFileSystem.SCHEME, "/", isDir = true, canWrite = false),
-                0,
-                str(R.string.apps_root),
-            )
+            while (orderedRoots.hasNext()) addNextRoot()
         }
         selectionInfo?.let { info ->
             val index = rows.indexOfFirst { it.key == info.anchor }
@@ -3010,6 +3136,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         infoCache.keys.retainAll(infoOpen)
         infoLoads.keys.toList().forEach { key -> if (key !in infoOpen) infoLoads.remove(key)?.cancel() }
         infoTab.keys.retainAll(infoOpen)
+        requestedInfoTab.keys.retainAll(infoOpen)
         hashCache.keys.retainAll(infoOpen)
         // If a card is gone (closed / collapsed), stop scanning its directory.
         dirScan.keys.toList().forEach { k -> if (k !in infoOpen) dirScan.remove(k)?.job?.cancel() }
@@ -3021,6 +3148,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 if (currentKey == "search:$k") currentKey = null // The highlight used to point at it; if the row is gone, don't leave it dangling.
             }
         }
+        rows.filterIsInstance<FileNode>().firstOrNull {
+            it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
+        }?.let { currentDir = it.file }
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
             restoring || revealLoadingKey != null, revealLoadingKey ?: scrollKey)
     }
@@ -3052,8 +3182,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
             label, capacity, busy(key), rowPrefix,
-            if (Prefs.folderCounts(getApplication())) DirectoryCounts.known(file, showHidden) else null,
+            DirectoryCounts.known(file, showHidden),
             gridMode,
+            hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
+                resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )
         addAttachments(rows, file, depth)
         if (exp) {
@@ -3199,7 +3331,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rows += ActionNode("add_emby", str(R.string.action_add_emby))
             }
             "websites" -> {
-                com.twig.app.WebsiteStore.all(app).forEach { rows += WebsiteNode(it) }
+                val saved = com.twig.app.WebsiteStore.all(app)
+                val order = websiteSortOrder
+                val sites = if (order == null) saved else {
+                    val byId = saved.associateBy { it.id }
+                    (order + saved.map { it.id }).distinct().mapNotNull { byId[it] }
+                }
+                sites.forEach { rows += WebsiteNode(it, reordering = sortingWebsites) }
                 rows += ActionNode("add_website", str(R.string.website_add))
             }
             "saf" -> {
@@ -3207,7 +3345,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rows += ActionNode("add_saf", str(R.string.action_add_saf))
             }
             "fav" -> {
-                val favs = FavoritesStore.all(app)
+                val saved = FavoritesStore.all(app)
+                val order = favoriteSortOrder
+                val favs = if (order == null) saved else {
+                    val byId = saved.associateBy { it.id }
+                    (order + saved.map { it.id }).distinct().mapNotNull { byId[it] }
+                }
                 if (favs.isEmpty()) rows += ActionNode("fav_hint", str(R.string.fav_hint))
                 else {
                     val conns = ConnectionStore.all(app).associateBy { it.label() }
@@ -3260,7 +3403,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             "restic" -> conns[fav.repoConnLabel]
             else -> null
         }
-        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp, connecting = busy(key))
+        rows += FavoriteNode(fav, conn, depth = 1, expanded = exp && !sortingFavorites,
+            connecting = busy(key) && !sortingFavorites, reordering = sortingFavorites)
+        if (sortingFavorites) return // Keep cached expansion state; only hide children while handles are shown.
         // Info cards / search results hang under it like a regular directory row (key based on the actual directory the favorite points at).
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) {
@@ -3285,7 +3430,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Utilities ----
 
     /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
-    private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+    private fun str(id: Int, vararg args: Any): String = LanguagePref.appContext(getApplication()).getString(id, *args)
 
     private fun capacity(path: String): String? = runCatching {
         val st = StatFs(path)

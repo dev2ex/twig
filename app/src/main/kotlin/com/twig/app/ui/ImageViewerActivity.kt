@@ -11,6 +11,8 @@ import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.RectF
 import android.media.ExifInterface
+import android.graphics.drawable.Animatable
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,12 +22,13 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.twig.app.OpenFiles
 import com.twig.app.Prefs
@@ -56,7 +59,7 @@ import kotlin.math.roundToInt
  *   ([pendingImages] is passed within the process), to avoid thousands of images' path / filename arrays
  *   blowing past the binder 1MB single-transaction limit (TransactionTooLargeException).
  */
-class ImageViewerActivity : AppCompatActivity() {
+class ImageViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityImageViewerBinding
 
@@ -73,8 +76,8 @@ class ImageViewerActivity : AppCompatActivity() {
     private var wantAutoPlay = false              // slideshow mode: start playing automatically once an image is ready
     private var canSelect = true                 // Only same-directory browsing can sync selection back to the tree
 
-    /** Images ticked in the viewer (deduped by path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
-    private val picked = LinkedHashMap<String, XFile>()
+    /** Pane selection, updated by the viewer (deduped by scheme/path, preserves selection order); after exit they sync as multi-select on the tree, see [pendingResult]. */
+    private val picked = LinkedHashMap<Pair<String, String>, XFile>()
     private var changed = false                  // an image was deleted, the file panel needs a refresh
 
     /** Capacity by byte count: with the downsampling cap relaxed, a single bitmap can reach tens of MB; "6 of those" would OOM. */
@@ -85,6 +88,7 @@ class ImageViewerActivity : AppCompatActivity() {
     }
 
     private var shown: Decoded? = null // currently displayed decoded result
+    private var animation: AnimatedImage? = null
     private var shownRot = 0           // total rotation angle of the displayed bitmap relative to the original file (EXIF + autoFit)
     private var hiResToken = 0
     private val handler = Handler(Looper.getMainLooper())
@@ -145,6 +149,10 @@ class ImageViewerActivity : AppCompatActivity() {
             scheduleHide()
             if (order.isNotEmpty()) togglePick(images[current])
         }
+        b.btnDelete.setOnLongClickListener {
+            if (order.isNotEmpty()) confirmDelete(images[current], skipTrashConfirmation = true)
+            true
+        }
         b.btnDelete.setOnClickListener {
             if (order.isNotEmpty()) confirmDelete(images[current])
         }
@@ -152,7 +160,7 @@ class ImageViewerActivity : AppCompatActivity() {
 
         val mode = intent.getIntExtra(EXTRA_MODE, MODE_FIXED)
         canSelect = mode == MODE_FIXED && intent.getBooleanExtra(EXTRA_ALLOW_SELECT, true)
-        b.btnSelect.visibility = if (canSelect) View.VISIBLE else View.INVISIBLE
+        b.selectSlot.visibility = if (canSelect) View.VISIBLE else View.INVISIBLE
         b.btnDelete.visibility = if (mode == MODE_SCAN) View.INVISIBLE else View.VISIBLE
         when (mode) {
             MODE_SCAN -> {
@@ -164,10 +172,11 @@ class ImageViewerActivity : AppCompatActivity() {
                 startScan(XFile(scheme, rootPath, isDir = true))
             }
             else -> {
-                val list = pendingImages
+                val pending = pendingImages
                 pendingImages = null
-                if (list.isNullOrEmpty()) return finish()
-                images = list.toMutableList()
+                if (pending == null || pending.images.isEmpty()) return finish()
+                images = pending.images.toMutableList()
+                if (canSelect) pending.selection.forEach { picked[it.scheme to it.path] = it }
                 order = images.indices.toMutableList()
                 pos = intent.getIntExtra(EXTRA_INDEX, 0).coerceIn(0, images.lastIndex)
                 b.btnShuffle.alpha = 0.5f
@@ -180,7 +189,7 @@ class ImageViewerActivity : AppCompatActivity() {
         autoFit = !autoFit
         Prefs.setImageAutoFit(this, autoFit)
         b.btnFit.alpha = if (autoFit) 1f else 0.5f
-        if (order.isNotEmpty()) cache.get(images[current].path)?.let { show(it) } // immediately redraw the current image
+        redrawCurrent() // immediately redraw the current image
     }
 
     // ---- fullscreen immersive ----
@@ -194,7 +203,7 @@ class ImageViewerActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         // Device rotation doesn't recreate, but we do need to re-rotate-fit the current image to the new screen orientation
         if (order.isEmpty()) return
-        cache.get(images[current].path)?.let { b.image.post { show(it) } }
+        b.image.post { redrawCurrent() }
     }
 
     private fun immersive() {
@@ -269,6 +278,7 @@ class ImageViewerActivity : AppCompatActivity() {
     }
 
     private fun loadCurrent() {
+        (animation?.drawable as? Animatable)?.stop()
         val idx = current
         val path = images[idx].path
         updateTitle()
@@ -283,10 +293,20 @@ class ImageViewerActivity : AppCompatActivity() {
         // Keep the current image (don't clear it); the spinner in the top-right shows it's downloading / loading
         currentLoading = true; updateSpinner()
         lifecycleScope.launch {
-            val bmp = runCatching { withContext(Dispatchers.IO) { decodeImage(this@ImageViewerActivity, images[idx]) } }.getOrNull()
+            val result = runCatching { withContext(Dispatchers.IO) {
+                val file = images[idx]
+                if (Build.VERSION.SDK_INT >= 28 && animationCandidate(file)) {
+                    val local = OpenFiles.materialize(this@ImageViewerActivity, file)
+                    val animated = runCatching { decodeAnimation(this@ImageViewerActivity, local) }.getOrNull()
+                    if (animated != null) null to animated
+                    else decodeImage(this@ImageViewerActivity, file, local) to null
+                } else decodeImage(this@ImageViewerActivity, file) to null
+            } }.getOrNull()
             if (token != loadToken) return@launch // already switched to a different image
             currentLoading = false; updateSpinner()
-            if (bmp != null) { cache.put(path, bmp); show(bmp) }
+            val (bmp, animated) = result ?: (null to null)
+            if (animated != null) showAnimation(animated)
+            else if (bmp != null) { cache.put(path, bmp); show(bmp) }
             onCurrentReady()
         }
     }
@@ -300,23 +320,47 @@ class ImageViewerActivity : AppCompatActivity() {
 
     /** Display the image: rotate to fit the screen orientation (don't change the screen orientation, only rotate the image content); pass in the actual size multiplier. */
     private fun show(d: Decoded) {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = null
+        ++hiResToken
         val extra = if (autoFit) screenFitRotation(d.bmp) else 0
         shown = d
         shownRot = (d.exifRot + extra) % 360
-        b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual)
+        b.image.setImage(if (extra == 0) d.bmp else rotate(d.bmp, extra), d.actual, d.vector != null)
+    }
+
+    private fun redrawCurrent() {
+        animation?.let { showAnimation(it); return }
+        shown?.let { show(it) }
+    }
+
+    private fun showAnimation(image: AnimatedImage) {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = image
+        shown = null
+        ++hiResToken
+        val drawable = image.drawable
+        val extra = if (autoFit) screenFitRotation(drawable.intrinsicWidth, drawable.intrinsicHeight) else 0
+        // Detach before wrapping: ImageView clears the old drawable's callback on replacement.
+        b.image.setImageDrawable(null)
+        b.image.setAnimatedImage(if (extra == 0) drawable else RotatedImageDrawable(drawable), image.actual)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) (drawable as? Animatable)?.start()
     }
 
     /** Rotate by 90° when the image's orientation doesn't match the screen's, to fill the current screen "horizontally/vertically". */
-    private fun screenFitRotation(bmp: Bitmap): Int {
+    private fun screenFitRotation(bmp: Bitmap): Int = screenFitRotation(bmp.width, bmp.height)
+
+    private fun screenFitRotation(width: Int, height: Int): Int {
         val screenLandscape = resources.displayMetrics.widthPixels >= resources.displayMetrics.heightPixels
-        val imgLandscape = bmp.width > bmp.height
-        return if (imgLandscape == screenLandscape || bmp.width == bmp.height) 0 else 90
+        val imgLandscape = width > height
+        return if (imgLandscape == screenLandscape || width == height) 0 else 90
     }
 
     /** Prefetch the next image into the cache (with spinner); if the current image is still loading, don't prefetch — avoid "downloading ahead". */
     private fun prefetchNext() {
         if (currentLoading || order.isEmpty()) return
         val i = order[(pos + 1) % order.size]
+        if (animationCandidate(images[i])) return // Do not retain idle animation decoders.
         val p = images[i].path
         if (cache.get(p) != null) return
         prefetching = true; updateSpinner()
@@ -385,7 +429,7 @@ class ImageViewerActivity : AppCompatActivity() {
      *  during shuffle the sequence number jumps around, but it reflects this image's actual position in the directory. */
     private fun updateTitle() {
         val f = images.getOrNull(current) ?: return
-        b.btnSelect.isChecked = picked.containsKey(f.path)
+        updateSelection()
         b.toolbar.title = "${current + 1}/${images.size}  ${f.name}"
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(f.name))
     }
@@ -404,7 +448,7 @@ class ImageViewerActivity : AppCompatActivity() {
         val labels = ArrayList<String>()
         val acts = ArrayList<() -> Unit>()
         if (canSelect) {
-            val on = picked.containsKey(file.path)
+            val on = picked.containsKey(file.scheme to file.path)
             labels += getString(if (on) R.string.action_unselect else R.string.action_select)
             acts += { togglePick(file) }
         }
@@ -424,21 +468,20 @@ class ImageViewerActivity : AppCompatActivity() {
     /** Tick / untick the current image; result is published to [pendingResult] as it changes, picked up by the file panel when it returns to the foreground. */
     private fun togglePick(file: XFile) {
         if (!canSelect) return
-        if (picked.remove(file.path) == null) picked[file.path] = file
-        b.btnSelect.isChecked = picked.containsKey(file.path)
-        toast(getString(R.string.title_selected_count, picked.size))
+        if (picked.remove(file.scheme to file.path) == null) picked[file.scheme to file.path] = file
+        updateSelection()
         publishResult()
     }
 
-    private fun confirmDelete(file: XFile) {
+    private fun confirmDelete(file: XFile, skipTrashConfirmation: Boolean = false) {
         if (playing) stop()
         handler.removeCallbacks(hideControls)
-        DeleteUi.confirm(this, this, listOf(file), onDismiss = { scheduleHide() }) { success ->
+        DeleteUi.confirm(this, this, listOf(file), onDismiss = { scheduleHide() }, skipTrashConfirmation = skipTrashConfirmation) { success ->
             if (success) {
                 val idx = images.indexOfFirst { it.path == file.path && it.scheme == file.scheme }
                 if (idx >= 0) {
                     cache.remove(file.path)
-                    picked.remove(file.path)
+                    picked.remove(file.scheme to file.path)
                     images.removeAt(idx)
                     order = order.filter { it != idx }.map { if (it > idx) it - 1 else it }.toMutableList()
                     changed = true
@@ -450,10 +493,19 @@ class ImageViewerActivity : AppCompatActivity() {
         }
     }
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun updateSelection() {
+        val file = images.getOrNull(current) ?: return
+        b.btnSelect.isChecked = picked.containsKey(file.scheme to file.path)
+        b.selectionCount.text = if (picked.isEmpty()) "" else picked.size.toString()
+        b.selectionCount.contentDescription = if (picked.isEmpty()) null else getString(R.string.title_selected_count, picked.size)
+    }
 
     private fun publishResult() {
-        pendingResult = Result(picked.values.toList(), changed)
+        pendingResult = Result(
+            if (canSelect) picked.values.toList() else null,
+            changed,
+            order.getOrNull(pos)?.let { images.getOrNull(it) },
+        )
     }
 
     // ---- hi-res region after zooming in (BitmapRegionDecoder) ----
@@ -461,7 +513,7 @@ class ImageViewerActivity : AppCompatActivity() {
     /** The base bitmap has been upscaled with interpolation; re-decode a hi-res region from the original file for the visible area and overlay it. */
     private fun loadHiRes(rect: RectF, scale: Float) {
         val d = shown ?: return
-        if (d.actual <= 1f) return // original has no more pixels to dig out
+        if (d.vector == null && d.actual <= 1f) return // original has no more pixels to dig out
         val rot = shownRot
         val vw = b.image.width.coerceAtLeast(1) // View dimensions read on the main thread before entering IO
         val vh = b.image.height.coerceAtLeast(1)
@@ -473,12 +525,25 @@ class ImageViewerActivity : AppCompatActivity() {
         }
     }
 
+    override fun finish() {
+        if (images.isNotEmpty() || changed) publishResult()
+        super.finish()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (animation?.drawable as? Animatable)?.start()
+    }
+
     override fun onPause() {
+        (animation?.drawable as? Animatable)?.stop()
         super.onPause()
         stop()
     }
 
     override fun onDestroy() {
+        (animation?.drawable as? Animatable)?.stop()
+        animation = null
         super.onDestroy()
         handler.removeCallbacks(advance)
         handler.removeCallbacks(scanTick)
@@ -500,15 +565,18 @@ class ImageViewerActivity : AppCompatActivity() {
         /** In-process one-shot transfer slot for fixed-list mode: avoids passing a large list via Intent extras, which
          * triggers TransactionTooLargeException (binder's single-transaction cap is 1MB; a few thousand images' path +
          * filename array in a single directory easily exceeds it). Cleared immediately after onCreate reads it. */
-        @Volatile private var pendingImages: List<XFile>? = null
+        private class PendingImages(val images: List<XFile>, val selection: List<XFile>)
+
+        @Volatile private var pendingImages: PendingImages? = null
 
         /**
-         * Result from operations in the viewer: ticked images ([selection]) and whether any image was deleted ([changed]).
+         * Result from operations in the viewer: pane checks ([selection], null when selection is disabled) whether any image was deleted ([changed]),
+         * and the image to locate on return ([currentImage]).
          * Picked up once by [PaneFragment] via [takeResult] when it returns to the foreground — the viewer is started
          * with a plain startActivity (the image list goes through [pendingImages] in-process, not through Intent),
          * and the result is returned via the same in-process slot, avoiding an extra ActivityResult contract.
          */
-        class Result(val selection: List<XFile>, val changed: Boolean)
+        class Result(val selection: List<XFile>?, val changed: Boolean, val currentImage: XFile?)
 
         @Volatile private var pendingResult: Result? = null
 
@@ -516,11 +584,18 @@ class ImageViewerActivity : AppCompatActivity() {
 
         /**
          * Fixed image list (e.g. sibling images in the same directory, already in memory), starts at index, doesn't auto-play.
+         * [selection] carries all pane checks so changes preserve files outside this image list.
          * [allowSelect] = false is for external content:// opens (no file tree to sync, so no "Select").
          */
-        fun start(context: Context, images: List<XFile>, startIndex: Int, allowSelect: Boolean = true) {
+        fun start(
+            context: Context,
+            images: List<XFile>,
+            startIndex: Int,
+            allowSelect: Boolean = true,
+            selection: List<XFile> = emptyList(),
+        ) {
             if (images.isEmpty()) return
-            pendingImages = images
+            pendingImages = PendingImages(images, selection)
             pendingResult = null // any stale result nobody picked up last round is discarded here
             context.startActivity(
                 Intent(context, ImageViewerActivity::class.java).apply {

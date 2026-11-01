@@ -116,4 +116,95 @@ class ProgressiveInfoTest {
         assertEquals(2, card().details!!.sections.size)
         assertEquals(card().details!!.sections.size, card().tab)
     }
+    @Test fun `Unix stays last through loading and only selecting Hash reads local file contents`() = runTest(main) {
+        val previous = runCatching { FsRegistry.of("file") }.getOrNull()
+        val local = FakeFileSystem("file", mapOf("/" to listOf("test.bin")), mapOf("/test.bin" to "hello"))
+        var contentReads = 0
+        FsRegistry.register(object : FileSystem by local, com.twig.core.UnixMetadataSource {
+            override fun unixMetadata(file: XFile) = com.twig.core.UnixMetadata(
+                "100644".toInt(8), 10001, 10001, 5, 0, 0, 0)
+            override fun openInput(file: XFile): java.io.InputStream {
+                contentReads++
+                return local.openInput(file)
+            }
+        })
+        try {
+            val file = local.resolve("/test.bin")
+            vm.revealPath(local.root(), focus = file); advanceUntilIdle()
+            vm.io = held
+            vm.toggleInfo(file); runCurrent()
+            held.next(); runCurrent()
+            fun tabs() = com.twig.app.FileInfo.tabs(app, file, card().details)
+            val hash = tabs().indexOfFirst { it.section == null }
+            val unix = tabs().lastIndex
+            assertEquals(app.getString(com.twig.app.R.string.info_section_unix), tabs().last().title)
+            assertTrue(hash < unix)
+            vm.selectInfoTab(card(), unix); runCurrent()
+            assertFalse(card().hashing)
+            assertEquals(0, contentReads)
+            held.next(); runCurrent()
+            assertEquals(unix, card().tab)
+            assertEquals(0, contentReads)
+            vm.selectInfoTab(card(), hash); runCurrent()
+            assertTrue(card().hashing)
+            held.next(); runCurrent()
+            assertEquals(1, contentReads)
+            assertNotNull(card().hashRows)
+        } finally {
+            FsRegistry.unregister("file")
+            previous?.let(FsRegistry::register)
+        }
+    }
+
+    @Test fun `second page shortcut waits for image metadata and focuses an already open card`() = runTest(main) {
+        val file = fs.resolve("/image.png")
+        vm.revealPath(fs.root(), focus = file); advanceUntilIdle()
+        vm.io = held
+        vm.showInfo(file, 1); runCurrent()
+        held.next(); runCurrent()
+        assertEquals(0, card().tab)
+        held.next(); runCurrent()
+        assertEquals(2, card().details!!.sections.size)
+        assertEquals(1, card().tab) // EXIF, rather than Hash (which was temporarily the second tab).
+        vm.showInfo(file)
+        assertEquals(0, card().tab)
+        vm.showInfo(file, 1)
+        assertEquals(1, card().tab)
+        assertEquals(1, reads)
+    }
+
+    @Test fun `second page shortcut selects remote hash without reading the whole file`() = runTest(main) {
+        val file = fs.resolve("/image.png").copy(path = "/clip.mkv.txt")
+        // Mount the source with a name that has no metadata section.
+        val plain = FakeFileSystem(fs.scheme, mapOf("/" to listOf("clip.mkv.txt")), mapOf(file.path to "text"))
+        FsRegistry.register(plain)
+        vm.revealPath(plain.root(), focus = file); advanceUntilIdle()
+        vm.showInfo(file, 1); advanceUntilIdle()
+        assertEquals(1, card().tab)
+        assertEquals(1, card().details!!.sections.size)
+        assertEquals(0, reads)
+    }
+
+    @Test fun `manual page choice supersedes a pending second page shortcut`() = runTest(main) {
+        val file = fs.resolve("/clip.mkv")
+        vm.revealPath(fs.root(), focus = file); advanceUntilIdle()
+        vm.io = held
+        vm.showInfo(file, 1); runCurrent()
+        held.next(); runCurrent()
+        vm.selectInfoTab(card(), 0)
+        held.next(); runCurrent()
+        assertEquals(0, card().tab)
+    }
+
+    @Test fun `normal properties toggle closes a card opened on the second page`() = runTest(main) {
+        val file = fs.resolve("/image.png")
+        vm.revealPath(fs.root(), focus = file); advanceUntilIdle()
+        vm.showInfo(file, 1); advanceUntilIdle()
+        assertEquals(1, card().tab)
+        vm.toggleInfo(file)
+        assertFalse(vm.state.value.rows.any { it is PaneViewModel.InfoNode })
+        vm.toggleInfo(file); advanceUntilIdle()
+        assertEquals(0, card().tab)
+    }
+
 }

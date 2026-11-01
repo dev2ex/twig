@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Region
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -60,18 +62,23 @@ class ZoomableImageView @JvmOverloads constructor(
     private var tx = 0f
     private var ty = 0f
     private var mode = 0 // 0 FIT, 1 CROP, 2 ACTUAL
+    private var suppressLongPress = false
+    private var scaledTouch = false
     /** Bitmap → original image pixels ratio (decoded down-sampling ratio); the actual-size mode scales up by this to render the image at its true size. */
     private var actualScale = 1f
+    private var vectorImage = false
+    private var animatedImage = false
 
     private var hiRes: Bitmap? = null
     private var hiResRect: RectF? = null // in displayed bitmap coordinates, corresponds 1:1 with hiRes
     private var hiResScale = 0f          // the scale when this region was requested, used to decide whether to re-decode at the new factor
+    private val hiResViewRect = RectF()
     private val hiResPaint = Paint().apply { isFilterBitmap = true }
     private val hiResReq = Runnable { requestHiRes() }
 
     private val fitScale get() = if (imgW == 0f) 1f else minOf(width / imgW, height / imgH)
     private val cropScale get() = if (imgW == 0f) 1f else maxOf(width / imgW, height / imgH)
-    private val maxScale get() = maxOf(cropScale, actualScale) * 2f
+    private val maxScale get() = maxOf(cropScale, actualScale) * if (vectorImage) 16f else 2f
 
     /**
      * Zoom lower bound. ★ Cannot unconditionally use [fitScale]: under [MODE_FIT_ACTUAL]
@@ -98,6 +105,8 @@ class ZoomableImageView @JvmOverloads constructor(
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onTap?.invoke(); return true }
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            // Quick-scale starts with the second DOWN, before ScaleGestureDetector is in progress.
+            suppressLongPress = true
             val cycle = modeCycle
             val i = cycle.indexOf(mode)
             mode = cycle[(if (i < 0) 0 else i + 1) % cycle.size]
@@ -108,15 +117,17 @@ class ZoomableImageView @JvmOverloads constructor(
 
         // ★ Same-named member: omitting this@ZoomableImageView would resolve to the listener's own onLongPress
         override fun onLongPress(e: MotionEvent) {
-            this@ZoomableImageView.onLongPress?.invoke()
+            if (!suppressLongPress) this@ZoomableImageView.onLongPress?.invoke()
         }
 
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (scaleGesture.isInProgress || e2.pointerCount > 1) return true
             tx -= dx; ty -= dy; clampAndApply(); notifyViewport()
             return true
         }
 
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+            if (scaledTouch) return true // Scaling may already have ended while processing this UP.
             // Preserve panning when the image overflows along the swipe axis.
             val horizontal = kotlin.math.abs(vx) > kotlin.math.abs(vy)
             val velocity = if (horizontal) vx else vy
@@ -130,6 +141,12 @@ class ZoomableImageView @JvmOverloads constructor(
     })
 
     private val scaleGesture = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(d: ScaleGestureDetector): Boolean {
+            suppressLongPress = true
+            scaledTouch = true
+            return true
+        }
+
         override fun onScale(d: ScaleGestureDetector): Boolean {
             val f = d.scaleFactor
             val ns = (scale * f).coerceIn(minScale, maxScale)
@@ -148,10 +165,24 @@ class ZoomableImageView @JvmOverloads constructor(
      * @param actual bitmap → original image pixels ratio (decoded down-sampling ratio),
      *   used by the "actual size" mode to render the image at its true size.
      */
-    fun setImage(bmp: Bitmap, actual: Float = 1f) {
+    fun setImage(bmp: Bitmap, actual: Float = 1f, vector: Boolean = false) {
+        animatedImage = false
         clearHiRes()
         setImageBitmap(bmp)
         imgW = bmp.width.toFloat(); imgH = bmp.height.toFloat()
+        actualScale = actual
+        vectorImage = vector
+        mode = initialMode
+        if (width > 0) applyMode()
+    }
+
+    /** Animated frames share the ordinary pan/zoom matrix, without static region overlays. */
+    fun setAnimatedImage(image: Drawable, actual: Float) {
+        clearHiRes()
+        animatedImage = true
+        vectorImage = false
+        setImageDrawable(image)
+        imgW = image.intrinsicWidth.toFloat(); imgH = image.intrinsicHeight.toFloat()
         actualScale = actual
         mode = initialMode
         if (width > 0) applyMode()
@@ -172,10 +203,21 @@ class ZoomableImageView @JvmOverloads constructor(
         hiResScale = 0f
     }
 
+    @Suppress("DEPRECATION") // DIFFERENCE clipping also works on API 24/25, before clipOutRect.
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val h = hiRes ?: return
-        val r = hiResRect ?: return
+        val h = hiRes
+        val r = hiResRect
+        if (vectorImage && h != null && r != null) {
+            // Replace the base pixels: compositing a translucent SVG twice darkens its colours.
+            m.mapRect(hiResViewRect, r)
+            canvas.save()
+            canvas.clipRect(hiResViewRect, Region.Op.DIFFERENCE)
+            super.onDraw(canvas)
+            canvas.restore()
+        } else {
+            super.onDraw(canvas)
+        }
+        if (h == null || r == null) return
         canvas.save()
         canvas.concat(m) // same transform as the base bitmap, hi-res region falls into bitmap coordinates
         canvas.drawBitmap(h, null, r, hiResPaint)
@@ -185,7 +227,8 @@ class ZoomableImageView @JvmOverloads constructor(
     /** Request a hi-res region after zoom/pan settles; drop it when zoomed back out so the bitmap isn't interpolated, saving memory. */
     private fun scheduleHiRes() {
         removeCallbacks(hiResReq)
-        if (actualScale <= 1f || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
+        if (animatedImage) return
+        if ((!vectorImage && actualScale <= 1f) || scale <= 1.01f) { // original image has no more pixels, or the bitmap isn't zoomed yet
             if (hiRes != null) { clearHiRes(); invalidate() }
             return
         }
@@ -282,6 +325,10 @@ class ZoomableImageView @JvmOverloads constructor(
             (event.x < edgeGuardPx || event.x > width - edgeGuardPx)
         ) {
             return false
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            suppressLongPress = false
+            scaledTouch = false
         }
         scaleGesture.onTouchEvent(event)
         gesture.onTouchEvent(event)

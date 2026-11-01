@@ -136,7 +136,7 @@ internal object BatchRenameNames {
 internal object BatchRenameDialog {
     fun show(
         context: Context, owner: LifecycleOwner, files: List<XFile>,
-        parentInTree: (XFile) -> XFile?, onChanged: () -> Unit,
+        parentInTree: (XFile) -> XFile?, selectExtension: Boolean = false, onChanged: () -> Unit,
     ) {
         val dp = context.resources.displayMetrics.density
         fun px(n: Int) = (n * dp).toInt()
@@ -164,6 +164,7 @@ internal object BatchRenameDialog {
         val methodColumn = column()
         methodColumn.addView(heading(R.string.batch_method)); methodColumn.addView(method)
         val part = spinner(listOf(R.string.batch_name_only, R.string.batch_ext_only, R.string.batch_name_ext))
+        if (selectExtension) part.setSelection(BatchRenameNames.Part.EXTENSION.ordinal)
         val partLabel = heading(R.string.batch_apply_to)
         val scopeColumn = column()
         scopeColumn.addView(partLabel); scopeColumn.addView(part)

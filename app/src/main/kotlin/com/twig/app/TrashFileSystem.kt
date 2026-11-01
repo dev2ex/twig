@@ -69,6 +69,13 @@ class TrashFileSystem(private val ctx: Context, val store: TrashStore = TrashSto
         if (!OsConstants.S_ISREG(Os.lstat(payload.path).st_mode)) failure(file.path)
         return payload.inputStream()
     }
+    /** Local decoder input only; retain the original name for type detection and thumbnail keys. */
+    fun thumbnailSource(file: XFile): XFile {
+        val item = item(file)
+        val payload = store.payload(item.entry, item.relative)
+        if (!OsConstants.S_ISREG(Os.lstat(payload.path).st_mode)) failure(file.path)
+        return file.copy(scheme = "file", path = payload.path, displayName = file.name)
+    }
     override fun exists(file: XFile) = runCatching { resolve(file.path) }.isSuccess
     override fun writable() = false
     override fun openOutput(file: XFile, append: Boolean): java.io.OutputStream = failure(file.path)

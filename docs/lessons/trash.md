@@ -19,9 +19,10 @@ unmarked directories or follow symlink buckets/entries.
 
 Restores validate the original parent against the same volume, refuse an existing
 name (including dangling symlinks), and require confirmation before recreating missing
-parents. Both move directions use renameat2(RENAME_NOREPLACE), avoiding the race between
+parents. Both move directions prefer renameat2(RENAME_NOREPLACE), avoiding the race between
 a Java existence check and renameTo. The small JNI helper shares the existing twigpty
-library; unsupported kernels/filesystems fail without an overwrite/copy fallback. Pass
+library; old FUSE implementations use the reservation fallback described below, never
+a copy/delete fallback. Pass
 actual UTF-8 bytes across JNI, since GetStringUTFChars breaks supplementary filenames. Keep metadata until a purge has removed the payload successfully. Recursive
 purge uses lstat, never following symlink targets. Empty only the confirmed entry
 snapshot, so concurrent new trash entries survive. All TrashStore mutations share a
@@ -114,3 +115,28 @@ initiating pane and its sibling. Refreshing only the dialog's pane leaves the ot
 root visible after emptying, especially when it is collapsed and has no filesystem
 observer. TrashUiTest exercises the real empty-menu confirmation and service completion
 with both collapsed and expanded sibling roots.
+
+Android 11 FUSE compatibility (2026-10-28): QV7203Z58G could create and sync recovery
+records but every payload move failed. The cause was not missing all-files access:
+the device's shared-storage FUSE rejects renameat2(RENAME_NOREPLACE) with EINVAL,
+while ordinary rename works and the same flagged syscall works in /data/local/tmp.
+Preserve the native errno in the reported error instead of reducing it to trash_failed.
+On EINVAL, ENOSYS or EOPNOTSUPP only, exclusively reserve the destination using
+O_CREAT|O_EXCL|O_NOFOLLOW for files/symlinks or mkdir for directories, then rename
+over that empty reservation. Existing files, directories and dangling symlinks refuse
+the reservation; concurrent moves to one name have only one winner. On failure,
+remove only a reservation whose device/inode still matches; retain the source and
+recovery record. All other errors, including EXDEV and permission errors, fail directly.
+Both recycling and restoration use this path, retaining inode, contents and timestamps.
+
+This compatibility path is weaker than atomic no-replace: another actor that explicitly
+unlinks/replaces the reservation between verification and rename can still race it.
+A killed process can also leave an empty reservation: during recycling the original
+remains at its source and an empty payload may be listed; during restoration the actual
+payload remains recoverable in trash and the empty destination can block another restore.
+Never describe this as equivalent to atomic RENAME_NOREPLACE or fall back to an unguarded
+existence-check plus rename. The native host suite exercises both the normal syscall
+and a build forcing the old-FUSE path, including conflicts, concurrent moves, Unicode,
+directory restoration, symlinks and failed-move cleanup. The production helper also
+passed file/directory recycle and restore, inode preservation, conflicts and failed-move
+cleanup on this device's shared storage; Android UI verification remains user-operated.

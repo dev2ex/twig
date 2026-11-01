@@ -34,12 +34,12 @@ object DeleteUi {
 
     fun confirm(
         context: Context, owner: LifecycleOwner, files: List<XFile>,
-        onDismiss: (() -> Unit)? = null, onFinished: (Boolean) -> Unit,
-    ) = confirm(context, owner.lifecycleScope, files, onDismiss, onFinished)
+        onDismiss: (() -> Unit)? = null, skipTrashConfirmation: Boolean = false, onFinished: (Boolean) -> Unit,
+    ) = confirm(context, owner.lifecycleScope, files, onDismiss, skipTrashConfirmation, onFinished)
 
     fun confirm(
         context: Context, scope: CoroutineScope, files: List<XFile>,
-        onDismiss: (() -> Unit)? = null, onFinished: (Boolean) -> Unit,
+        onDismiss: (() -> Unit)? = null, skipTrashConfirmation: Boolean = false, onFinished: (Boolean) -> Unit,
     ) {
         val app = context.applicationContext
         scope.launch {
@@ -53,6 +53,10 @@ object DeleteUi {
             if (context is LifecycleOwner && !context.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED))
                 return@launch
             val enabled = Prefs.trashEnabled(app)
+            if (skipTrashConfirmation && enabled && plan.all { it.volume != null }) {
+                runConfirmed(context, scope, Transfers.Work.Delete(plan, true), onFinished)
+                return@launch
+            }
             val useTrash = if (enabled && plan.any { it.volume != null }) CheckBox(context).apply {
                 id = android.R.id.checkbox
                 text = context.getString(R.string.trash_use)

@@ -183,7 +183,7 @@ class PropertiesButtonTest {
             event(MotionEvent.ACTION_DOWN, bounds.right + 1f)
             event(MotionEvent.ACTION_UP, bounds.right - 1f)
             shadowOf(Looper.getMainLooper()).idle()
-            assertEquals(0, opens)
+            assertEquals("grid=$grid bounds=$bounds", 0, opens)
             assertEquals(0, properties)
             assertFalse(row.isPressed)
             event(MotionEvent.ACTION_DOWN, bounds.right + 20f)

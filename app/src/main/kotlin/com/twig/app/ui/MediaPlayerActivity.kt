@@ -30,7 +30,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -84,7 +84,7 @@ import kotlinx.coroutines.withContext
  *   [RandomSource] (SMB native pread).
  */
 @UnstableApi
-class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
+class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     private lateinit var b: ActivityMediaPlayerBinding
     private lateinit var file: XFile
@@ -184,8 +184,15 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private var keepOn = true
     private var userBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
     private var swallowTouch = false // the touch that wakes the screen must not also toggle playback
+    private var subtitleDialogShowing = false
 
     private val handler = Handler(Looper.getMainLooper())
+    private var touchingControls = false
+    private val hideControls = Runnable {
+        if (isVideo && player?.isPlaying == true && !touchingControls && !scrubbing) {
+            setControlsVisible(false)
+        }
+    }
     private val dimRunnable = Runnable {
         dimmed = true
         setWindowBrightness(DIM_BRIGHTNESS)
@@ -214,6 +221,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         super.onCreate(savedInstanceState)
         b = ActivityMediaPlayerBinding.inflate(layoutInflater)
         setContentView(b.root)
+        applySubtitleAppearance()
 
         val scheme = intent.getStringExtra(EXTRA_SCHEME) ?: return finish()
         val path = intent.getStringExtra(EXTRA_PATH) ?: return finish()
@@ -473,7 +481,8 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 saveGate.onPlayingChanged(isPlaying, SystemClock.elapsedRealtime())
                 b.btnPlay.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
-                if (isPlaying) wakeScreen() else scheduleDim()
+                if (isPlaying || subtitleDialogShowing) wakeScreen() else scheduleDim()
+                scheduleControlsHide()
             }
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
@@ -1193,18 +1202,37 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         }
     }
 
+    private fun applySubtitleAppearance() {
+        b.tvSubtitle.textSize = com.twig.app.Prefs.subtitleSize(this).toFloat()
+        b.tvSubtitle.setTextColor(com.twig.app.Prefs.subtitleTextColor(this))
+        b.tvSubtitle.setShadowLayer(4f, 1f, 1f, Color.BLACK)
+    }
+
     private fun showSubtitleDialog() {
         val names = ArrayList<String>()
         names.add(getString(R.string.player_subtitle_close))
         subFiles.forEach { names.add(it.name) }
         textGroups.forEachIndexed { i, g -> names.add(trackName(g, i, getString(R.string.player_subtitle))) }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.player_subtitle)
+        val dialog = AlertDialog.Builder(this)
+            .setCustomTitle(SubtitleSizeUi.create(this, includeTitle = true) {
+                applySubtitleAppearance()
+            })
             .setSingleChoiceItems(names.toTypedArray(), subChoice.coerceIn(0, names.size - 1)) { d, which ->
                 applySubChoice(which)
                 d.dismiss()
             }
-            .show()
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+        dialog.setOnDismissListener {
+            subtitleDialogShowing = false
+            if (!isFinishing && !isDestroyed) wakeScreen()
+        }
+        subtitleDialogShowing = true
+        wakeScreen()
+        dialog.show()
+        dialog.window?.clearFlags(
+            WindowManager.LayoutParams.FLAG_DIM_BEHIND or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+        )
     }
 
     private fun applySubChoice(which: Int) {
@@ -1328,7 +1356,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     private fun scheduleDim() {
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
-        if (player?.isPlaying != true) {
+        if (!subtitleDialogShowing && hasWindowFocus() && player?.isPlaying != true) {
             handler.postDelayed(dimRunnable, dimDelay())
             handler.postDelayed(screenOffRunnable, SCREEN_OFF_DELAY)
         }
@@ -1339,6 +1367,14 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         if (dimmed) {
             dimmed = false
             setWindowBrightness(userBrightness)
+        }
+        if (subtitleDialogShowing && player?.isPlaying != true) {
+            // Only idle playback follows system dimming and screen-off while this dialog is open.
+            keepOn = false
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            handler.removeCallbacks(dimRunnable)
+            handler.removeCallbacks(screenOffRunnable)
+            return
         }
         if (!keepOn) {
             keepOn = true
@@ -1352,8 +1388,14 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
      *  tap meant only to see the picture doesn't also toggle playback. */
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            touchingControls = true
+            handler.removeCallbacks(hideControls)
             swallowTouch = dimmed
             wakeScreen()
+        }
+        if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
+            touchingControls = false
+            scheduleControlsHide()
         }
         if (swallowTouch) {
             if (ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -1365,16 +1407,32 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN) wakeScreen()
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            wakeScreen()
+            scheduleControlsHide()
+        }
         return super.dispatchKeyEvent(event)
     }
 
     private fun toggleControls() {
-        val show = b.toolbar.visibility != View.VISIBLE
+        setControlsVisible(b.toolbar.visibility != View.VISIBLE)
+    }
+
+    private fun setControlsVisible(show: Boolean) {
         val v = if (show) View.VISIBLE else View.GONE
         b.toolbar.visibility = v
         b.controls.visibility = v
         syncSubtitleInset() // a hidden bar gets no layout pass, so the restore has to happen here
+        scheduleControlsHide()
+    }
+
+    private fun scheduleControlsHide() {
+        handler.removeCallbacks(hideControls)
+        if (isVideo && player?.isPlaying == true && hasWindowFocus() &&
+            b.controls.visibility == View.VISIBLE && !touchingControls && !scrubbing
+        ) {
+            handler.postDelayed(hideControls, CONTROLS_HIDE_DELAY)
+        }
     }
 
     /**
@@ -1701,6 +1759,14 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && isVideo) immersive()
+        if (hasFocus) {
+            wakeScreen()
+        } else {
+            // Dialogs own their touch events; leave the video bright while they are in use.
+            handler.removeCallbacks(dimRunnable)
+            handler.removeCallbacks(screenOffRunnable)
+        }
+        scheduleControlsHide()
     }
 
     private fun immersive() {
@@ -1721,6 +1787,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
 
     override fun onResume() {
         super.onResume()
+        applySubtitleAppearance()
         wakeScreen()
     }
 
@@ -1731,6 +1798,8 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         // In the background the window isn't visible, so the timers mean nothing; onResume decides again
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
+        handler.removeCallbacks(hideControls)
+        touchingControls = false
     }
 
     /**
@@ -1775,6 +1844,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
         handler.removeCallbacks(hideHint)
+        handler.removeCallbacks(hideControls)
         player?.release() // asynchronous teardown, doesn't block the main thread
         player = null
         val src = fsSrc; fsSrc = null
@@ -1796,6 +1866,7 @@ class MediaPlayerActivity : AppCompatActivity(), SurfaceHolder.Callback {
         const val SCALE_FILL = 2     // stretch to fill
         /** Upper bound for waiting on the remote resume position: beyond this, start from the beginning — don't let one network hiccup become "stuck on the loading spinner forever". */
         private const val RESUME_TIMEOUT_MS = 2500L
+        private const val CONTROLS_HIDE_DELAY = 10_000L
         /** Brightness a paused screen falls back to: dark enough to save power and to stop being a
          *  lamp in a dark room, bright enough that the paused frame is still recognisable. */
         private const val DIM_BRIGHTNESS = 0.05f

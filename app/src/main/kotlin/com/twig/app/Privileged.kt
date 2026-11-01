@@ -197,10 +197,11 @@ object Privileged {
         return ShizukuLauncher().start(LocalCommands.line(cmd))
     }
 
-    /** Whether the Shizuku manager is installed (different from "running"; messages need to be distinct). */
-    fun shizukuInstalled(ctx: Context): Boolean = runCatching {
-        ctx.packageManager.getPackageInfo(SHIZUKU_PKG, 0) != null
-    }.getOrDefault(false)
+    /** A live API service also works with compatible managers using a different package name. */
+    fun shizukuInstalled(ctx: Context, running: Boolean = shizukuRunning()): Boolean =
+        running || listOf(SHIZUKU_PKG, "com.hamondev.shevery").any { pkg ->
+            runCatching { ctx.packageManager.getPackageInfo(pkg, 0) != null }.getOrDefault(false)
+        }
 
     private fun background(body: () -> Unit) {
         Thread(body, "twig-priv-connect").apply { isDaemon = true }.start()

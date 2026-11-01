@@ -97,6 +97,19 @@ class SafSiblingsTest {
     }
 
     @Test
+    fun `return from image viewer locates the file using its real SAF parent`() = runTest(dispatcher) {
+        expandRoot()
+        val before = vm.state.value.rows.map { it.key }
+        val image = child("b.jpg")
+        org.junit.Assert.assertTrue(vm.revealViewedFile(image))
+        advanceUntilIdle()
+        assertEquals(dirUri, vm.state.value.currentDir?.path)
+        assertEquals("f:saf:$dirUri", vm.state.value.currentKey)
+        assertEquals(PaneViewModel.fileKey(image), vm.state.value.scrollKey)
+        assertEquals(before, vm.state.value.rows.map { it.key })
+    }
+
+    @Test
     fun `audio in the same directory can build a playback queue`() = runTest(dispatcher) {
         expandRoot()
         val (audios, idx) = vm.audioSiblings(child("d.mp3"))

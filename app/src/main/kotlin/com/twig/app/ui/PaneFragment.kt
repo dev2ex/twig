@@ -20,6 +20,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.widget.doAfterTextChanged
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.fragment.app.Fragment
@@ -30,6 +31,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.AppsFileSystem
 import com.twig.app.AndroidDataAccess
@@ -50,9 +52,7 @@ import com.twig.app.Format
 import com.twig.app.favoriteDisplayName
 import com.twig.app.isMovableSource
 import com.twig.app.favoriteFullPath
-import com.twig.app.databinding.DialogCompressBinding
 import com.twig.app.databinding.DialogConflictBinding
-import com.twig.app.databinding.DialogCopyConfirmBinding
 import com.twig.app.databinding.DialogCopyProgressBinding
 import com.twig.app.databinding.DialogProgressTitleBinding
 import com.twig.app.databinding.FragmentPaneBinding
@@ -83,6 +83,9 @@ class PaneFragment : Fragment() {
         fun onPaneSwipe(velocityX: Float)
         fun refreshTrees()
         fun isPaneActive(self: PaneFragment): Boolean
+        /** Main-screen copies can choose directly in the other resident pane. */
+        fun chooseDestination(source: PaneFragment): Boolean = false
+        fun isChoosingDestination(): Boolean = false
         /** Make a pane the currently-shown one (e.g. the treemap's "Show on the other side" then focus the target pane). */
         fun focusPane(pane: PaneFragment)
         /** This pane's current directory (= the clipboard bar's paste target) changed; let the host refresh that line on the bar.
@@ -102,6 +105,9 @@ class PaneFragment : Fragment() {
         /** File-picker mode: if the host takes the click (returns true), don't proceed to open / viewer. */
         fun onPickFile(file: XFile): Boolean = false
 
+        /** External multi-file pickers select rows immediately, including the first selection. */
+        val selectFilesByRow: Boolean get() = false
+
         /** Launcher configuration can observe navigation and consume leaf clicks. */
         fun onPickNode(node: PaneViewModel.Node): Boolean = false
         val shortcutResult: ((ShortcutInfoCompat) -> Unit)? get() = null
@@ -111,6 +117,7 @@ class PaneFragment : Fragment() {
 
         /** Open the SAF folder-grant picker (jumps straight there if [initial] is non-null); only the main UI accepts this. */
         fun openSafPicker(initial: android.net.Uri?) {}
+        fun onSafGrantsChanged() { refreshTrees() }
     }
 
 
@@ -118,7 +125,9 @@ class PaneFragment : Fragment() {
     private val b get() = _b!!
 
     val viewModel: PaneViewModel by viewModels()
+    internal val destinationState: DestinationState by viewModels()
     private lateinit var adapter: FileAdapter
+    private var pendingDestinationSelection: List<XFile> = emptyList()
 
     private var pendingDataPath: String? = null
     private val dataPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -226,6 +235,7 @@ class PaneFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         viewModel.paneIndex = paneIndex
+        pendingDestinationSelection = destinationState.checkedSources
         com.twig.app.WebsiteStore.preferences(requireContext()).registerOnSharedPreferenceChangeListener(websiteListener)
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
@@ -233,6 +243,7 @@ class PaneFragment : Fragment() {
             thumbs = Prefs.thumbs(requireContext()),
             gridMode = Prefs.thumbsGrid(requireContext()),
             gridNames = Prefs.thumbsGridNames(requireContext()),
+            selectFilesByRow = host?.selectFilesByRow == true,
             onClick = click@{ node ->
                 if (host?.onPickNode(node) == true) return@click
                 when (node) {
@@ -257,13 +268,18 @@ class PaneFragment : Fragment() {
                 }
             },
             onLongClick = { node ->
-                if (host?.shortcutResult != null) host?.onPickNode(node)
+                if (host?.isChoosingDestination() == true) Unit
+                else if (host?.shortcutResult != null) host?.onPickNode(node)
                 else onLongClick(node)
             },
-            onSelectionChanged = { host?.onSelectionChanged() },
+            onSelectionChanged = {
+                updateSelectionCount()
+                host?.onSelectionChanged()
+            },
             onInfoTab = { node, idx -> viewModel.selectInfoTab(node, idx) },
             onInfoHash = { node -> viewModel.computeHash(node) },
             onInfo = { node -> viewModel.toggleInfo(node) },
+            onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
         // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is
@@ -282,11 +298,41 @@ class PaneFragment : Fragment() {
         }
         b.list.layoutManager = glm
         b.list.adapter = adapter
+        val itemDrag = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+            override fun isLongPressDragEnabled() = false
+            override fun getMovementFlags(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int {
+                val node = adapter.currentList.getOrNull(holder.bindingAdapterPosition)
+                return if (node?.reordering == true)
+                    makeMovementFlags(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) else 0
+            }
+            override fun canDropOver(rv: RecyclerView, current: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean =
+                adapter.currentList.getOrNull(target.bindingAdapterPosition)?.reordering == true
+            override fun onMove(rv: RecyclerView, source: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
+                val from = adapter.currentList.getOrNull(source.bindingAdapterPosition) ?: return false
+                val to = adapter.currentList.getOrNull(target.bindingAdapterPosition) ?: return false
+                return viewModel.moveSortedItem(from.key, to.key,
+                    adapter.currentList.filter { it.reordering }.map { it.key })
+            }
+            override fun onSwiped(holder: RecyclerView.ViewHolder, direction: Int) = Unit
+            override fun clearView(rv: RecyclerView, holder: RecyclerView.ViewHolder) {
+                super.clearView(rv, holder)
+                viewModel.saveItemOrder()
+                host?.refreshTrees()
+            }
+        })
+        itemDrag.attachToRecyclerView(b.list)
+        adapter.onItemDrag = { itemDrag.startDrag(it) }
         b.list.itemAnimator = null // The tree changes instantly on tap; item animations would make the highlight frame drift through the transition.
         if (Prefs.rowDivider(requireContext())) b.list.addItemDecoration(RowDivider(requireContext()))
         b.list.addItemDecoration(CurrentDirFrame(requireContext()))
 
         installGestures()
+        // Match the list checkbox's 36dp width minus its 8dp padding on each side.
+        b.tvSelectionCount.compoundDrawablesRelative[2]?.let { check ->
+            val size = (20 * resources.displayMetrics.density).toInt()
+            check.setBounds(0, 0, size, size)
+            b.tvSelectionCount.setCompoundDrawablesRelative(null, null, check, null)
+        }
         b.pathBar.setOnLongClickListener { editCurrentPath() }
         val pathGestures = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -356,7 +402,7 @@ class PaneFragment : Fragment() {
                 // User input takes priority over restoring the old scroll position.
                 pendingScrollToCurrent = false
             },
-            onSwipe = { dx -> host?.onPaneSwipe(dx) },
+            onSwipe = { dx -> if (!viewModel.sortingItems) host?.onPaneSwipe(dx) },
         ))
     }
 
@@ -370,6 +416,11 @@ class PaneFragment : Fragment() {
         }
     }
 
+    override fun onStop() {
+        if (::adapter.isInitialized) adapter.setDirectoryCountsActive(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         takeImageViewerResult()
@@ -377,6 +428,9 @@ class PaneFragment : Fragment() {
         // The user may have just picked "Always" in the system resolver: clear the file-association icon cache and redraw so the icon follows.
         FileIcons.clearAppDefaults()
         if (::adapter.isInitialized) {
+            adapter.setDirectoryCountsActive(
+                Prefs.dualPane(requireContext()) ||
+                    (host?.isPaneActive(this) ?: (paneIndex == 0)))
             adapter.refreshDefaultAppIcons()
             adapter.refreshPlaybackProgress(requireContext())
         }
@@ -391,11 +445,22 @@ class PaneFragment : Fragment() {
      */
     fun setActive(active: Boolean) {
         val v = _b?.pathBar ?: return
+        if (::adapter.isInitialized) adapter.setDirectoryCountsActive(
+            active || Prefs.dualPane(requireContext()))
         v.alpha = if (active) 1f else 0.5f
-        v.setBackgroundResource(if (active) R.color.path_bar_active else R.color.path_bar)
+        v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
+    }
+
+    private fun updateSelectionCount() {
+        val bb = _b ?: return
+        val count = if (mapMode) mapSelected.size else adapter.selectedItems().size
+        bb.tvSelectionCount.text = if (count > 0) count.toString() else ""
+        bb.tvSelectionCount.contentDescription = if (count > 0) getString(R.string.title_selected_count, count) else null
+        bb.tvSelectionCount.visibility = if (count > 0) View.VISIBLE else View.GONE
     }
 
     private fun render(s: PaneViewModel.State) {
+        updateSelectionCount()
         b.tvPath.text = s.currentDir?.let { pathLabel(it) } ?: ""
         b.ivPathIcon.setImageResource(
             s.currentDir?.let { pathIcon(it) } ?: R.drawable.ic_folder,
@@ -403,6 +468,10 @@ class PaneFragment : Fragment() {
         adapter.currentKey = s.currentKey
         adapter.submitList(s.rows) {
             val bb = _b ?: return@submitList
+            if (pendingDestinationSelection.isNotEmpty()) {
+                adapter.setSelection(pendingDestinationSelection)
+                pendingDestinationSelection = emptyList()
+            }
             bb.list.invalidate() // The highlight frame redraws as currentKey changes.
             if (pendingSelectionInfoScroll) {
                 val index = s.rows.indexOfFirst { it is PaneViewModel.InfoNode && it.selection }
@@ -507,7 +576,7 @@ class PaneFragment : Fragment() {
             OpenFiles.isImage(file) -> {
                 val (images, index) = viewModel.imageSiblings(file)
                 awaitingImageResult = true
-                ImageViewerActivity.start(requireContext(), images, index)
+                ImageViewerActivity.start(requireContext(), images, index, selection = adapter.selectedItems())
             }
             // xapk/apks/apkm: base + splits in one zip, which the system installer cannot
             // take. Streamed into a PackageInstaller session instead, see ApkBundleInstall.
@@ -547,7 +616,7 @@ class PaneFragment : Fragment() {
                 OpenFiles.isText(typed) -> TextViewerActivity.start(ctx, file)
                 OpenFiles.isImage(typed) -> {
                     awaitingImageResult = true
-                    ImageViewerActivity.start(ctx, listOf(file), 0)
+                    ImageViewerActivity.start(ctx, listOf(file), 0, selection = adapter.selectedItems())
                 }
                 // Straight to the player rather than the music queue: the queue is rebuilt
                 // from its tracks' names, which would not say "audio".
@@ -682,6 +751,13 @@ class PaneFragment : Fragment() {
         }.apply { targetPosition = index })
     }
 
+    fun actionRefreshThumbnails() {
+        val targets = selectionOrCurrent(readOnly = true)
+        if (targets.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (targets.all { it.canRead } && targets.any { it.isDir || Thumbs.canThumb(it) })
+            refreshThumb(targets)
+    }
+
     fun actionRefresh() {
         viewModel.currentDir?.let(viewModel::noteChangedIn)
         viewModel.refresh()
@@ -694,6 +770,7 @@ class PaneFragment : Fragment() {
     fun reveal(target: XFile, focus: XFile? = null) {
         if (mapMode) exitTreemap()
         pendingScrollToCurrent = true
+        if (focus != null && viewModel.revealViewedFile(focus)) return
         viewModel.revealPath(target, focus)
     }
 
@@ -722,8 +799,8 @@ class PaneFragment : Fragment() {
     fun unmountLocated(): Boolean = viewModel.unmountLocated()
 
     /** Open on recent locations, with unfinished videos available in a separate tab. */
-    fun actionHistory() {
-        HistoryDialog.show(requireContext(), ::jumpToHistory, ::openRecentVideo)
+    fun actionHistory(continueWatching: Boolean = false) {
+        HistoryDialog.show(requireContext(), ::jumpToHistory, ::openRecentVideo, continueWatching)
     }
 
     private fun openRecentVideo(mark: PlaybackMark, fromStart: Boolean = false) {
@@ -761,6 +838,7 @@ class PaneFragment : Fragment() {
 
     private fun enterTreemap(target: XFile) {
         mapMode = true
+        updateSelectionCount()
         b.list.visibility = View.GONE
         b.tvEmpty.visibility = View.GONE
         host?.onClipTargetChanged()
@@ -832,8 +910,37 @@ class PaneFragment : Fragment() {
         render(viewModel.state.value) // Restore path bar / empty state.
     }
 
-    /** Back-key routing: inside the treemap, go up a level first, then exit treemap at the root; outside the treemap, don't consume it. */
+    internal fun isItemDragHandleAt(screenX: Float, screenY: Float): Boolean {
+        val list = _b?.list ?: return false
+        val bounds = android.graphics.Rect()
+        for (index in 0 until list.childCount) {
+            val child = list.getChildAt(index)
+            val position = list.getChildViewHolder(child).bindingAdapterPosition
+            val node = adapter.currentList.getOrNull(position) ?: continue
+            if (!node.reordering) continue
+            val handle = child.findViewById<View>(R.id.indicator) ?: continue
+            if (handle.getGlobalVisibleRect(bounds) && bounds.contains(screenX.toInt(), screenY.toInt())) return true
+        }
+        return false
+    }
+
+    internal fun finishInlineSorting() {
+        if (!viewModel.sortingItems) return
+        viewModel.finishItemSorting()
+        host?.refreshTrees()
+    }
+
+    internal fun prepareDestinationSelection() {
+        if (mapMode) exitTreemap()
+        if (viewModel.sortingItems) finishInlineSorting()
+    }
+
+    /** Back first finishes inline reordering; in the treemap it goes up or returns to the tree. */
     fun handleBack(): Boolean {
+        if (viewModel.sortingItems) {
+            finishInlineSorting()
+            return true
+        }
         if (!mapMode) return false
         if (mapStack.size > 1) {
             mapStack.removeAt(mapStack.size - 1)
@@ -847,6 +954,7 @@ class PaneFragment : Fragment() {
     private fun toggleMapSelection(e: TreemapEntry) {
         if (!mapSelected.remove(e)) mapSelected.add(e)
         b.map.selectedKeys = mapSelected.mapTo(HashSet()) { TreemapView.keyOf(it) }
+        updateSelectionCount()
         // Tile selection is the same input as the tree's checks (see selectionOrCurrent), so the host's write actions follow it too.
         host?.onSelectionChanged()
     }
@@ -855,6 +963,7 @@ class PaneFragment : Fragment() {
         if (mapSelected.isEmpty()) return
         mapSelected.clear()
         _b?.map?.selectedKeys = emptySet()
+        updateSelectionCount()
         host?.onSelectionChanged()
     }
 
@@ -997,6 +1106,21 @@ class PaneFragment : Fragment() {
             .show()
     }
 
+    fun actionNewTextFile() {
+        val dir = viewModel.currentDir ?: return toast(getString(R.string.msg_pick_dir_first))
+        if (dir.isWritableDir()) performNewTextFile(dir)
+    }
+
+    fun actionTerminal() {
+        val dir = viewModel.currentDir ?: return toast(getString(R.string.msg_pick_dir_first))
+        when {
+            dir.scheme == "file" -> TerminalActivity.startLocal(requireContext(), dir.path)
+            FsRegistry.of(dir) is com.twig.fs.network.SftpFileSystem ->
+                TerminalActivity.start(requireContext(), dir.scheme, dir.name, Connections.shellPath(dir.scheme, dir.path))
+            else -> toast(getString(R.string.terminal_locate_failed))
+        }
+    }
+
     fun actionNewFolder() {
         val dir = viewModel.currentDir ?: return toast(getString(R.string.msg_pick_dir_first))
         performNewFolder(dir)
@@ -1084,6 +1208,18 @@ class PaneFragment : Fragment() {
         }
     }
 
+    fun actionInfo(secondTab: Boolean = false) {
+        val targets = selectionOrCurrent(readOnly = true)
+        if (targets.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (targets.size > 1) {
+            val anchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
+            pendingSelectionInfoScroll = true
+            viewModel.toggleSelectionInfo(targets, anchor?.key)
+        } else {
+            if (secondTab) viewModel.showInfo(targets.single(), 1) else viewModel.toggleInfo(targets.single())
+        }
+    }
+
     data class StripActions(
         val create: Boolean = false,
         val copy: Boolean = false,
@@ -1092,6 +1228,7 @@ class PaneFragment : Fragment() {
         val delete: Boolean = false,
         val treemap: Boolean = false,
         val search: Boolean = false,
+        val info: Boolean = false,
     )
 
     /** Check source availability without IO; transfer destinations are validated when clicked. */
@@ -1108,10 +1245,65 @@ class PaneFragment : Fragment() {
             delete = modify,
             treemap = mapMode || target?.let { it.isDir || com.twig.fs.archive.Archives.isArchive(it) } == true,
             search = target?.isDir == true,
+            info = !mapMode && transfer,
         )
     }
 
     fun canCreateHere(): Boolean = viewModel.currentDir?.isWritableDir() == true
+
+    fun actionDuplicate(immediate: Boolean = false) {
+        val files = selectionOrCurrent().distinctBy { it.scheme to it.path }
+        if (files.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (!files.all { it.isMutable() }) return
+        val parents = files.associateWith(viewModel::renameParent)
+        noteSourceDirs(files)
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val pairs = DuplicateEntries.parents(context, files, parents)
+                    pairs to if (immediate) null else DuplicateEntries.names(pairs)
+                }
+            }.onSuccess { (pairs, names) ->
+                if (names == null) startDuplicate(pairs)
+                else DuplicateConfirmDialog.show(context, viewLifecycleOwner, pairs, names) { chosen ->
+                    startDuplicate(pairs, chosen)
+                }
+            }.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+        }
+    }
+
+    private fun startDuplicate(pairs: List<Pair<XFile, XFile>>, names: Map<String, String>? = null) {
+        launchSession(Transfers.Session(
+            Transfers.Work.Sync(pairs, move = false, duplicate = true).apply { targetNames = names },
+            R.string.progress_copy, getString(R.string.strip_duplicate), R.drawable.ic_duplicate, null,
+        ))
+    }
+
+    fun actionNumberedRename() {
+        val files = selectionOrCurrent().distinctBy { it.scheme to it.path }
+        if (files.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (!files.all { it.isMutable() }) return
+        val parents = files.associateWith(viewModel::renameParent)
+        noteSourceDirs(files)
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            var changed = false
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val pairs = DuplicateEntries.parents(context, files, parents)
+                    val names = DuplicateEntries.names(pairs)
+                    BatchRenameDialog.execute(context, files, files.map { names.getValue(it.toUri()) }, parents) {
+                        changed = true
+                    }
+                }
+            }
+            if (changed) {
+                adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
+            }
+            result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+        }
+    }
 
     fun actionRename() {
         val sel = selectionOrCurrent()
@@ -1148,24 +1340,24 @@ class PaneFragment : Fragment() {
             .create().showNameInput(input, selectStem = !target.isDir)
     }
 
-    fun actionDelete() {
+    fun actionDelete(skipTrashConfirmation: Boolean = false) {
         val sel = selectionOrCurrent()
         if (sel.isEmpty()) {
             toast(getString(R.string.msg_no_selection)); return
         }
         noteSourceDirs(sel)
-        performDelete(sel)
+        performDelete(sel, skipTrashConfirmation)
     }
 
     /**
      * Delete. For app entries, "delete" means **uninstall** and is delegated to the system uninstall UI (which has its own confirmation, so we don't layer ours on top); for a mixed selection across sources, apps go to uninstall and the rest are deleted as usual.
      */
-    private fun performDelete(sel: List<XFile>) {
+    private fun performDelete(sel: List<XFile>, skipTrashConfirmation: Boolean = false) {
         val apps = sel.filter { it.scheme == AppsFileSystem.SCHEME }
         if (apps.isNotEmpty()) uninstallApps(apps)
         val rest = sel.filterNot { it.scheme == AppsFileSystem.SCHEME }
         if (rest.isEmpty()) return
-        DeleteUi.confirm(requireContext(), viewLifecycleOwner, rest) {
+        DeleteUi.confirm(requireContext(), viewLifecycleOwner, rest, skipTrashConfirmation = skipTrashConfirmation && apps.isEmpty()) {
             adapter.clearSelection(); clearMapSelection(); viewModel.refresh()
         }
     }
@@ -1288,17 +1480,17 @@ class PaneFragment : Fragment() {
         startTransfer(items, dest, FileClipboard.move, plan0 = null, fromClipboard = true)
     }
 
-    /** Copy/move the checked items (or the green-highlighted current node when nothing is checked) to the other pane's current directory. */
-    fun actionCopy(move: Boolean) {
+    /** Copy/move checked items (or the current node), choosing a target first when the other pane has no writable directory. */
+    fun actionCopy(move: Boolean, immediate: Boolean = false) {
         val sel = selectionOrCurrent(readOnly = !move)
         if (sel.isEmpty()) {
             toast(getString(R.string.msg_no_selection)); return
         }
         noteSourceDirs(sel)
-        performCopy(sel, move, allowMove = selectionOrCurrent().containsAll(sel))
+        performCopy(sel, move, allowMove = selectionOrCurrent().containsAll(sel), immediate = immediate)
     }
 
-    private fun performCopy(sel: List<XFile>, move: Boolean, allowMove: Boolean = true) {
+    private fun performCopy(sel: List<XFile>, move: Boolean, allowMove: Boolean = true, immediate: Boolean = false) {
         // Move = copy + delete source. Apps can't be deleted (uninstall is a different thing), and the document tree root
         // can't be deleted (it's a grant, see [isMovableSource]); the action bar's "Move" and batch-after-check bypass the menu,
         // so we catch the failure here rather than failing after the copy completes.
@@ -1314,40 +1506,52 @@ class PaneFragment : Fragment() {
         }
         val sibling = host?.siblingOf(this)
         val dest = sibling?.viewModel?.currentDir
-        if (dest == null) {
-            toast(getString(R.string.msg_pick_other_dir_first)); return
-        }
-        if (!dest.isWritableDir()) {
-            toast(getString(R.string.msg_dest_not_writable)); return
+        if (immediate && dest?.isWritableDir() == true && FileClipboard.pasteBlockReason(dest, sel) == null) {
+            startTransfer(sel, dest, move, null)
+            return
         }
 
-        // ---- Confirmation dialog: source + size (background tally) + destination + move mode ----
-        val cb = DialogCopyConfirmBinding.inflate(layoutInflater)
-        cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
-        cb.tvSize.text = "…"
-        cb.tvDest.text = pathLabel(dest)
-        cb.ivDest.setImageResource(pathIcon(dest))
-        cb.cbMove.isChecked = move
-        // When the sources can't be moved there's no "move mode" to speak of — better to hide the row entirely than show a checkbox that would error on click.
-        cb.cbMove.visibility = if (movable) View.VISIBLE else View.GONE
-        var plan: CopyEngine.Plan? = null
-        viewLifecycleOwner.lifecycleScope.launch {
-            val p = runCatching { withContext(Dispatchers.IO) { CopyEngine.plan(sel) } }.getOrNull()
-            plan = p
-            if (p != null && _b != null) cb.tvSize.text = Format.size(p.bytes)
+        // Keep the source snapshot while the destination picker is open.
+        if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
+        val state = destinationState
+        state.prepare(DestinationState.Draft(sel.toList(), dest, move, movable))
+        if (dest?.isWritableDir() == true) showDestinationConfirmation() else chooseDestination()
+    }
+
+    private val destinationPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val state = destinationState
+        val draft = state.draft ?: return@registerForActivityResult
+        val data = result.data
+        val scheme = data?.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME)
+        val path = data?.getStringExtra(PickerActivity.EXTRA_PICKED_PATH)
+        val picked = result.resultCode == Activity.RESULT_OK && scheme != null && path != null
+        if (picked) {
+            draft.destination = XFile(scheme!!, path!!, true,
+                displayName = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME))
+            draft.compression?.saveToSource = false
         }
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.copy_title)
-            .setView(cb.root)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                startTransfer(sel, dest, movable && cb.cbMove.isChecked, plan)
-            }
-            .show()
+        val confirm = picked || state.returnToConfirmation
+        state.returnToConfirmation = false
+        if (confirm) showDestinationConfirmation() else state.clear()
+    }
+
+    internal fun chooseDestination() {
+        if (host?.chooseDestination(this) == true) return
+        val confirmation = childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as? androidx.fragment.app.DialogFragment
+        destinationState.returnToConfirmation = confirmation != null
+        confirmation?.dismiss()
+        val title = if (destinationState.draft?.compression == null) R.string.copy_to else R.string.compress_save_to
+        destinationPicker.launch(PickerActivity.dirIntent(requireContext(), getString(title)))
+    }
+
+    internal fun showDestinationConfirmation() {
+        val draft = destinationState.draft ?: return
+        val dialog = if (draft.compression == null) CopyConfirmDialog() else CompressConfirmDialog()
+        dialog.show(childFragmentManager, DestinationState.CONFIRMATION_TAG)
     }
 
     /** Hand the move to the background session, and attach the progress dialog (see [Transfers]). */
-    private fun startTransfer(
+    internal fun startTransfer(
         sel: List<XFile>,
         dest: XFile,
         move: Boolean,
@@ -1426,89 +1630,38 @@ class PaneFragment : Fragment() {
     // ---- Compress (pack into the other pane's current directory) ----
 
     /** Action bar "Compress": pack the checked items (or the green-highlighted current node when nothing is checked) into the other pane's current directory. */
-    fun actionCompress() {
+    fun actionCompress(immediate: Boolean = false) {
         val sel = selectionOrCurrent(readOnly = true)
         if (sel.isEmpty()) {
             toast(getString(R.string.msg_no_selection)); return
         }
         noteSourceDirs(sel)
-        performCompress(sel, allowMove = selectionOrCurrent().containsAll(sel))
+        performCompress(sel, allowMove = selectionOrCurrent().containsAll(sel), immediate = immediate)
     }
 
-    /**
-     * Compress confirmation dialog: file name (default below) + format (zip/7z) + move mode; the destination is fixed to the other pane's current directory,
-     * same as the action bar's copy/move.
-     *
-     * Default name: with a single item (the case when the file/directory menu enters) use that item's name — files strip the extension;
-     * for multiple items use their containing directory's name. The extension follows the format and is rewritten whenever the format changes.
-     */
-    private fun performCompress(sel: List<XFile>, allowMove: Boolean = true) {
-        val sibling = host?.siblingOf(this)
-        val dest = sibling?.viewModel?.currentDir
-        if (dest == null) {
-            toast(getString(R.string.msg_pick_other_dir_first)); return
-        }
-        if (!dest.isWritableDir()) {
-            toast(getString(R.string.msg_dest_not_writable)); return
-        }
-        val movable = allowMove && sel.all { it.isMovableSource() }
-        val cb = DialogCompressBinding.inflate(layoutInflater)
-        cb.cbMove.visibility = if (movable) View.VISIBLE else View.GONE
-        cb.tvSrc.text = if (sel.size == 1) sel[0].name else getString(R.string.copy_items, sel.size)
-        cb.tvDest.text = pathLabel(dest)
-        cb.ivDest.setImageResource(pathIcon(dest))
+    /** Compression shares destination selection with copy/move, retaining its own form fields. */
+    private fun performCompress(sel: List<XFile>, allowMove: Boolean = true, immediate: Boolean = false) {
+        if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
+        val dest = host?.siblingOf(this)?.viewModel?.currentDir
         val format = Prefs.compressFormat(requireContext())
-        cb.rgFormat.check(if (format == ArchiveWriter.Format.SEVEN_Z) R.id.rb_7z else R.id.rb_zip)
-        cb.etName.setText("${defaultArchiveName(sel)}.${format.ext}")
-        cb.rgFormat.setOnCheckedChangeListener { _, id ->
-            val selected = formatOf(id)
-            Prefs.setCompressFormat(requireContext(), selected)
-            val stem = stripArchiveExt(cb.etName.text.toString())
-            cb.etName.setText("$stem.${selected.ext}")
-            cb.etName.setSelection(stem.length) // setText sends the cursor back to the start; move it back to the end of the name to keep typing.
+        val name = "${defaultArchiveName(sel)}.${format.ext}"
+        val parents = sel.map { file ->
+            viewModel.renameParent(file) ?: file.takeIf { it.path.startsWith("/") && it.path != "/" }
+                ?.let { XFile(it.scheme, it.parentPath, isDir = true) }
         }
-        // "Encrypted archives are read-only" — only mention it when actually encrypting; don't take up space otherwise.
-        cb.etPassword.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) = Unit
-            override fun afterTextChanged(s: android.text.Editable?) {
-                cb.tvEncryptNote.visibility = if (s.isNullOrEmpty()) View.GONE else View.VISIBLE
-            }
-        })
-        var plan: CopyEngine.Plan? = null
-        viewLifecycleOwner.lifecycleScope.launch {
-            val p = runCatching { withContext(Dispatchers.IO) { CopyEngine.plan(sel) } }.getOrNull()
-            plan = p
-            if (p != null && _b != null) {
-                cb.tvSrc.text = "${cb.tvSrc.text}  ${Format.size(p.bytes)}"
-            }
+        val sourceDirectory = parents.firstOrNull()?.takeIf { first ->
+            first.isWritableDir() && parents.all { it?.scheme == first.scheme && it.path == first.path }
         }
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(R.string.compress_title)
-            .setView(cb.root)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                val name = cb.etName.text.toString().trim()
-                if (name.isEmpty()) return@setPositiveButton
-                startCompress(
-                    sel, dest, name, formatOf(cb.rgFormat.checkedRadioButtonId),
-                    movable && cb.cbMove.isChecked, plan, cb.etPassword.text.toString(),
-                )
-            }
-            .create()
-        dialog.showNameInput(cb.etName, selectStem = true)
-    }
-
-    private fun formatOf(checkedId: Int): ArchiveWriter.Format =
-        if (checkedId == R.id.rb_7z) ArchiveWriter.Format.SEVEN_Z else ArchiveWriter.Format.ZIP
-
-    /** Strip any existing archive extension (used when switching format); other extensions are preserved. */
-    private fun stripArchiveExt(name: String): String {
-        val lower = name.lowercase()
-        for (f in ArchiveWriter.Format.entries) {
-            if (lower.endsWith(".${f.ext}")) return name.dropLast(f.ext.length + 1)
+        val level = Prefs.compressLevel(requireContext())
+        val draft = DestinationState.Draft(sel.toList(), dest, move = false,
+            movable = allowMove && sel.all { it.isMovableSource() },
+            compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory))
+        if (immediate && dest != null && draft.blockReason(dest) == null) {
+            startCompress(sel, dest, name, format, false, null, "", level)
+            return
         }
-        return name
+        destinationState.prepare(draft)
+        showDestinationConfirmation()
     }
 
     /** Single item → that item's name (file strips extension); multiple items → containing directory name. */
@@ -1523,7 +1676,7 @@ class PaneFragment : Fragment() {
     }
 
     /** If the destination name already exists, ask about overwriting first, then go to [runCompress]. */
-    private fun startCompress(
+    internal fun startCompress(
         sel: List<XFile>,
         dest: XFile,
         name: String,
@@ -1531,6 +1684,8 @@ class PaneFragment : Fragment() {
         move: Boolean,
         plan0: CopyEngine.Plan?,
         password: String,
+        level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
+        hideNames: Boolean = true,
     ) {
         viewLifecycleOwner.lifecycleScope.launch {
             val destFs = FsRegistry.of(dest)
@@ -1545,11 +1700,11 @@ class PaneFragment : Fragment() {
                     .setMessage(getString(R.string.compress_overwrite, name))
                     .setNegativeButton(R.string.dialog_cancel, null)
                     .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                        runCompress(sel, dest, target, format, move, plan0, password)
+                        runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
                     }
                     .show()
             } else {
-                runCompress(sel, dest, target, format, move, plan0, password)
+                runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
             }
         }
     }
@@ -1563,10 +1718,12 @@ class PaneFragment : Fragment() {
         move: Boolean,
         plan0: CopyEngine.Plan?,
         password: String,
+        level: ArchiveWriter.Level,
+        hideNames: Boolean,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }),
+                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }, level, hideNames),
                 R.string.progress_compress,
                 pathLabel(target), pathIcon(target), plan0,
             ),
@@ -1586,34 +1743,16 @@ class PaneFragment : Fragment() {
         if (pwDialogFor == key) return
         val ctx = context ?: return
         pwDialogFor = key
-        val pw = EditText(ctx).apply {
-            hint = getString(R.string.archive_password)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        val save = android.widget.CheckBox(ctx).apply { text = getString(R.string.archive_save_pw) }
-        val box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            val p = (20 * resources.displayMetrics.density).toInt()
-            setPadding(p, p / 2, p, 0)
-            addView(pw)
-            addView(save)
-        }
-        AlertDialog.Builder(ctx)
-            .setTitle(getString(R.string.archive_locked, archive.name))
-            .setView(box)
-            .setNegativeButton(R.string.dialog_cancel, null)
-            .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                val text = pw.text.toString()
-                if (text.isEmpty()) return@setPositiveButton
-                viewModel.unlockArchive(archive, text, save.isChecked) { ok ->
-                    if (ok || _b == null) return@unlockArchive
-                    toast(getString(R.string.archive_wrong_pw))
-                    askArchivePassword(archive) // Ask again in place; no need to re-open this archive.
-                }
+        EncryptedFilePasswordDialog.show(
+            ctx, archive.name,
+            onDismiss = { pwDialogFor = null },
+        ) { text, save ->
+            viewModel.unlockArchive(archive, text, save) { ok ->
+                if (ok || _b == null) return@unlockArchive
+                toast(getString(R.string.archive_wrong_pw))
+                askArchivePassword(archive)
             }
-            .setOnDismissListener { pwDialogFor = null }
-            .show()
+        }
     }
 
     /**
@@ -1694,10 +1833,21 @@ class PaneFragment : Fragment() {
             is PaneViewModel.FileNode -> longClickFile(node)
             is PaneViewModel.ServerNode -> serverMenu(node)
             is PaneViewModel.FavoriteNode -> favoriteMenu(node)
-            is PaneViewModel.GroupNode -> if (node.id == "websites") {
+            is PaneViewModel.GroupNode -> if (node.id == "fav") {
+                val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.action_sort_favorites), R.drawable.ic_sort) {
+                    viewModel.startItemSorting("fav")
+                    host?.refreshTrees()
+                }
+                showActionMenu(requireContext(), node.label, actions)
+            } else if (node.id == "websites") {
                 val actions = ArrayList<MenuAct>()
                 actions.item(getString(R.string.website_defaults), R.drawable.ic_edit) {
                     WebsiteDialogs.defaults(requireContext())
+                }
+                actions.item(getString(R.string.action_sort_websites), R.drawable.ic_sort) {
+                    viewModel.startItemSorting("websites")
+                    host?.refreshTrees()
                 }
                 showActionMenu(requireContext(), node.label, actions)
             }
@@ -1780,14 +1930,22 @@ class PaneFragment : Fragment() {
     /** Deleted entries remain read-only; inspection and export use their virtual source. */
     private fun trashFileActions(node: PaneViewModel.FileNode): List<MenuAct> {
         val file = node.file
-        if (file.path == "/") return if (!adapter.hasChildren(node)) emptyList() else listOf(MenuAct(
-            getString(R.string.action_select_all),
-            R.drawable.ic_sel_check,
-        ) { adapter.toggleChildrenSelection(node) })
         val actions = ArrayList<MenuAct>()
+        if (file.path == "/") {
+            if (adapter.hasChildren(node)) {
+                actions.item(getString(R.string.action_select_all), R.drawable.ic_sel_check) { adapter.toggleChildrenSelection(node) }
+            }
+            actions.item(getString(R.string.action_refresh_thumb), R.drawable.ic_file_image) { refreshThumb(listOf(file)) }
+            return actions
+        }
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
         actions.item(getString(R.string.action_select), R.drawable.ic_sel_check) { adapter.toggleSelection(node) }
         if (!file.canRead) return actions // A deleted symlink can be inspected/restored, never followed.
+        if (file.isDir || Thumbs.canThumb(file)) {
+            actions.item(getString(R.string.action_refresh_thumb), R.drawable.ic_file_image) {
+                refreshThumb(listOf(file))
+            }
+        }
         if (file.isDir) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(file) }
@@ -2157,15 +2315,20 @@ class PaneFragment : Fragment() {
     private var awaitingImageResult = false
 
     /**
-     * Pick up the image viewer's result: the checked images there sync to multi-selection on the tree; if any were deleted, refresh. The viewer's
-     * selection can cross directories (slideshow scans recursively), we don't filter it here — multi-selection on the tree already allows cross-directory (see mapSelected).
+     * Apply the viewer's updated pane checks, including an empty selection after the last image is unchecked.
+     * A null selection means checks were disabled (e.g. slideshow); deletions still request a refresh.
      */
     private fun takeImageViewerResult() {
         if (!awaitingImageResult || !::adapter.isInitialized) return
         awaitingImageResult = false
         val r = ImageViewerActivity.takeResult() ?: return
-        if (r.selection.isNotEmpty()) adapter.setSelection(r.selection)
+        r.selection?.let { adapter.setSelection(it) }
         if (r.changed) viewModel.refresh()
+        r.currentImage?.let { file ->
+            if (mapMode) exitTreemap()
+            pendingScrollToCurrent = true
+            if (!viewModel.revealViewedFile(file)) pendingScrollToCurrent = false
+        }
     }
 
     /**
@@ -2262,7 +2425,7 @@ class PaneFragment : Fragment() {
                     toast(getString(R.string.saf_remove_failed)); return@setPositiveButton
                 }
                 viewModel.forgetSaf(file)
-                host?.refreshTrees() // The grant is global, so the row in the other pane has to vanish too.
+                host?.onSafGrantsChanged() // Refresh cached local routes and both panes as well as the SAF roots.
             }
             .show()
     }
@@ -2531,6 +2694,13 @@ class PaneFragment : Fragment() {
             textSize = 14f
             setOnCheckedChangeListener { _, on -> cbLogin.visibility = if (on || conn == null) View.GONE else View.VISIBLE }
         }
+        fun updateCommandMode() {
+            val hasCommand = etCommand.text.toString().isNotBlank()
+            if (!hasCommand) cbTerminal.isChecked = true
+            cbTerminal.isEnabled = hasCommand
+        }
+        etCommand.doAfterTextChanged { updateCommandMode() }
+        updateCommandMode()
         val privilegedTarget = com.twig.app.Privileged.commandTarget()
         val cbPrivileged = android.widget.CheckBox(ctx).apply {
             val identity = when (privilegedTarget) {
@@ -2575,9 +2745,8 @@ class PaneFragment : Fragment() {
             addView(cbLogin)
         }
 
-        fun collect(): com.twig.app.RemoteCmd? {
+        fun collect(): com.twig.app.RemoteCmd {
             val command = etCommand.text.toString().trim()
-            if (command.isEmpty()) { toast(getString(R.string.cmd_empty)); return null }
             return com.twig.app.RemoteCmd(
                 connLabel = conn?.label().orEmpty(),
                 target = if (cbPrivileged.isChecked) requireNotNull(privilegedTarget) else target,
@@ -2585,7 +2754,7 @@ class PaneFragment : Fragment() {
                 command = command,
                 inTerminal = cbTerminal.isChecked,
                 loginShell = cbLogin.isChecked,
-                label = etLabel.text.toString().trim().ifEmpty { command.take(24) },
+                label = etLabel.text.toString().trim().ifEmpty { command.take(24).ifEmpty { conn?.shortLabel() ?: title } },
             )
         }
 
@@ -2595,11 +2764,11 @@ class PaneFragment : Fragment() {
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(if (host?.shortcutResult != null) R.string.picker_confirm else R.string.cmd_create, null)
         if (host?.shortcutResult == null && conn != null) {
-            builder.setNeutralButton(R.string.cmd_run_now) { _, _ -> collect()?.let { runCommandNow(conn, scheme, it) } }
+            builder.setNeutralButton(R.string.cmd_run_now) { _, _ -> runCommandNow(conn, scheme, collect()) }
         }
         val dialog = builder.show()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val cmd = collect() ?: return@setOnClickListener
+            val cmd = collect()
             if (host?.shortcutResult != null) deliverShortcut(com.twig.app.RemoteCmd.shortcut(ctx, cmd))
             else if (!com.twig.app.RemoteCmd.pin(ctx, cmd)) toast(getString(R.string.cmd_pin_unsupported))
             dialog.dismiss()
@@ -2752,9 +2921,9 @@ class PaneFragment : Fragment() {
          * Locked to a single source (for picker use): the tree has only [scheme] as its root,
          * and opens already expanded to [startPath].
          */
-        fun locked(scheme: String, startPath: String, label: String?) = PaneFragment().apply {
+        fun locked(scheme: String, startPath: String, label: String?, index: Int = 0) = PaneFragment().apply {
             arguments = Bundle().apply {
-                putInt(ARG_INDEX, 0)
+                putInt(ARG_INDEX, index)
                 putString(ARG_LOCK_SCHEME, scheme)
                 putString(ARG_LOCK_PATH, startPath)
                 putString(ARG_LOCK_LABEL, label)

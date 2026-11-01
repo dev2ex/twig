@@ -1,7 +1,5 @@
 package com.twig.app.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -18,7 +16,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
@@ -37,10 +35,13 @@ import rikka.shizuku.Shizuku
  * effect immediately; MainActivity auto-recreates when it returns to the foreground
  * if [Prefs.uiSignature] changes.
  */
-class SettingsActivity : AppCompatActivity() {
+class SettingsActivity : TwigActivity() {
 
     private lateinit var list: LinearLayout
     private val dp get() = resources.displayMetrics.density
+
+    private lateinit var folderCountsLocalOnlyRow: View
+    private lateinit var unixPermissionsOctalRow: View
 
     /** Thumbnail sub-item rows (greyed out and disabled when the master switch is off). */
     private val thumbRows = ArrayList<View>()
@@ -178,6 +179,14 @@ class SettingsActivity : AppCompatActivity() {
             LanguagePref.displayLabels(this),
             get = { LanguagePref.current() },
             set = { LanguagePref.apply(it) },
+            titleIcon = R.drawable.ic_translate,
+        )
+        choiceRow(
+            getString(R.string.settings_pane_layout),
+            arrayOf(getString(R.string.pane_layout_follow_orientation),
+                getString(R.string.pane_layout_single), getString(R.string.pane_layout_dual)),
+            get = { Prefs.paneLayout(this) },
+            set = { Prefs.setPaneLayout(this, it) },
         )
         choiceRow(
             getString(R.string.settings_date_format),
@@ -205,9 +214,30 @@ class SettingsActivity : AppCompatActivity() {
             set = { Prefs.setTextSize(this, it) },
         )
         switchRow(
+            getString(R.string.settings_tap_row_to_select), getString(R.string.settings_tap_row_to_select_desc),
+            get = { Prefs.tapRowToSelect(this) },
+            set = { Prefs.setTapRowToSelect(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_folder_counts), getString(R.string.settings_folder_counts_desc),
             get = { Prefs.folderCounts(this) },
-            set = { Prefs.setFolderCounts(this, it) },
+            set = { Prefs.setFolderCounts(this, it); applyEnabled() },
+        )
+        folderCountsLocalOnlyRow = switchRow(
+            getString(R.string.settings_folder_counts_local_only),
+            getString(R.string.settings_folder_counts_local_only_desc),
+            get = { Prefs.folderCountsLocalOnly(this) },
+            set = { Prefs.setFolderCountsLocalOnly(this, it) },
+        )
+        switchRow(
+            getString(R.string.settings_unix_permissions), getString(R.string.settings_unix_permissions_desc),
+            get = { Prefs.unixPermissions(this) },
+            set = { Prefs.setUnixPermissions(this, it); applyEnabled() },
+        )
+        unixPermissionsOctalRow = switchRow(
+            getString(R.string.settings_unix_permissions_octal), getString(R.string.settings_unix_permissions_octal_desc),
+            get = { Prefs.unixPermissionsOctal(this) },
+            set = { Prefs.setUnixPermissionsOctal(this, it) },
         )
         switchRow(
             getString(R.string.settings_show_hidden), getString(R.string.settings_show_hidden_desc),
@@ -230,10 +260,16 @@ class SettingsActivity : AppCompatActivity() {
             get = { Prefs.toolbarAtBottom(this) },
             set = { Prefs.setToolbarAtBottom(this, it) },
         )
-        switchRow(
-            getString(R.string.settings_exit_on_back), getString(R.string.settings_exit_on_back_desc),
-            get = { Prefs.exitOnBack(this) },
-            set = { Prefs.setExitOnBack(this, it) },
+        choiceRow(
+            getString(R.string.settings_back_action),
+            arrayOf(
+                getString(R.string.settings_back_close),
+                getString(R.string.settings_back_exit),
+                getString(R.string.settings_back_up),
+                getString(R.string.settings_back_up_exit),
+            ),
+            get = { Prefs.backAction(this).ordinal },
+            set = { Prefs.setBackAction(this, Prefs.BackAction.entries[it]) },
         )
 
         section(getString(R.string.settings_section_grid))
@@ -430,6 +466,18 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         section(getString(R.string.settings_section_player))
+        actionRow(
+            getString(R.string.player_subtitle_appearance),
+            getString(R.string.player_subtitle_size_value, Prefs.subtitleSize(this)),
+        ) { subtitle ->
+            AlertDialog.Builder(this)
+                .setTitle(R.string.player_subtitle_appearance)
+                .setView(SubtitleSizeUi.create(this) {
+                    subtitle.text = getString(R.string.player_subtitle_size_value, it)
+                })
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
         val speeds = intArrayOf(150, 200, 300)
         choiceRow(
             getString(R.string.settings_longpress_speed),
@@ -500,6 +548,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun applyEnabled() {
+        folderCountsLocalOnlyRow.visibility = if (Prefs.folderCounts(this)) View.VISIBLE else View.GONE
+        unixPermissionsOctalRow.visibility = if (Prefs.unixPermissions(this)) View.VISIBLE else View.GONE
         val on = Prefs.thumbs(this)
         thumbRows.forEach { row ->
             row.alpha = if (on) 1f else 0.4f
@@ -529,6 +579,7 @@ class SettingsActivity : AppCompatActivity() {
         title: String,
         subtitle: CharSequence?,
         end: View? = null,
+        titleIcon: Int = 0,
         onClick: (() -> Unit)? = null,
     ): Pair<LinearLayout, TextView> {
         val subView = TextView(this).apply {
@@ -551,6 +602,14 @@ class SettingsActivity : AppCompatActivity() {
                             setTextColor(
                                 ContextCompat.getColor(this@SettingsActivity, R.color.text_primary),
                             )
+                            if (titleIcon != 0) {
+                                val icon = ContextCompat.getDrawable(this@SettingsActivity, titleIcon)?.mutate()
+                                icon?.setTint(currentTextColor)
+                                val size = (20 * dp).toInt()
+                                icon?.setBounds(0, 0, size, size)
+                                setCompoundDrawablesRelative(icon, null, null, null)
+                                compoundDrawablePadding = (6 * dp).toInt()
+                            }
                         },
                     )
                     addView(subView)
@@ -586,9 +645,10 @@ class SettingsActivity : AppCompatActivity() {
         options: Array<out CharSequence>,
         get: () -> Int,
         set: (Int) -> Unit,
+        titleIcon: Int = 0,
     ): View {
         lateinit var subRef: TextView
-        val (row, sub) = addRow(title, options[get().coerceIn(0, options.size - 1)]) {
+        val (row, sub) = addRow(title, options[get().coerceIn(0, options.size - 1)], titleIcon = titleIcon) {
             AlertDialog.Builder(this)
                 .setTitle(title)
                 .setSingleChoiceItems(options, get()) { dlg, w ->
@@ -747,31 +807,7 @@ class SettingsActivity : AppCompatActivity() {
      * — not every device has a browser installed (the combination of a pure file
      * manager + TV box is not uncommon), so only offering "open" is a dead end.
      */
-    private fun showAbout() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.settings_about)
-            .setMessage(getString(R.string.about_body, versionLine(), PROJECT_URL))
-            .setPositiveButton(R.string.about_open) { _, _ -> openProject() }
-            .setNeutralButton(R.string.about_copy) { _, _ -> copyProjectUrl() }
-            .setNegativeButton(R.string.dialog_close, null)
-            .show()
-    }
-
-    private fun openProject() {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PROJECT_URL))) }
-            .onFailure {
-                // When no app can open the link, don't just say "can't open": first put
-                // the URL into the clipboard so the user still has a next step
-                copyProjectUrl()
-                Toast.makeText(this, R.string.about_no_browser, Toast.LENGTH_LONG).show()
-            }
-    }
-
-    private fun copyProjectUrl() {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("twig", PROJECT_URL))
-        Toast.makeText(this, R.string.info_copied, Toast.LENGTH_SHORT).show()
-    }
+    private fun showAbout() = AboutDialog.show(this)
 
     private fun actionRow(title: String, subtitle: String, onClick: (TextView) -> Unit): View {
         lateinit var subRef: TextView

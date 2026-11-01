@@ -97,6 +97,7 @@
              installed but the app says it's not" — package visibility keeps
              it out of our view entirely. -->
         <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="com.hamondev.shevery" />
     </queries>
 
     <!-- ★ android:usesCleartextTraffic below is deliberate, and F-Droid's scanner reports it
@@ -171,6 +172,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity="com.twig.app.terminal"
+            android:icon="@drawable/ic_shortcut_terminal"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:label="@string/terminal_menu" />
@@ -306,6 +308,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:exported="false"
             android:taskAffinity="${applicationId}.website"
+            android:icon="@drawable/ic_website"
             android:documentLaunchMode="intoExisting"
             android:windowSoftInputMode="adjustResize" />
 

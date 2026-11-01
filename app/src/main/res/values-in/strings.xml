@@ -217,6 +217,8 @@
     <string name="player_brightness">Kecerahan %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Subtitel</string>
+    <string name="player_subtitle_size">Ukuran subtitel teks</string>
+    <string name="player_subtitle_size_value">Ukuran subtitel teks: %1$d sp</string>
     <string name="player_subtitle_close">Nonaktif</string>
     <string name="player_embedded_sub">Subtitel bawaan %1$d</string>
     <string name="player_audio_track">Trek audio</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">Menyalin…</string>
     <string name="progress_move">Memindahkan…</string>
     <string name="copy_title">Salin</string>
+    <string name="copy_use_destination">Gunakan folder</string>
+    <string name="copy_choose_destination">Pilih lokasi lain</string>
     <string name="copy_to">Salin ke</string>
     <string name="copy_move_mode">Pindahkan (hapus file sumber)</string>
     <string name="copy_items">%1$d item</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">Perintah di %1$s</string>
     <string name="cmd_title_server">Perintah pada server %1$s</string>
     <string name="cmd_label">Nama pintasan</string>
-    <string name="cmd_command">Perintah</string>
+    <string name="cmd_command">Perintah (kosongkan untuk membuka terminal di sini)</string>
     <string name="cmd_workdir">Direktori kerja (kosong = bawaan login)</string>
     <string name="cmd_pick_script">Pilih skrip…</string>
     <string name="cmd_in_terminal">Jalankan di terminal (jika tidak, di latar belakang)</string>
     <string name="cmd_create">Tambah ke layar utama</string>
     <string name="cmd_run_now">Jalankan sekarang</string>
-    <string name="cmd_empty">Masukkan perintah dahulu</string>
     <string name="cmd_pin_unsupported">Peluncur tidak mendukung pintasan yang disematkan</string>
     <string name="cmd_started">Dimulai: %1$s</string>
     <string name="cmd_login_shell">Gunakan shell login (memuat .profile / .zprofile; shell bawaan)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">Mulai ulang Twig untuk menerapkan semua pengaturan.</string>
     <string name="backup_working">Memproses…</string>
     <string name="backup_locked">Buka kunci dengan sandi utama dahulu</string>
-    <string name="picker_hint_dir">Buka folder tujuan, lalu ketuk OK</string>
+    <string name="picker_hint_dir">Buka folder yang ingin dipilih, lalu ketuk %1$s</string>
     <string name="backup_pick_dir">Simpan cadangan ke</string>
     <string name="backup_pick_file">Pilih file cadangan</string>
     <string name="backup_exported_at">Diekspor ke %1$s</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">Daftar putar sementara</string>
     <string name="smb1_mode">Kompatibilitas SMB1 (hanya perangkat lama)</string>
     <string name="settings_folder_counts">Jumlah isi folder</string>
-    <string name="settings_folder_counts_desc">Tampilkan jumlah subfolder dan file langsung di folder lokal dan SMB. SMB mungkin memerlukan permintaan direktori tambahan.</string>
-    <string name="folder_counts_description">Folder: %1$d, file: %2$d</string>
+    <string name="settings_folder_counts_desc">Tampilkan jumlah subfolder dan file langsung di dalam folder.</string>
+    <string name="settings_folder_counts_local_only">Hitung isi folder lokal saja</string>
+    <string name="settings_folder_counts_local_only_desc">Nonaktifkan untuk juga menghitung folder di layanan lain. Ini mungkin memerlukan permintaan direktori tambahan.</string>
+    <string name="folder_counts_description">Folder: %1$s, file: %2$s</string>
     <string name="info_activity_failed">Activity ini tidak dapat dibuka</string>
     <string name="info_app_shortcuts_limited">Android membatasi akses ke pintasan dinamis aplikasi lain. Hanya pintasan yang dideklarasikan oleh aplikasi yang ditampilkan.</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">Buka URL</string>
     <string name="website_user_agent_global_hint">Kosong = User-Agent global, lalu default seluler/desktop</string>
     <string name="website_global_settings_hint">User-Agent dapat diganti per situs. JavaScript, CSS, elemen tersembunyi dan pemblokiran permintaan digabung dengan setelan global. Opsi tampilan menjadi default untuk situs baru.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">Tambah NFS</string>
+    <string name="nfs_host">Alamat server NFS</string>
+    <string name="nfs_export">Jalur ekspor (mis. /volume1/public)</string>
+    <string name="nfs_version">Versi NFS (3 atau 4)</string>
+    <string name="nfs_uid">UID (bawaan 65534)</string>
+    <string name="nfs_gid">GID (bawaan 65534)</string>
     <string name="website_media_permission">Izinkan %1$s menggunakan:</string>
     <string name="website_microphone">Mikrofon</string>
     <string name="website_camera">Kamera</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">Pilih titik di antara pembuka dan penutup.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Tampilkan/sembunyikan item akar</string>
+    <string name="action_root_items">Pengaturan item akar</string>
     <string name="private_space">Ruang pribadi</string>
     <string name="private_space_create_failed">Tidak dapat membuat ruang pribadi</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">Notifikasi selesai di latar depan</string>
     <string name="settings_foreground_completion_desc">Beri notifikasi juga saat menggunakan Twig. Selalu beri notifikasi di latar belakang dan saat layar terkunci.</string>
 
-    <string name="settings_exit_on_back">Keluar saat Kembali</string>
-    <string name="settings_exit_on_back_desc">Keluar dari Twig saat tombol Kembali menutup layar utama. Minta konfirmasi jika ada tugas yang berjalan.</string>
+    <string name="settings_back_action">Tombol Kembali di layar utama</string>
+    <string name="settings_back_close">Tutup layar (default)</string>
+    <string name="settings_back_exit">Keluar dari aplikasi (minta konfirmasi)</string>
+    <string name="settings_back_up">Naik satu tingkat (tutup layar di tingkat teratas)</string>
+    <string name="settings_back_up_exit">Naik satu tingkat (keluar dari aplikasi di tingkat teratas)</string>
     <string name="share_text_filename">Teks dibagikan.txt</string>
     <string name="settings_toolbar_bottom">Bilah alat di bawah</string>
     <string name="settings_toolbar_bottom_desc">Pindahkan bilah alat penjelajah berkas ke bawah agar lebih mudah digunakan dengan satu tangan</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">Ruang tidak cukup untuk menyiapkan file.</string>
     <string name="share_prepare_incomplete">File berubah atau tidak dapat dibaca sepenuhnya.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">Seret untuk mengurutkan</string>
+    <string name="root_reorder_hint">Seret pegangan untuk mengurutkan item akar di kedua panel.</string>
+    <string name="action_sort_favorites">Urutkan favorit</string>
+    <string name="action_sort_websites">Urutkan situs web</string>
+    <string name="conn_section_login">Masuk</string>
+    <string name="conn_section_options">Opsi</string>
+    <string name="music_import_playlist">Impor dari berkas daftar putar</string>
+    <string name="music_import_directory">Impor dari folder (rekursif)</string>
+    <string name="music_importing">Mengimpor musik…</string>
+    <string name="music_import_progress">%1$d lagu · %2$s</string>
+    <string name="music_import_done">%1$d lagu ditambahkan</string>
+    <string name="music_import_failed">Tidak dapat mengimpor musik: %1$s</string>
+    <string name="music_import_playlist_only">Pilih daftar putar M3U atau M3U8</string>
+    <string name="music_import_source_unsupported">Sumber ini tidak dapat disimpan dalam daftar putar</string>
+    <string name="info_track_number">Nomor lagu</string>
+    <string name="settings_action_strip">Panel tindakan</string>
+    <string name="strip_reorder_hint">Seret pegangan untuk mengurutkan tindakan. Hapus centang untuk menyembunyikannya.</string>
+    <string name="info_symbolic_link">Tautan simbolis</string>
+    <string name="info_link_target">Mengarah ke</string>
+    <string name="info_unavailable">Tidak tersedia</string>
+    <string name="info_permissions">Izin</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Terakhir diakses</string>
+    <string name="info_changed">Perubahan status</string>
+    <string name="info_selinux_context">Konteks SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Tampilkan izin Unix</string>
+    <string name="settings_unix_permissions_desc">Tampilkan izin yang tersedia dalam daftar berkas. Detail lengkap ada di tab Unix pada properti.</string>
+    <string name="player_subtitle_appearance">Tampilan subtitel</string>
+    <string name="player_subtitle_text_color">Warna teks</string>
+    <string name="pdf_password">Kata sandi PDF</string>
+    <string name="pdf_password_retry">Kata sandi ditolak, atau PDF menggunakan enkripsi yang tidak didukung. Coba lagi.</string>
+    <string name="pdf_password_unsupported">PDF ini memerlukan kata sandi atau menggunakan enkripsi yang tidak didukung. Versi Android ini tidak dapat membukanya di Twig. Coba aplikasi PDF lain.</string>
+    <string name="theme_oled">Hitam (OLED)</string>
+    <string name="transfer_retry">Coba lagi item yang belum selesai</string>
+    <string name="transfer_retry_detail">Hanya mencoba ulang item yang belum selesai. File yang selesai dilewati; file parsial dilanjutkan jika didukung.</string>
+    <string name="transfer_failed_target">Tujuan: %1$s</string>
+    <string name="transfer_skip_failed">Lewati item ini</string>
+    <string name="dialog_reset">Atur ulang</string>
+    <string name="settings_unix_permissions_octal">Tampilkan izin dalam oktal</string>
+    <string name="settings_unix_permissions_octal_desc">Aktif: 0755; nonaktif: rwxr-xr-x. Hanya untuk daftar file.</string>
+    <string name="settings_tap_row_to_select">Ketuk baris untuk memilih</string>
+    <string name="settings_tap_row_to_select_desc">Saat ada item terpilih, ketuk baris untuk memilih atau membatalkan pilihan. Ketuk ikon atau gambar mini untuk membuka. Nonaktif: pilih hanya dengan tanda centang.</string>
+    <string name="strip_duplicate">Duplikat</string>
+    <string name="settings_pane_layout">Tata letak panel</string>
+    <string name="pane_layout_follow_orientation">Ikuti orientasi layar</string>
+    <string name="pane_layout_single">Satu panel</string>
+    <string name="pane_layout_dual">Dua panel</string>
+    <string name="compress_level">Tingkat kompresi</string>
+    <string name="compress_fast">Cepat</string>
+    <string name="compress_standard">Standar</string>
+    <string name="compress_store">Tanpa kompresi</string>
+    <string name="compress_source_directory">Simpan di folder sumber</string>
+    <string name="compress_hide_names">Enkripsi nama file</string>
+    <string name="compress_destination_missing">Pilih tujuan penyimpanan</string>
 </resources>

@@ -217,6 +217,8 @@
     <string name="player_brightness">चमक %1$d%%</string>
     <string name="player_volume">आवाज़ %1$d%%</string>
     <string name="player_subtitle">उपशीर्षक</string>
+    <string name="player_subtitle_size">टेक्स्ट उपशीर्षक का आकार</string>
+    <string name="player_subtitle_size_value">टेक्स्ट उपशीर्षक का आकार: %1$d sp</string>
     <string name="player_subtitle_close">बंद</string>
     <string name="player_embedded_sub">अंतर्निहित उपशीर्षक %1$d</string>
     <string name="player_audio_track">ऑडियो ट्रैक</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">कॉपी हो रही है…</string>
     <string name="progress_move">स्थानांतरित हो रहा है…</string>
     <string name="copy_title">कॉपी</string>
+    <string name="copy_use_destination">फ़ोल्डर चुनें</string>
+    <string name="copy_choose_destination">दूसरा स्थान चुनें</string>
     <string name="copy_to">कॉपी करें</string>
     <string name="copy_move_mode">स्थानांतरण मोड (स्रोत फ़ाइलें हटाता है)</string>
     <string name="copy_items">%1$d आइटम</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">%1$s में कमांड</string>
     <string name="cmd_title_server">%1$s पर कमांड</string>
     <string name="cmd_label">शॉर्टकट का नाम</string>
-    <string name="cmd_command">कमांड</string>
+    <string name="cmd_command">कमांड (यहाँ टर्मिनल खोलने के लिए खाली छोड़ें)</string>
     <string name="cmd_workdir">कार्य डायरेक्टरी (खाली = लॉगिन डिफ़ॉल्ट)</string>
     <string name="cmd_pick_script">स्क्रिप्ट चुनें…</string>
     <string name="cmd_in_terminal">टर्मिनल में चलाएँ (वरना पृष्ठभूमि में)</string>
     <string name="cmd_create">होम स्क्रीन पर जोड़ें</string>
     <string name="cmd_run_now">अभी चलाएँ</string>
-    <string name="cmd_empty">पहले कमांड लिखें</string>
     <string name="cmd_pin_unsupported">यह लॉन्चर पिन किए शॉर्टकट समर्थित नहीं करता</string>
     <string name="cmd_started">शुरू हुआ: %1$s</string>
     <string name="cmd_login_shell">लॉगिन शेल से चलाएँ (.profile / .zprofile लोड; डिफ़ॉल्ट शेल)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">सभी सेटिंग लागू करने के लिए Twig फिर शुरू करें।</string>
     <string name="backup_working">काम जारी है…</string>
     <string name="backup_locked">पहले मुख्य पासवर्ड से अनलॉक करें</string>
-    <string name="picker_hint_dir">गंतव्य फ़ोल्डर खोलें, फिर ठीक दबाएँ</string>
+    <string name="picker_hint_dir">जिस फ़ोल्डर को चुनना है उसे खोलें, फिर %1$s दबाएँ</string>
     <string name="backup_pick_dir">बैकअप यहाँ सहेजें</string>
     <string name="backup_pick_file">बैकअप फ़ाइल चुनें</string>
     <string name="backup_exported_at">%1$s में निर्यात हुआ</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">अस्थायी प्लेलिस्ट</string>
     <string name="smb1_mode">SMB1 संगतता (केवल पुराने उपकरण)</string>
     <string name="settings_folder_counts">फ़ोल्डर की सामग्री की गिनती</string>
-    <string name="settings_folder_counts_desc">स्थानीय और SMB फ़ोल्डरों में सीधे मौजूद फ़ोल्डरों और फ़ाइलों की संख्या दिखाएँ। SMB के लिए अतिरिक्त अनुरोध हो सकते हैं।</string>
-    <string name="folder_counts_description">फ़ोल्डर: %1$d, फ़ाइलें: %2$d</string>
+    <string name="settings_folder_counts_desc">फ़ोल्डरों में सीधे मौजूद फ़ोल्डरों और फ़ाइलों की संख्या दिखाएँ।</string>
+    <string name="settings_folder_counts_local_only">केवल स्थानीय फ़ोल्डरों के आइटम गिनें</string>
+    <string name="settings_folder_counts_local_only_desc">अन्य सेवाओं के फ़ोल्डर भी गिनने के लिए बंद करें। इसके लिए अतिरिक्त अनुरोध हो सकते हैं।</string>
+    <string name="folder_counts_description">फ़ोल्डर: %1$s, फ़ाइलें: %2$s</string>
     <string name="info_activity_failed">यह Activity खोली नहीं जा सकी</string>
     <string name="info_app_shortcuts_limited">Android दूसरे ऐप्लिकेशन के डायनैमिक शॉर्टकट का ऐक्सेस सीमित करता है। केवल ऐप्लिकेशन में घोषित शॉर्टकट दिखाए जाते हैं।</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">यूआरएल खोलें</string>
     <string name="website_user_agent_global_hint">खाली = वैश्विक User-Agent, फिर मोबाइल/डेस्कटॉप डिफ़ॉल्ट</string>
     <string name="website_global_settings_hint">हर वेबसाइट वैश्विक User-Agent को बदल सकती है। JavaScript, CSS, छिपे तत्व और अनुरोध अवरोध वैश्विक सेटिंग से जुड़ते हैं। प्रदर्शन विकल्प नई वेबसाइटों के डिफ़ॉल्ट हैं।</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">NFS जोड़ें</string>
+    <string name="nfs_host">NFS सर्वर का पता</string>
+    <string name="nfs_export">निर्यात पथ (जैसे /volume1/public)</string>
+    <string name="nfs_version">NFS संस्करण (3 या 4)</string>
+    <string name="nfs_uid">UID (डिफ़ॉल्ट 65534)</string>
+    <string name="nfs_gid">GID (डिफ़ॉल्ट 65534)</string>
     <string name="website_media_permission">%1$s को इस्तेमाल करने दें:</string>
     <string name="website_microphone">माइक्रोफ़ोन</string>
     <string name="website_camera">कैमरा</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">शुरुआत और अंत के बीच का समय चुनें।</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">रूट आइटम दिखाएँ/छिपाएँ</string>
+    <string name="action_root_items">रूट आइटम सेटिंग</string>
     <string name="private_space">निजी स्थान</string>
     <string name="private_space_create_failed">निजी स्थान नहीं बनाया जा सका</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">ऐप खुला होने पर पूर्णता सूचना</string>
     <string name="settings_foreground_completion_desc">Twig इस्तेमाल करते समय भी सूचना दें। पृष्ठभूमि और लॉक स्क्रीन पर हमेशा सूचना दें।</string>
 
-    <string name="settings_exit_on_back">वापस जाने पर बाहर निकलें</string>
-    <string name="settings_exit_on_back_desc">वापस बटन से मुख्य स्क्रीन बंद होने पर Twig से बाहर निकलें। कार्य चल रहे हों तो पुष्टि माँगें।</string>
+    <string name="settings_back_action">मुख्य स्क्रीन पर वापस बटन</string>
+    <string name="settings_back_close">स्क्रीन बंद करें (डिफ़ॉल्ट)</string>
+    <string name="settings_back_exit">ऐप से बाहर निकलें (पुष्टि के साथ)</string>
+    <string name="settings_back_up">एक स्तर ऊपर जाएँ (शीर्ष पर स्क्रीन बंद करें)</string>
+    <string name="settings_back_up_exit">एक स्तर ऊपर जाएँ (शीर्ष पर ऐप से बाहर निकलें)</string>
     <string name="share_text_filename">साझा पाठ.txt</string>
     <string name="settings_toolbar_bottom">टूलबार नीचे रखें</string>
     <string name="settings_toolbar_bottom_desc">एक हाथ से आसानी से उपयोग करने के लिए फ़ाइल ब्राउज़र का टूलबार नीचे रखें</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">फ़ाइलें तैयार करने के लिए पर्याप्त जगह नहीं है।</string>
     <string name="share_prepare_incomplete">फ़ाइल बदल गई है या पूरी तरह पढ़ी नहीं जा सकी।</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">क्रम बदलने के लिए खींचें</string>
+    <string name="root_reorder_hint">दोनों पैनल के रूट आइटम का क्रम बदलने के लिए हैंडल खींचें।</string>
+    <string name="action_sort_favorites">पसंदीदा का क्रम बदलें</string>
+    <string name="action_sort_websites">वेबसाइटों का क्रम बदलें</string>
+    <string name="conn_section_login">साइन इन</string>
+    <string name="conn_section_options">विकल्प</string>
+    <string name="music_import_playlist">प्लेलिस्ट फ़ाइल से आयात करें</string>
+    <string name="music_import_directory">फ़ोल्डर से आयात करें (पुनरावर्ती)</string>
+    <string name="music_importing">संगीत आयात हो रहा है…</string>
+    <string name="music_import_progress">%1$d ट्रैक · %2$s</string>
+    <string name="music_import_done">%1$d ट्रैक जोड़े गए</string>
+    <string name="music_import_failed">संगीत आयात नहीं हो सका: %1$s</string>
+    <string name="music_import_playlist_only">M3U या M3U8 प्लेलिस्ट चुनें</string>
+    <string name="music_import_source_unsupported">इस स्रोत को प्लेलिस्ट में सहेजा नहीं जा सकता</string>
+    <string name="info_track_number">ट्रैक नंबर</string>
+    <string name="settings_action_strip">कार्रवाई पैनल</string>
+    <string name="strip_reorder_hint">कार्रवाइयों का क्रम बदलने के लिए हैंडल खींचें। छिपाने के लिए चेक हटाएँ।</string>
+    <string name="info_symbolic_link">प्रतीकात्मक लिंक</string>
+    <string name="info_link_target">लक्ष्य</string>
+    <string name="info_unavailable">अनुपलब्ध</string>
+    <string name="info_permissions">अनुमतियाँ</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">अंतिम पहुँच</string>
+    <string name="info_changed">स्थिति परिवर्तन</string>
+    <string name="info_selinux_context">SELinux संदर्भ</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix अनुमतियाँ दिखाएँ</string>
+    <string name="settings_unix_permissions_desc">फ़ाइल सूचियों में उपलब्ध अनुमतियाँ दिखाएँ। पूरी जानकारी गुणों के Unix टैब में है।</string>
+    <string name="player_subtitle_appearance">उपशीर्षक का रूप</string>
+    <string name="player_subtitle_text_color">पाठ का रंग</string>
+    <string name="pdf_password">PDF पासवर्ड</string>
+    <string name="pdf_password_retry">पासवर्ड स्वीकार नहीं हुआ, या PDF का एन्क्रिप्शन समर्थित नहीं है। फिर से कोशिश करें।</string>
+    <string name="pdf_password_unsupported">इस PDF के लिए पासवर्ड चाहिए या इसका एन्क्रिप्शन समर्थित नहीं है। Android के इस संस्करण में Twig इसे अनलॉक नहीं कर सकता। कोई अन्य PDF ऐप आज़माएँ।</string>
+    <string name="theme_oled">काला (OLED)</string>
+    <string name="transfer_retry">अधूरे आइटम फिर से आज़माएँ</string>
+    <string name="transfer_retry_detail">केवल अधूरे आइटम फिर से आज़माएँ। पूरे हो चुके फ़ाइल छोड़ दिए जाते हैं; समर्थन होने पर आंशिक फ़ाइलों का स्थानांतरण फिर शुरू होता है।</string>
+    <string name="transfer_failed_target">लक्ष्य: %1$s</string>
+    <string name="transfer_skip_failed">यह आइटम छोड़ें</string>
+    <string name="dialog_reset">रीसेट करें</string>
+    <string name="settings_unix_permissions_octal">अनुमतियाँ अष्टाधारी में दिखाएँ</string>
+    <string name="settings_unix_permissions_octal_desc">चालू: 0755; बंद: rwxr-xr-x। केवल फ़ाइल सूचियों पर लागू।</string>
+    <string name="settings_tap_row_to_select">चुनने के लिए पंक्ति पर टैप करें</string>
+    <string name="settings_tap_row_to_select_desc">कोई आइटम चुना होने पर पंक्ति पर टैप करके चुनें या चयन हटाएँ। खोलने के लिए आइकन या थंबनेल पर टैप करें। बंद होने पर केवल चेक बटन से चुनें।</string>
+    <string name="strip_duplicate">डुप्लिकेट</string>
+    <string name="settings_pane_layout">पैनल लेआउट</string>
+    <string name="pane_layout_follow_orientation">स्क्रीन की दिशा के अनुसार</string>
+    <string name="pane_layout_single">एक पैनल</string>
+    <string name="pane_layout_dual">दो पैनल</string>
+    <string name="compress_level">संपीड़न स्तर</string>
+    <string name="compress_fast">तेज़</string>
+    <string name="compress_standard">मानक</string>
+    <string name="compress_store">बिना संपीड़न</string>
+    <string name="compress_source_directory">स्रोत फ़ोल्डर में सहेजें</string>
+    <string name="compress_hide_names">फ़ाइल नाम एन्क्रिप्ट करें</string>
+    <string name="compress_destination_missing">सहेजने का स्थान चुनें</string>
 </resources>

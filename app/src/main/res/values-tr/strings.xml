@@ -217,6 +217,8 @@
     <string name="player_brightness">Parlaklık %1$d%%</string>
     <string name="player_volume">Ses %1$d%%</string>
     <string name="player_subtitle">Altyazı</string>
+    <string name="player_subtitle_size">Metin altyazı boyutu</string>
+    <string name="player_subtitle_size_value">Metin altyazı boyutu: %1$d sp</string>
     <string name="player_subtitle_close">Kapalı</string>
     <string name="player_embedded_sub">Gömülü altyazı %1$d</string>
     <string name="player_audio_track">Ses parçası</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">Kopyalanıyor…</string>
     <string name="progress_move">Taşınıyor…</string>
     <string name="copy_title">Kopyala</string>
+    <string name="copy_use_destination">Klasörü kullan</string>
+    <string name="copy_choose_destination">Başka konum seç</string>
     <string name="copy_to">Kopyalama hedefi</string>
     <string name="copy_move_mode">Taşıma modu (kaynak dosyaları siler)</string>
     <string name="copy_items">%1$d öğe</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">%1$s içinde komut</string>
     <string name="cmd_title_server">%1$s üzerinde komut</string>
     <string name="cmd_label">Kısayol adı</string>
-    <string name="cmd_command">Komut</string>
+    <string name="cmd_command">Komut (burada terminal açmak için boş bırakın)</string>
     <string name="cmd_workdir">Çalışma dizini (boş = giriş varsayılanı)</string>
     <string name="cmd_pick_script">Betik seç…</string>
     <string name="cmd_in_terminal">Terminalde çalıştır (aksi halde arka planda)</string>
     <string name="cmd_create">Ana ekrana ekle</string>
     <string name="cmd_run_now">Şimdi çalıştır</string>
-    <string name="cmd_empty">Önce bir komut girin</string>
     <string name="cmd_pin_unsupported">Bu başlatıcı sabit kısayolları desteklemiyor</string>
     <string name="cmd_started">Başlatıldı: %1$s</string>
     <string name="cmd_login_shell">Giriş kabuğuyla çalıştır (.profile / .zprofile yüklenir; varsayılan kabuk)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">Tüm ayarların uygulanması için Twig’i yeniden başlatın.</string>
     <string name="backup_working">İşleniyor…</string>
     <string name="backup_locked">Önce ana parolayla kilidi açın</string>
-    <string name="picker_hint_dir">Kaydetme klasörünü açıp Tamam’a dokunun</string>
+    <string name="picker_hint_dir">Seçmek istediğiniz klasörü açın, ardından %1$s düğmesine dokunun</string>
     <string name="backup_pick_dir">Yedek kaydetme hedefi</string>
     <string name="backup_pick_file">Yedek dosyası seç</string>
     <string name="backup_exported_at">%1$s konumuna aktarıldı</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">Geçici çalma listesi</string>
     <string name="smb1_mode">SMB1 uyumluluğu (yalnızca eski cihazlar)</string>
     <string name="settings_folder_counts">Klasör öğesi sayıları</string>
-    <string name="settings_folder_counts_desc">Yerel ve SMB klasörlerindeki doğrudan alt klasör ve dosya sayılarını göster. SMB için ek dizin istekleri gerekebilir.</string>
-    <string name="folder_counts_description">Klasörler: %1$d, dosyalar: %2$d</string>
+    <string name="settings_folder_counts_desc">Klasörlerdeki doğrudan alt klasör ve dosya sayılarını göster.</string>
+    <string name="settings_folder_counts_local_only">Yalnızca yerel klasörlerin öğelerini say</string>
+    <string name="settings_folder_counts_local_only_desc">Diğer hizmetlerdeki klasörleri de saymak için kapatın. Ek dizin istekleri gerekebilir.</string>
+    <string name="folder_counts_description">Klasörler: %1$s, dosyalar: %2$s</string>
     <string name="info_activity_failed">Bu Activity açılamadı</string>
     <string name="info_app_shortcuts_limited">Android, diğer uygulamaların dinamik kısayollarına erişimi kısıtlar. Yalnızca uygulamada tanımlanan kısayollar gösterilir.</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">URL aç</string>
     <string name="website_user_agent_global_hint">Boş = genel User-Agent, ardından mobil/masaüstü varsayılanı</string>
     <string name="website_global_settings_hint">User-Agent her site için değiştirilebilir. JavaScript, CSS, gizli öğeler ve istek engelleme genel ayarlarla birleştirilir. Görüntüleme seçenekleri yeni siteler için varsayılandır.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">NFS ekle</string>
+    <string name="nfs_host">NFS sunucu adresi</string>
+    <string name="nfs_export">Dışa aktarma yolu (ör. /volume1/public)</string>
+    <string name="nfs_version">NFS sürümü (3 veya 4)</string>
+    <string name="nfs_uid">UID (varsayılan 65534)</string>
+    <string name="nfs_gid">GID (varsayılan 65534)</string>
     <string name="website_media_permission">%1$s için kullanım izni:</string>
     <string name="website_microphone">Mikrofon</string>
     <string name="website_camera">Kamera</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">Açılış ile kapanış arasında bir nokta seçin.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Kök öğeleri göster/gizle</string>
+    <string name="action_root_items">Kök öğesi ayarları</string>
     <string name="private_space">Özel alan</string>
     <string name="private_space_create_failed">Özel alan oluşturulamadı</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">Ön planda tamamlanma bildirimleri</string>
     <string name="settings_foreground_completion_desc">Twig kullanılırken de bildir. Arka planda ve ekran kilitliyken her zaman bildir.</string>
 
-    <string name="settings_exit_on_back">Geri ile çık</string>
-    <string name="settings_exit_on_back_desc">Geri düğmesi ana ekranı kapattığında Twig uygulamasından çık. Çalışan görevler varsa onay iste.</string>
+    <string name="settings_back_action">Ana ekranda Geri düğmesi</string>
+    <string name="settings_back_close">Ekranı kapat (varsayılan)</string>
+    <string name="settings_back_exit">Uygulamadan çık (onay iste)</string>
+    <string name="settings_back_up">Bir üst düzeye git (en üstte ekranı kapat)</string>
+    <string name="settings_back_up_exit">Bir üst düzeye git (en üstte uygulamadan çık)</string>
     <string name="share_text_filename">Paylaşılan metin.txt</string>
     <string name="settings_toolbar_bottom">Araç çubuğu altta</string>
     <string name="settings_toolbar_bottom_desc">Tek elle kullanımı kolaylaştırmak için dosya tarayıcısının araç çubuğunu alta taşı</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">Dosyaları hazırlamak için yeterli alan yok.</string>
     <string name="share_prepare_incomplete">Dosya değişti veya tamamen okunamadı.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">Sıralamak için sürükleyin</string>
+    <string name="root_reorder_hint">Her iki bölmenin kök öğelerini sıralamak için tutamaçları sürükleyin.</string>
+    <string name="action_sort_favorites">Favorileri sırala</string>
+    <string name="action_sort_websites">Web sitelerini sırala</string>
+    <string name="conn_section_login">Oturum açma</string>
+    <string name="conn_section_options">Seçenekler</string>
+    <string name="music_import_playlist">Çalma listesi dosyasından aktar</string>
+    <string name="music_import_directory">Klasörden aktar (alt klasörlerle)</string>
+    <string name="music_importing">Müzik aktarılıyor…</string>
+    <string name="music_import_progress">%1$d parça · %2$s</string>
+    <string name="music_import_done">%1$d parça eklendi</string>
+    <string name="music_import_failed">Müzik aktarılamadı: %1$s</string>
+    <string name="music_import_playlist_only">M3U veya M3U8 çalma listesi seçin</string>
+    <string name="music_import_source_unsupported">Bu kaynak çalma listesine kaydedilemez</string>
+    <string name="info_track_number">Parça numarası</string>
+    <string name="settings_action_strip">İşlem paneli</string>
+    <string name="strip_reorder_hint">İşlemleri yeniden sıralamak için tutamaçları sürükleyin. Gizlemek için işaretlerini kaldırın.</string>
+    <string name="info_symbolic_link">Sembolik bağlantı</string>
+    <string name="info_link_target">Hedef</string>
+    <string name="info_unavailable">Kullanılamıyor</string>
+    <string name="info_permissions">İzinler</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Son erişim</string>
+    <string name="info_changed">Durum değişikliği</string>
+    <string name="info_selinux_context">SELinux bağlamı</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Unix izinlerini göster</string>
+    <string name="settings_unix_permissions_desc">Dosya listelerinde mevcut izinleri göster. Ayrıntılar özelliklerin Unix sekmesindedir.</string>
+    <string name="player_subtitle_appearance">Altyazı görünümü</string>
+    <string name="player_subtitle_text_color">Metin rengi</string>
+    <string name="pdf_password">PDF parolası</string>
+    <string name="pdf_password_retry">Parola kabul edilmedi veya PDF desteklenmeyen bir şifreleme kullanıyor. Tekrar deneyin.</string>
+    <string name="pdf_password_unsupported">Bu PDF parola gerektiriyor veya desteklenmeyen bir şifreleme kullanıyor. Bu Android sürümünde Twig kilidini açamaz. Başka bir PDF uygulaması deneyin.</string>
+    <string name="theme_oled">Siyah (OLED)</string>
+    <string name="transfer_retry">Tamamlanmamış öğeleri yeniden dene</string>
+    <string name="transfer_retry_detail">Yalnızca tamamlanmamış öğeleri yeniden dener. Tamamlanan dosyalar atlanır; destekleniyorsa kısmi dosyalara kaldığı yerden devam edilir.</string>
+    <string name="transfer_failed_target">Hedef: %1$s</string>
+    <string name="transfer_skip_failed">Bu öğeyi atla</string>
+    <string name="dialog_reset">Sıfırla</string>
+    <string name="settings_unix_permissions_octal">İzinleri sekizlik göster</string>
+    <string name="settings_unix_permissions_octal_desc">Açık: 0755; kapalı: rwxr-xr-x. Yalnızca dosya listelerine uygulanır.</string>
+    <string name="settings_tap_row_to_select">Seçmek için satırlara dokun</string>
+    <string name="settings_tap_row_to_select_desc">Seçili öğeler varken seçmek veya seçimi kaldırmak için satıra dokunun. Açmak için simgeye veya küçük resme dokunun. Kapalı: yalnızca onay işaretleriyle seçilir.</string>
+    <string name="strip_duplicate">Çoğalt</string>
+    <string name="settings_pane_layout">Panel düzeni</string>
+    <string name="pane_layout_follow_orientation">Ekran yönünü izle</string>
+    <string name="pane_layout_single">Tek panel</string>
+    <string name="pane_layout_dual">Çift panel</string>
+    <string name="compress_level">Sıkıştırma düzeyi</string>
+    <string name="compress_fast">Hızlı</string>
+    <string name="compress_standard">Standart</string>
+    <string name="compress_store">Sıkıştırma yok</string>
+    <string name="compress_source_directory">Kaynak klasöre kaydet</string>
+    <string name="compress_hide_names">Dosya adlarını şifrele</string>
+    <string name="compress_destination_missing">Kayıt konumunu seçin</string>
 </resources>

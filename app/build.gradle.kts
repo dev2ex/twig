@@ -56,8 +56,8 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 313
-        versionName = "1.16.0"
+        versionCode = 318
+        versionName = "1.17.0"
         vectorDrawables.useSupportLibrary = true
         // AGP rejects having both `ndk.abiFilters` and `splits.abi` set at once, so
         // this only applies for the normal (non-split) build; -PabiSplit=true picks its
@@ -205,6 +205,9 @@ dependencies {
     implementation(project(":fs-restic"))
     implementation(project(":fs-zstd"))
     implementation(project(":git-lite"))
+
+    // Static SVG rendering; shared by the viewer, image comparison and thumbnails.
+    implementation("com.caverock:androidsvg-aar:1.4")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

@@ -62,6 +62,7 @@ object MusicEngine {
     private var errorSkips = 0 // consecutive playback failure counter; stop if all tracks in the queue have been tried and failed
     @Volatile var loadingQueue = false
         private set
+    private var resumeWhenLoaded = false
     @Volatile private var loadGeneration = 0L
 
     /** Whoever changes "favorite" calls this so other places (player page heart, notification heart) update too. */
@@ -140,6 +141,7 @@ object MusicEngine {
     /** Loads the playlist and starts playback from [startIndex]; conn tracks build connections in the background, missing ones are skipped. */
     @Synchronized
     fun play(ctx: Context, playlist: Playlist, startIndex: Int, startPosMs: Long = 0L, autoPlay: Boolean = true) {
+        resumeWhenLoaded = false
         val generation = ++loadGeneration
         loadingQueue = true
         val appCtx = ctx.applicationContext
@@ -179,9 +181,11 @@ object MusicEngine {
                 errorSkips = 0
                 p.setMediaSources(files.map { MediaSources.lazy(it) }, startPos, startPosMs)
                 p.prepare()
-                p.playWhenReady = autoPlay
+                val shouldPlay = autoPlay || resumeWhenLoaded
+                resumeWhenLoaded = false
+                p.playWhenReady = shouldPlay
                 listeners.forEach { it.onQueueChanged(); it.onTrackChanged(startPos, tracks.getOrNull(startPos)) }
-                if (autoPlay) MusicService.start(appCtx)
+                if (shouldPlay) MusicService.start(appCtx)
                 prefetchMeta(startPos)
                 schedulePrefetchNext()
             }
@@ -313,6 +317,14 @@ object MusicEngine {
     fun trackAt(i: Int): PlaylistTrack? = tracks.getOrNull(i)
 
     fun togglePlay() { player?.let { if (it.isPlaying) it.pause() else { it.play(); app?.let { c -> MusicService.start(c) } } } }
+    fun resumePlayback(ctx: Context) {
+        if (loadingQueue) { resumeWhenLoaded = true; return }
+        val current = player ?: return
+        if (current.playbackState == Player.STATE_ENDED) current.seekToDefaultPosition()
+        current.play()
+        MusicService.start(ctx.applicationContext)
+    }
+
     fun pause() { player?.pause() }
     fun next() { player?.seekToNextMediaItem() }
     fun prev() {
@@ -343,6 +355,38 @@ object MusicEngine {
         tracks = tracks.toMutableList().also { it.removeAt(i) }
         files = files.toMutableList().also { it.removeAt(i) }
         listeners.forEach { it.onQueueChanged() }
+    }
+
+    /** Append imported tracks without reopening the playing source or changing its position. */
+    fun appendToQueue(ctx: Context, id: String) {
+        if (queueId != id && !loadingQueue) return
+        val generation = loadGeneration
+        val appCtx = ctx.applicationContext
+        // A pending load replaces tracks with its own snapshot. Only deduplicate against
+        // the installed queue when no replacement is pending; the main callback checks again.
+        val existing = if (loadingQueue) emptySet() else tracks.map { it.id }.toHashSet()
+        io.execute {
+            val playlist = PlaylistStore.get(appCtx, id) ?: return@execute
+            if (playlist.temporary) return@execute
+            val added = playlist.tracks.filter { it.id !in existing }.mapNotNull { t ->
+                resolve(appCtx, t)?.let { t to it }
+            }
+            main.post {
+                if (generation != loadGeneration || queueId != id) return@post
+                val p = player ?: return@post
+                val latest = PlaylistStore.get(appCtx, id) ?: return@post
+                val wanted = latest.tracks.map { it.id }.toHashSet()
+                val queued = tracks.map { it.id }.toHashSet()
+                val fresh = added.filter { it.first.id in wanted && queued.add(it.first.id) }
+                if (fresh.isEmpty()) return@post
+                tracks = tracks + fresh.map { it.first }
+                files = files + fresh.map { it.second }
+                p.addMediaSources(fresh.map { MediaSources.lazy(it.second) })
+                errorSkips = 0
+                reorderQueue(latest)
+                listeners.forEach { it.onQueueChanged() }
+            }
+        }
     }
 
     /** Match the stored list order while preserving the playing item and its position. */
@@ -394,6 +438,7 @@ object MusicEngine {
     @Synchronized
     fun shutdown() {
         ++loadGeneration
+        resumeWhenLoaded = false
         loadingQueue = false
         saveResume()
         player?.release()

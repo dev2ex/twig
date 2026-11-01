@@ -1,0 +1,1 @@
+Add transfer retries with resumable uploads and skip-failed-item actions. Remote sharing now prepares reusable files with background progress. Add selection counts, colored folder icons and long-press shortcuts for browsing, music and terminals. Fix image zoom opening the long-press menu, Back exit confirmation and thumbnail refresh. Protect changed sources when retrying a move.

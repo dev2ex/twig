@@ -100,6 +100,48 @@ class DirScanTest {
         .firstOrNull { it.file.path == dir.path }
 
     @Test
+    fun `second tab defers recursive stats until Basic is selected`() = runTest(dispatcher) {
+        val root = tree("deferred-stats")
+        vm.bootstrap(listOf("file\t${ext.path}"))
+        advanceUntilIdle()
+
+        vm.showInfo(local(root), 1)
+        assertEquals(0, vm.activeDirScans())
+        advanceUntilIdle()
+        assertEquals(1, infoNode(root)!!.tab)
+        assertEquals(null, infoNode(root)!!.dirStat)
+
+        vm.selectInfoTab(infoNode(root)!!, 0)
+        assertEquals(1, vm.activeDirScans())
+        advanceUntilIdle()
+        assertEquals(25L, infoNode(root)!!.dirStat?.bytes)
+        vm.selectInfoTab(infoNode(root)!!, 1)
+        vm.selectInfoTab(infoNode(root)!!, 0)
+        assertEquals("completed stats are reused", 0, vm.activeDirScans())
+        assertEquals(25L, infoNode(root)!!.dirStat?.bytes)
+    }
+
+    @Test
+    fun `leaving Basic cancels unfinished stats and returning restarts them`() = runTest(dispatcher) {
+        val root = tree("paused-stats")
+        vm.bootstrap(listOf("file\t${ext.path}"))
+        advanceUntilIdle()
+
+        vm.toggleInfo(local(root))
+        assertEquals(1, vm.activeDirScans())
+        vm.showInfo(local(root), 1)
+        advanceUntilIdle()
+        assertEquals(1, infoNode(root)!!.tab)
+        assertEquals(0, vm.activeDirScans())
+        assertEquals(null, infoNode(root)!!.dirStat)
+
+        vm.selectInfoTab(infoNode(root)!!, 0)
+        assertEquals(1, vm.activeDirScans())
+        advanceUntilIdle()
+        assertEquals(25L, infoNode(root)!!.dirStat?.bytes)
+    }
+
+    @Test
     fun `opening the directory Properties card immediately shows recursive stats - the spinner stops once the scan finishes`() = runTest(dispatcher) {
         val root = tree("card")
         vm.bootstrap(listOf("file\t${ext.path}"))

@@ -87,7 +87,7 @@ object Backup {
      * **[Secrets]'s own `twig_secure` is explicitly excluded** — it holds the
      * Keystore-wrapped DEK, which another device cannot unwrap, and it is key
      * material with no reason to ever leave this device.
-     * The four files containing passwords are not in this list either; they
+     * The files containing passwords are not in this list either; they
      * take the structured plaintext path below.
      */
     private val PREF_FILES = listOf(
@@ -160,6 +160,7 @@ object Backup {
 
         o.put("resticPw", JSONObject(Prefs.resticPasswords(ctx) as Map<*, *>))
         o.put("archivePw", JSONObject(Prefs.archivePasswords(ctx) as Map<*, *>))
+        o.put("pdfPw", JSONObject(Prefs.pdfPasswords(ctx) as Map<*, *>))
 
         // Share config: load() has already decrypted, so we store the password in plaintext here
         val share = ShareStore.load(ctx)
@@ -305,6 +306,10 @@ object Backup {
         }
         o.optJSONObject("archivePw")?.let { m ->
             m.keys().forEach { k -> Prefs.setArchivePassword(ctx, k, m.getString(k)); pwCount++ }
+        }
+
+        o.optJSONObject("pdfPw")?.let { m ->
+            m.keys().forEach { k -> Prefs.setPdfPassword(ctx, k, m.getString(k)); pwCount++ }
         }
 
         o.optJSONObject("share")?.let { s ->

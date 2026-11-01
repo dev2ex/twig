@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg">
+    android:background="?attr/twigBg">
 
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
@@ -12,7 +12,7 @@
         android:layout_height="?attr/actionBarSize"
         app:titleTextAppearance="@style/CompactToolbarTitle"
         app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         app:titleTextColor="@color/white"
         app:subtitleTextColor="#B3FFFFFF"
         app:navigationIcon="@drawable/ic_up" />
@@ -44,7 +44,7 @@
                     android:id="@+id/title_left"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@color/path_bar_active"
+                    android:background="?attr/twigPathBarActive"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:paddingTop="3dp"
@@ -64,7 +64,7 @@
                 android:id="@+id/divider"
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
-                android:background="@color/divider" />
+                android:background="?attr/twigDivider" />
 
             <LinearLayout
                 android:id="@+id/side_right"
@@ -77,7 +77,7 @@
                     android:id="@+id/title_right"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@color/path_bar_active"
+                    android:background="?attr/twigPathBarActive"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:paddingTop="3dp"

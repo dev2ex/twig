@@ -323,7 +323,7 @@ object Thumbs {
     /** Pre-check whether this file has any chance of generating successfully; network-source PDFs inevitably fail (require a real, locally random-accessible file), not worth queuing in the background thread pool — otherwise they'd block behind slower network image downloads in the same pool, just queueing pointlessly. Videos obey the "generate thumbnails for network files" toggle (just like images, going over the network means real bandwidth), unlike PDFs which are fundamentally unable to do it. */
     private fun eligible(ctx: Context, raw: XFile): Boolean {
         val file = typed(raw)
-        val localish = file.scheme == "file" || file.scheme == "saf"
+        val localish = file.scheme == "file" || file.scheme == "saf" || file.scheme == "trash"
         return when {
             // ★ Covers are NOT constrained by the "generate thumbnails for network
             // files" toggle — same reasoning as reading the EXIF embedded image for
@@ -589,7 +589,14 @@ object Thumbs {
         null
     }
 
-    private fun genFallback(ctx: Context, raw: XFile): Bitmap? = genByType(ctx, typed(raw))
+    private fun genFallback(ctx: Context, raw: XFile): Bitmap? {
+        // Resolve on the worker only. The old location may now contain an unrelated file;
+        // decode the validated payload, keeping the original name and cache identity.
+        val source = if (raw.scheme == "trash") {
+            (FsRegistry.of(raw) as com.twig.app.TrashFileSystem).thumbnailSource(typed(raw))
+        } else raw
+        return genByType(ctx, typed(source))
+    }
 
     private fun genByType(ctx: Context, file: XFile): Bitmap? = when {
         OpenFiles.isImage(file) -> genImage(ctx, file)
@@ -615,11 +622,17 @@ object Thumbs {
             if (!Prefs.thumbsNetwork(ctx)) return null // Toggle off and no embedded image: don't download.
             if (file.size > NET_DECODE_CAP) return null
             val bytes = FsRegistry.of(file).openInput(file).use { readCapped(it, NET_DECODE_CAP, file.size) }
+            if (file.extension == "svg") return ByteArrayInputStream(bytes).use {
+                decodeSvg(it, "", MAX_EDGE, ctx.resources.displayMetrics.densityDpi).bmp
+            }
             val bmp = decodeSampled { ByteArrayInputStream(bytes) } ?: return null
             return rotate(bmp, if (file.extension in JPG) orientationOf(bytes) else 0)
         }
         if (Prefs.thumbsEmbedded(ctx)) embedded(file)?.let { return it }
         val fs = FsRegistry.of(file)
+        if (file.extension == "svg") return fs.openInput(file).use {
+            decodeSvg(it, "", MAX_EDGE, ctx.resources.displayMetrics.densityDpi).bmp
+        }
         val bmp = decodeSampled { fs.openInput(file) } ?: return null
         return rotate(bmp, if (file.extension in JPG) orientationOf(head(file)) else 0)
     }

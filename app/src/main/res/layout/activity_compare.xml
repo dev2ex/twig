@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg">
+    android:background="?attr/twigBg">
 
     <!-- Scan progress bar pressed against the inside bottom edge of the title bar.
          ★ elevation is raised to this FrameLayout — leaving it on the Toolbar would
@@ -12,14 +12,14 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/toolbar"
+        android:background="?attr/twigToolbar"
         android:elevation="4dp">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/toolbar"
+            android:background="?attr/twigToolbar"
             app:titleTextAppearance="@style/CompactToolbarTitle"
             app:subtitleTextAppearance="@style/CompactToolbarSubtitle"
             app:titleTextColor="@color/white"
@@ -57,13 +57,13 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="@color/surface">
+                android:background="?attr/twigSurface">
 
                 <LinearLayout
                     android:id="@+id/path_bar_left"
                     android:layout_width="match_parent"
                     android:layout_height="30dp"
-                    android:background="@color/path_bar_active"
+                    android:background="?attr/twigPathBarActive"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingStart="8dp"
@@ -115,7 +115,7 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="30dp"
-                    android:background="@color/path_bar_active" />
+                    android:background="?attr/twigPathBarActive" />
 
                 <!-- Status column: one symbol per row (= same / ≠ different / ◀ ▶ only on
                      one side), aligned row-by-row with the two sides and scrolling along
@@ -125,13 +125,13 @@
                     android:layout_height="0dp"
                     android:layout_weight="1"
                     android:orientation="horizontal"
-                    android:background="@color/surface">
+                    android:background="?attr/twigSurface">
 
                     <View
                         android:id="@+id/divider"
                         android:layout_width="1dp"
                         android:layout_height="match_parent"
-                        android:background="@color/divider" />
+                        android:background="?attr/twigDivider" />
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/list_state"
@@ -143,7 +143,7 @@
                         android:id="@+id/divider2"
                         android:layout_width="1dp"
                         android:layout_height="match_parent"
-                        android:background="@color/divider" />
+                        android:background="?attr/twigDivider" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -153,13 +153,13 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="@color/surface">
+                android:background="?attr/twigSurface">
 
                 <LinearLayout
                     android:id="@+id/path_bar_right"
                     android:layout_width="match_parent"
                     android:layout_height="30dp"
-                    android:background="@color/path_bar"
+                    android:background="?attr/twigPathBar"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingStart="8dp"

@@ -22,6 +22,28 @@ class WebsiteGridTest {
     private val website = PaneViewModel.WebsiteNode(Website(id = "grid", name = "My website", url = "https://example.com"))
     private fun parent() = FrameLayout(ContextThemeWrapper(app, R.style.Theme_Twig))
 
+    @Test fun `website sorting uses list handles in grid mode and restores cells afterward`() {
+        var clicked = false
+        var dragged = false
+        val adapter = FileAdapter(1, { clicked = true }, {}, {}, { _, _ -> }, {}, gridMode = 2)
+        adapter.onItemDrag = { dragged = true }
+        adapter.submitList(listOf(website.copy(reordering = true)))
+        assertFalse(adapter.isCellAt(0))
+        val holder = adapter.createViewHolder(parent(), adapter.getItemViewType(0))
+        adapter.bindViewHolder(holder, 0)
+        val handle = holder.itemView.findViewById<View>(R.id.indicator)
+        assertEquals(View.VISIBLE, handle.visibility)
+        holder.itemView.performClick()
+        assertFalse(clicked)
+        val down = android.view.MotionEvent.obtain(0, 10, android.view.MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+        handle.dispatchTouchEvent(down)
+        down.recycle()
+        assertTrue(dragged)
+        adapter.submitList(null)
+        adapter.submitList(listOf(website))
+        assertTrue(adapter.isCellAt(0))
+    }
+
     @Test fun `websites use cells only in all files mode while group and add action keep full rows`() {
         for (mode in 0..2) {
             val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {}, gridMode = mode)

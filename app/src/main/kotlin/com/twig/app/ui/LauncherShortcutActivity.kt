@@ -3,11 +3,11 @@ package com.twig.app.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import java.util.UUID
 
 /** Only app-created actions may cross this exported boundary; never accept raw targets. */
-class LauncherShortcutActivity : AppCompatActivity() {
+class LauncherShortcutActivity : TwigActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SecurityUi.gate(this) {

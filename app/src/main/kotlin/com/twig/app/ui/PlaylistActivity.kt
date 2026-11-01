@@ -10,7 +10,10 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -26,10 +29,13 @@ import com.twig.app.databinding.ActivityPlaylistBinding
 import com.twig.app.databinding.ItemTrackBinding
 import com.twig.core.XFile
 import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Playlist page: lists tracks (number / cover / title / artist / duration); tap a row to play; overflow menu for management. */
 @UnstableApi
-class PlaylistActivity : AppCompatActivity() {
+class PlaylistActivity : TwigActivity() {
 
     private lateinit var b: ActivityPlaylistBinding
     private lateinit var playlistId: String
@@ -49,7 +55,16 @@ class PlaylistActivity : AppCompatActivity() {
     private lateinit var dragHelper: ItemTouchHelper
     private lateinit var searchItem: MenuItem
     private var manualSortItem: MenuItem? = null
+    private var renameItem: MenuItem? = null
     private val attemptedTrackNumbers = HashSet<String>()
+    private val importer by lazy { ViewModelProvider(this)[PlaylistImportModel::class.java] }
+    private var importProgress: AlertDialog? = null
+    private val playlistPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) importPicked(result.data, directory = false)
+    }
+    private val directoryPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) importPicked(result.data, directory = true)
+    }
 
     /** When the list page is open, the queue auto-advances: highlight / blur / scroll position all
      *  follow along (previously only refreshed once in onResume, so if you stayed on the page and
@@ -67,11 +82,22 @@ class PlaylistActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         b = ActivityPlaylistBinding.inflate(layoutInflater)
         setContentView(b.root)
-        playlistId = intent.getStringExtra(EXTRA_ID) ?: return finish()
+        playlistId = savedInstanceState?.getString(EXTRA_ID) ?: intent.getStringExtra(EXTRA_ID) ?: return finish()
         setupImmersive()
         b.bgBlur.setBackgroundColor(fallbackBg()) // paint a solid color first to avoid a black flash on entry
         b.toolbar.setNavigationOnClickListener { b.drawer.openDrawer(androidx.core.view.GravityCompat.START) }
-        plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit)
+        plDrawer = PlaylistDrawer(this, b.drawer, b.drawerList, b.drawerExit,
+            onImport = { id, directory ->
+                if (id == playlistId) launchImport(directory) else startImport(this, id, directory)
+            },
+            onRenamed = { oldId, renamed ->
+                if (playlistId == oldId) {
+                    playlistId = renamed.id
+                    intent.putExtra(EXTRA_ID, renamed.id)
+                    renameItem?.setTitle(if (renamed.isNow) R.string.music_save else R.string.music_rename)
+                    reload()
+                }
+            })
         MusicUi.register(finisher)
         adapter = TrackAdapter()
         b.list.layoutManager = LinearLayoutManager(this)
@@ -97,6 +123,28 @@ class PlaylistActivity : AppCompatActivity() {
             setOnMenuItemClickListener { toggleSearch(); true }
         }
         b.toolbar.menu.add(R.string.sort_by).setOnMenuItemClickListener { showSortDialog(); true }
+        if (playlistId != Playlist.TEMP) {
+            b.toolbar.menu.add(R.string.music_import_playlist).setOnMenuItemClickListener {
+                launchImport(directory = false)
+                true
+            }
+            b.toolbar.menu.add(R.string.music_import_directory).setOnMenuItemClickListener {
+                launchImport(directory = true)
+                true
+            }
+            b.toolbar.menu.add(R.string.music_export).setOnMenuItemClickListener {
+                playlist?.let(plDrawer::export)
+                true
+            }
+            if (playlistId != Playlist.FAV) {
+                renameItem = b.toolbar.menu.add(if (playlistId == Playlist.NOW) R.string.music_save else R.string.music_rename)
+                    .setOnMenuItemClickListener { playlist?.let(plDrawer::rename); true }
+            }
+        }
+        b.toolbar.menu.add(R.string.music_resume).setOnMenuItemClickListener {
+            playlist?.let(plDrawer::resume)
+            true
+        }
         manualSortItem = b.toolbar.menu.add(R.string.music_manual_sort).apply {
             isCheckable = true
             setOnMenuItemClickListener {
@@ -126,11 +174,61 @@ class PlaylistActivity : AppCompatActivity() {
         b.list.itemAnimator = null
         applyTint() // cover not out yet: derive a palette from fallbackBg first, so the pure-white placeholder in XML doesn't show through
         reload()
+        importer.state.observe(this) { state ->
+            if (state.busy) {
+                if (importProgress == null) {
+                    importProgress = AlertDialog.Builder(this)
+                        .setTitle(R.string.music_importing)
+                        .setMessage("")
+                        .setNegativeButton(R.string.dialog_cancel) { _, _ -> importer.cancel() }
+                        .create().apply {
+                            setCanceledOnTouchOutside(false)
+                            setOnCancelListener { importer.cancel() }
+                            show()
+                        }
+                }
+                importProgress?.setMessage(getString(R.string.music_import_progress, state.count, state.path))
+            } else {
+                importProgress?.dismiss()
+                importProgress = null
+                if (state.added != null || state.error != null) {
+                    if (state.added != null) { reload(); plDrawer.reload() }
+                    val message = state.added?.let { getString(R.string.music_import_done, it) }
+                        ?: getString(R.string.music_import_failed, state.error.orEmpty())
+                    android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
+                    importer.consumed()
+                }
+            }
+        }
+        if (savedInstanceState == null && intent.hasExtra(EXTRA_IMPORT) && playlistId != Playlist.TEMP) {
+            val directory = intent.getBooleanExtra(EXTRA_IMPORT, false)
+            intent.removeExtra(EXTRA_IMPORT)
+            launchImport(directory)
+        }
+    }
+
+    private fun launchImport(directory: Boolean) {
+        if (directory) directoryPicker.launch(PickerActivity.dirIntent(this, getString(R.string.music_import_directory), requireWritable = false))
+        else playlistPicker.launch(PickerActivity.pathIntentAny(this, getString(R.string.music_import_playlist)))
+    }
+
+    private fun importPicked(data: Intent?, directory: Boolean) {
+        val scheme = data?.getStringExtra(PickerActivity.EXTRA_PICKED_SCHEME) ?: return
+        val path = data.getStringExtra(PickerActivity.EXTRA_PICKED_PATH) ?: return
+        val name = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME)
+        importer.start(playlistId, XFile(scheme, path, isDir = directory, displayName = name), directory)
     }
 
     override fun onDestroy() {
+        importProgress?.dismiss()
+        importProgress = null
         super.onDestroy()
         MusicUi.unregister(finisher)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        if (::playlistId.isInitialized) outState.putString(EXTRA_ID, playlistId)
+        super.onSaveInstanceState(outState)
     }
 
     /** Immersive: content extends below the status bar (blur fills it); toolbar / list inset around system bars. */
@@ -242,6 +340,8 @@ class PlaylistActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val latest = if (playlistId == Playlist.FAV) PlaylistStore.fav(this) else PlaylistStore.get(this, playlistId)
+        if (latest != playlist) reload()
         adapter.notifyDataSetChanged() // refresh the now-playing highlight
         adapter.syncPlaying()          // sync the highlight row index (for later incremental refreshes)
         plDrawer.reload()
@@ -369,7 +469,8 @@ class PlaylistActivity : AppCompatActivity() {
     }
 
     private fun reload() {
-        val pl = PlaylistStore.get(this, playlistId) ?: return finish()
+        val pl = if (playlistId == Playlist.FAV) PlaylistStore.fav(this)
+            else PlaylistStore.get(this, playlistId) ?: return finish()
         playlist = pl
         b.plTitle.text = pl.name
         b.plCount.text = getString(R.string.music_track_count, pl.tracks.size)
@@ -420,8 +521,7 @@ class PlaylistActivity : AppCompatActivity() {
         items += getString(R.string.music_info) to { showInfo(track) }
         if (!track.temporary) items += getString(R.string.music_send_to) to { MusicDialogs.sendToPlaylist(this, listOf(track)) }
         items += getString(R.string.music_share) to { share(track) }
-        val file = synchronized(files) { files[track.id] }
-        if (file != null && MusicDialogs.canLocate(file)) {
+        if (MusicDialogs.canLocate(this, track)) {
             items += getString(R.string.music_locate) to { locate(track) }
         }
         val favLabel = if (PlaylistStore.isFav(this, track.id)) {
@@ -443,18 +543,27 @@ class PlaylistActivity : AppCompatActivity() {
     }
 
     private fun showInfo(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.showInfo(this, f)
+        MusicDialogs.showInfo(this, track)
     }
 
     private fun share(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.share(this, f)
+        withTrackFile(track) { MusicDialogs.share(this, it) }
     }
 
     private fun locate(track: PlaylistTrack) {
-        val f = synchronized(files) { files[track.id] } ?: return
-        MusicDialogs.locateInFileManager(this, f)
+        withTrackFile(track) { MusicDialogs.locateInFileManager(this, it) }
+    }
+
+    /** A direct action must not wait behind every earlier track's metadata read. */
+    private fun withTrackFile(track: PlaylistTrack, action: (XFile) -> Unit) {
+        val cached = synchronized(files) { files[track.id] }
+        if (cached != null) { action(cached); return }
+        lifecycleScope.launch {
+            val file = withContext(Dispatchers.IO) { MusicEngine.resolveFile(applicationContext, track) }
+            if (file != null) action(file)
+            else android.widget.Toast.makeText(this@PlaylistActivity,
+                getString(R.string.music_export_source_missing, track.name), android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     /** [h:]mm:ss — the hour part appears only for material an hour or longer. */
@@ -602,6 +711,7 @@ class PlaylistActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_ID = "playlist_id"
+        private const val EXTRA_IMPORT = "playlist_import_directory"
         private const val PAYLOAD_COLORS = "colors"
         private const val PAYLOAD_NUMBER = "number"
         /**
@@ -614,6 +724,11 @@ class PlaylistActivity : AppCompatActivity() {
         private const val SCRIM = 0x00000000
         fun start(ctx: Context, playlistId: String) {
             ctx.startActivity(Intent(ctx, PlaylistActivity::class.java).putExtra(EXTRA_ID, playlistId))
+        }
+
+        fun startImport(ctx: Context, playlistId: String, directory: Boolean) {
+            ctx.startActivity(Intent(ctx, PlaylistActivity::class.java)
+                .putExtra(EXTRA_ID, playlistId).putExtra(EXTRA_IMPORT, directory))
         }
     }
 }

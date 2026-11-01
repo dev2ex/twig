@@ -229,3 +229,11 @@
   Regression tests cover mixed/local sources, duplicate names/selections, metadata changes,
   unknown sizes/times, truncated reads/cache, failures, cancellation, reuse, expiry,
   retention of leased entries, rotation and deferred handoff after resume.
+
+- **Move retries with unknown source timestamps (2026-10-28 release review)**:
+  a completed destination is reusable only when the source size and modification
+  time are both known. Otherwise a same-size edit between a successful copy and a
+  failed source deletion could be discarded by retry. Refresh top-level sources
+  with recorded output even when their previous timestamp was unknown, so short-read
+  checks use the current size before deleting anything. `CopyEngineTest` covers
+  same-size edits and a growing source whose retry read ends early.

@@ -240,6 +240,30 @@ class OperationFeedbackTest {
         assertEquals(80, shadowOf(vibrator).milliseconds)
     }
 
+    @Test fun `failed foreground transfer notifies even with completion notifications disabled`() {
+        Prefs.setForegroundCompletionNotifications(app, false)
+        val session = session()
+        File(folder, "source.txt").delete()
+        assertTrue(Transfers.start(app, session))
+        var finished = 0
+        TransferBox(host.get(), host.get().layoutInflater, session, { true }, {}, {}, { finished++ })
+        Transfers.execute(app, session) {}
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(session.finished!!.isFailure)
+        assertEquals(1, finished)
+        val notification = shadowOf(manager).allNotifications.single()
+        assertEquals(app.getString(R.string.transfer_failed), notification.extras.getString("android.title"))
+        assertFalse(notification.extras.getString("android.text").isNullOrBlank())
+        assertNotNull(notification.contentIntent)
+        assertFalse(shadowOf(vibrator).isVibrating)
+    }
+
+    @Test fun `cancellation suppresses failure notifications too`() {
+        OperationFeedback.finished(app, "Failed", "Cancelled", cancelled = true, failed = true)
+        assertTrue(shadowOf(manager).allNotifications.isEmpty())
+        assertFalse(shadowOf(vibrator).isVibrating)
+    }
+
     @Test fun `failed background transfer reports its error instead of a success result`() {
         val session = session()
         File(folder, "source.txt").delete()

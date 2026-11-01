@@ -22,16 +22,31 @@ object Prefs {
         sp(ctx).edit().putString("compress_format", format.name).apply()
     }
 
+    fun compressLevel(ctx: Context): ArchiveWriter.Level =
+        ArchiveWriter.Level.entries.firstOrNull { it.name == sp(ctx).getString("compress_level", null) }
+            ?: ArchiveWriter.Level.STANDARD
+
+    fun setCompressLevel(ctx: Context, level: ArchiveWriter.Level) {
+        sp(ctx).edit().putString("compress_level", level.name).apply()
+    }
+
     fun toolbarAtBottom(ctx: Context): Boolean = sp(ctx).getBoolean("toolbar_at_bottom", false)
 
     fun setToolbarAtBottom(ctx: Context, bottom: Boolean) {
         sp(ctx).edit().putBoolean("toolbar_at_bottom", bottom).apply()
     }
 
-    fun exitOnBack(ctx: Context): Boolean = sp(ctx).getBoolean("exit_on_back", false)
+    enum class BackAction { CLOSE, EXIT, UP, UP_EXIT }
 
-    fun setExitOnBack(ctx: Context, on: Boolean) {
-        sp(ctx).edit().putBoolean("exit_on_back", on).apply()
+    fun backAction(ctx: Context): BackAction {
+        val prefs = sp(ctx)
+        val saved = prefs.getString("back_action", null)
+        return BackAction.entries.firstOrNull { it.name == saved }
+            ?: if (prefs.getBoolean("exit_on_back", false)) BackAction.EXIT else BackAction.CLOSE
+    }
+
+    fun setBackAction(ctx: Context, action: BackAction) {
+        sp(ctx).edit().putString("back_action", action.name).remove("exit_on_back").apply()
     }
 
     fun vibrateOnCompletion(ctx: Context): Boolean = sp(ctx).getBoolean("vibrate_on_completion", false)
@@ -51,6 +66,26 @@ object Prefs {
 
     fun setRootItemVisible(ctx: Context, pane: Int, id: String, visible: Boolean) {
         sp(ctx).edit().putBoolean("root_item_${pane}_$id", visible).apply()
+    }
+
+    fun rootItemOrder(ctx: Context): List<RootItems.Item> =
+        RootItems.ordered(sp(ctx).getString("root_item_order", null)?.split(',').orEmpty())
+
+    fun setRootItemOrder(ctx: Context, ids: List<String>) {
+        sp(ctx).edit().putString("root_item_order", RootItems.ordered(ids).joinToString(",") { it.id }).apply()
+    }
+
+    fun stripItemOrder(ctx: Context): List<StripItems.Item> =
+        StripItems.ordered(sp(ctx).getString("strip_item_order", null)?.split(',').orEmpty())
+
+    fun stripItemVisible(ctx: Context, id: String): Boolean =
+        sp(ctx).getBoolean("strip_item_$id", StripItems.all.first { it.id == id }.visibleByDefault)
+
+    fun setStripItems(ctx: Context, ids: List<String>, visible: Set<String>) {
+        val items = StripItems.ordered(ids)
+        val edit = sp(ctx).edit().putString("strip_item_order", items.joinToString(",") { it.id })
+        items.forEach { edit.putBoolean("strip_item_${it.id}", it.id in visible) }
+        edit.apply()
     }
 
     /** 0=system region, 1=yy-MM-dd, 2=dd.MM.yy, 3=MM/dd/yy. */
@@ -230,6 +265,23 @@ object Prefs {
         sp(ctx).edit().putInt("longpress_speed", percent).apply()
     }
 
+    const val SUBTITLE_SIZE_MIN = 12
+    const val SUBTITLE_SIZE_MAX = 36
+
+    /** Text subtitles only, in sp; independent of per-title track choice memory. */
+    fun subtitleSize(ctx: Context): Int =
+        sp(ctx).getInt("subtitle_size", 24).coerceIn(SUBTITLE_SIZE_MIN, SUBTITLE_SIZE_MAX)
+
+    fun setSubtitleSize(ctx: Context, size: Int) {
+        sp(ctx).edit().putInt("subtitle_size", size.coerceIn(SUBTITLE_SIZE_MIN, SUBTITLE_SIZE_MAX)).apply()
+    }
+
+    fun subtitleTextColor(ctx: Context): Int = sp(ctx).getInt("subtitle_text_color", android.graphics.Color.WHITE)
+
+    fun setSubtitleTextColor(ctx: Context, color: Int) {
+        sp(ctx).edit().putInt("subtitle_text_color", color).apply()
+    }
+
     /** Remember video playback position and resume next time, default on (records see [PlaybackStore]). */
     fun resumePlayback(ctx: Context): Boolean = sp(ctx).getBoolean("resume_playback", true)
 
@@ -351,6 +403,23 @@ object Prefs {
     fun archivePasswords(ctx: Context): Map<String, String> =
         archiveSp(ctx).all.keys.mapNotNull { k -> archivePassword(ctx, k)?.let { k to it } }.toMap()
 
+    // PDF passwords are independent of archive passwords, keyed by scheme:path.
+    const val FILE_PDF_PW = "twig_pdf_pw"
+    private fun pdfSp(ctx: Context) = ctx.getSharedPreferences(FILE_PDF_PW, Context.MODE_PRIVATE)
+
+    fun pdfPassword(ctx: Context, path: String): String? =
+        pdfSp(ctx).getString(path, null)?.let { com.twig.app.secure.Secrets.dec(ctx, it) }
+
+    fun setPdfPassword(ctx: Context, path: String, pw: String?) {
+        pdfSp(ctx).edit().apply {
+            if (pw == null) remove(path) else sealOrSkip(ctx, pw)?.let { putString(path, it) }
+        }.apply()
+    }
+
+    /** Plaintext passwords for configuration backup; re-encrypted on import. */
+    fun pdfPasswords(ctx: Context): Map<String, String> =
+        pdfSp(ctx).all.keys.mapNotNull { k -> pdfPassword(ctx, k)?.let { k to it } }.toMap()
+
     // ---- Thumbnails ----
 
     /** Thumbnail master switch, default off; when off, the list looks exactly like the pre-thumbnail era. */
@@ -435,12 +504,60 @@ object Prefs {
         if (!on) FileSniff.clear()
     }
 
-    /** Count direct folders/files for visible local and SMB directories; opt-in. */
+    /** Count direct folders/files for visible directories; opt-in. */
     fun folderCounts(ctx: Context): Boolean = sp(ctx).getBoolean("folder_counts", false)
 
     fun setFolderCounts(ctx: Context, on: Boolean) {
         sp(ctx).edit().putBoolean("folder_counts", on).apply()
-        if (!on) com.twig.app.ui.DirectoryCounts.clear()
+        // Local empty-folder indicators share this cache even when counts are hidden.
+    }
+
+    fun folderCountsLocalOnly(ctx: Context): Boolean = sp(ctx).getBoolean("folder_counts_local_only", true)
+
+    fun setFolderCountsLocalOnly(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("folder_counts_local_only", on).apply()
+    }
+
+    fun folderCountsFor(ctx: Context, scheme: String): Boolean =
+        folderCounts(ctx) && (scheme == "file" || !folderCountsLocalOnly(ctx))
+
+    const val PANE_LAYOUT_FOLLOW_ORIENTATION = 0
+    const val PANE_LAYOUT_SINGLE = 1
+    const val PANE_LAYOUT_DUAL = 2
+
+    fun paneLayout(ctx: Context): Int = sp(ctx).getInt("pane_layout", PANE_LAYOUT_FOLLOW_ORIENTATION)
+        .takeIf { it in PANE_LAYOUT_FOLLOW_ORIENTATION..PANE_LAYOUT_DUAL } ?: PANE_LAYOUT_FOLLOW_ORIENTATION
+
+    fun setPaneLayout(ctx: Context, mode: Int) {
+        sp(ctx).edit().putInt("pane_layout", mode.coerceIn(PANE_LAYOUT_FOLLOW_ORIENTATION, PANE_LAYOUT_DUAL)).apply()
+    }
+
+    /** Pane visibility is independent of the toolbar and strip density chosen for the orientation. */
+    fun dualPane(ctx: Context): Boolean = when (paneLayout(ctx)) {
+        PANE_LAYOUT_SINGLE -> false
+        PANE_LAYOUT_DUAL -> true
+        else -> ctx.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    /** Allow row taps to toggle selection while at least one item is checked; opt-in. */
+    fun tapRowToSelect(ctx: Context): Boolean = sp(ctx).getBoolean("tap_row_to_select", false)
+
+    fun setTapRowToSelect(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("tap_row_to_select", on).apply()
+    }
+
+    /** Show permission bits in file rows when supplied by the backend; opt-in. */
+    fun unixPermissions(ctx: Context): Boolean = sp(ctx).getBoolean("unix_permissions", false)
+
+    fun setUnixPermissions(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("unix_permissions", on).apply()
+    }
+
+    /** Compact numeric permission labels by default; independent of whether the row is shown. */
+    fun unixPermissionsOctal(ctx: Context): Boolean = sp(ctx).getBoolean("unix_permissions_octal", true)
+
+    fun setUnixPermissionsOctal(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("unix_permissions_octal", on).apply()
     }
 
     /** Show hidden files (dotfiles and dot-directories), default off. */
@@ -503,7 +620,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */
@@ -566,12 +683,14 @@ object Prefs {
         return id
     }
 
-    /** Theme mode, value is AppCompatDelegate.MODE_NIGHT_*; default follow system. */
+    /** Theme choice: AppCompatDelegate.MODE_NIGHT_* or AppTheme.MODE_OLED. */
     fun themeMode(ctx: Context): Int =
         sp(ctx).getInt(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 
     fun setThemeMode(ctx: Context, mode: Int) {
+        val previous = themeMode(ctx)
+        if (previous == mode) return
         sp(ctx).edit().putInt(KEY_THEME, mode).apply()
-        AppCompatDelegate.setDefaultNightMode(mode)
+        AppTheme.change(ctx, previous, mode)
     }
 }

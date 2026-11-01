@@ -1,6 +1,6 @@
 <!-- Capsule background for the floating merge button — same color as the toolbar, recognizable as a tappable control on top of any row content -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="@color/toolbar" />
+    <solid android:color="?attr/twigToolbar" />
     <corners android:radius="16dp" />
 </shape>

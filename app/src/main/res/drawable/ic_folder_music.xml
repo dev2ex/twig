@@ -1,9 +1,11 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#CE93D8"
+    <path android:fillColor="@color/folder"
         android:pathData="M10,4H4c-1.1,0 -1.99,0.9 -1.99,2L2,18c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2h-8l-2,-2z" />
-    <path android:fillColor="#4A148C"
-        android:fillType="evenOdd"
-        android:pathData="M11,9L17,8V14.5A2,2 0,1 1,15 12.5V10.5L13,10.85V16A2,2 0,1 1,11 14Z" />
+    <group android:translateX="-0.426600" android:translateY="0.238500"
+        android:scaleX="1.254000" android:scaleY="1.254000">
+        <path android:fillColor="@color/folder_badge_music" android:fillType="evenOdd"
+            android:pathData="M11,9L18.3,7.8V14.5A1.85,1.85 0,1 1,16.55,12.653V9.8L12.75,10.42V16A1.85,1.85 0,1 1,11,14.153Z" />
+    </group>
 </vector>

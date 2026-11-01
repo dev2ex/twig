@@ -4,6 +4,8 @@ import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
 import com.twig.core.FsException
 import com.twig.core.XFile
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixMetadataSource
 import com.twig.core.RandomSource
 import com.twig.fs.local.priv.PrivilegedFs
 import com.twig.fs.local.priv.PrivilegedShell
@@ -23,7 +25,10 @@ import java.io.OutputStream
 class LocalFileSystem(
     private val rootDir: File = File("/"),
     override val displayName: String = "Local storage",
-) : FileSystem, com.twig.core.ResumableWrite {
+    private val readLink: (String) -> String? = { symbolicLinkTarget?.invoke(it) },
+    private val readUnix: (String) -> UnixMetadata? = { unixMetadataReader?.invoke(it) },
+    private val readContext: (String) -> String? = { selinuxContextReader?.invoke(it) },
+) : FileSystem, com.twig.core.ResumableWrite, UnixMetadataSource {
 
     override val scheme: String = SCHEME
 
@@ -36,7 +41,7 @@ class LocalFileSystem(
     override fun resolve(path: String): XFile {
         documents(path)?.let { return it.resolve(path) }
         val f = File(path)
-        if (!f.exists()) {
+        if (!f.exists() && readLink(path) == null) {
             if (maybeHidden(f)) fallback?.stat(path)?.let { return it }
             throw FsException("No such path: $path")
         }
@@ -47,7 +52,7 @@ class LocalFileSystem(
     override fun stat(path: String): XFile? {
         documents(path)?.let { return it.stat(path) }
         val f = File(path)
-        if (f.exists()) return toXFile(f)
+        if (f.exists() || readLink(path) != null) return toXFile(f)
         return if (maybeHidden(f)) fallback?.stat(path) else null
     }
 
@@ -64,7 +69,7 @@ class LocalFileSystem(
         val children = f.listFiles()
             ?: return elevated(dir.path)?.let { sorted(it) }
                 ?: throw FsException("Cannot read directory (permission?): ${dir.path}")
-        return sorted(children.map { toXFile(it) })
+        return sorted(children.map { documents(it.path)?.stat(it.path) ?: toXFile(it) })
     }
 
     /**
@@ -317,18 +322,44 @@ class LocalFileSystem(
         inCanonicalDir.canonicalFile != inCanonicalDir.absoluteFile
     }.getOrDefault(false)
 
-    private fun toXFile(f: File): XFile = XFile(
-        scheme = SCHEME,
-        path = f.absolutePath,
-        isDir = f.isDirectory,
-        size = if (f.isDirectory) 0L else f.length(),
-        lastModified = f.lastModified(),
-        canRead = f.canRead(),
-        canWrite = f.canWrite(),
-    )
+    private fun toXFile(f: File): XFile {
+        val unix = readUnix(f.absolutePath)
+        val target = if (unix == null || unix.isSymbolicLink) readLink(f.absolutePath) else null
+        val link = unix?.isSymbolicLink ?: (target != null)
+        val directory = if (unix != null && !link) unix.isDirectory else f.isDirectory
+        return XFile(
+            scheme = SCHEME,
+            path = f.absolutePath,
+            isDir = directory,
+            // Streams follow links, so their byte count must still describe the target.
+            size = if (directory) 0L else if (unix != null && !link) unix.size else f.length(),
+            // Preserve java.io.File's millisecond precision for resume checks and thumbnail keys.
+            lastModified = f.lastModified(),
+            canRead = f.canRead(),
+            canWrite = f.canWrite(),
+            isSymbolicLink = link,
+            linkTarget = target,
+            unixMode = unix?.mode,
+        )
+    }
+
+    override fun unixMetadata(file: XFile): UnixMetadata? {
+        if (documents(file) != null) return null
+        val unix = readUnix(file.path) ?: return fallback?.unixMetadata(file.path)
+        return unix.copy(selinuxContext = readContext(file.path) ?: fallback?.selinuxContext(file.path))
+    }
+
+    /** Called from properties on a worker thread; privileged listings do not read each link. */
+    fun linkTarget(file: XFile): String? =
+        file.linkTarget ?: readLink(file.path) ?: fallback?.readLink(file.path)
 
     companion object {
         const val SCHEME = "file"
+
+        /** Android supplies Os.readlink; this module also runs on JVMs and Android API 24. */
+        @Volatile var symbolicLinkTarget: ((String) -> String?)? = null
+        @Volatile var unixMetadataReader: ((String) -> UnixMetadata?)? = null
+        @Volatile var selinuxContextReader: ((String) -> String?)? = null
 
         /** Optional persisted document-tree routes, supplied by the Android layer; no Android dependency here. */
         @Volatile var documentAccess: ((String) -> FileSystem?)? = null

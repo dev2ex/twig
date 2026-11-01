@@ -1,0 +1,12 @@
+<resources>
+    <!-- Theme-backed colors keep XML and Context.getColor callers on the same palette. -->
+    <attr name="twigBg" format="color" />
+    <attr name="twigSurface" format="color" />
+    <attr name="twigBar" format="color" />
+    <attr name="twigToolbar" format="color" />
+    <attr name="twigPrimaryDark" format="color" />
+    <attr name="twigDivider" format="color" />
+    <attr name="twigPathBarActive" format="color" />
+    <attr name="twigPathBar" format="color" />
+    <attr name="twigPdfBackdrop" format="color" />
+</resources>

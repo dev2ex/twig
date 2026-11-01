@@ -25,7 +25,7 @@ import android.webkit.WebViewClient
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
@@ -68,7 +68,7 @@ import java.nio.charset.Charset
  * can't represent a newly-typed character (e.g. emoji inside GBK), the save fails; that's when we ask the user whether
  * to convert to UTF-8.
  */
-class TextViewerActivity : AppCompatActivity() {
+class TextViewerActivity : TwigActivity() {
 
     private lateinit var b: ActivityTextViewerBinding
     private var raw: String = ""
@@ -182,7 +182,7 @@ class TextViewerActivity : AppCompatActivity() {
             isVisible = false // we only know whether editing is allowed after loading completes
             setOnMenuItemClickListener { enterEdit(); true }
         }
-        saveMenuItem = b.toolbar.menu.add(R.string.viewer_save).apply {
+        saveMenuItem = b.toolbar.menu.add(0, R.id.viewer_save, 0, R.string.viewer_save).apply {
             setIcon(R.drawable.ic_save)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             isVisible = false
@@ -378,7 +378,11 @@ class TextViewerActivity : AppCompatActivity() {
     }
 
     private fun applyLineNumbersVisibility() {
-        b.lineNumbers.visibility = if (Prefs.viewerLineNumbers(this)) View.VISIBLE else View.GONE
+        val showLineNumbers = Prefs.viewerLineNumbers(this)
+        b.lineNumbers.visibility = if (showLineNumbers) View.VISIBLE else View.GONE
+        // The gutter already leaves 8dp after the numbers; avoid stacking the body's inset on it.
+        val startPadding = if (showLineNumbers) 0 else (12 * resources.displayMetrics.density).toInt()
+        b.content.setPaddingRelative(startPadding, b.content.paddingTop, b.content.paddingEnd, b.content.paddingBottom)
         refreshLineNumbers()
         applyWrap() // the gutter taking/releasing width shifts where wrap kicks in
     }
@@ -572,6 +576,9 @@ class TextViewerActivity : AppCompatActivity() {
         // the Preview toggle is gone (see [enterEdit]).
         editMenuItem?.isVisible = canEdit && !editMode
         saveMenuItem?.isVisible = editMode
+        if (editMode) {
+            ToolbarLongPress.bind(b.toolbar, actions = mapOf(R.id.viewer_save to { save(exitAfter = true) }))
+        }
         // Search yields to editing: hit offsets get scrambled by edits
         searchMenuItem?.isVisible = !editMode
         externalResourcesMenuItem?.isVisible = previewMode
@@ -636,7 +643,7 @@ class TextViewerActivity : AppCompatActivity() {
                     updateTitle()
                     if (isCode && !liveHighlight) relight() // large files don't rescan while typing, catch up after save
                     toast(getString(R.string.viewer_saved))
-                    if (exitAfter) exitEdit() // save triggered by back key prompt: should leave after saving
+                    if (exitAfter) exitEdit()
                 },
                 onFailure = { showSaveError(it) },
             )
@@ -689,7 +696,6 @@ class TextViewerActivity : AppCompatActivity() {
             return
         }
         val text = ed.toString()
-        if (text.length > CodeHighlighter.MAX_HIGHLIGHT) return
         val gen = ++hlGen
         lifecycleScope.launch {
             val toks = withContext(Dispatchers.Default) { CodeHighlighter.tokenize(text, l) }

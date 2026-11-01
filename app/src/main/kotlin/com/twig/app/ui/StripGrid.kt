@@ -53,6 +53,27 @@ class StripGrid @JvmOverloads constructor(
         columnCount = columns
     }
 
+    private var appliedItems: List<Pair<String, Boolean>>? = null
+
+    /** Reset assigned specs even without a rotation: reordering follows a previous layout. */
+    fun applyItems(available: Set<String> = com.twig.app.StripItems.all.mapTo(HashSet()) { it.id }) {
+        val items = com.twig.app.Prefs.stripItemOrder(context)
+        val state = items.map { it.id to (it.id in available && com.twig.app.Prefs.stripItemVisible(context, it.id)) }
+        if (appliedItems == state) return
+        appliedItems = state
+        val views = items.map { item -> item to findViewById<View>(item.viewId) }
+        removeAllViews()
+        for ((item, child) in views) {
+            child.layoutParams = (child.layoutParams as LayoutParams).apply {
+                rowSpec = spec(UNDEFINED)
+                columnSpec = spec(UNDEFINED, FILL, 1f)
+            }
+            child.visibility = if (item.id in available && com.twig.app.Prefs.stripItemVisible(context, item.id))
+                View.VISIBLE else View.GONE
+            addView(child)
+        }
+    }
+
     override fun dispatchDraw(canvas: Canvas) {
         super.dispatchDraw(canvas)
         if (!dividers) return

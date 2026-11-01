@@ -1,0 +1,4 @@
+<resources>
+    <!-- Shared trash silhouette: rounded bin, solid lid and raised handle. -->
+    <string name="trash_icon_path" translatable="false">M5.5,7h13v12q0,2.2 -2.2,2.2H7.7q-2.2,0 -2.2,-2.2zM4.5,3.8h3.8l1,-1h5.4l1,1h3.8v2.4h-15z</string>
+</resources>

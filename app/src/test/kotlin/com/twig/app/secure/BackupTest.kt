@@ -70,9 +70,39 @@ class BackupTest {
         Prefs.setThumbs(ctx, true)
     }
 
+    @Test
+    fun `permission format choice survives configuration backup`() {
+        assertTrue(Prefs.unixPermissionsOctal(ctx))
+        Prefs.setUnixPermissionsOctal(ctx, false)
+        val raw = export(null)
+        freshDevice()
+        assertTrue(Prefs.unixPermissionsOctal(ctx))
+        Backup.import(ctx, raw, null)
+        assertFalse(Prefs.unixPermissionsOctal(ctx))
+    }
+
+    @Test
+    fun `remembered PDF passwords are encrypted and survive backup on another device`() {
+        val key = "file:/sdcard/secret.pdf"
+        Prefs.setPdfPassword(ctx, key, "pdf-secret")
+        val stored = ctx.getSharedPreferences(Prefs.FILE_PDF_PW, Context.MODE_PRIVATE).getString(key, null)!!
+        assertTrue(stored.startsWith(Secrets.PREFIX))
+        assertEquals("pdf-secret", Prefs.pdfPassword(ctx, key))
+        val raw = export("backup-secret".toCharArray())
+        freshDevice()
+        assertEquals(null, Prefs.pdfPassword(ctx, key))
+        Backup.import(ctx, raw, "backup-secret".toCharArray())
+        assertEquals("pdf-secret", Prefs.pdfPassword(ctx, key))
+        val restored = ctx.getSharedPreferences(Prefs.FILE_PDF_PW, Context.MODE_PRIVATE).getString(key, null)!!
+        assertTrue(restored.startsWith(Secrets.PREFIX))
+        assertFalse(stored == restored)
+        Prefs.setPdfPassword(ctx, key, null)
+        assertEquals(null, Prefs.pdfPassword(ctx, key))
+    }
+
     private fun wipeAll() {
         listOf(
-            "twig_connections", "twig_prefs", "twig_archive_pw", "twig_restic_pw",
+            "twig_connections", "twig_prefs", "twig_archive_pw", "twig_restic_pw", Prefs.FILE_PDF_PW,
             "twig_share", "twig_favorites", "twig_secure", DirectoryViewStore.FILE,
         ).forEach { ctx.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit() }
     }
@@ -302,9 +332,11 @@ class BackupTest {
             .putFloat("f", 1.5f).putString("s", "x")
             .putStringSet("ss", setOf("a", "b")).commit()
 
+        Prefs.setPaneLayout(ctx, Prefs.PANE_LAYOUT_DUAL)
         val raw = export(null)
         freshDevice()
         Backup.import(ctx, raw, null)
+        assertEquals(Prefs.PANE_LAYOUT_DUAL, Prefs.paneLayout(ctx))
 
         val back = ctx.getSharedPreferences("twig_prefs", Context.MODE_PRIVATE)
         assertEquals(true, back.getBoolean("b", false))

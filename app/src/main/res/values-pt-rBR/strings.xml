@@ -217,6 +217,8 @@
     <string name="player_brightness">Brilho %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Legenda</string>
+    <string name="player_subtitle_size">Tamanho das legendas de texto</string>
+    <string name="player_subtitle_size_value">Tamanho das legendas de texto: %1$d sp</string>
     <string name="player_subtitle_close">Desativado</string>
     <string name="player_embedded_sub">Legenda incorporada %1$d</string>
     <string name="player_audio_track">Faixa de áudio</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">Copiando…</string>
     <string name="progress_move">Movendo…</string>
     <string name="copy_title">Copiar</string>
+    <string name="copy_use_destination">Usar pasta</string>
+    <string name="copy_choose_destination">Escolher outro local</string>
     <string name="copy_to">Copiar para</string>
     <string name="copy_move_mode">Mover (excluir arquivos de origem)</string>
     <string name="copy_items">%1$d itens</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">Comando em %1$s</string>
     <string name="cmd_title_server">Comando no servidor %1$s</string>
     <string name="cmd_label">Nome do atalho</string>
-    <string name="cmd_command">Comando</string>
+    <string name="cmd_command">Comando (deixe em branco para abrir o terminal aqui)</string>
     <string name="cmd_workdir">Diretório de trabalho (vazio = padrão do login)</string>
     <string name="cmd_pick_script">Escolher script…</string>
     <string name="cmd_in_terminal">Executar no terminal (senão em segundo plano)</string>
     <string name="cmd_create">Adicionar à tela inicial</string>
     <string name="cmd_run_now">Executar agora</string>
-    <string name="cmd_empty">Insira um comando primeiro</string>
     <string name="cmd_pin_unsupported">O launcher não permite fixar atalhos</string>
     <string name="cmd_started">Iniciado: %1$s</string>
     <string name="cmd_login_shell">Usar shell de login (carrega .profile / .zprofile; shell padrão)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">Reinicie Twig para aplicar todas as configurações.</string>
     <string name="backup_working">Processando…</string>
     <string name="backup_locked">Desbloqueie com a senha mestra primeiro</string>
-    <string name="picker_hint_dir">Abra a pasta de destino e toque em OK</string>
+    <string name="picker_hint_dir">Abra a pasta que deseja selecionar e toque em %1$s</string>
     <string name="backup_pick_dir">Salvar backup em</string>
     <string name="backup_pick_file">Escolher backup</string>
     <string name="backup_exported_at">Exportado para %1$s</string>
@@ -882,8 +885,10 @@
     <string name="music_temporary_playlist">Lista temporária</string>
     <string name="smb1_mode">Compatibilidade SMB1 (apenas dispositivos antigos)</string>
     <string name="settings_folder_counts">Contagem de itens das pastas</string>
-    <string name="settings_folder_counts_desc">Mostrar a quantidade de subpastas e arquivos diretos nas pastas locais e SMB. O SMB pode exigir consultas adicionais.</string>
-    <string name="folder_counts_description">Pastas: %1$d, arquivos: %2$d</string>
+    <string name="settings_folder_counts_desc">Mostrar a quantidade de subpastas e arquivos diretos.</string>
+    <string name="settings_folder_counts_local_only">Contar itens somente em pastas locais</string>
+    <string name="settings_folder_counts_local_only_desc">Desative para contar também pastas de outros serviços. Isso pode exigir consultas adicionais.</string>
+    <string name="folder_counts_description">Pastas: %1$s, arquivos: %2$s</string>
     <string name="info_activity_failed">Não foi possível abrir esta Activity</string>
     <string name="info_app_shortcuts_limited">O Android restringe o acesso aos atalhos dinâmicos de outros apps. Apenas os atalhos declarados pelo app são exibidos.</string>
 
@@ -1063,12 +1068,12 @@
     <string name="website_open_url">Abrir URL</string>
     <string name="website_user_agent_global_hint">Vazio = User-Agent global ou padrão móvel/desktop</string>
     <string name="website_global_settings_hint">Cada site pode substituir o User-Agent global. JavaScript, CSS, elementos ocultos e bloqueio de solicitações se combinam com as configurações globais. As opções de exibição são padrões para novos sites.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">Adicionar NFS</string>
+    <string name="nfs_host">Endereço do servidor NFS</string>
+    <string name="nfs_export">Caminho de exportação (ex.: /volume1/public)</string>
+    <string name="nfs_version">Versão do NFS (3 ou 4)</string>
+    <string name="nfs_uid">UID (padrão 65534)</string>
+    <string name="nfs_gid">GID (padrão 65534)</string>
     <string name="website_media_permission">Permitir que %1$s use:</string>
     <string name="website_microphone">Microfone</string>
     <string name="website_camera">Câmera</string>
@@ -1087,7 +1092,7 @@
     <string name="player_skip_invalid">Escolha um ponto entre a abertura e os créditos.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Mostrar/ocultar itens da raiz</string>
+    <string name="action_root_items">Configurações dos itens da raiz</string>
     <string name="private_space">Espaço privado</string>
     <string name="private_space_create_failed">Não foi possível criar o espaço privado</string>
 
@@ -1098,8 +1103,11 @@
     <string name="settings_foreground_completion">Notificações de conclusão em primeiro plano</string>
     <string name="settings_foreground_completion_desc">Notificar também ao usar o Twig. Em segundo plano e com a tela bloqueada, sempre notificar.</string>
 
-    <string name="settings_exit_on_back">Sair ao voltar</string>
-    <string name="settings_exit_on_back_desc">Sair do Twig quando Voltar fechar a tela principal. Pedir confirmação se houver tarefas em andamento.</string>
+    <string name="settings_back_action">Voltar na tela principal</string>
+    <string name="settings_back_close">Fechar tela (padrão)</string>
+    <string name="settings_back_exit">Sair do aplicativo (com confirmação)</string>
+    <string name="settings_back_up">Subir um nível (fechar tela no topo)</string>
+    <string name="settings_back_up_exit">Subir um nível (sair do aplicativo no topo)</string>
     <string name="share_text_filename">Texto compartilhado.txt</string>
     <string name="settings_toolbar_bottom">Barra de ferramentas embaixo</string>
     <string name="settings_toolbar_bottom_desc">Mover a barra de ferramentas do navegador de arquivos para baixo para facilitar o uso com uma mão</string>
@@ -1120,4 +1128,60 @@
     <string name="share_prepare_space">Espaço insuficiente para preparar os arquivos.</string>
     <string name="share_prepare_incomplete">O arquivo foi alterado ou não pôde ser lido completamente.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">Arraste para reordenar</string>
+    <string name="root_reorder_hint">Arraste as alças para reordenar os itens da raiz nos dois painéis.</string>
+    <string name="action_sort_favorites">Reordenar favoritos</string>
+    <string name="action_sort_websites">Reordenar sites</string>
+    <string name="conn_section_login">Login</string>
+    <string name="conn_section_options">Opções</string>
+    <string name="music_import_playlist">Importar arquivo de playlist</string>
+    <string name="music_import_directory">Importar pasta (recursivo)</string>
+    <string name="music_importing">Importando músicas…</string>
+    <string name="music_import_progress">%1$d faixas · %2$s</string>
+    <string name="music_import_done">%1$d faixas adicionadas</string>
+    <string name="music_import_failed">Não foi possível importar músicas: %1$s</string>
+    <string name="music_import_playlist_only">Escolha uma playlist M3U ou M3U8</string>
+    <string name="music_import_source_unsupported">Esta origem não pode ser salva em uma playlist</string>
+    <string name="info_track_number">Número da faixa</string>
+    <string name="settings_action_strip">Painel de ações</string>
+    <string name="strip_reorder_hint">Arraste as alças para reordenar as ações. Desmarque-as para ocultá-las.</string>
+    <string name="info_symbolic_link">Link simbólico</string>
+    <string name="info_link_target">Aponta para</string>
+    <string name="info_unavailable">Indisponível</string>
+    <string name="info_permissions">Permissões</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Último acesso</string>
+    <string name="info_changed">Alteração de estado</string>
+    <string name="info_selinux_context">Contexto SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Mostrar permissões Unix</string>
+    <string name="settings_unix_permissions_desc">Mostrar as permissões disponíveis nas listas de arquivos. Os detalhes completos estão na aba Unix das propriedades.</string>
+    <string name="player_subtitle_appearance">Aparência das legendas</string>
+    <string name="player_subtitle_text_color">Cor do texto</string>
+    <string name="pdf_password">Senha do PDF</string>
+    <string name="pdf_password_retry">A senha não foi aceita ou o PDF usa uma criptografia incompatível. Tente novamente.</string>
+    <string name="pdf_password_unsupported">Este PDF exige uma senha ou usa uma criptografia incompatível. Esta versão do Android não pode desbloqueá-lo no Twig. Tente outro aplicativo de PDF.</string>
+    <string name="theme_oled">Preto (OLED)</string>
+    <string name="transfer_retry">Tentar novamente itens incompletos</string>
+    <string name="transfer_retry_detail">Tenta novamente apenas os itens incompletos. Arquivos concluídos são ignorados; os parciais são retomados quando possível.</string>
+    <string name="transfer_failed_target">Destino: %1$s</string>
+    <string name="transfer_skip_failed">Ignorar este item</string>
+    <string name="dialog_reset">Redefinir</string>
+    <string name="settings_unix_permissions_octal">Mostrar permissões em octal</string>
+    <string name="settings_unix_permissions_octal_desc">Ativado: 0755; desativado: rwxr-xr-x. Apenas nas listas de arquivos.</string>
+    <string name="settings_tap_row_to_select">Tocar nas linhas para selecionar</string>
+    <string name="settings_tap_row_to_select_desc">Com itens selecionados, toque na linha para selecionar ou desmarcar. Toque no ícone ou na miniatura para abrir. Desativado: selecione apenas pelas caixas de seleção.</string>
+    <string name="strip_duplicate">Duplicar</string>
+    <string name="settings_pane_layout">Layout dos painéis</string>
+    <string name="pane_layout_follow_orientation">Seguir orientação da tela</string>
+    <string name="pane_layout_single">Um painel</string>
+    <string name="pane_layout_dual">Dois painéis</string>
+    <string name="compress_level">Nível de compressão</string>
+    <string name="compress_fast">Rápido</string>
+    <string name="compress_standard">Padrão</string>
+    <string name="compress_store">Sem compressão</string>
+    <string name="compress_source_directory">Salvar na pasta de origem</string>
+    <string name="compress_hide_names">Criptografar nomes de arquivos</string>
+    <string name="compress_destination_missing">Escolha um destino</string>
 </resources>

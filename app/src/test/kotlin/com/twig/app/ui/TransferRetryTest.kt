@@ -116,4 +116,28 @@ class TransferRetryTest {
         }
     }
 
+    @Test fun touchingOutsideFailureDialogKeepsTheRetryAndPartialStateAvailable() {
+        val host = Robolectric.buildActivity(SettingsActivity::class.java).setup()
+        val failed = session()
+        var closed = false
+        try {
+            assertTrue(showTransferRetry(host.get(), failed, onStarted = {}, onClosed = { closed = true }))
+            shadowOf(Looper.getMainLooper()).idle()
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            val outside = android.view.MotionEvent.obtain(0, 0, android.view.MotionEvent.ACTION_OUTSIDE, -100f, -100f, 0)
+            try { dialog.onTouchEvent(outside) } finally { outside.recycle() }
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(dialog.isShowing)
+            assertFalse(closed)
+            assertTrue("unfinished" in failed.checkpoint.partials)
+            // Explicit cancellation still closes the dialog and releases the task.
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertFalse(dialog.isShowing)
+            assertTrue(closed)
+        } finally {
+            host.pause().stop().destroy()
+        }
+    }
+
 }

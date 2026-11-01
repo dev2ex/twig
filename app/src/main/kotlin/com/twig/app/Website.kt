@@ -156,6 +156,20 @@ object WebsiteStore {
 
     fun remove(ctx: Context, id: String) = persist(ctx, all(ctx).filter { it.id != id })
 
+    /** Move the stored objects without decrypting or rewriting credentials and options. */
+    fun reorder(ctx: Context, ids: List<String>) {
+        val prefs = preferences(ctx)
+        val raw = prefs.getString("list", null) ?: return
+        val current = runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.getJSONObject(it).also { item -> item.getString("id") } }
+        }.getOrNull() ?: return
+        val byId = current.associateBy { it.getString("id") }
+        val sorted = JSONArray()
+        (ids + current.map { it.getString("id") }).distinct().forEach { id -> byId[id]?.let { sorted.put(it) } }
+        prefs.edit().putString("list", sorted.toString()).apply()
+    }
+
     /** Backups carry plaintext fields under their own optional password encryption. */
     fun exportJson(ctx: Context): String {
         val sites = all(ctx)

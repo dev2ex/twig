@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Properties card tab title bar: round only the top corners; the bottom edge overlaps the content box stroke into a single line -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/surface" />
-    <stroke android:width="1dp" android:color="@color/divider" />
+    <solid android:color="?attr/twigSurface" />
+    <stroke android:width="1dp" android:color="?attr/twigDivider" />
     <corners android:topLeftRadius="4dp" android:topRightRadius="4dp" />
 </shape>

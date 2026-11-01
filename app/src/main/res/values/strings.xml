@@ -184,6 +184,7 @@
     <string name="theme_system">Follow system</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
+    <string name="theme_oled">Black (OLED)</string>
     <string name="conn_connect">Connect</string>
     <string name="conn_delete">Delete</string>
     <string name="no_saved_connections">No saved connections</string>
@@ -238,6 +239,8 @@
     <string name="player_brightness">Brightness %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
     <string name="player_subtitle">Subtitle</string>
+    <string name="player_subtitle_size">Text subtitle size</string>
+    <string name="player_subtitle_size_value">Text subtitle size: %1$d sp</string>
     <string name="player_subtitle_close">Off</string>
     <string name="player_embedded_sub">Embedded subtitle %1$d</string>
     <string name="player_audio_track">Audio track</string>
@@ -255,6 +258,8 @@
     <string name="progress_copy">Copying…</string>
     <string name="progress_move">Moving…</string>
     <string name="copy_title">Copy</string>
+    <string name="copy_use_destination">Use folder</string>
+    <string name="copy_choose_destination">Choose another location</string>
     <string name="copy_to">Copy to</string>
     <string name="copy_move_mode">Move mode (deletes source files)</string>
     <string name="copy_items">%1$d item(s)</string>
@@ -664,13 +669,12 @@
     <string name="cmd_title_dir">Command in %1$s</string>
     <string name="cmd_title_server">Command on %1$s</string>
     <string name="cmd_label">Shortcut name</string>
-    <string name="cmd_command">Command</string>
+    <string name="cmd_command">Command (leave blank to open terminal here)</string>
     <string name="cmd_workdir">Working directory (blank = login default)</string>
     <string name="cmd_pick_script">Pick a script…</string>
     <string name="cmd_in_terminal">Run in a terminal (otherwise run in the background)</string>
     <string name="cmd_create">Add to home screen</string>
     <string name="cmd_run_now">Run now</string>
-    <string name="cmd_empty">Enter a command first</string>
     <string name="cmd_pin_unsupported">This launcher does not support pinned shortcuts</string>
     <string name="cmd_started">Started: %1$s</string>
     <string name="cmd_login_shell">Run through a login shell (loads .profile / .zprofile; uses your default shell)</string>
@@ -896,7 +900,7 @@
     <string name="backup_restart_note">Restart Twig for all settings to take effect.</string>
     <string name="backup_working">Working…</string>
     <string name="backup_locked">Unlock with your master password first</string>
-    <string name="picker_hint_dir">Open the folder you want to save into, then tap OK</string>
+    <string name="picker_hint_dir">Open the folder you want to select, then tap %1$s</string>
     <string name="backup_pick_dir">Save backup to</string>
     <string name="backup_pick_file">Choose a backup file</string>
     <string name="backup_exported_at">Exported to %1$s</string>
@@ -933,8 +937,10 @@
     <string name="music_temporary_playlist">Temporary playlist</string>
     <string name="smb1_mode">SMB1 compatibility (legacy devices only)</string>
     <string name="settings_folder_counts">Folder item counts</string>
-    <string name="settings_folder_counts_desc">Show direct folder and file counts for local and SMB directories. SMB counts may require extra directory requests.</string>
-    <string name="folder_counts_description">Folders: %1$d, files: %2$d</string>
+    <string name="settings_folder_counts_desc">Show direct folder and file counts in directories.</string>
+    <string name="settings_folder_counts_local_only">Count folder items locally only</string>
+    <string name="settings_folder_counts_local_only_desc">Turn off to also count directories on other services. This may require extra directory requests.</string>
+    <string name="folder_counts_description">Folders: %1$s, files: %2$s</string>
     <string name="info_app_activities" translatable="false">Activities</string>
     <string name="info_app_services" translatable="false">Services</string>
     <string name="info_app_shortcuts" translatable="false">Shortcuts</string>
@@ -1157,7 +1163,9 @@
     <string name="player_skip_invalid">Choose a point between the opening and ending.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Show/hide root items</string>
+    <string name="action_root_items">Root item settings</string>
+    <string name="root_pane_left_symbol" translatable="false">←</string>
+    <string name="root_pane_right_symbol" translatable="false">→</string>
     <string name="private_space">Private space</string>
     <string name="private_space_create_failed">Could not create Private space</string>
 
@@ -1175,8 +1183,11 @@
     <string name="settings_foreground_completion">Completion notifications in foreground</string>
     <string name="settings_foreground_completion_desc">Also notify while using Twig. Background and locked-screen operations always notify.</string>
 
-    <string name="settings_exit_on_back">Exit on Back</string>
-    <string name="settings_exit_on_back_desc">Exit Twig when Back closes the main screen. Ask for confirmation if tasks are running.</string>
+    <string name="settings_back_action">Back button on main screen</string>
+    <string name="settings_back_close">Close screen (default)</string>
+    <string name="settings_back_exit">Exit app (ask first)</string>
+    <string name="settings_back_up">Go up one level (close screen at top)</string>
+    <string name="settings_back_up_exit">Go up one level (exit app at top)</string>
     <string name="share_text_filename">Shared text.txt</string>
     <string name="settings_toolbar_bottom">Toolbar at bottom</string>
     <string name="settings_toolbar_bottom_desc">Move the file browser toolbar to the bottom for easier one-handed use</string>
@@ -1201,4 +1212,55 @@
     <string name="transfer_retry_detail">Retry only unfinished items. Completed files are skipped; partial files resume when supported.</string>
     <string name="transfer_failed_target">Target: %1$s</string>
     <string name="transfer_skip_failed">Skip this item</string>
+    <string name="root_drag_to_reorder">Drag to reorder</string>
+    <string name="root_reorder_hint">Drag the handles to reorder both panes.</string>
+    <string name="action_sort_favorites">Reorder favorites</string>
+    <string name="action_sort_websites">Reorder websites</string>
+    <string name="conn_section_login">Sign-in</string>
+    <string name="conn_section_options">Options</string>
+    <string name="music_import_playlist">Import from playlist file</string>
+    <string name="music_import_directory">Import from directory (recursive)</string>
+    <string name="music_importing">Importing music…</string>
+    <string name="music_import_progress">%1$d tracks · %2$s</string>
+    <string name="music_import_done">%1$d tracks added</string>
+    <string name="music_import_failed">Could not import music: %1$s</string>
+    <string name="music_import_playlist_only">Choose an M3U or M3U8 playlist</string>
+    <string name="music_import_source_unsupported">This source cannot be saved in a playlist</string>
+    <string name="info_track_number">Track no.</string>
+    <string name="settings_action_strip">Action panel</string>
+    <string name="strip_reorder_hint">Drag the handles to reorder actions. Uncheck actions to hide them.</string>
+    <string name="info_symbolic_link">Symbolic link</string>
+    <string name="info_link_target">Points to</string>
+    <string name="info_unavailable">Unavailable</string>
+    <string name="info_permissions">Permissions</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Accessed</string>
+    <string name="info_changed">Status changed</string>
+    <string name="info_selinux_context">SELinux context</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Show Unix permissions</string>
+    <string name="settings_unix_permissions_desc">Show permission bits in file lists when available. Full details are in the Unix properties tab.</string>
+    <string name="player_subtitle_appearance">Subtitle appearance</string>
+    <string name="player_subtitle_text_color">Text color</string>
+    <string name="pdf_password">PDF password</string>
+    <string name="pdf_password_retry">The password was not accepted, or this PDF uses unsupported encryption. Please try again.</string>
+    <string name="pdf_password_unsupported">This PDF requires a password or uses unsupported encryption. This Android version cannot unlock it in Twig. Try another PDF app.</string>
+    <string name="dialog_reset">Reset</string>
+    <string name="settings_unix_permissions_octal">Show permissions in octal</string>
+    <string name="settings_unix_permissions_octal_desc">On: 0755; off: rwxr-xr-x. Applies to file lists only.</string>
+    <string name="settings_tap_row_to_select">Tap rows to select</string>
+    <string name="settings_tap_row_to_select_desc">When items are selected, tap a row to select or deselect it. Tap its icon or thumbnail to open. Off: select using checkmarks only.</string>
+    <string name="strip_duplicate">Duplicate</string>
+    <string name="settings_pane_layout">Pane layout</string>
+    <string name="pane_layout_follow_orientation">Follow screen orientation</string>
+    <string name="pane_layout_single">Single pane</string>
+    <string name="pane_layout_dual">Dual pane</string>
+    <string name="compress_level">Compression level</string>
+    <string name="compress_fast">Fast</string>
+    <string name="compress_standard">Standard</string>
+    <string name="compress_store">Store only</string>
+    <string name="compress_source_directory">Save to source folder</string>
+    <string name="compress_hide_names">Encrypt file names</string>
+    <string name="compress_destination_missing">Choose a destination</string>
 </resources>

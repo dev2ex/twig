@@ -52,6 +52,7 @@ object FileIcons {
         // the real app icon is fetched live from PackageManager below by "pkg:" key (filled in async, doesn't go through the thumbnail pipeline)
         file.scheme == com.twig.app.AppsFileSystem.SCHEME -> R.drawable.ic_file_apk
         OpenFiles.isVideo(file) || file.extension == "wmv" -> R.drawable.ic_file_video
+        OpenFiles.isPlaylist(file) -> R.drawable.ic_md_playlist
         OpenFiles.isAudio(file) -> R.drawable.ic_file_audio
         OpenFiles.isImage(file) -> R.drawable.ic_file_image
         file.extension == "pdf" -> R.drawable.ic_file_pdf
@@ -78,6 +79,8 @@ object FileIcons {
     fun directoryIconRes(file: XFile): Int? {
         if (!file.isDir || (file.scheme != "file" && file.scheme != "saf")) return null
         return when (file.name.lowercase(java.util.Locale.ROOT)) {
+            "android" -> R.drawable.ic_folder_android
+            "recordings" -> R.drawable.ic_folder_recordings
             "dcim" -> R.drawable.ic_folder_dcim
             "download", "downloads" -> R.drawable.ic_folder_download
             "picture", "pictures" -> R.drawable.ic_folder_pictures

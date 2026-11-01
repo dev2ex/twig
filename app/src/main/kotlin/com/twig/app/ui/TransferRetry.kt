@@ -32,6 +32,7 @@ internal fun showTransferRetry(
         .setNegativeButton(R.string.dialog_cancel, null)
         .apply { if (failed != null) setNeutralButton(R.string.transfer_skip_failed, null) }
         .create()
+    dialog.setCanceledOnTouchOutside(false)
     dialog.setOnDismissListener {
         if (!retried) {
             Thread({ Transfers.discardPartials(session) }, "twig-copy-cleanup").start()

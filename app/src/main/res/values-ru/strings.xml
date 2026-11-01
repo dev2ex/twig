@@ -117,7 +117,7 @@
     <string name="clip_into_self">Нельзя вставить папку саму в себя</string>
     <string name="action_select_all">Выбрать всё / ничего</string>
     <string name="msg_added_favorite">Добавлено в избранное</string>
-    <string name="action_refresh_thumb">Обновить миниатюру</string>
+    <string name="action_refresh_thumb">Обновить миниатюры</string>
     <string name="msg_thumbs_refreshing">Обновление миниатюр…</string>
     <string name="title_selected_count">%1$d выбрано</string>
     <string name="action_pin_shortcut">Добавить ярлык на главный экран</string>
@@ -222,6 +222,8 @@
     <string name="player_brightness">Яркость %1$d%%</string>
     <string name="player_volume">Громкость %1$d%%</string>
     <string name="player_subtitle">Субтитры</string>
+    <string name="player_subtitle_size">Размер текстовых субтитров</string>
+    <string name="player_subtitle_size_value">Размер текстовых субтитров: %1$d sp</string>
     <string name="player_subtitle_close">Выключены</string>
     <string name="player_embedded_sub">Встроенные субтитры %1$d</string>
     <string name="player_audio_track">Звуковая дорожка</string>
@@ -239,6 +241,8 @@
     <string name="progress_copy">Копирование…</string>
     <string name="progress_move">Перемещение…</string>
     <string name="copy_title">Копировать</string>
+    <string name="copy_use_destination">Выбрать эту папку</string>
+    <string name="copy_choose_destination">Выбрать другое место</string>
     <string name="copy_to">Копировать в</string>
     <string name="copy_move_mode">Режим перемещения (удаляет исходные файлы)</string>
     <string name="copy_items">%1$d элемент(ов)</string>
@@ -648,13 +652,12 @@
     <string name="cmd_title_dir">Команда в %1$s</string>
     <string name="cmd_title_server">Команда на %1$s</string>
     <string name="cmd_label">Название ярлыка</string>
-    <string name="cmd_command">Команда</string>
+    <string name="cmd_command">Команда (оставьте пустым, чтобы открыть терминал здесь)</string>
     <string name="cmd_workdir">Рабочий каталог (пусто = логин по умолчанию)</string>
     <string name="cmd_pick_script">Выберите скрипт…</string>
     <string name="cmd_in_terminal">Запустить в терминале (иначе работать в фоновом режиме)</string>
     <string name="cmd_create">Добавить на главный экран</string>
     <string name="cmd_run_now">Запустить сейчас</string>
-    <string name="cmd_empty">Сначала введите команду</string>
     <string name="cmd_pin_unsupported">Этот лаунчер не поддерживает закреплённые ярлыки</string>
     <string name="cmd_started">Начато: %1$s</string>
     <string name="cmd_login_shell">Запуск через login shell (загружает .profile / .zprofile; использует вашу оболочку по умолчанию)</string>
@@ -880,7 +883,7 @@
     <string name="backup_restart_note">Перезапустите Twig, чтобы все настройки вступили в силу.</string>
     <string name="backup_working">Работаем…</string>
     <string name="backup_locked">Сначала разблокируйте с помощью главного пароля</string>
-    <string name="picker_hint_dir">Откройте папку, в которую хотите сохранить, а затем нажмите OK</string>
+    <string name="picker_hint_dir">Откройте нужную папку, затем нажмите «%1$s»</string>
     <string name="backup_pick_dir">Сохранить резервную копию в</string>
     <string name="backup_pick_file">Выберите файл бэкапа</string>
     <string name="backup_exported_at">Экспортировано в %1$s</string>
@@ -918,8 +921,10 @@
     <string name="music_temporary_playlist">Временный плейлист</string>
     <string name="smb1_mode">Совместимость с SMB1 (для устаревших устройств)</string>
     <string name="settings_folder_counts">Количество элементов в папках</string>
-    <string name="settings_folder_counts_desc">Показывать количество подпапок и файлов в локальных и SMB-папках. Для SMB могут потребоваться дополнительные запросы.</string>
-    <string name="folder_counts_description">Папок: %1$d, файлов: %2$d</string>
+    <string name="settings_folder_counts_desc">Показывать количество непосредственных подпапок и файлов.</string>
+    <string name="settings_folder_counts_local_only">Считать элементы только в локальных папках</string>
+    <string name="settings_folder_counts_local_only_desc">Отключите, чтобы также считать папки других сервисов. Это может потребовать дополнительных запросов.</string>
+    <string name="folder_counts_description">Папок: %1$s, файлов: %2$s</string>
 
     <!-- Website bookmarks -->
     <string name="group_websites">Сайты</string>
@@ -1123,7 +1128,7 @@
     <string name="player_skip_invalid">Выберите точку между вступлением и концовкой.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Показать/скрыть элементы корня</string>
+    <string name="action_root_items">Настройки элементов корня</string>
     <string name="private_space">Личное пространство</string>
     <string name="private_space_create_failed">Не удалось создать Личное пространство</string>
 
@@ -1134,8 +1139,11 @@
     <string name="settings_foreground_completion">Уведомления при открытом Twig</string>
     <string name="settings_foreground_completion_desc">Уведомлять также во время работы в Twig. В фоне и при заблокированном экране - уведомлять всегда.</string>
 
-    <string name="settings_exit_on_back">Выход по кнопке «Назад»</string>
-    <string name="settings_exit_on_back_desc">Выходить из Twig, когда кнопка «Назад» закрывает его главный экран. Запрашивать подтверждение, если есть выполняющиеся задачи.</string>
+    <string name="settings_back_action">Кнопка «Назад» на главном экране</string>
+    <string name="settings_back_close">Закрыть экран (по умолчанию)</string>
+    <string name="settings_back_exit">Выйти из приложения (с подтверждением)</string>
+    <string name="settings_back_up">На уровень выше (наверху закрыть экран)</string>
+    <string name="settings_back_up_exit">На уровень выше (наверху выйти из приложения)</string>
     <string name="share_text_filename">Полученный текст.txt</string>
     <string name="settings_toolbar_bottom">Панель инструментов внизу</string>
     <string name="settings_toolbar_bottom_desc">Переместить панель инструментов файлового браузера вниз для удобного управления одной рукой</string>
@@ -1156,4 +1164,60 @@
     <string name="share_prepare_space">Недостаточно места для подготовки файлов.</string>
     <string name="share_prepare_incomplete">Файл изменён или прочитан не полностью.</string>
     <string name="nfs_port">Порт (по умолчанию 2049)</string>
+    <string name="root_drag_to_reorder">Перетащите для изменения порядка</string>
+    <string name="root_reorder_hint">Перетаскивайте маркеры, чтобы изменить порядок элементов корня в обеих панелях.</string>
+    <string name="action_sort_favorites">Упорядочить избранное</string>
+    <string name="action_sort_websites">Упорядочить сайты</string>
+    <string name="conn_section_login">Вход</string>
+    <string name="conn_section_options">Параметры</string>
+    <string name="music_import_playlist">Импорт из файла плейлиста</string>
+    <string name="music_import_directory">Импорт из папки (рекурсивно)</string>
+    <string name="music_importing">Импорт музыки…</string>
+    <string name="music_import_progress">%1$d треков · %2$s</string>
+    <string name="music_import_done">Добавлено треков: %1$d</string>
+    <string name="music_import_failed">Не удалось импортировать музыку: %1$s</string>
+    <string name="music_import_playlist_only">Выберите плейлист M3U или M3U8</string>
+    <string name="music_import_source_unsupported">Этот источник нельзя сохранить в плейлисте</string>
+    <string name="info_track_number">Номер трека</string>
+    <string name="settings_action_strip">Панель действий</string>
+    <string name="strip_reorder_hint">Перетаскивайте маркеры для изменения порядка действий. Снимите флажок, чтобы скрыть действие.</string>
+    <string name="info_symbolic_link">Символическая ссылка</string>
+    <string name="info_link_target">Указывает на</string>
+    <string name="info_unavailable">Недоступно</string>
+    <string name="info_permissions">Права доступа</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Последний доступ</string>
+    <string name="info_changed">Изменение состояния</string>
+    <string name="info_selinux_context">Контекст SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Показывать права Unix</string>
+    <string name="settings_unix_permissions_desc">Показывать доступные права в списках файлов. Полные сведения находятся на вкладке Unix в свойствах.</string>
+    <string name="player_subtitle_appearance">Оформление субтитров</string>
+    <string name="player_subtitle_text_color">Цвет текста</string>
+    <string name="pdf_password">Пароль PDF</string>
+    <string name="pdf_password_retry">Пароль не принят или шифрование PDF не поддерживается. Повторите попытку.</string>
+    <string name="pdf_password_unsupported">Этот PDF требует пароль или использует неподдерживаемое шифрование. В этой версии Android Twig не может его разблокировать. Попробуйте другое приложение для PDF.</string>
+    <string name="theme_oled">Чёрная (OLED)</string>
+    <string name="transfer_retry">Повторить незавершённые операции</string>
+    <string name="transfer_retry_detail">Повторяются только незавершённые операции. Готовые файлы пропускаются; частично записанные продолжаются, если это поддерживается.</string>
+    <string name="transfer_failed_target">Назначение: %1$s</string>
+    <string name="transfer_skip_failed">Пропустить этот элемент</string>
+    <string name="dialog_reset">Сбросить</string>
+    <string name="settings_unix_permissions_octal">Права в восьмеричном виде</string>
+    <string name="settings_unix_permissions_octal_desc">Включено: 0755; выключено: rwxr-xr-x. Только для списка файлов.</string>
+    <string name="settings_tap_row_to_select">Выбор нажатием на строку</string>
+    <string name="settings_tap_row_to_select_desc">Если есть выбранные элементы, нажатие на строку меняет её выделение. Значок или миниатюра открывает элемент. Выключено: выбор только флажками.</string>
+    <string name="strip_duplicate">Дубликат</string>
+    <string name="settings_pane_layout">Расположение панелей</string>
+    <string name="pane_layout_follow_orientation">По ориентации экрана</string>
+    <string name="pane_layout_single">Одна панель</string>
+    <string name="pane_layout_dual">Две панели</string>
+    <string name="compress_level">Уровень сжатия</string>
+    <string name="compress_fast">Быстрый</string>
+    <string name="compress_standard">Стандартный</string>
+    <string name="compress_store">Без сжатия</string>
+    <string name="compress_source_directory">Сохранить в исходную папку</string>
+    <string name="compress_hide_names">Шифровать имена файлов</string>
+    <string name="compress_destination_missing">Выберите место сохранения</string>
 </resources>

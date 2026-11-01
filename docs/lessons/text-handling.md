@@ -4,6 +4,18 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Minified code can freeze text measurement (2026-10-28)**: an 85 KB XML dump with
+  a single 84,978-character line caused two Android 15 ANRs. The main-thread stacks
+  were in `TextView.onMeasure → BoringLayout.isBoring → TextLine` (style comparison
+  and font metrics), rather than the background tokenizer. The whole-file 512 KiB
+  highlighting cap did not protect this case. `CodeHighlighter.tokenize` now returns
+  no tokens when any logical line exceeds 8,192 UTF-16 units, across loading, editing,
+  saving and diff highlighting. Short single-line code still highlights; a file with
+  an oversized line displays as plain text without changing its contents. Re-highlighting
+  must apply even an empty token result, so old spans are removed after an edit crosses
+  either limit. Unit tests cover minified XML, short single-line code, mixed line lengths
+  and similarly sized multiline XML; device validation still requires the original XML.
+
 - **Text decoding priority (★ 2026-08-18, `TextCodec` + the "Text encoding" setting)**: the text
   viewer, subtitles, lyrics and m3u each used to implement "BOM → try UTF-8 → fall back to GBK"
   separately, and inconsistently (some used a strict decoder, some looked for U+FFFD in the decoded
@@ -75,4 +87,3 @@
   default forwards byte by byte); and the `:app` side only reports paths under `/storage` (the media
   library does not index private directories or cacheDir anyway) and batches them at 800 ms
   intervals — copying a directory produces one callback per file.
-

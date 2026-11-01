@@ -4,6 +4,119 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Directory-tree labels ignored app language on Android 11 (2026-10-31)**:
+  settings and menus followed the selected language while storage roots and groups
+  stayed in the system language. Rebuilding rows alone did not help: below API 33,
+  AppCompat localizes Activity contexts but not Application resources, and the
+  retained `PaneViewModel.str` read the latter. Resolve its strings through
+  `LanguagePref.appContext`, caching a configuration context by app language and
+  source configuration without mutating global resources or retaining an Activity.
+  Returning to the system language bypasses that override. `PaneLanguageTest`
+  switches a retained pane between Chinese, German, English and system on API 30/32
+  while verifying that Application strings remain in the system language.
+
+- **Copy/move required selecting the other pane's destination first (2026-10-30,
+  #34)**: `performCopy` returned early on a missing or read-only sibling directory,
+  leaving users unable to choose a destination from the operation they had started.
+  Main now chooses directly in the opposite resident pane, then shows
+  `CopyConfirmDialog`; valid defaults go straight to confirmation with an option to
+  choose another location. Missing/read-only defaults choose first. Cancel/Back returns
+  to the existing file selection or restores a prior confirmation. Share clipboard
+  checks for same-directory and directory-into-self destinations without modifying
+  the clipboard. Keep a frozen source list, destination, move mode and shared size
+  plan in a pane-owned in-memory draft across picker cancellation and rotation;
+  process death discards it because transient source schemes cannot be reconstructed.
+  The draft's choosing flags restore the target side and destination bar after rotation.
+  Only the opposite pane can supply the destination; source touch and keyboard/accessibility
+  focus are blocked. Convert root-relative visible bounds to screen coordinates before
+  comparing raw touches, including in offset split-screen/freeform windows. Block pane-switch
+  long presses before mounting a directory into the other pane; blocking only the later
+  focus switch still changes the source location. Hide the clipboard bar without changing its contents, disable
+  transfer/destructive actions and context menus, and leave target navigation available.
+  Other pane hosts retain a directory-picker fallback. Selection only edits the draft;
+  confirmation starts the existing transfer path.
+  The state owns one observable size plan and its cancellable job; the draft holds
+  operation inputs only. UI updates and confirmation share one target validation
+  path, including rechecking a connection that disappears after picker return.
+  Size planning checks the owning coroutine's cancellation before each entry and
+  before returning totals. Cancelling the draft stops subsequent recursive listings;
+  an already-issued blocking backend request may finish, without interrupting its
+  thread or closing the shared connection. Never publish partial totals on cancellation.
+  Long-press copy/move uses valid targets immediately; missing/read-only targets are
+  picked before confirmation, while same-directory/self targets show the error there.
+  `CopyDestinationTest` covers actual copy/move, missing/read-only/recursive targets,
+  cancellation and recreation, single size planning across rotation, source restrictions,
+  both copy directions, clipboard preservation, offset-window touch isolation, pane-switch
+  long presses and landscape focus restoration;
+  `StripWriteActionsTest` retains immediate-transfer and readable-root coverage.
+
+- **Compression also needs replaceable destinations (2026-10-31)**: reuse the resident
+  opposite-pane selection and its input guards through `DestinationState`, with separate
+  copy/move and compression confirmation dialogs. Compression options live only in the
+  draft: filename, format, password and move choice survive choosing/cancelling a
+  destination and Activity recreation. Disable saved state for those input views; never
+  serialize the password, and clear it when discarding the draft. Size planning keeps
+  its shared cancellation behavior. Hosts without resident-pane selection retain the
+  Activity picker fallback and restore the same form on cancellation.
+  A new archive may be written beside the selected files/directories, so skip the
+  copy-only same-parent restriction. Still reject writing inside a selected directory,
+  which would include the growing output archive in its own input. Revalidate at final
+  confirmation. Long-press compression remains immediate for valid defaults; otherwise
+  select a destination and confirm. `CopyDestinationTest` covers actual ZIP output,
+  replacement options passed to the transfer, field retention and cancellation across
+  recreation, initial cancellation, direct long presses and invalid/read-only targets.
+  Compression now opens its form even without a default destination so "Save to source
+  folder" is directly available. Enable that checkbox only for one known, writable common
+  parent, using cached tree parents for opaque paths rather than slicing document URIs.
+  The checkbox changes the effective destination without discarding the prior target;
+  cancelling replacement selection retains it, while choosing a new directory unchecks it.
+  Retain compression level and 7z name-encryption choices in the same draft. Format and
+  level preferences affect later compressions; source-directory/password/name-encryption
+  choices remain local to this draft. The expanded form scrolls on short screens.
+
+- **Portrait tablets could not show both panes (2026-10-31, #49)**: pane visibility
+  was tied directly to orientation in the layout, hosts and count subscriptions.
+  `Prefs.paneLayout` selects Follow screen orientation (the existing default), Single
+  pane or Dual pane. `Prefs.dualPane` is the shared visibility decision for Main,
+  both picker hosts, `PaneLayout`, touch/swipe handling and count subscriptions.
+  Orientation still controls toolbar visibility, pinned actions and strip columns.
+  Single-pane mode keeps its continuous sliding track in either orientation;
+  dual-pane mode keeps both sides visible around the middle strip. Hidden panes
+  cannot receive keyboard or accessibility focus. Picker resume reapplies changed
+  layout settings without replacing fragments or changing the active side; Main
+  includes the preference in `uiSignature`. The setting is included in `twig_prefs`
+  configuration backups. `PaneLayoutTest` checks all six orientation/mode combinations;
+  `PaneDisplayModeTest` covers measured Main/file-picker/share-picker layouts,
+  touch/swipe activation, destination gating, visible count subscriptions and recreation.
+
+- **External multi-file row selection also selected folders (2026-10-31 review)**:
+  the file-only picker's tap-to-select flag applied to every ordinary tree row,
+  so tapping a folder name checked an entry that confirmation later discarded.
+  In external multi-file mode, only files use row selection; folders keep normal
+  navigation even with an existing selection and the general row-selection preference
+  enabled. Keep the external-mode branch separate from that preference, or it can
+  select folders again once a file is checked. `FileFocusTest` covers both preferences,
+  empty/existing selection and list/grid configurations on API 24 and 34.
+
+- **File picking lacked the destination picker's pane switch and navigation actions
+  (2026-10-28)**: `PickerActivity` still used a single-pane layout and configured its
+  strip separately. Both pickers now use `view_panes.xml` and `PickerBrowser` for pane
+  state, switching, strip visibility and action routing. Keep confirmation tied to the
+  active pane, replacing directory/shortcut observers on each switch; inactive panes
+  must not change the current confirmation state. Locked-source selections apply the
+  same restriction to both panes with distinct pane indices. `PickerBrowserTest`
+  covers action parity, independent roots, switching/recreation, measured rotations,
+  directory confirmation, source restrictions and shortcut observers.
+
+- **Directory imports could not select readable, read-only sources (2026-10-29
+  review)**: music import reused the directory picker's save-destination intent,
+  whose confirmation requires write access. Directory picking now defaults to
+  writable destinations, with an explicit readable-source mode for imports.
+  Both modes share the active-pane observer and disabled-button handling;
+  importing must not weaken destination checks for backups or playlist exports.
+  `PickerBrowserTest` checks read-only selection, unreadable/non-directory rejection
+  and pane switching; `PlaylistImportUiTest` checks the import intent's access mode.
+
 - **Moving/deleting the selected directory left a hidden transfer destination (2026-10-26)**:
   refreshed rows dropped the source directory but currentKey/currentDir kept its old
   path, so the other pane could still copy or move into it. Before replacing a
@@ -110,7 +223,19 @@
   do not hide then show during reset. Press-delay changes did not fix this.
   `PropertiesButtonTest` covers count updates rebinding a pressed or released button.
 
-- **Folder counts are optional direct-child counts, limited to local and SMB sources**
+- **Empty local folders hide their expand indicator (2026-10-28, issue #41)**:
+  local (`file`) directory rows request `DirectoryCounts` even with item counts off.
+  One result updates both the indicator and optional counts; expansion/refresh also
+  populates the cache regardless of that setting. Turning counts off must not clear
+  this shared cache. Hidden entries follow the display setting. Unknown/failed reads
+  retain the arrow, and search/Git/restic/access-hint children keep it even with zero
+  visible files. Empty rows remain clickable destinations. Remote and archive rows
+  also reuse confirmed counts to hide empty indicators (2026-10-30), without extra
+  nonlocal probes when counts are disabled. Both callback owner views release their
+  subscriptions on detach and recycle. `EmptyDirectoryIndicatorTest` covers API 24/34, shared in-flight reads,
+  setting toggles, failures, recycled rows and ordinary listing/refresh reuse.
+
+- **Folder counts are optional direct-child counts across backends**
   (`DirectoryCounts`, 2026-10-15). The metadata line starts with monochrome folder/file
   outline icons and separate numbers; date/time stays at the end. Two equal-width text-scaled
   slots keep the folder/file positions fixed; the group uses the idle selection check’s opacity.
@@ -119,11 +244,16 @@
   setting. A bound row can request one background listing; ordinary expansion/refresh
   results populate the same cache and supersede a slower count request. Local probes
   use `listForSize` with only name/type metadata, retaining its permission fallback;
-  SMB probes use the backend listing. Never recurse, read file contents, or infer zero
-  from failure. One worker, a 32-entry LIFO queue, 512 count-only cache entries and a
-  60-second lifetime bound the extra work. Recycled rows reject old callbacks; collapsing
-  cancels queued descendants. The setting defaults off and participates in `uiSignature`.
-  `DirectoryCountsTest` / `FolderCountsRowTest` cover actual local reads, SMB listing reuse,
+  other backends use their ordinary listing. Never recurse, read file contents, or infer zero
+  from failure. Separate local/remote workers, 32-entry queues in displayed row order,
+  512 count-only cache entries and a 60-second lifetime bound the extra work. Detached
+  rows release their subscriptions. The setting defaults off and participates in `uiSignature`.
+  A subordinate local-only setting defaults on; disabling it enables counts on other
+  services too, excluding Jellyfin/Emby media trees (2026-10-29). Gate rendering and
+  additional probes with the same scope, while cached empty-folder indicators remain
+  independent. Both settings participate in
+  `uiSignature` and configuration backups.
+  `DirectoryCountsTest` / `FolderCountsRowTest` cover actual local reads, backend listing reuse,
   hidden entries, failure, stale callbacks, rendering and updates after resume. The weighted
   timestamp TextView must use maxLines/ellipsize: singleLine with end gravity can leave a
   horizontally scrolling text layout wider than its visible bounds and hide the date.
@@ -332,3 +462,158 @@
   when the status bar is hidden, preserving visible navigation and keyboard insets. The
   Chromium fullscreen overlay likewise fills the cutout area. `WebsiteFullscreenTest`
   covers either side, navigation visibility, keyboard space and restoring status-bar mode.
+
+- **Image quick-scale and the long-press menu must be mutually exclusive**
+  (2026-10-28, issue #42). `ZoomableImageView` feeds both a `ScaleGestureDetector`
+  and a `GestureDetector`. Double-tap-and-hold starts the former's quick-scale mode,
+  but the latter can still deliver a long press on the second touch. Guarding only
+  `isInProgress` is too late: the user may hold before moving far enough to start scaling.
+  Suppress the menu from `onDoubleTap` until the next DOWN; also suppress it when a
+  pinch begins. During scale or multiple-pointer movement, ignore ordinary scroll
+  callbacks so the same MOVE cannot both scale and pan. Remember whether the touch
+  scaled through UP, because the scale detector ends before the fling callback and
+  must not accidentally turn a page. Ordinary double-tap mode cycling, long presses,
+  one-finger panning and fresh page swipes remain supported. `ImageGestureTest` feeds
+  real single/multiple-pointer events and advances long-press timers on API 24/34.
+
+- **Invisible remote/keyboard focus (2026-10-30, #41)**: file rows and grid cells
+  shared a background with only `state_activated` (multi-selection). Neither layout
+  explicitly opted into keyboard focus on older Android versions. Both now accept
+  focus, with a separate focused border taking precedence over the selection fill.
+  Keep focus distinct from selection; requesting focus must not check a file.
+  `FileFocusTest` checks both layouts and remote confirmation on API 24 and 34.
+
+- **Encrypted PDFs reported as unreadable (2026-10-30, #34)**: collapsing the
+  renderer's `SecurityException` into null hid the password requirement and retried
+  identical bytes through the cache. Preserve this failure separately and close its
+  fd immediately. API 35+ uses `LoadParams` for password entry/retry; older devices
+  explain the limitation without offering a password field.
+  SecurityException can also mean unsupported encryption, so never claim it proves
+  the password is wrong. Passwords are not saved in view state. The archive-style prompt offers optional
+  remembering: save only after a successful open, remove a rejected saved password,
+  and encrypt it through Secrets. Configuration backups decrypt/re-encrypt the
+  separate PDF password store; system backup/transfer excludes it. `PdfPasswordTest`
+  checks the failure/descriptor handling, dialog branches and password remembering with
+  a simulated renderer on API 24, 34 and 35; real PDF rendering still needs a device.
+
+- **PDF password entry displayed plaintext (2026-10-30)**: calling `setSingleLine`
+  after setting a password input type replaces its masking transformation. Archives
+  and PDFs now share `EncryptedFilePasswordDialog`, configuring single-line behavior
+  before the password type. Keep entered text out of saved view state, clear it on
+  dismissal, and retain the prompt on empty confirmation. PDF password entry has no
+  external-app button. Tests check the actual transformation, not just inputType.
+
+- **Resetting root items and action panels (2026-10-30, #35)**: Reset updates only
+  the dialog draft. Cancel preserves saved ordering and visibility; OK applies the
+  defaults to both root panes or the shared action panel. `ConfigurationResetTest`
+  checks the draft, cancellation and persistence paths.
+
+- **OLED path and menu backgrounds (2026-10-30, #35)**: active path bars are black
+  too; the existing text-alpha difference marks the active pane. Menu popups have
+  their own backgrounds, independent of dialog floating colors. Override AppCompat
+  popup/overflow and platform popup styles in the OLED theme. `AppThemeTest`
+  checks all three popup routes.
+
+- **Permission display format (2026-10-30, #35)**: file-list permissions default
+  to four octal digits, retaining special bits. The default-on format setting can
+  restore symbolic notation independently of permission visibility. Octal labels
+  reuse the counts' outline-icon sizing/padding and muted text color/opacity;
+  clear recycled compound drawables when switching format or binding an
+  unknown-mode row. Unix properties retain both symbolic and numeric notation.
+
+- **Old count probes delayed local counts after navigation (2026-10-30)**:
+  the global single worker serialized local counts behind slow remote listings.
+  Recycling only invalidated a callback tag, leaving old queue entries to perform
+  filesystem work. Split direct-local and other-source workers, with bounded
+  queues and background priority. Bind-time prefetch may render cached counts but
+  only attached rows in visible panes request IO. Detach/recycle, pane hiding and
+  Activity stop release view-owned subscriptions; a second pane can keep the same
+  directory's shared probe alive. Do not cancel by file identity when collapsing
+  one pane, because that also cancels the other pane's subscription. Never close a
+  shared connection to abort a count: already-issued blocking backend calls may
+  finish, but their abandoned results are ignored. Local per-entry processing checks
+  cancellation. `DirectoryCountsTest` holds a remote request open while local counts
+  complete and checks abandoned queues and shared subscriptions;
+  `DirectoryCountLifecycleTest` covers prefetch, detach and hidden-pane cancellation.
+
+- **SFTP counts still read entire large directories (2026-10-30)**: the count worker
+  used ordinary `list`, which buffers and sorts every entry and reads link targets.
+  `DirectoryCountSource` is an optional count-only capability; SFTP counts directly
+  from READDIR attributes, following links only to distinguish directories, and
+  saturates each category at 1000. Stop early only after both visible categories
+  saturate; stopping after 1000 total entries would invent an exact value for the
+  rarer category. Hidden entries have their own cached totals. SSHJ's filter false
+  means discard, not stop; a private control exception exits its scan and closes
+  the directory handle. Catch that exception inside the retry boundary so stopping
+  does not tear down a shared connection. Transport retries reset the accumulator.
+  Ordinary listings always remain complete for browsing, transfers and comparison.
+  `SftpFileSystemTest` checks fewer READDIR requests, cancellation, connection reuse,
+  mounted roots, symlinks and hidden/rare categories; count accessibility uses the
+  same capped labels as the visible row.
+
+- **Counts loaded in reverse or arbitrary row order (2026-10-30)**: LIFO preferred
+  the last attached row, and pane activation iterated a holder HashSet. Count jobs
+  now read their subscribers' live adapter positions before dispatch, choosing the
+  topmost row first (FIFO ties across panes). This follows any displayed sort rather
+  than sorting paths again. A shared job uses its earliest subscriber's position;
+  queue overflow drops the lowest-priority row. Detached rows still release their
+  jobs, so scrolling needs no separate newest-first policy. A running call finishes
+  or observes cancellation; sorting only reorders queued work. Unit tests cover
+  changed positions, reversed attachment and pane activation.
+
+- **Count-only probes need a time budget (2026-10-30)**: allow three seconds per
+  directory from worker execution, excluding queue wait. Use elapsed realtime and
+  check the deadline through the streaming continuation predicate and local entry
+  conversion, then again before accepting any backend result. A blocking network
+  request may finish late; never interrupt its thread or close a shared connection
+  to enforce this soft deadline. Timeout behaves like an unknown count, preserving
+  existing cache entries and using the ordinary 60-second failure cooldown rather
+  than immediately retrying. Invalidation allows a retry; successful ordinary
+  expansion/refresh supersedes the failure without a deadline. Tests advance the
+  clock across the exact three-second boundary, check independent queued budgets,
+  reject late empty results, and verify retry and ordinary-listing recovery.
+
+- **Remote empty folders kept their expand arrow (2026-10-30)**: count callbacks
+  updated indicators only for the local scheme, even after a successful remote
+  count confirmed zero visible children. Apply known counts to every supported
+  directory, retaining loading/synthetic-child guards and click behavior. Ordinary
+  expansion and refresh now cache counts independently of the count display setting;
+  remote probes still require opting into counts for that source. Failures/timeouts
+  stay unknown with their arrow. Tests cover remote/archive cached counts, hidden
+  entries, synthetic children, live failures/timeouts, no extra disabled-scope probes,
+  and remote ordinary-listing recovery with counts disabled on API 24 and 34.
+
+- **File icon and thumbnail drifts bypassed Properties touch guards (2026-10-31 review)**:
+  file icons and grid thumbnails own click listeners, so their UP events never reach
+  the row's touch listener. Apply the same end-inside-button cancellation to these
+  clickable children, translating their coordinates into the row, and clear listeners
+  when recycling for other node types. `PropertiesButtonTest` checks list and grid boundary drifts.
+
+- **Subtitle color labels wrapped into narrow columns (2026-11-01, #35)**:
+  the size/color row used fixed 3:1 weights, squeezing “Text color” into several
+  lines on some devices. Measure the single-line color control at its natural width
+  and give the size label/slider the remaining space. Native text-layout tests cover
+  English, German and Russian at normal and enlarged font scales.
+
+- **Directory-scope labels lost their second line (2026-11-01, #35)**:
+  horizontal RadioGroup baseline alignment could leave the group shorter than its
+  weighted, multiline radio buttons. Disable baseline alignment so the group grows
+  with its children in both Sort and View dialogs. Checking a TextView's own height
+  is insufficient: assert that its parent also contains its bottom edge. Native
+  layout tests reproduce the old clipping and cover narrow widths and larger fonts.
+
+- **Destination chooser buttons consumed excessive dialog space (2026-11-01, #35)**:
+  long translations made the neutral “Choose another location” button stack below
+  OK/Cancel. Copy/move and compression now share a clickable destination field
+  with an edit icon as the visible action cue, without a border or extra hint text.
+  Keep the full row focusable and at least 48 dp tall for touch access,
+  and announce the action plus current path for accessibility. Reuse the existing
+  destination draft/picker flow, including source-folder mode and rotation handling.
+
+- **Duplicate and Rename shortcuts share one numbering rule (2026-11-01, #35)**:
+  tapping Duplicate previews editable copy names; holding Duplicate copies immediately.
+  Holding Rename applies the numbering to the original entries without a dialog,
+  replacing the extension-selection shortcut. Confirmed copy names must be valid,
+  distinct within each parent and absent from that parent, including selected sources.
+  Failed listings remain failures. Freeze confirmed names in the existing transfer
+  work so retries keep them, and use the ordinary background progress/cancellation.

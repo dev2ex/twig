@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.16.0** (versionCode 313) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.17.0** (versionCode 318) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -104,7 +104,7 @@ S3, restic repositories and Jellyfin/Emby libraries expand in place. Keep two
 sources side by side: compress an SMB folder into a local zip, or copy a file
 from a remote archive straight to an FTP server.
 
-**Small and resource-conscious.** The 1.16.0 full build's arm64-v8a download measures 8.37 MiB,
+**Small and resource-conscious.** The 1.17.0 full build's arm64-v8a download measures 8.59 MiB,
 including the terminal, network backends and media player. Dependencies are added
 only after their APK cost is measured.
 
@@ -144,26 +144,26 @@ only after their APK cost is measured.
 
 ## Size
 
-Measured on the signed 1.16.0 release APKs (R8 + resource shrinking; MiB = 1,048,576 bytes):
+Measured on the signed 1.17.0 release APKs (R8 + resource shrinking; MiB = 1,048,576 bytes):
 
 | | Size |
 |---|---|
-| Full APK (`arm64-v8a` + `x86_64`) | 10.51 MiB |
-| Libre APK (`arm64-v8a` + `x86_64`) | 10.45 MiB |
-| **Full APK, `arm64-v8a` only** | **8.37 MiB** |
-| Full APK, `x86_64` only | 8.49 MiB |
-| Full APK, `armeabi-v7a` only (experimental) | 8.13 MiB |
+| Full APK (`arm64-v8a` + `x86_64`) | 10.73 MiB |
+| Libre APK (`arm64-v8a` + `x86_64`) | 10.66 MiB |
+| **Full APK, `arm64-v8a` only** | **8.59 MiB** |
+| Full APK, `x86_64` only | 8.71 MiB |
+| Full APK, `armeabi-v7a` only (experimental) | 8.35 MiB |
 
 Where it goes (compressed entries inside the full `arm64-v8a` APK):
 
 | Component | Size |
 |---|---|
-| `classes*.dex` (all our code plus every JVM dependency) | 3.09 MiB |
+| `classes*.dex` (all our code plus every JVM dependency) | 3.21 MiB |
 | `libffmpegJNI.so` | 1.39 MiB |
 | Bouncy Castle data files | 1.18 MiB |
-| Resources (`resources.arsc` + `res`) | 1.83 MiB |
-| `libsamba_jni.so` (libsmb2) | 484 KiB |
-| `libtwigzstd` / `libtermux` / `libtwigpty` | 109 KiB |
+| Resources (`resources.arsc` + `res`) | 1.93 MiB |
+| `libsamba_jni.so` (libsmb2) | 485 KiB |
+| `libtwigzstd` / `libtermux` / `libtwigpty` | 110 KiB |
 
 Of the Bouncy Castle data, 1.16 MiB is three lookup tables for the `picnic`
 post-quantum signature scheme (`lowmcL{1,3,5}.bin.properties`). Twig pulls in the
@@ -224,7 +224,7 @@ Network sources connect on expand, support multiple servers (each gets a unique
 scheme), and persist their configuration. Extraction is just a cross-source copy;
 so is compression, which is why "compress a folder on SMB into a local archive"
 needs no special case.
-The compression dialog remembers the last ZIP/7Z format across launches, even if cancelled.
+The compression dialog remembers the last ZIP/7z format and Fast / Standard / Store level across launches, even if cancelled. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible; ZIP file names remain visible.
 
 ### Browsing
 
@@ -234,23 +234,47 @@ The compression dialog remembers the last ZIP/7Z format across launches, even if
   Choose root-item visibility separately for each pane; private space is visible by default.
 - **Always expand in place, never "enter" a directory.** The current directory is
   the last one you tapped, and it is the target for new folders, copies and moves.
-- Single pane in portrait (swipe to switch), **dual pane side by side in
-  landscape**, with animated pane switching. Long-press the pane-switch button to
-  pin the current directory on the other side and switch to it.
+- **Pane layout** in Settings → Display chooses Follow screen orientation (the default),
+  Single pane or Dual pane. Dual panes sit side by side, including on portrait tablets;
+  single-pane mode supports animated swipe switching in either orientation. Long-press
+  the pane-switch button to pin the current directory on the other side and switch to it.
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
-  files through the system chooser.
+  files through the system chooser. The path bar shows the checked-item count.
+- Choose copy/move destinations directly in the opposite pane. Optionally tap rows to
+  toggle selection once items are checked; external multi-file pickers select by tapping.
+  Enable the hidden **Duplicate** action to confirm editable copy names; hold it to make
+  numbered copies immediately. Hold **Rename** to apply the same numbering to the originals.
+- **Retry failed transfers** from the failure dialog, or skip the failing item and
+  continue. Completed files are retained; local, FTP, SFTP and SMB destinations can
+  resume partial writes when source size and modification time are known.
+- **Share remote files** with background preparation, progress and cancellation.
+  Completed files are cached for reuse. Directly readable local files and remote files
+  with a known size up to 512 KiB can be shared directly.
 - **Trash** for ordinary writable local shared storage, on the original volume.
   Restore or permanently purge individual entries or batches; an empty trash root hides
   automatically. Network, SAF-only and privileged deletions use permanent deletion instead.
   Delete and purge jobs have background progress and stop between backend calls when cancelled.
+  Long-press Delete to recycle without confirmation only when every selected item can
+  use the trash; permanent deletions still require confirmation.
 - **Share into Twig** to copy incoming files or save shared text as a UTF-8 file with an
   editable name. The destination picker has two panes, sorting, search and history, and
   follows the browser's fullscreen and toolbar-placement settings.
-- **Browser controls:** optionally put the toolbar at the bottom or exit the main screen
-  with Back after pane navigation is exhausted. Completion vibration and foreground
-  completion notifications are separate, default-off settings; background results retain
-  a notification.
+- **Browser controls:** choose an OLED black theme, reorder root items and action buttons,
+  and show or hide individual actions. Favorites and websites support inline drag ordering.
+  Optionally put the toolbar at the bottom. Back can close, confirm exit or navigate up
+  the tree before closing/exiting; Back-triggered exits always require confirmation.
+  Completion vibration and foreground completion notifications are separate, default-off
+  settings; background results and transfer failures retain a notification.
+- **Long-press shortcuts** on browser controls: copy/move/compress immediately, create
+  a text file, apply numbered renames, open directory sorting or refresh
+  selected thumbnails. Terminal and music controls also offer direct actions.
+- **Directory details** include optional direct folder/file counts, with a local-only
+  scope by default. Empty local directories hide their expand indicators. Symbolic links
+  show badges and target paths; Unix properties and optional permission rows are available
+  where the source supplies them, including permission rows on SFTP.
+- **Folder icons** distinguish common local directories such as Downloads, Pictures
+  and Music; favourites retain their directory or installed-app icons.
 - **Batch rename** selected files and folders with live original/new-name previews.
   Replace text or use regular expressions, choose case sensitivity, and target names,
   extensions or both. Add numbering before or after names with a configurable start
@@ -430,9 +454,12 @@ all work the same way.
 - Hex viewer with virtual scrolling, a draggable scrollbar and text/HEX search
 - **PDF reader** on the platform renderer: continuous or single-page scrolling,
   double-tap to crop the page margins away, text selection, and full-text search
-  where the system provides it (Android 15+)
-- Image viewer with downsampling, horizontal or vertical swipes to switch images,
-  plus a slideshow that starts on the first image found while still scanning
+  where the system provides it (Android 15+). Encrypted PDFs can be opened on
+  Android 15+, with optional password memory
+- Static SVG viewing with sharp zoom. Image viewer with downsampling, horizontal or vertical swipes to switch images,
+  plus a slideshow that starts on the first image found while still scanning. Selection
+  stays in sync with the file pane, shows its count in the viewer, and returning locates
+  the current image in the tree
 - **Video/audio player** (media3 + FFmpeg software decoding) supporting AVI,
   M2TS, HDMV audio tracks and PGS subtitles, with two-stage
   automatic fallback when a system decoder crashes. Seeking in M2TS can be slow
@@ -453,7 +480,8 @@ all work the same way.
   picture scaling for the next episode and when reopening a file
 - **Playback controls** include swipe seeking, brightness/volume gestures and
   temporary speed-up while holding the screen; embedded and external subtitles
-  can be selected alongside audio tracks
+  can be selected alongside audio tracks. Text subtitle size and color are configurable;
+  playing video controls hide after ten seconds of inactivity
 
 #### Dedicated music player
 
@@ -468,7 +496,8 @@ all work the same way.
   media server. Tap a timed lyric to seek to that line; the waveform also acts as
   a seek bar.
 - **Playlist management** with favourites, name/metadata search, sorting, manual
-  drag-to-reorder, shuffle and repeat. Export saved playlists as `.m3u8` files.
+  drag-to-reorder, shuffle and repeat. Append tracks from M3U/M3U8 files or recursively
+  from a directory, with duplicate tracks skipped. Export saved playlists as `.m3u8` files.
 - **Background playback** with notification, lock-screen and headset/Bluetooth
   controls. The notification includes Like and Exit, and a native playback timer where
   the system displays it. The last queue can be restored when reopening the player.
@@ -524,7 +553,8 @@ here, and `org.json` ships with Android.
   terminal colours also apply to the extra-key bar, independently of the app theme.
 - **Keep screen on** can keep the session visible; the display dims after the system's
   idle timeout and returns to its previous brightness on interaction.
-- **Command shortcuts**: attach a command to an SFTP directory, server or local directory,
+- **Command shortcuts**: leave the command blank to open a terminal at the chosen
+  location, or attach a command to an SFTP directory, server or local directory,
   run it in a terminal or silently in the background, and pin it to the home screen.
   Local commands use the app uid unless the default-off **Use privileged session** is selected.
 
@@ -817,5 +847,18 @@ changing subsystems like the terminal, thumbnails or the TS demuxer.
   Background deletion, batch trash recovery, optional bottom toolbar and completion
   alerts. Series opening/ending skips, music volume swipes and notification exit/timer,
   per-site capture/location permissions, and idle terminal dimming.
+- **1.16.1** — Transfer retries, resumable writes and skip-failed-item actions; remote
+  sharing with background preparation and reusable files. Selection counts, folder
+  icons and long-press actions for browsing, music and terminals. Fix image zoom
+  opening menus, Back exit confirmation and thumbnail refresh.
+- **1.17** — OLED theme and single/dual panes in either orientation; reorder roots,
+  favorites, websites and actions. Choose copy/move/compression targets in the opposite
+  pane, tune compression levels and 7z name encryption, or save beside sources. Unix
+  properties, permission notation and link targets; M3U/folder playlist imports, static
+  SVG and encrypted PDFs on Android 15+. Configurable Back behavior and subtitles,
+  image selection sync and return positioning, numbered copies/quick renames, and
+  terminal-only command shortcuts. Improve folder counts, trash, pickers, removable
+  storage SAF access and localization; protect compression sources from temporary-output
+  collisions.
 
 </details>

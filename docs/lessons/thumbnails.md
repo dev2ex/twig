@@ -4,6 +4,18 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Trash thumbnails use the recovery payload** (2026-10-28): the `trash` scheme
+  previously fell through network eligibility and decoding, so uncached previews
+  depended on the network toggle and PDFs never generated. Treat trash as local
+  during eligibility, then resolve its validated regular-file payload on the worker
+  for ordinary local decoding. Retain the original display name because a top-level
+  payload is named `data`. Keep cache keys on the listed file's name/size/mtime so
+  previews made before deletion, in trash and after restoration share the cache.
+  Never decode the old original path: it may be absent or hold a replacement file.
+  Reject symlink payloads just like trash content reads. `TrashThumbnailTest` covers
+  uncached images, nested files, replacement originals, cache identity, local
+  eligibility and symlink rejection.
+
 - **Package-folder icons must cover the other app storage locations too** (2026-10-21,
   issue #19): icon detection lived inside `AndroidDataAccess` and only recognized
   Android/data, so Android/media, Android/obb and private package directories still

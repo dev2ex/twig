@@ -234,18 +234,238 @@ class StripWriteActionsTest {
             assertStrip(R.id.as_copy, true)
             assertStrip(R.id.as_compress, true)
             assertAllWriteActions(false, "a read source must not enable mutation of $key")
-            // No target: both handlers must reach destination validation rather than reject the source.
+            // Copy picks a destination first when the other pane has none.
             pane.actionCopy(move = false)
-            assertEquals(activity.getString(R.string.msg_pick_other_dir_first),
-                org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+            pane.childFragmentManager.executePendingTransactions()
+            assertTrue(pane.childFragmentManager.findFragmentByTag(CopyConfirmDialog.TAG) == null)
+            assertTrue(activity.isPaneActive(pane1()))
+            activity.findViewById<View>(R.id.btn_copy_destination_cancel).performClick()
+            idle()
             pane.actionCompress()
-            assertEquals(activity.getString(R.string.msg_pick_other_dir_first),
-                org.robolectric.shadows.ShadowToast.getTextOfLatestToast())
+            pane.childFragmentManager.executePendingTransactions()
+            val compression = pane.childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as CompressConfirmDialog
+            (compression.requireDialog() as androidx.appcompat.app.AlertDialog)
+                .getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+            idle()
         }
         pane.viewModel.toggle(PaneViewModel.GroupNode("fav", "Favorites", expanded = false))
         activity.onClipTargetChanged()
         assertStrip(R.id.as_copy, false)
         assertStrip(R.id.as_compress, false)
+    }
+
+    @Test
+    fun `long copy and move start cancellable progress immediately even for huge files`() {
+        val pane = pane0()
+        val adapter = adapterOf(pane)
+        val source = XFile("file", "/source/huge.bin", isDir = false, size = 10L * 1024 * 1024 * 1024)
+        adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+        awaitList(adapter, 1)
+        adapter.setSelection(listOf(source))
+        pane1().viewModel.currentDir = XFile("file", activity.cacheDir.path, isDir = true)
+        for ((button, move) in listOf(R.id.as_copy to false, R.id.as_move to true)) {
+            assertTrue(activity.findViewById<View>(R.id.strip_right).findViewById<View>(button).performLongClick())
+            val session = requireNotNull(Transfers.active)
+            val work = session.work as Transfers.Work.Copy
+            assertEquals(move, work.move)
+            assertEquals(listOf(source), work.items)
+            val progress = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+            assertTrue(progress.isShowing)
+            assertTrue(progress.findViewById<View>(R.id.bar_file) != null)
+            progress.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+            idle()
+            assertTrue(session.cancelled.get())
+            val worker = Thread { Transfers.execute(activity, session) {} }
+            worker.start(); worker.join(5000)
+            idle()
+            assertFalse(worker.isAlive)
+            assertTrue(Transfers.active == null)
+            Transfers.consumeFinished()
+            adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+            awaitList(adapter, 1)
+            adapter.setSelection(listOf(source))
+        }
+    }
+
+    @Test
+    fun `rename tap keeps the normal dialog and stem selection`() {
+        val pane = pane0()
+        val adapter = adapterOf(pane)
+        val source = XFile("file", "/source/photo.backup.jpg", isDir = false)
+        adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+        awaitList(adapter, 1)
+        adapter.setSelection(listOf(source))
+        activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_rename).performClick()
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun inputs(view: View): List<android.widget.EditText> = when (view) {
+            is android.widget.EditText -> listOf(view)
+            is android.view.ViewGroup -> (0 until view.childCount).flatMap { inputs(view.getChildAt(it)) }
+            else -> emptyList()
+        }
+        val input = inputs(dialog.window!!.decorView).single()
+        assertEquals("photo.backup", input.text.substring(input.selectionStart, input.selectionEnd))
+        dialog.dismiss()
+    }
+
+    @Test
+    fun `duplicate is hidden by default and follows writable selection`() {
+        assertFalse(com.twig.app.Prefs.stripItemVisible(activity, "duplicate"))
+        for (strip in listOf(R.id.strip_left, R.id.strip_mid, R.id.strip_right)) {
+            assertEquals(View.GONE, activity.findViewById<View>(strip).findViewById<View>(R.id.as_duplicate).visibility)
+        }
+        val adapter = adapterOf(pane0())
+        val file = XFile("file", "/source/a.txt", isDir = false)
+        adapter.submitList(listOf(PaneViewModel.FileNode(file, 1, false, false)))
+        awaitList(adapter, 1)
+        adapter.setSelection(listOf(file))
+        assertStrip(R.id.as_duplicate, true)
+        adapter.clearSelection()
+        assertStrip(R.id.as_duplicate, false)
+    }
+
+    private fun awaitCondition(condition: () -> Boolean) {
+        repeat(300) {
+            idle()
+            if (condition()) return
+            Thread.sleep(10)
+        }
+        assertTrue("background operation did not finish", condition())
+    }
+
+    @Test
+    fun `duplicate confirms edited names while holds copy and rename with numbering`() {
+        val dir = java.io.File(activity.cacheDir, "duplicate-test").apply { mkdirs() }
+        val original = java.io.File(dir, "photo.jpg").apply { writeText("image") }
+        java.io.File(dir, "PHOTO_1.jpg").writeText("keep")
+        val source = XFile("file", original.path, false, original.length())
+        val adapter = adapterOf(pane0())
+        fun select() {
+            adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+            awaitList(adapter, 1)
+            adapter.setSelection(listOf(source))
+        }
+        select()
+        FileClipboard.put(listOf(source))
+        val button = activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_duplicate)
+        val previousDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        button.performClick()
+        awaitCondition { org.robolectric.shadows.ShadowDialog.getLatestDialog() !== previousDialog }
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val input = editInputs(dialog.window!!.decorView).single()
+        assertEquals("photo_2.jpg", input.text.toString())
+        assertEquals("_2", input.text.substring(input.selectionStart, input.selectionEnd))
+        assertTrue(Transfers.active == null)
+        assertEquals("image", original.readText())
+        input.setText("vacation.jpg")
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        awaitCondition { Transfers.active != null }
+        val session = requireNotNull(Transfers.active)
+        assertTrue((session.work as Transfers.Work.Sync).duplicate)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start(); worker.join(5000)
+        idle()
+        assertFalse(worker.isAlive)
+        assertTrue(session.finished?.isSuccess == true)
+        assertEquals("image", java.io.File(dir, "vacation.jpg").readText())
+        assertEquals("image", original.readText())
+        assertEquals("keep", java.io.File(dir, "PHOTO_1.jpg").readText())
+        assertEquals(listOf(source), FileClipboard.items)
+        Transfers.consumeFinished()
+        select()
+        assertTrue(button.performLongClick())
+        awaitCondition { Transfers.active != null }
+        val immediate = requireNotNull(Transfers.active)
+        val copyWorker = Thread { Transfers.execute(activity, immediate) {} }
+        copyWorker.start(); copyWorker.join(5000)
+        idle()
+        assertTrue(immediate.finished?.isSuccess == true)
+        assertEquals("image", java.io.File(dir, "photo_2.jpg").readText())
+        assertEquals("image", original.readText())
+        Transfers.consumeFinished()
+        select()
+        assertTrue(activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_rename).performLongClick())
+        awaitCondition { !original.exists() }
+        assertEquals("image", java.io.File(dir, "photo_3.jpg").readText())
+        assertEquals("image", java.io.File(dir, "photo_2.jpg").readText())
+        FileClipboard.clear()
+    }
+
+    private fun editInputs(view: View): List<android.widget.EditText> = when (view) {
+        is android.widget.EditText -> listOf(view)
+        is android.view.ViewGroup -> (0 until view.childCount).flatMap { editInputs(view.getChildAt(it)) }
+        else -> emptyList()
+    }
+
+    @Test fun `duplicate invalid or existing names keep the dialog open and cancel writes nothing`() {
+        val dir = java.io.File(activity.cacheDir, "duplicate-cancel").apply { mkdirs() }
+        val original = java.io.File(dir, "original.txt").apply { writeText("keep") }
+        val source = XFile("file", original.path, false, original.length())
+        val adapter = adapterOf(pane0())
+        adapter.submitList(listOf(PaneViewModel.FileNode(source, 1, false, false)))
+        awaitList(adapter, 1)
+        adapter.setSelection(listOf(source))
+        val previous = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_duplicate).performClick()
+        awaitCondition { org.robolectric.shadows.ShadowDialog.getLatestDialog() !== previous }
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val input = editInputs(dialog.window!!.decorView).single()
+        val confirm = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+        for (name in listOf("original.txt", "../escape.txt", "")) {
+            input.setText(name)
+            confirm.performClick()
+            awaitCondition { confirm.isEnabled }
+            assertTrue(dialog.isShowing)
+            assertTrue(Transfers.active == null)
+            assertEquals("keep", original.readText())
+        }
+        input.setText("changed.txt")
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        assertTrue(Transfers.active == null)
+        assertEquals(listOf("original.txt"), dir.list()!!.toList())
+    }
+
+    @Test fun `multiple duplicates confirm individual names and preserve both originals`() {
+        val dir = java.io.File(activity.cacheDir, "duplicate-multiple").apply { mkdirs() }
+        val originals = listOf("one.txt", "two.txt").map { name ->
+            java.io.File(dir, name).apply { writeText(name) }
+        }
+        val sources = originals.map { XFile("file", it.path, false, it.length()) }
+        val adapter = adapterOf(pane0())
+        adapter.submitList(sources.map { PaneViewModel.FileNode(it, 1, false, false) })
+        awaitList(adapter, 2)
+        adapter.setSelection(sources)
+        val previous = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_duplicate).performClick()
+        awaitCondition { org.robolectric.shadows.ShadowDialog.getLatestDialog() !== previous }
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun views(view: View): List<View> = listOf(view) + if (view is android.view.ViewGroup)
+            (0 until view.childCount).flatMap { views(view.getChildAt(it)) } else emptyList()
+        val list = views(dialog.window!!.decorView).filterIsInstance<androidx.recyclerview.widget.RecyclerView>().single()
+        list.measure(View.MeasureSpec.makeMeasureSpec(400, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.AT_MOST))
+        list.layout(0, 0, list.measuredWidth, list.measuredHeight)
+        for (index in sources.indices) {
+            val input = editInputs(list.findViewHolderForAdapterPosition(index)!!.itemView).single()
+            assertEquals(if (index == 0) "one_1.txt" else "two_1.txt", input.text.toString())
+            assertEquals("_1", input.text.substring(input.selectionStart, input.selectionEnd))
+            input.setText("copy-$index.txt")
+        }
+        assertTrue(Transfers.active == null)
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        awaitCondition { Transfers.active != null }
+        val session = requireNotNull(Transfers.active)
+        val work = session.work as Transfers.Work.Sync
+        assertEquals(sources.mapIndexed { index, source -> source.toUri() to "copy-$index.txt" }.toMap(), work.targetNames)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start(); worker.join(5000)
+        idle()
+        assertTrue(session.finished?.isSuccess == true)
+        for (index in originals.indices) {
+            assertEquals(originals[index].name, originals[index].readText())
+            assertEquals(originals[index].name, java.io.File(dir, "copy-$index.txt").readText())
+        }
+        Transfers.consumeFinished()
     }
 
 }

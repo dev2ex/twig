@@ -57,7 +57,9 @@ class SelectionInfoCardTest {
         val rows = vm.state.value.rows
         val info = card()
         val index = rows.indexOf(info)
-        assertEquals(file(a), (rows[index + 1] as PaneViewModel.FileNode).file)
+        val anchor = (rows[index + 1] as PaneViewModel.FileNode).file
+        assertEquals("file", anchor.scheme)
+        assertEquals(a.path, anchor.path)
         assertFalse(info.scanning)
         val fields = info.details!!.sections.single().rows.toMap()
         assertEquals("2", fields[app.getString(R.string.info_selected)])

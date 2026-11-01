@@ -41,6 +41,23 @@ class LocalCommandsTest {
         } finally { dir.deleteRecursively() }
     }
 
+    @Test(timeout = 10000)
+    fun `blank terminal command opens interactive shell in the saved directory`() {
+        val dir = Files.createTempDirectory("twig terminal's ").toFile()
+        try {
+            for (text in listOf("", "  ")) {
+                val script = LocalCommands.line(command(text, dir.path), terminal = true)
+                    .replace("/system/bin/sh", "/bin/sh")
+                val process = ProcessBuilder("/bin/sh", "-c", script).start()
+                process.outputStream.bufferedWriter().use { it.write("pwd\nexit\n") }
+                val output = process.inputStream.bufferedReader().readText()
+                val errors = process.errorStream.bufferedReader().readText()
+                assertEquals(errors, 0, process.waitFor())
+                assertEquals(dir.canonicalPath, output.trim())
+            }
+        } finally { dir.deleteRecursively() }
+    }
+
     @Test
     fun `failed working directory prevents user command`() {
         val result = LocalCommands.execute(command("printf SHOULD_NOT_RUN", "/missing/twig/path"), shell = "/bin/sh")

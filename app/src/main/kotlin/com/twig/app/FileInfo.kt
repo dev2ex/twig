@@ -14,6 +14,9 @@ import com.twig.core.MediaDetails
 import com.twig.core.MediaInfoSource
 import com.twig.core.MediaStream
 import com.twig.core.XFile
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixMetadataSource
+import com.twig.core.UnixPermissions
 import java.io.ByteArrayInputStream
 
 /**
@@ -36,6 +39,21 @@ object FileInfo {
     )
     data class Details(val sections: List<Section>, val error: String? = null)
 
+    /** Visible page order; null section denotes the lazily computed Hash page. */
+    data class Tab(val title: String, val section: Int?)
+
+    fun tabs(ctx: Context, file: XFile, details: Details?, selection: Boolean = false): List<Tab> {
+        val sections = details?.sections.orEmpty()
+        if (sections.isEmpty()) return emptyList()
+        val pages = sections.mapIndexed { index, section -> Tab(section.title, index) }
+        val unixTitle = s(ctx, R.string.info_section_unix)
+        return buildList {
+            addAll(pages.filter { it.title != unixTitle })
+            if (!selection && !file.isDir && file.canRead) add(Tab(s(ctx, R.string.info_tab_hash), null))
+            addAll(pages.filter { it.title == unixTitle })
+        }
+    }
+
     /** Aggregate fields use the same Basic tab and row renderer as single-item properties. */
     fun selection(ctx: Context, files: List<XFile>, stat: com.twig.app.ui.DirStat): Details {
         val dirs = files.count { it.isDir }
@@ -53,6 +71,7 @@ object FileInfo {
         add(basic(ctx, file, includeContents = false))
         if (!file.isDir && file.canRead && (OpenFiles.isVideo(file) || OpenFiles.isAudio(file)))
             add(Section(s(ctx, R.string.info_section_media), emptyList(), loading = true))
+        if (supportsUnix(file)) add(unixSection(ctx, file, null).copy(loading = true))
     })
 
     fun load(ctx: Context, file: XFile): Details {
@@ -66,7 +85,18 @@ object FileInfo {
         } else {
             runCatching { (FsRegistry.of(file) as? MediaInfoSource)?.detailsOf(file) }.getOrNull()
         }
-        sections += basic(ctx, file, remote)
+        val inspected = if (file.isSymbolicLink && file.scheme == "file") {
+            file.copy(linkTarget = (FsRegistry.of(file) as? com.twig.fs.local.LocalFileSystem)?.linkTarget(file))
+        } else file
+        val unix = runCatching {
+            if (file.scheme == "trash" && file.path != "/") {
+                val fs = FsRegistry.of(file) as TrashFileSystem
+                val item = fs.item(file)
+                val path = fs.store.payload(item.entry, item.relative).path
+                UnixFiles.stat(path)?.let { it.copy(selinuxContext = UnixFiles.context(path)) }
+            } else (FsRegistry.of(file) as? UnixMetadataSource)?.unixMetadata(file)
+        }.getOrNull()
+        sections += basic(ctx, inspected, remote, unix = unix)
         if (!file.isDir && file.canRead) {
             when {
                 remote != null -> remoteMedia(ctx, remote)?.let { sections += it }
@@ -81,12 +111,13 @@ object FileInfo {
                     apk(ctx, file)?.let { sections += it }
             }
         }
+        if (supportsUnix(file)) sections += unixSection(ctx, file, unix)
         return Details(sections)
     }
 
     // ---- Basic ----
 
-    private fun basic(ctx: Context, file: XFile, remote: MediaDetails? = null, includeContents: Boolean = true): Section {
+    private fun basic(ctx: Context, file: XFile, remote: MediaDetails? = null, includeContents: Boolean = true, unix: UnixMetadata? = null): Section {
         val rows = ArrayList<Pair<String, String>>()
         rows += s(ctx, R.string.info_name) to file.name
         val trash = if (file.scheme == "trash" && file.path != "/") (FsRegistry.of(file) as TrashFileSystem).let { fs ->
@@ -108,16 +139,25 @@ object FileInfo {
             rows += s(ctx, R.string.info_path) to remote?.realPath?.ifEmpty { null }.orEmpty().ifEmpty { file.path }
             if (file.scheme != "file") rows += s(ctx, R.string.info_source) to Format.schemeLabel(file.scheme)
         }
+        val symbolicLink = file.isSymbolicLink || (trash != null && android.system.OsConstants.S_ISLNK(trash.st_mode))
+        val linkTarget = file.linkTarget ?: if (symbolicLink && trash != null && includeContents)
+            runCatching { android.system.Os.readlink((FsRegistry.of(file) as TrashFileSystem).let { fs ->
+                val item = fs.item(file)
+                fs.store.payload(item.entry, item.relative).path
+            }) }.getOrNull() else null
+        if (symbolicLink) {
+            rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_symbolic_link)
+            rows += s(ctx, R.string.info_link_target) to (linkTarget ?: s(ctx, R.string.info_unavailable))
+        }
         if (file.isDir) {
-            rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_folder)
+            if (!symbolicLink) rows += s(ctx, R.string.info_type) to s(ctx, R.string.info_folder)
             if (includeContents) runCatching { FsRegistry.of(file).list(file) }.getOrNull()?.let { kids ->
                 val dirs = kids.count { it.isDir }
                 rows += s(ctx, R.string.info_contains) to
                     s(ctx, R.string.info_contains_value, dirs, kids.size - dirs)
             }
         } else {
-            rows += s(ctx, R.string.info_type) to if (trash != null && android.system.OsConstants.S_ISLNK(trash.st_mode))
-                "inode/symlink" else OpenFiles.mimeOf(file.name)
+            if (!symbolicLink) rows += s(ctx, R.string.info_type) to OpenFiles.mimeOf(file.name)
             // XFile.size in the listing may be 0 (media servers don't expose photo byte counts),
             // but the properties card only deals with one entry and the source will fetch it
             // specifically — use the real value when available
@@ -127,12 +167,33 @@ object FileInfo {
                     s(ctx, R.string.info_size_value, Format.size(bytes), "%,d".format(bytes))
             }
         }
-        val modified = trash?.st_mtime?.times(1000) ?: file.lastModified
+        val modified = unix?.modified ?: trash?.st_mtime?.times(1000) ?: file.lastModified
         if (modified > 0) rows += s(ctx, R.string.info_modified) to Format.time(modified, ctx)
         if (trash == null) rows += s(ctx, R.string.info_writable) to
             s(ctx, if (file.canWrite) R.string.info_yes else R.string.info_no)
         if (!file.isDir && file.canRead) rows += apps(ctx, file) // open-with merged into basic info
         return Section(s(ctx, R.string.info_section_basic), rows)
+    }
+
+    private fun supportsUnix(file: XFile): Boolean = file.unixMode != null || file.scheme == "file" ||
+        (file.scheme == "trash" && file.path != "/") ||
+        runCatching { FsRegistry.of(file) is UnixMetadataSource }.getOrDefault(false)
+
+    private fun unixSection(ctx: Context, file: XFile, attributes: UnixMetadata?): Section {
+        val rows = buildList {
+            val mode = attributes?.mode ?: file.unixMode
+            add(s(ctx, R.string.info_permissions) to if (mode != null)
+                "${UnixPermissions.symbolic(mode)} (${UnixPermissions.octal(mode)})"
+                else s(ctx, R.string.info_unavailable))
+            if (attributes != null) {
+                add(s(ctx, R.string.info_uid) to attributes.uid.toString())
+                add(s(ctx, R.string.info_gid) to attributes.gid.toString())
+                if (attributes.accessed > 0) add(s(ctx, R.string.info_accessed) to Format.time(attributes.accessed, ctx))
+                if (attributes.changed > 0) add(s(ctx, R.string.info_changed) to Format.time(attributes.changed, ctx))
+                attributes.selinuxContext?.let { add(s(ctx, R.string.info_selinux_context) to it) }
+            }
+        }
+        return Section(s(ctx, R.string.info_section_unix), rows)
     }
 
     /**
@@ -290,6 +351,10 @@ object FileInfo {
                 k(MediaMetadataRetriever.METADATA_KEY_TITLE)?.let { rows += s(ctx, R.string.info_title) to it }
                 k(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.let { rows += s(ctx, R.string.info_artist) to it }
                 k(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.let { rows += s(ctx, R.string.info_album) to it }
+                trackNumber(
+                    com.twig.app.ui.MusicTrackSort.tagNumber(k(MediaMetadataRetriever.METADATA_KEY_DISC_NUMBER)),
+                    com.twig.app.ui.MusicTrackSort.tagNumber(k(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)),
+                )?.let { rows += s(ctx, R.string.info_track_number) to it }
             }
         } catch (e: Exception) {
             // Keep tracks for containers the system can't parse (e.g. some MKV).
@@ -336,7 +401,14 @@ object FileInfo {
         put(R.string.info_track_video, MediaStream.Kind.VIDEO)
         put(R.string.info_track_audio, MediaStream.Kind.AUDIO)
         put(R.string.info_track_subtitle, MediaStream.Kind.SUBTITLE)
+        trackNumber(d.discNumber, d.trackNumber)?.let { rows += s(ctx, R.string.info_track_number) to it }
         return if (rows.isEmpty()) null else Section(s(ctx, R.string.info_section_media), rows)
+    }
+
+    private fun trackNumber(disc: Int, track: Int): String? = when {
+        track <= 0 -> null
+        disc > 0 -> "$disc - $track"
+        else -> track.toString()
     }
 
     private fun bitrate(bps: Long): String =

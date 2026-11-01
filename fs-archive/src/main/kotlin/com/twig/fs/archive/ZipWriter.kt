@@ -33,6 +33,7 @@ class ZipWriter(
     private val raw: OutputStream,
     private val password: String? = null,
     private val base: Base? = null,
+    private val compressionLevel: Int = Deflater.DEFAULT_COMPRESSION,
 ) : OutputStream(), Closeable {
 
     /**
@@ -54,6 +55,7 @@ class ZipWriter(
         val offset: Long,
         val zip64: Boolean,
         val encrypted: Boolean,
+        val method: Int,
     ) {
         var crc = 0L
         var csize = 0L
@@ -76,7 +78,7 @@ class ZipWriter(
     /** Directory entry: empty data, STORED, not encrypted (nothing to encrypt). */
     fun putDir(name: String, time: Long) {
         val n = if (name.endsWith("/")) name else "$name/"
-        val item = Item(n, isDir = true, time = time, offset = written, zip64 = false, encrypted = false)
+        val item = Item(n, isDir = true, time = time, offset = written, zip64 = false, encrypted = false, method = METHOD_STORED)
         writeLocalHeader(item, method = METHOD_STORED, useDescriptor = false)
         items.add(item)
     }
@@ -95,12 +97,13 @@ class ZipWriter(
             offset = written,
             zip64 = sizeHint >= ZIP64_LIMIT,
             encrypted = enc,
+            method = if (compressionLevel == 0) METHOD_STORED else METHOD_DEFLATE,
         )
-        writeLocalHeader(item, method = if (enc) ZipAes.METHOD else METHOD_DEFLATE, useDescriptor = true)
+        writeLocalHeader(item, method = if (enc) ZipAes.METHOD else item.method, useDescriptor = true)
         dataStart = written
         current = item
         crc = CRC32()
-        val def = Deflater(Deflater.DEFAULT_COMPRESSION, true) // nowrap: zip stores raw deflate streams
+        val def = if (item.method == METHOD_DEFLATE) Deflater(compressionLevel, true) else null
         deflater = def
         // The archive stream itself must not be closed by the pipeline (more entries follow), so wrap
         // it in a layer that does not propagate close
@@ -110,7 +113,7 @@ class ZipWriter(
         }
         val encStream = if (enc) ZipAes.EncryptStream(sink, password!!, ZipAes.STRENGTH_256) else null
         aes = encStream
-        pipe = DeflaterOutputStream(encStream ?: sink, def, 8192)
+        pipe = if (def == null) encStream ?: sink else DeflaterOutputStream(encStream ?: sink, def, 8192)
     }
 
     override fun write(b: Int) {
@@ -129,9 +132,9 @@ class ZipWriter(
     /** Finish the current entry: flush the pipeline, append the auth code, then write the data descriptor. */
     fun closeEntry() {
         val item = current ?: return
-        (pipe as DeflaterOutputStream).finish()
+        (pipe as? DeflaterOutputStream)?.finish()
         aes?.close() // write the auth code; do not close downstream
-        deflater!!.end()
+        deflater?.end()
         item.crc = if (item.encrypted) 0L else crc!!.value // AE-2 sets CRC field to 0
         item.csize = written - dataStart
         if (!item.zip64 && (item.usize >= ZIP64_LIMIT || item.csize >= ZIP64_LIMIT)) {
@@ -202,7 +205,7 @@ class ZipWriter(
         u16(if (big) 45 else 20) // made-by version
         u16(if (big) 45 else 20) // required version
         u16(gpBits(item, useDescriptor = !item.isDir))
-        u16(if (item.encrypted) ZipAes.METHOD else if (item.isDir) METHOD_STORED else METHOD_DEFLATE)
+        u16(if (item.encrypted) ZipAes.METHOD else item.method)
         u32(dosTime(item.time).toLong())
         u32(item.crc)
         u32(if (big) 0xFFFFFFFFL else item.csize)
@@ -265,7 +268,7 @@ class ZipWriter(
             out.write(ByteArray(16))
         }
         if (item.encrypted) {
-            val data = ZipAes.buildExtra(ZipAes.STRENGTH_256, METHOD_DEFLATE)
+            val data = ZipAes.buildExtra(ZipAes.STRENGTH_256, item.method)
             out.write(shortLe(ZipAes.EXTRA_ID)); out.write(shortLe(data.size))
             out.write(data)
         }
@@ -285,7 +288,7 @@ class ZipWriter(
             out.write(data)
         }
         if (item.encrypted) {
-            val data = ZipAes.buildExtra(ZipAes.STRENGTH_256, METHOD_DEFLATE)
+            val data = ZipAes.buildExtra(ZipAes.STRENGTH_256, item.method)
             out.write(shortLe(ZipAes.EXTRA_ID)); out.write(shortLe(data.size))
             out.write(data)
         }

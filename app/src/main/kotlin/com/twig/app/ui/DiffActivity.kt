@@ -13,7 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -102,7 +102,7 @@ internal fun configureDiffLineText(tv: android.widget.TextView) {
  * sides share a single [hScroll] — otherwise the offset between them would also break
  * alignment; the line-number column does not scroll with it and stays pinned to the left.
  */
-class DiffActivity : AppCompatActivity() {
+class DiffActivity : TwigActivity() {
 
     private lateinit var b: ActivityDiffBinding
     private var rows: List<Diff.Row> = emptyList()

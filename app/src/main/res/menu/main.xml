@@ -29,12 +29,12 @@
         android:title="@string/action_root_items"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_theme"
-        android:title="@string/action_theme"
+        android:id="@+id/action_strip_items"
+        android:title="@string/settings_action_strip"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_pin_music_shortcut"
-        android:title="@string/music_pin_shortcut"
+        android:id="@+id/action_theme"
+        android:title="@string/action_theme"
         app:showAsAction="never" />
     <!-- Lock is only visible when a master password is set (without one, locking serves no purpose); Exit is always present -->
     <item

@@ -58,8 +58,20 @@
                 android:layout_gravity="center"
                 android:minWidth="0dp"
                 android:padding="0dp"
+                android:paddingBottom="16dp"
                 app:buttonTint="@color/white"
                 android:contentDescription="@string/action_select" />
+
+            <TextView
+                android:id="@+id/selection_count"
+                android:layout_width="match_parent"
+                android:layout_height="16dp"
+                android:layout_gravity="bottom"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/white"
+                android:textSize="12sp" />
         </FrameLayout>
 
         <Space

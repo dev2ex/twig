@@ -30,13 +30,13 @@ class BatchRenameLayoutTest {
         if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) }
         else emptyList()
 
-    private fun withDialog(fileCount: Int = 2, block: (AlertDialog, BatchRenameDialog.DialogContent) -> Unit) {
+    private fun withDialog(fileCount: Int = 2, selectExtension: Boolean = false, block: (AlertDialog, BatchRenameDialog.DialogContent) -> Unit) {
         val controller = Robolectric.buildActivity(SettingsActivity::class.java).setup()
         val activity = controller.get()
         try {
             BatchRenameDialog.show(activity, activity, listOf(
                 XFile("batch", "/old.txt", false), XFile("batch", "/safe.txt", false),
-            ) + (2 until fileCount).map { XFile("batch", "/file$it.txt", false) }, { null }) {}
+            ) + (2 until fileCount).map { XFile("batch", "/file$it.txt", false) }, { null }, selectExtension) {}
             val dialog = ShadowDialog.getLatestDialog() as AlertDialog
             try {
                 val content = descendants(dialog.window!!.decorView).filterIsInstance<BatchRenameDialog.DialogContent>().single()
@@ -52,6 +52,12 @@ class BatchRenameLayoutTest {
         content.measure(View.MeasureSpec.makeMeasureSpec((320 * dp).toInt(), View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec((height * dp).toInt(), View.MeasureSpec.AT_MOST))
         content.layout(0, 0, content.measuredWidth, content.measuredHeight)
+    }
+
+    @Test fun `extension shortcut starts batch rename in extension mode`() = withDialog(selectExtension = true) { dialog, content ->
+        val scope = descendants(content).filterIsInstance<Spinner>()
+            .single { it.adapter.getItem(0) == dialog.context.getString(R.string.batch_name_only) }
+        assertEquals(dialog.context.getString(R.string.batch_ext_only), scope.selectedItem)
     }
 
     @Test fun `only preview rows scroll while every rule form stays fixed`() = withDialog(80) { dialog, content ->

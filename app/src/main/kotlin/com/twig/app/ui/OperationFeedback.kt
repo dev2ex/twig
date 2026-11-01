@@ -42,14 +42,15 @@ object OperationFeedback : Application.ActivityLifecycleCallbacks {
     fun finished(
         ctx: Context, title: String, message: String, details: String = message,
         cancelled: Boolean = false, openIntent: Intent? = null, showToast: Boolean = true,
-        allowVibration: Boolean = true,
+        allowVibration: Boolean = true, failed: Boolean = false,
     ) {
         val app = ctx.applicationContext
         val visible = foreground(app)
         if (showToast) Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
         if (cancelled) return
         if (allowVibration && Prefs.vibrateOnCompletion(app)) vibrate(app)
-        if (visible && !Prefs.foregroundCompletionNotifications(app)) return
+        // Failures always need a retained alert, even while a retry dialog is visible.
+        if (!failed && visible && !Prefs.foregroundCompletionNotifications(app)) return
 
         val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(

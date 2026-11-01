@@ -19,12 +19,8 @@ import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
-import androidx.core.content.pm.ShortcutInfoCompat
-import com.twig.app.ui.ShortcutIcons
-import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -36,6 +32,8 @@ import com.twig.app.databinding.DialogWebdavBinding
 import com.twig.app.ui.FileClipboard
 import com.twig.app.share.WebShare
 import com.twig.app.ui.PaneFragment
+import com.twig.app.ui.PaneViewModel
+import com.twig.app.ui.DestinationState
 import com.twig.app.ui.ShareDialogs
 import com.twig.app.ui.TermManager
 import com.twig.app.ui.TerminalActivity
@@ -52,10 +50,11 @@ import kotlinx.coroutines.launch
  *   right pane → left column), swipe horizontally to switch panes;
  * - Landscape: two panes side-by-side, action strip in the middle, touch determines the active pane.
  */
-class MainActivity : AppCompatActivity(), PaneFragment.Host {
+class MainActivity : TwigActivity(), PaneFragment.Host {
 
     private lateinit var b: ActivityMainBinding
     private var activeIndex = 0
+    private var ignoringSourceTouch = false
     private lateinit var fullscreenLayout: com.twig.app.ui.StatusBarFullscreen
     /** Snapshot of layout-affecting preferences; when changed in onResume (after settings edit), recreate. */
     private var uiSig = ""
@@ -206,19 +205,52 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             )
         }
 
+    private var safFromVolume = false
     private val safPickerLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            val fromVolume = safFromVolume
+            safFromVolume = false
             if (uri != null) {
                 val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                val persisted = runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                    .recoverCatching { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                if (persisted.isFailure) {
+                    Toast.makeText(this, getString(R.string.saf_failed, persisted.exceptionOrNull()?.message ?: ""), Toast.LENGTH_LONG).show()
+                    return@registerForActivityResult
+                }
                 AndroidDataAccess.instance?.refresh()
-                refreshTrees()
-                activePane()?.viewModel?.expandGroup("saf")
+                onSafGrantsChanged()
+                if (!fromVolume) activePane()?.viewModel?.expandGroup("saf")
             }
         }
 
+    private val inlineSortTouch = com.twig.app.ui.InlineSortTouch()
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            val bounds = android.graphics.Rect()
+            val source = destinationSource()?.view
+            ignoringSourceTouch = if (source?.getGlobalVisibleRect(bounds) == true) {
+                // Global view bounds use root coordinates; raw touch coordinates include
+                // the window's screen offset in split-screen and freeform windows.
+                val rootLocation = IntArray(2)
+                source.rootView.getLocationOnScreen(rootLocation)
+                bounds.offset(rootLocation[0], rootLocation[1])
+                bounds.contains(event.rawX.toInt(), event.rawY.toInt())
+            } else false
+        }
+        if (ignoringSourceTouch) return true
+        return inlineSortTouch.dispatch(this, event) { super.dispatchTouchEvent(event) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("safFromVolume", safFromVolume)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        safFromVolume = savedInstanceState?.getBoolean("safFromVolume") ?: false
         if (Prefs.rememberLocation(this)) activeIndex = Prefs.activePane(this)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
@@ -246,6 +278,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         wireStrip(b.browser.stripRight)
         syncShareIcon()
         installClipboardBar()
+        b.btnCopyDestinationCancel.setOnClickListener { finishDestination(cancelled = true) }
+        b.btnCopyDestinationConfirm.setOnClickListener { finishDestination(cancelled = false) }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WebShare.running.collect { syncShareIcon() }
+            }
+        }
         applyLayoutMode()
         applyFullscreen()
 
@@ -343,6 +382,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        if (destinationSource() != null) { finishDestination(cancelled = true); return }
         if (activePane()?.handleBack() == true) return // inside a takeover view: go up a level / exit the takeover view
         if (activePane()?.viewModel?.unmountPinnedDirectory() == true) return
         // Came here from a terminal session's "Locate current directory": take the temporary node
@@ -355,9 +395,23 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             )
             return
         }
-        if (Prefs.exitOnBack(this)) {
-            confirmExit()
-            return
+        when (Prefs.backAction(this)) {
+            Prefs.BackAction.EXIT -> {
+                confirmExit(alwaysConfirm = true)
+                return
+            }
+            Prefs.BackAction.UP, Prefs.BackAction.UP_EXIT -> {
+                val pane = activePane()
+                if (pane?.viewModel?.state?.value?.currentKey != null) {
+                    pane.actionUp()
+                    return
+                }
+                if (Prefs.backAction(this) == Prefs.BackAction.UP_EXIT) {
+                    confirmExit(alwaysConfirm = true)
+                    return
+                }
+            }
+            Prefs.BackAction.CLOSE -> Unit
         }
         @Suppress("DEPRECATION") super.onBackPressed()
     }
@@ -391,17 +445,15 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) applyStripState(s, land)
         // Sharing may have been turned off via the notification bar's "stop" button (the UI wasn't even present); sync once on returning to foreground
         syncShareIcon()
-        WebShare.onStateChanged = { runOnUiThread { syncShareIcon() } }
         // SD cards / USB drives are usually inserted/removed while the app isn't in the foreground; rescan on return — only refresh the tree if something changed
         rescanVolumes()
+        if (AndroidDataAccess.instance?.refresh() == true) onSafGrantsChanged()
         pollVolumes()
     }
 
     override fun onPause() {
         b.browser.root.finishTransition()
         super.onPause()
-        // Drop the callback: it captures this Activity, leaving it in place is a reference to an already-destroyed UI
-        WebShare.onStateChanged = null
         runCatching { unregisterReceiver(volumeReceiver) }
         runCatching { unregisterReceiver(transferReceiver) }
     }
@@ -419,7 +471,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     /** Rescan removable volumes, refresh the volume row on both trees when something changed. One binder IPC, done on the main thread. */
     private fun rescanVolumes() {
-        if (StorageVolumes.refresh(this)) refreshTrees()
+        if (StorageVolumes.refresh(this)) {
+            AndroidDataAccess.instance?.refresh()
+            refreshTrees()
+            onSafGrantsChanged()
+        }
     }
 
     /** Plug/unplug while in foreground: refresh the volume row on both trees when something changed.
@@ -469,12 +525,43 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     private fun wireStrip(s: ActionStripBinding) {
         s.sizeIconsLikeRows(this)
+        s.asExit.setOnClickListener { confirmExit() }
+        s.asExit.setOnLongClickListener { com.twig.app.ui.AppExit.quit(this); true }
+        s.asInfo.setOnClickListener { activePane()?.actionInfo() }
+        s.asInfo.setOnLongClickListener { activePane()?.actionInfo(secondTab = true); true }
         s.asUp.setOnClickListener { activePane()?.actionUp() }
         s.asUp.setOnLongClickListener { activePane()?.actionScrollToTop(); true }
+        s.asSort.setOnLongClickListener { showSortDialog(selectedDirectory = true); true }
+        s.asRefresh.setOnLongClickListener { activePane()?.actionRefreshThumbnails(); true }
+        s.asNewFolder.setOnLongClickListener { activePane()?.actionNewTextFile(); true }
+        s.asCopy.setOnLongClickListener { activePane()?.actionCopy(move = false, immediate = true); true }
+        s.asDuplicate.setOnLongClickListener { activePane()?.actionDuplicate(immediate = true); true }
+        s.asMove.setOnLongClickListener { activePane()?.actionCopy(move = true, immediate = true); true }
+        s.asCompress.setOnLongClickListener { activePane()?.actionCompress(immediate = true); true }
+        s.asRename.setOnLongClickListener { activePane()?.actionNumberedRename(); true }
+        s.asDelete.setOnLongClickListener { activePane()?.actionDelete(skipTrashConfirmation = true); true }
+        s.asCompare.setOnLongClickListener { startCompare(reversed = true); true }
+        s.asMap.setOnLongClickListener {
+            runCatching { startActivity(Intent(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }
+                .recoverCatching { startActivity(Intent(android.provider.Settings.ACTION_MEMORY_CARD_SETTINGS)) }
+                .onFailure { Toast.makeText(this, R.string.err_failed, Toast.LENGTH_SHORT).show() }
+            true
+        }
+        s.asSearch.setOnLongClickListener {
+            startActivity(com.twig.app.ui.WebsiteActivity.browserIntent(this, "https://start.duckduckgo.com/")); true
+        }
+        s.asHistory.setOnLongClickListener { activePane()?.actionHistory(continueWatching = true); true }
+        s.asShare.setOnLongClickListener {
+            ShareDialogs.toggleBackground(this, activePane()?.viewModel?.currentDir); true
+        }
+        s.asTerm.setOnLongClickListener { activePane()?.actionTerminal(); true }
+        s.asMusic.setOnLongClickListener { openMusicPlaying(); true }
+        s.asMenu.setOnLongClickListener { confirmExit(); true }
         s.asSort.setOnClickListener { showSortDialog() }
         s.asRefresh.setOnClickListener { activePane()?.actionRefresh() }
         s.asNewFolder.setOnClickListener { activePane()?.actionNewFolder() }
         s.asCopy.setOnClickListener { activePane()?.actionCopy(move = false) }
+        s.asDuplicate.setOnClickListener { activePane()?.actionDuplicate() }
         s.asMove.setOnClickListener { activePane()?.actionCopy(move = true) }
         s.asCompress.setOnClickListener { activePane()?.actionCompress() }
         s.asRename.setOnClickListener { activePane()?.actionRename() }
@@ -502,6 +589,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun showCurrentDirInOtherPane() {
+        if (isChoosingDestination()) return
         val dir = activePane()?.viewModel?.currentDir
         if (dir == null) {
             Toast.makeText(this, R.string.msg_pick_dir_first, Toast.LENGTH_SHORT).show()
@@ -540,7 +628,9 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun applyStripState(s: ActionStripBinding, land: Boolean) {
+        s.asGrid.applyItems()
         val direction = if (activeIndex == 0) 1f else -1f
+        s.asCopyIcon.scaleX = direction
         s.asMoveIcon.scaleX = direction
         s.asCompareIcon.scaleX = direction
         s.asTop.visibility = if (land) View.VISIBLE else View.GONE
@@ -571,7 +661,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun renderClipBar(s: FileClipboard.State = FileClipboard.state.value) {
-        b.clipBar.visibility = if (s.items.isEmpty()) View.GONE else View.VISIBLE
+        b.clipBar.visibility = if (s.items.isEmpty() || destinationSource() != null) View.GONE else View.VISIBLE
         if (s.items.isEmpty()) return
         b.tvClip.text =
             if (s.items.size == 1) getString(R.string.clip_bar_one, s.items[0].name)
@@ -606,6 +696,78 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             .show()
     }
 
+    private fun destinationSource(): PaneFragment? = (0..1).mapNotNull(::paneAt)
+        .firstOrNull { it.isAdded && it.destinationState.choosingDestination }
+
+    override fun chooseDestination(source: PaneFragment): Boolean {
+        val state = source.destinationState
+        val target = siblingOf(source) ?: return false
+        if (state.draft == null) return false
+        target.prepareDestinationSelection()
+        val confirmation = source.childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as? androidx.fragment.app.DialogFragment
+        state.returnToConfirmation = confirmation != null
+        state.choosingDestination = true
+        if (state.checkedSources.isEmpty()) state.checkedSources = source.checkedFiles()
+        confirmation?.dismiss()
+        setActiveIndex(1 - source.paneIndex, animateSwitch = true)
+        renderDestination()
+        renderClipBar()
+        syncStripEnabled()
+        return true
+    }
+
+    private fun renderDestination(): XFile? {
+        val source = destinationSource()
+        b.copyDestinationBar.visibility = if (source == null) View.GONE else View.VISIBLE
+        for ((index, container) in listOf(b.browser.paneA, b.browser.paneB).withIndex()) {
+            val blocked = source?.paneIndex == index || !Prefs.dualPane(this) && index != activeIndex
+            container.descendantFocusability = if (blocked) android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                else android.view.ViewGroup.FOCUS_BEFORE_DESCENDANTS
+            if (blocked) container.clearFocus()
+            container.importantForAccessibility = if (blocked) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+        val draft = source?.destinationState?.draft ?: return null
+        val target = siblingOf(source)?.viewModel?.currentDir
+        val reason = if (target == null) R.string.msg_dest_not_writable else draft.blockReason(target)
+        b.tvCopyDestinationLabel.setText(if (draft.compression == null) R.string.copy_to else R.string.compress_save_to)
+        b.tvCopyDestinationLabel.visibility = if (target != null && reason == null) View.VISIBLE else View.GONE
+        b.tvCopyDestination.text = when {
+            target == null -> getString(R.string.picker_hint_dir, getString(R.string.copy_use_destination))
+            reason != null -> getString(reason)
+            else -> source.displayPath(target)
+        }
+        b.btnCopyDestinationConfirm.isEnabled = target != null && reason == null
+        b.btnCopyDestinationConfirm.alpha = if (b.btnCopyDestinationConfirm.isEnabled) 1f else 0.4f
+        return target?.takeIf { reason == null }
+    }
+
+    private fun finishDestination(cancelled: Boolean) {
+        val source = destinationSource() ?: return
+        val state = source.destinationState
+        val draft = state.draft ?: return
+        if (!cancelled) {
+            draft.destination = renderDestination() ?: return
+            draft.compression?.saveToSource = false
+        }
+        val confirm = !cancelled || state.returnToConfirmation
+        state.choosingDestination = false
+        state.returnToConfirmation = false
+        if (!confirm) state.clear()
+        setActiveIndex(source.paneIndex, animateSwitch = true)
+        renderDestination()
+        renderClipBar()
+        syncStripEnabled()
+        if (confirm) source.showDestinationConfirmation()
+    }
+
+    override fun onPickFile(file: XFile): Boolean = destinationSource() != null
+
+    override fun isChoosingDestination(): Boolean = destinationSource() != null
+
+    override fun onPickNode(node: PaneViewModel.Node): Boolean = destinationSource() != null &&
+        (node is PaneViewModel.WebsiteNode || node is PaneViewModel.CompareNode)
+
     // ---- Layout mode ----
 
     private fun isLandscape() =
@@ -613,11 +775,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     private fun applyLayoutMode(animateSwitch: Boolean = false) {
         val land = isLandscape()
+        val dual = Prefs.dualPane(this)
+        destinationSource()?.let { activeIndex = 1 - it.paneIndex }
         b.browser.paneA.visibility = View.VISIBLE
         b.browser.paneB.visibility = View.VISIBLE
-        b.browser.stripMid.root.visibility = if (land) View.VISIBLE else View.GONE
+        b.browser.stripMid.root.visibility = if (dual) View.VISIBLE else View.GONE
         b.browser.stripLeft.root.visibility = View.GONE
-        b.browser.stripRight.root.visibility = if (!land) View.VISIBLE else View.GONE
+        b.browser.stripRight.root.visibility = if (!dual) View.VISIBLE else View.GONE
         // Landscape has no Toolbar (vertical space is precious); its right-side buttons move into the strip's top pinned row
         b.toolbar.visibility = if (land) View.GONE else View.VISIBLE
         com.twig.app.ui.ToolbarPlacement.apply(this, b.toolbar, Prefs.toolbarAtBottom(this))
@@ -626,9 +790,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             applyStripColumns(s, land)
             applyStripState(s, land)
         }
-        b.browser.root.showPane(activeIndex, animateSwitch && !land)
+        b.browser.root.showPane(activeIndex, animateSwitch && !dual)
+        b.browser.root.requestLayout()
         paneAt(0)?.setActive(activeIndex == 0)
         paneAt(1)?.setActive(activeIndex == 1)
+        renderDestination()
         renderClipBar() // active pane changed, the paste target follows
     }
 
@@ -648,6 +814,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     }
 
     private fun setActiveIndex(i: Int, animateSwitch: Boolean = false) {
+        if (destinationSource()?.paneIndex == i) return
         if (activeIndex != i) {
             activeIndex = i
             Prefs.setActivePane(this, i)
@@ -663,7 +830,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
      * need a selected directory first — right after launch, before any directory has been
      * tapped, `currentDir` is null, so we prompt instead of forcing the root.
      */
-    private fun startCompare() {
+    private fun startCompare(reversed: Boolean = false) {
         val l = paneAt(0)?.viewModel?.currentDir
         val r = paneAt(1)?.viewModel?.currentDir
         if (l == null || r == null) {
@@ -672,25 +839,17 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         paneAt(0)?.viewModel?.noteChangedIn(l)
         paneAt(1)?.viewModel?.noteChangedIn(r)
-        com.twig.app.ui.CompareActivity.start(this, l, r)
+        com.twig.app.ui.CompareActivity.start(this, if (reversed) r else l, if (reversed) l else r)
     }
 
-    /**
-     * Exit confirmation.
-     *
-     * **If nothing is running, don't ask** (just exit) — at that point the confirmation
-     * dialog prevents no real loss, it's just one extra step. If music is playing, a
-     * terminal session is open, sharing is on, or files are transferring, list them
-     * so the user can see exactly what's about to be lost, and offer the "lock instead"
-     * exit, which doesn't interrupt any of that.
-     */
-    private fun confirmExit() {
+    /** Back-triggered exits always ask; explicit exit shortcuts ask only when tasks are running. */
+    private fun confirmExit(alwaysConfirm: Boolean = false) {
         val running = com.twig.app.ui.AppExit.running(this)
-        if (running.isEmpty()) {
+        if (running.isEmpty() && !alwaysConfirm) {
             com.twig.app.ui.AppExit.quit(this)
             return
         }
-        val canLock = com.twig.app.secure.Secrets.hasMasterPassword(this)
+        val canLock = running.isNotEmpty() && com.twig.app.secure.Secrets.hasMasterPassword(this)
         val msg = buildString {
             append(getString(R.string.exit_note))
             running.forEach { append("\n  • ").append(it) }
@@ -698,7 +857,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.exit_title)
-            .setMessage(msg)
+            .setMessage(msg.takeIf { running.isNotEmpty() })
             .setPositiveButton(R.string.exit_confirm) { _, _ -> com.twig.app.ui.AppExit.quit(this) }
             .apply {
                 // "Lock instead" is the "don't interrupt anything" path; it's only available when
@@ -741,15 +900,16 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     override fun isPaneActive(self: PaneFragment): Boolean = self.paneIndex == activeIndex
 
     override fun onPaneTouched(self: PaneFragment) {
-        if (isLandscape()) setActiveIndex(self.paneIndex)
+        if (Prefs.dualPane(this)) setActiveIndex(self.paneIndex)
     }
 
     override fun onPaneSwipe(velocityX: Float) {
         // Swipe left (negative velocity) → show right pane; swipe right → left pane
-        if (!isLandscape()) setActiveIndex(if (velocityX < 0) 1 else 0, animateSwitch = true)
+        if (!Prefs.dualPane(this)) setActiveIndex(if (velocityX < 0) 1 else 0, animateSwitch = true)
     }
 
     override fun onClipTargetChanged() {
+        renderDestination()
         if (b.clipBar.visibility == View.VISIBLE) renderClipBar()
         syncStripEnabled()
     }
@@ -769,17 +929,20 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         // The first pane can render before the other pane's adapter is initialized.
         val pane = activePane()?.takeIf { it.isReady() }
         val actions = pane?.stripActions() ?: PaneFragment.StripActions()
+        val choosing = destinationSource() != null
         val compare = pane?.viewModel?.currentDir?.isDir == true
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             setStripEnabled(s.asNewFolder, actions.create)
-            setStripEnabled(s.asCopy, actions.copy)
-            setStripEnabled(s.asCompress, actions.copy)
-            setStripEnabled(s.asMove, actions.move)
-            setStripEnabled(s.asRename, actions.rename)
-            setStripEnabled(s.asDelete, actions.delete)
-            setStripEnabled(s.asCompare, compare)
-            setStripEnabled(s.asMap, actions.treemap)
+            setStripEnabled(s.asCopy, actions.copy && !choosing)
+            setStripEnabled(s.asCompress, actions.copy && !choosing)
+            setStripEnabled(s.asDuplicate, actions.rename && !choosing)
+            setStripEnabled(s.asMove, actions.move && !choosing)
+            setStripEnabled(s.asRename, actions.rename && !choosing)
+            setStripEnabled(s.asDelete, actions.delete && !choosing)
+            setStripEnabled(s.asCompare, compare && !choosing)
+            setStripEnabled(s.asMap, actions.treemap && !choosing)
             setStripEnabled(s.asSearch, actions.search)
+            setStripEnabled(s.asInfo, actions.info)
         }
     }
 
@@ -792,6 +955,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
     private fun setStripEnabled(v: View, enabled: Boolean) {
         v.isEnabled = enabled
         v.alpha = if (enabled) 1f else DISABLED_ALPHA
+    }
+
+    override fun onSafGrantsChanged() {
+        paneAt(0)?.viewModel?.refreshDocumentAccess()
+        paneAt(1)?.viewModel?.refreshDocumentAccess()
     }
 
     override fun refreshTrees() {
@@ -818,8 +986,10 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     /** When [initial] is non-null, the system picker opens straight at that location (used by the removable volume's "Authorise this volume with SAF" entry). */
     override fun openSafPicker(initial: Uri?) {
+        safFromVolume = initial != null
         runCatching { safPickerLauncher.launch(initial) }
             .onFailure {
+                safFromVolume = false
                 Toast.makeText(this, getString(R.string.saf_failed, it.message ?: ""), Toast.LENGTH_LONG).show()
             }
     }
@@ -1138,7 +1308,7 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
 
     /** Checked states of the toggle items in R.menu.main; shared between the Toolbar menu and the landscape strip's PopupMenu. */
     private fun syncMenuChecks(menu: Menu) {
-        menu.findItem(R.id.action_settings)?.title = "⚙︎  ${getString(R.string.action_settings)}"
+        menu.findItem(R.id.action_settings)?.title = "${getString(R.string.action_settings)}  ⚙︎"
         menu.findItem(R.id.action_remember_location)?.isChecked = Prefs.rememberLocation(this)
         menu.findItem(R.id.action_fullscreen)?.isChecked = Prefs.fullscreen(this)
         menu.findItem(R.id.action_thumbs)?.isChecked = Prefs.thumbs(this)
@@ -1162,6 +1332,11 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             onSwitch = { setActiveIndex(1 - activeIndex, animateSwitch = true) },
             onLongPress = { showCurrentDirInOtherPane() },
         )
+        com.twig.app.ui.ToolbarLongPress.bind(b.toolbar,
+            actions = mapOf(MENU_TERMINAL to { activePane()?.actionTerminal(); Unit },
+                MENU_MUSIC to { openMusicPlaying() }),
+            overflow = { confirmExit() },
+            title = { com.twig.app.ui.AboutDialog.show(this) })
         return true
     }
 
@@ -1178,6 +1353,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         }
         R.id.action_view_mode -> {
             showViewModeDialog(); true
+        }
+        R.id.action_strip_items -> {
+            com.twig.app.ui.StripItemsDialog.show(this) {
+                for (strip in listOf(b.browser.stripLeft, b.browser.stripMid, b.browser.stripRight)) strip.asGrid.applyItems()
+                syncStripEnabled()
+            }
+            true
         }
         R.id.action_root_items -> {
             showRootItemsDialog(); true
@@ -1213,69 +1395,26 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
         R.id.action_theme -> {
             showThemeDialog(); true
         }
-        R.id.action_pin_music_shortcut -> {
-            pinMusicShortcut(); true
-        }
         else -> super.onOptionsItemSelected(item)
     }
 
     private fun showRootItemsDialog() {
-        val items = RootItems.all
-        val checked = Array(2) { pane -> items.map { Prefs.rootItemVisible(this, pane, it.id) }.toBooleanArray() }
-        val content = com.twig.app.databinding.DialogRootItemsBinding.inflate(layoutInflater)
-        val metrics = resources.displayMetrics
-        val availableHeight = (resources.configuration.screenHeightDp - 200).coerceAtLeast(96) * metrics.density
-        content.itemsScroll.layoutParams.height = minOf(metrics.heightPixels * 0.55f, availableHeight).toInt()
-        items.forEachIndexed { index, item ->
-            val row = com.twig.app.databinding.ItemRootVisibilityBinding.inflate(layoutInflater, content.items, false)
-            row.root.tag = item.id
-            row.icon.setImageResource(item.icon)
-            row.label.setText(item.label)
-            listOf(row.left, row.right).forEachIndexed { pane, checkbox ->
-                checkbox.isChecked = checked[pane][index]
-                checkbox.contentDescription = getString(item.label) + " · " +
-                    getString(if (pane == 0) R.string.compare_side_left else R.string.compare_side_right)
-                checkbox.setOnCheckedChangeListener { _, on -> checked[pane][index] = on }
-                (if (pane == 0) row.leftCell else row.rightCell).setOnClickListener { checkbox.performClick() }
-            }
-            content.items.addView(row.root)
+        com.twig.app.ui.RootItemsDialog.show(this) {
+            for (pane in 0..1) paneAt(pane)?.viewModel?.refreshRootItems()
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.action_root_items)
-            .setView(content.root)
-            .setPositiveButton(android.R.string.ok) { _, _ ->
-                for (pane in 0..1) {
-                    items.forEachIndexed { index, item -> Prefs.setRootItemVisible(this, pane, item.id, checked[pane][index]) }
-                    paneAt(pane)?.viewModel?.refreshRootItems()
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 
-    private fun pinMusicShortcut() {
-        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(this)) {
-            Toast.makeText(this, R.string.music_pin_shortcut_unsupported, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val intent = Intent(this, com.twig.app.ui.MusicPlayerActivity::class.java).setAction(Intent.ACTION_VIEW)
-        val shortcut = ShortcutInfoCompat.Builder(this, "music_pinned")
-            // On the desktop it's just called "Music": a long label (e.g. "Music Player") would push out the short name on launchers
-            .setShortLabel(getString(R.string.music_menu))
-            .setLongLabel(getString(R.string.music_menu))
-            .setIcon(ShortcutIcons.of(this, R.drawable.ic_shortcut_music))
-            .setIntent(intent)
-            .build()
-        ShortcutManagerCompat.requestPinShortcut(this, shortcut, null)
-    }
-
-    private fun showSortDialog() {
-        com.twig.app.ui.SortDialog.show(this, activePane()?.viewModel?.currentDir,
+    private fun showSortDialog(selectedDirectory: Boolean = false) {
+        com.twig.app.ui.SortDialog.show(this, activePane()?.viewModel?.currentDir, selectedDirectory,
             parentOf = { activePane()?.viewModel?.directoryViewParent(it) }) {
             paneAt(0)?.refreshSortAndView()
             paneAt(1)?.refreshSortAndView()
             uiSig = Prefs.uiSignature(this)
         }
+    }
+
+    private fun openMusicPlaying() {
+        startActivity(Intent(this, com.twig.app.ui.MusicPlayerActivity::class.java).putExtra(com.twig.app.ui.MusicPlayerActivity.EXTRA_AUTO_PLAY, true))
     }
 
     private fun showViewModeDialog() {
@@ -1292,11 +1431,13 @@ class MainActivity : AppCompatActivity(), PaneFragment.Host {
             AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM,
             AppCompatDelegate.MODE_NIGHT_NO,
             AppCompatDelegate.MODE_NIGHT_YES,
+            AppTheme.MODE_OLED,
         )
         val labels = arrayOf(
             getString(R.string.theme_system),
             getString(R.string.theme_light),
             getString(R.string.theme_dark),
+            getString(R.string.theme_oled),
         )
         val current = modes.indexOf(Prefs.themeMode(this)).coerceAtLeast(0)
         AlertDialog.Builder(this)

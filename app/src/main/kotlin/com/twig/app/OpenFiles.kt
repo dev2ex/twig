@@ -31,7 +31,7 @@ object OpenFiles {
 
     private val PREVIEW_EXT = setOf("md", "markdown", "html", "htm")
 
-    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp")
+    private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "gif", "bmp", "webp", "svg")
     private val VIDEO_EXT = setOf("mp4", "mkv", "webm", "3gp", "m4v", "mov", "avi", "ts", "m2ts", "flv")
     private val AUDIO_EXT = setOf("mp3", "aac", "m4a", "flac", "ogg", "opus", "wav", "wma", "mid")
     private val DOC_EXT = setOf(
@@ -174,12 +174,15 @@ object OpenFiles {
     /** Multiple streams keep their individual URI grants, including across backends. */
     fun share(context: Context, files: List<XFile>) {
         require(files.isNotEmpty() && files.none { it.isDir })
-        if (files.any { !directlyReadable(it) && (it.size <= 0 || it.size > DIRECT_SHARE_LIMIT) }) {
+        if (needsSharePreparation(files)) {
             com.twig.app.ui.ShareTransfers.start(context, files)
             return
         }
         sharePrepared(context, files)
     }
+
+    internal fun needsSharePreparation(files: List<XFile>): Boolean =
+        files.any { !directlyReadable(it) && (it.size <= 0 || it.size > DIRECT_SHARE_LIMIT) }
 
     /** Dispatch the granted URIs after applying the sharing preparation policy. */
     internal fun sharePrepared(context: Context, files: List<XFile>) {

@@ -15,36 +15,51 @@ import java.io.File
 /** Persisted external-storage grants keep their original local paths in the file tree. */
 class AndroidDataAccess(private val ctx: Context) {
     private val saf = SafFileSystem(ctx)
-    private data class Grant(val uri: Uri, val id: String, val path: String, val write: Boolean)
+    private data class Grant(val uri: Uri, val id: String, val path: String, val write: Boolean, val direct: Boolean)
     @Volatile private var grants = emptyList<Grant>()
 
     init { refresh() }
 
-    fun refresh() {
-        grants = ctx.contentResolver.persistedUriPermissions.mapNotNull { permission ->
-            if (!permission.isReadPermission) return@mapNotNull null
+    fun refresh(): Boolean {
+        val before = grants
+        val volumes = StorageVolumes.cached(ctx)
+        grants = ctx.contentResolver.persistedUriPermissions.flatMap { permission ->
+            if (!permission.isReadPermission) return@flatMap emptyList()
             val uri = permission.uri
-            if (uri.authority != AUTHORITY) return@mapNotNull null
-            val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return@mapNotNull null
-            val relative = id.substringAfter(':', "")
-            if (relative != "Android/data" && !relative.startsWith("Android/data/")) return@mapNotNull null
-            if (relative.split('/').any { it == "." || it == ".." || it.isEmpty() }) return@mapNotNull null
+            if (uri.authority != AUTHORITY) return@flatMap emptyList()
+            val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return@flatMap emptyList()
+            if (':' !in id) return@flatMap emptyList()
+            val relative = id.substringAfter(':')
+            val data = relative == "Android/data" || relative.startsWith("Android/data/")
             val volume = id.substringBefore(':')
-            val root = if (volume == "primary") Environment.getExternalStorageDirectory().path
-                else if (volume.matches(Regex("[A-Za-z0-9-]+"))) "/storage/$volume" else return@mapNotNull null
-            val path = runCatching { File(root, relative).canonicalPath }.getOrNull() ?: return@mapNotNull null
-            Grant(uri, id, path, permission.isWritePermission)
+            // Keep ordinary primary-storage grants independent of the direct local tree.
+            if (volume == "primary" && !data) return@flatMap emptyList()
+            if (relative.isNotEmpty() && relative.split('/').any { it == "." || it == ".." || it.isEmpty() })
+                return@flatMap emptyList()
+            val roots = if (volume == "primary") listOf(Environment.getExternalStorageDirectory().path)
+                else if (volume.matches(Regex("[A-Za-z0-9-]+"))) {
+                    listOf("/storage/$volume") + volumes.filter { File(it.path).name == volume }.map { it.path }
+                } else return@flatMap emptyList()
+            roots.distinct().mapNotNull { root ->
+                val base = runCatching { File(root).canonicalPath }.getOrNull() ?: return@mapNotNull null
+                val path = runCatching { File(root, relative).canonicalPath }.getOrNull() ?: return@mapNotNull null
+                if (path != base && !path.startsWith(base + "/")) return@mapNotNull null
+                val direct = !data && File(path).canRead() && File(path).canWrite()
+                Grant(uri, id, path, permission.isWritePermission, direct)
+            }
         }.sortedByDescending { it.path.length }
+        return grants != before
     }
 
     fun route(path: String): FileSystem? {
-        if (grants.isEmpty() || !path.contains("/Android/data")) return null
+        if (grants.isEmpty()) return null
         val normalized = runCatching { File(path).canonicalPath }.getOrNull() ?: return null
-        val relative = documentId(normalized)?.substringAfter(':') ?: return null
-        val own = "Android/data/${ctx.packageName}"
-        if ((relative == own || relative.startsWith("$own/")) &&
-            File(normalized.removeSuffix(relative), own).canRead()) return null
         val grant = grants.firstOrNull { normalized == it.path || normalized.startsWith(it.path + "/") } ?: return null
+        if (grant.direct) return null
+        val relative = documentId(normalized)?.substringAfter(':')
+        val own = "Android/data/${ctx.packageName}"
+        if (relative != null && (relative == own || relative.startsWith("$own/")) &&
+            File(normalized.removeSuffix(relative), own).canRead()) return null
         return Tree(grant)
     }
 
@@ -58,7 +73,7 @@ class AndroidDataAccess(private val ctx: Context) {
     /** Native Android listings may succeed while exposing only our own package. */
     fun hasFullListing(root: XFile, listed: List<XFile>): Boolean {
         val parent = File(root.path).canonicalPath
-        if (grants.any { it.path == parent }) return true
+        if (route(parent) != null) return true
         val names = listed.map { it.name }.toSet()
         val grantedNames = grants.mapNotNull {
             it.path.removePrefix("$parent/").takeIf { name -> name != it.path && '/' !in name }
@@ -114,7 +129,7 @@ class AndroidDataAccess(private val ctx: Context) {
     fun grantedPath(uri: Uri): String? = grants.firstOrNull { it.uri == uri }?.path
 
     fun isGrantRoot(file: XFile): Boolean = file.scheme == "file" &&
-        grants.any { it.path == runCatching { File(file.path).canonicalPath }.getOrNull() }
+        grants.any { !it.direct && it.path == runCatching { File(file.path).canonicalPath }.getOrNull() }
 
     private inner class Tree(private val grant: Grant) : FileSystem by saf {
         override val scheme = LocalFileSystem.SCHEME
@@ -122,14 +137,17 @@ class AndroidDataAccess(private val ctx: Context) {
         private fun remote(file: XFile): XFile {
             val path = File(file.path).canonicalPath
             if (path != grant.path && !path.startsWith(grant.path + "/")) throw FsException(ctx.getString(R.string.android_data_wrong_folder))
-            val id = grant.id + path.removePrefix(grant.path)
+            val suffix = path.removePrefix(grant.path)
+            val id = grant.id + if (grant.id.endsWith(':')) suffix.removePrefix("/") else suffix
             return file.copy(scheme = SafFileSystem.SCHEME,
                 path = DocumentsContract.buildDocumentUriUsingTree(grant.uri, id).toString())
         }
         private fun local(file: XFile): XFile {
             val id = DocumentsContract.getDocumentId(Uri.parse(file.path))
-            if (id != grant.id && !id.startsWith(grant.id + "/")) throw FsException(ctx.getString(R.string.android_data_wrong_folder))
-            val path = File(grant.path + id.removePrefix(grant.id)).canonicalPath
+            val prefix = if (grant.id.endsWith(':')) grant.id else grant.id + "/"
+            if (id != grant.id && !id.startsWith(prefix)) throw FsException(ctx.getString(R.string.android_data_wrong_folder))
+            val suffix = id.removePrefix(grant.id).removePrefix("/")
+            val path = File(grant.path, suffix).canonicalPath
             if (path != grant.path && !path.startsWith(grant.path + "/")) throw FsException(ctx.getString(R.string.android_data_wrong_folder))
             return file.copy(scheme = scheme, path = path, displayName = null, canRead = true,
                 canWrite = grant.write && file.canWrite)

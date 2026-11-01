@@ -63,6 +63,7 @@ class AndroidDataAccessTest {
     }
     @After fun cleanup() {
         LocalFileSystem.documentAccess = null
+        StorageVolumes.reset()
         FsRegistry.unregister("file"); FsRegistry.unregister("saf")
         Dispatchers.resetMain()
     }
@@ -324,9 +325,96 @@ class AndroidDataAccessTest {
         catch (_: com.twig.core.FsException) { }
     }
 
-    private class Provider(val base: File) : ContentProvider() {
+    private fun card(id: String = "ABCD-1234:", write: Boolean = true): Pair<XFile, Uri> {
+        provider = Provider(File(app.cacheDir, "card-documents").apply { mkdirs() }, id)
+        provider.attachInfo(app, ProviderInfo().apply { authority = AndroidDataAccess.AUTHORITY; exported = true; grantUriPermissions = true })
+        ShadowContentResolver.registerProviderInternal(AndroidDataAccess.AUTHORITY, provider)
+        val uri = DocumentsContract.buildTreeDocumentUri(AndroidDataAccess.AUTHORITY, id)
+        app.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            if (write) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+        AndroidDataAccess.instance!!.refresh()
+        return XFile("file", "/storage/" + id.replace(':', '/').trimEnd('/'), true) to uri
+    }
+
+    @Test @Config(sdk = [29, 34]) fun `whole card grant routes the original volume and all mutations on Android 10 too`() {
+        val (root, _) = card()
+        assertNotNull(AndroidDataAccess.instance!!.route(root.path))
+        assertTrue(fs.stat(root.path)!!.canWrite)
+        val children = fs.list(root)
+        assertTrue(children.all { it.scheme == "saf" })
+        assertEquals("hello", fs.openInput(root.copy(path = root.path + "/hello.txt", isDir = false)).bufferedReader().use { it.readText() })
+        val source = File(app.cacheDir, "card-source.txt").apply { writeText("copied") }
+        CopyEngine.transfer(listOf(XFile("file", source.path, false, source.length())), root, false)
+        source.writeText("replaced")
+        CopyEngine.transfer(listOf(XFile("file", source.path, false, source.length())), root, false)
+        assertEquals("replaced", File(provider.base, source.name).readText())
+        val folder = fs.mkdir(root, "new-folder")
+        val created = fs.createFile(folder, "new.txt")
+        fs.openOutput(created).use { it.write("new".toByteArray()) }
+        assertEquals("new", File(provider.base, "new-folder/new.txt").readText())
+        val renamed = fs.rename(root.copy(path = root.path + "/hello.txt", isDir = false), "renamed.txt")
+        assertEquals("saf", renamed.scheme)
+        fs.delete(renamed)
+        assertFalse(File(provider.base, "renamed.txt").exists())
+        assertFalse(fs.canResumeWrites(root))
+        assertFalse(fs.moveWithin(root.copy(path = root.path + "/card-source.txt", isDir = false), root, "moved.txt"))
+        assertNull(TrashStore(app).plan(listOf(created)).single().volume)
+    }
+
+    @Test @Config(sdk = [29, 34]) fun `card subfolder grants stay bounded and read only grants and revocation update routing`() {
+        val (root, uri) = card("ABCD-1234:Documents", write = false)
+        val access = AndroidDataAccess.instance!!
+        assertNull(access.route("/storage/ABCD-1234"))
+        assertNull(access.route(root.path + "Other"))
+        assertNull(access.route(root.path + "/../Other"))
+        assertNull(access.route("/storage/OTHER/Documents"))
+        assertFalse(fs.stat(root.path)!!.canWrite)
+        assertTrue(fs.list(root).none { it.canWrite })
+        assertThrows(com.twig.core.FsException::class.java) { fs.mkdir(root, "blocked") }
+        assertTrue(SafFileSystem.release(app, SafFileSystem(app).rootOf(uri)))
+        assertNull(access.route(root.path))
+    }
+
+    @Test @Config(sdk = [29, 34]) fun `volume grant refresh updates both panes roots cached children and selected destination`() = runTest(dispatcher) {
+        val path = "/storage/ABCD-1234"
+        org.robolectric.util.ReflectionHelpers.setStaticField(StorageVolumes::class.java, "cache", listOf(RemovableVolume(path, "SD card")))
+        val panes = List(2) { com.twig.app.ui.PaneViewModel(app).apply { io = dispatcher; paneIndex = it; refreshTree() } }
+        val (root, uri) = card()
+        for (vm in panes) {
+            val row = vm.state.value.rows.filterIsInstance<com.twig.app.ui.PaneViewModel.FileNode>().first { it.file.path == path }
+            vm.toggle(row)
+            vm.refreshDocumentAccess()
+            assertTrue(vm.currentDir!!.canWrite)
+            assertTrue(vm.state.value.rows.filterIsInstance<com.twig.app.ui.PaneViewModel.FileNode>().any { it.file.scheme == "saf" })
+        }
+        assertTrue(SafFileSystem.release(app, SafFileSystem(app).rootOf(uri)))
+        provider.denied = true
+        for (vm in panes) {
+            vm.refreshDocumentAccess()
+            assertFalse(vm.currentDir!!.canWrite)
+            assertFalse(vm.state.value.rows.filterIsInstance<com.twig.app.ui.PaneViewModel.FileNode>().any { it.file.scheme == "saf" })
+            assertFalse(vm.state.value.rows.filterIsInstance<com.twig.app.ui.PaneViewModel.FileNode>().first { it.file.path == root.path }.file.canWrite)
+        }
+    }
+
+    @Test fun `known media rw volume alias maps to the same grant while writable native volumes stay direct`() {
+        org.robolectric.util.ReflectionHelpers.setStaticField(StorageVolumes::class.java, "cache",
+            listOf(RemovableVolume("/mnt/media_rw/ABCD-1234", "SD card")))
+        val (_, uri) = card()
+        assertNotNull(AndroidDataAccess.instance!!.route("/mnt/media_rw/ABCD-1234"))
+        fs.list(XFile("file", "/mnt/media_rw/ABCD-1234", true))
+        assertEquals("hello", fs.openInput(XFile("file", "/mnt/media_rw/ABCD-1234/hello.txt", false)).bufferedReader().use { it.readText() })
+        assertNull(AndroidDataAccess.instance!!.route("/mnt/media_rw/OTHER/hello.txt"))
+        val native = File(app.cacheDir, "native-card/ABCD-1234").apply { mkdirs() }
+        org.robolectric.util.ReflectionHelpers.setStaticField(StorageVolumes::class.java, "cache", listOf(RemovableVolume(native.path, "SD card")))
+        AndroidDataAccess.instance!!.refresh()
+        assertNull(AndroidDataAccess.instance!!.route(native.path))
+        assertTrue(SafFileSystem.release(app, SafFileSystem(app).rootOf(uri)))
+        native.parentFile!!.deleteRecursively()
+    }
+
+    private class Provider(val base: File, private val rootId: String = "primary:Android/data/com.example") : ContentProvider() {
         var denied = false
-        private val rootId = "primary:Android/data/com.example"
         init {
             File(base, "hello.txt").writeText("hello")
             File(base, "files").mkdirs()
@@ -334,10 +422,11 @@ class AndroidDataAccessTest {
         }
         private fun file(id: String): File {
             if (denied) throw SecurityException("revoked")
-            require(id == rootId || id.startsWith("$rootId/"))
+            require(id == rootId || id.startsWith(if (rootId.endsWith(':')) rootId else "$rootId/"))
             return File(base, id.removePrefix(rootId).removePrefix("/"))
         }
-        private fun id(file: File) = rootId + file.relativeTo(base).path.takeIf { it.isNotEmpty() }?.let { "/$it" }.orEmpty()
+        private fun id(file: File) = rootId + file.relativeTo(base).path.takeIf { it.isNotEmpty() }
+            ?.let { if (rootId.endsWith(':')) it else "/$it" }.orEmpty()
         // Robolectric's stream methods do not dispatch through DocumentsProvider.
         private fun streams(f: File) {
             val uri = DocumentsContract.buildDocumentUriUsingTree(

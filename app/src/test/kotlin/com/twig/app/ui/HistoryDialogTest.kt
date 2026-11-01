@@ -49,6 +49,15 @@ class HistoryDialogTest {
         PlaybackStore.clear(app)
     }
 
+    @Test fun `continue watching shortcut opens videos immediately`() {
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        val dialog = HistoryDialog.show(host.get(), {}, { _, _ -> }, continueWatching = true)
+        try {
+            assertEquals(View.VISIBLE, dialog.findViewById<ListView>(R.id.videos_list)!!.visibility)
+            assertEquals(View.GONE, dialog.findViewById<ListView>(R.id.locations_list)!!.visibility)
+        } finally { dialog.dismiss(); host.pause().stop().destroy() }
+    }
+
     @Test fun `many unfinished videos cannot push recent locations out of the default page`() {
         repeat(80) { PlaybackStore.save(app, video.copy(path = "/movies/$it.mp4"), 30000L, 180000L) }
         val host = Robolectric.buildActivity(Host::class.java).setup()

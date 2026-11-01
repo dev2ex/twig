@@ -217,6 +217,8 @@
     <string name="player_brightness">Độ sáng %1$d%%</string>
     <string name="player_volume">Âm lượng %1$d%%</string>
     <string name="player_subtitle">Phụ đề</string>
+    <string name="player_subtitle_size">Cỡ phụ đề văn bản</string>
+    <string name="player_subtitle_size_value">Cỡ phụ đề văn bản: %1$d sp</string>
     <string name="player_subtitle_close">Tắt</string>
     <string name="player_embedded_sub">Phụ đề nhúng %1$d</string>
     <string name="player_audio_track">Bản âm thanh</string>
@@ -234,6 +236,8 @@
     <string name="progress_copy">Đang sao chép…</string>
     <string name="progress_move">Đang di chuyển…</string>
     <string name="copy_title">Sao chép</string>
+    <string name="copy_use_destination">Dùng thư mục này</string>
+    <string name="copy_choose_destination">Chọn vị trí khác</string>
     <string name="copy_to">Sao chép đến</string>
     <string name="copy_move_mode">Chế độ di chuyển (xóa tệp nguồn)</string>
     <string name="copy_items">%1$d mục</string>
@@ -624,13 +628,12 @@
     <string name="cmd_title_dir">Lệnh trong %1$s</string>
     <string name="cmd_title_server">Lệnh trên %1$s</string>
     <string name="cmd_label">Tên lối tắt</string>
-    <string name="cmd_command">Lệnh</string>
+    <string name="cmd_command">Lệnh (để trống để mở cửa sổ dòng lệnh tại đây)</string>
     <string name="cmd_workdir">Thư mục làm việc (trống = mặc định đăng nhập)</string>
     <string name="cmd_pick_script">Chọn tập lệnh…</string>
     <string name="cmd_in_terminal">Chạy trong dòng lệnh (nếu không thì chạy nền)</string>
     <string name="cmd_create">Thêm vào màn hình chính</string>
     <string name="cmd_run_now">Chạy ngay</string>
-    <string name="cmd_empty">Nhập lệnh trước</string>
     <string name="cmd_pin_unsupported">Trình khởi chạy này không hỗ trợ ghim lối tắt</string>
     <string name="cmd_started">Đã bắt đầu: %1$s</string>
     <string name="cmd_login_shell">Chạy qua shell đăng nhập (tải .profile / .zprofile; dùng shell mặc định)</string>
@@ -847,7 +850,7 @@
     <string name="backup_restart_note">Khởi động lại Twig để áp dụng mọi cài đặt.</string>
     <string name="backup_working">Đang xử lý…</string>
     <string name="backup_locked">Mở khóa bằng mật khẩu chính trước</string>
-    <string name="picker_hint_dir">Mở thư mục muốn lưu rồi chạm OK</string>
+    <string name="picker_hint_dir">Mở thư mục muốn chọn, rồi chạm vào %1$s</string>
     <string name="backup_pick_dir">Lưu sao lưu vào</string>
     <string name="backup_pick_file">Chọn tệp sao lưu</string>
     <string name="backup_exported_at">Đã xuất đến %1$s</string>
@@ -881,8 +884,10 @@
     <string name="music_temporary_playlist">Danh sách phát tạm</string>
     <string name="smb1_mode">Tương thích SMB1 (chỉ thiết bị cũ)</string>
     <string name="settings_folder_counts">Số mục trong thư mục</string>
-    <string name="settings_folder_counts_desc">Hiển thị số thư mục con và tệp trực tiếp trong thư mục cục bộ và SMB. SMB có thể cần thêm yêu cầu đọc thư mục.</string>
-    <string name="folder_counts_description">Thư mục: %1$d, tệp: %2$d</string>
+    <string name="settings_folder_counts_desc">Hiển thị số thư mục con và tệp trực tiếp trong thư mục.</string>
+    <string name="settings_folder_counts_local_only">Chỉ đếm mục trong thư mục cục bộ</string>
+    <string name="settings_folder_counts_local_only_desc">Tắt để đếm cả thư mục trên các dịch vụ khác. Có thể cần thêm yêu cầu đọc thư mục.</string>
+    <string name="folder_counts_description">Thư mục: %1$s, tệp: %2$s</string>
     <string name="info_activity_failed">Không thể mở Activity này</string>
     <string name="info_app_shortcuts_limited">Android hạn chế quyền truy cập vào lối tắt động của ứng dụng khác. Chỉ hiển thị các lối tắt được ứng dụng khai báo.</string>
 
@@ -1062,12 +1067,12 @@
     <string name="website_open_url">Mở URL</string>
     <string name="website_user_agent_global_hint">Trống = User-Agent chung, sau đó mặc định di động/máy tính</string>
     <string name="website_global_settings_hint">Mỗi trang có thể ghi đè User-Agent chung. JavaScript, CSS, phần tử ẩn và chặn yêu cầu được kết hợp với cài đặt chung. Tùy chọn hiển thị là mặc định cho trang mới.</string>
-    <string name="action_add_nfs">Add NFS</string>
-    <string name="nfs_host">NFS server address</string>
-    <string name="nfs_export">Export path (e.g. /volume1/public)</string>
-    <string name="nfs_version">NFS version (3 or 4)</string>
-    <string name="nfs_uid">UID (default 65534)</string>
-    <string name="nfs_gid">GID (default 65534)</string>
+    <string name="action_add_nfs">Thêm NFS</string>
+    <string name="nfs_host">Địa chỉ máy chủ NFS</string>
+    <string name="nfs_export">Đường dẫn xuất (ví dụ /volume1/public)</string>
+    <string name="nfs_version">Phiên bản NFS (3 hoặc 4)</string>
+    <string name="nfs_uid">UID (mặc định 65534)</string>
+    <string name="nfs_gid">GID (mặc định 65534)</string>
     <string name="website_media_permission">Cho phép %1$s sử dụng:</string>
     <string name="website_microphone">Micrô</string>
     <string name="website_camera">Máy ảnh</string>
@@ -1086,7 +1091,7 @@
     <string name="player_skip_invalid">Chọn một điểm giữa phần mở đầu và kết thúc.</string>
 
     <!-- Top-level tree visibility and app-private files. -->
-    <string name="action_root_items">Hiện/ẩn mục gốc</string>
+    <string name="action_root_items">Cài đặt mục gốc</string>
     <string name="private_space">Không gian riêng tư</string>
     <string name="private_space_create_failed">Không thể tạo không gian riêng tư</string>
 
@@ -1097,8 +1102,11 @@
     <string name="settings_foreground_completion">Thông báo hoàn tất khi đang dùng ứng dụng</string>
     <string name="settings_foreground_completion_desc">Cũng thông báo khi đang dùng Twig. Luôn thông báo khi chạy nền hoặc màn hình bị khóa.</string>
 
-    <string name="settings_exit_on_back">Thoát khi nhấn Quay lại</string>
-    <string name="settings_exit_on_back_desc">Thoát Twig khi nút Quay lại đóng màn hình chính. Yêu cầu xác nhận nếu có tác vụ đang chạy.</string>
+    <string name="settings_back_action">Nút Quay lại trên màn hình chính</string>
+    <string name="settings_back_close">Đóng màn hình (mặc định)</string>
+    <string name="settings_back_exit">Thoát ứng dụng (cần xác nhận)</string>
+    <string name="settings_back_up">Lên một cấp (đóng màn hình ở cấp cao nhất)</string>
+    <string name="settings_back_up_exit">Lên một cấp (thoát ứng dụng ở cấp cao nhất)</string>
     <string name="share_text_filename">Văn bản được chia sẻ.txt</string>
     <string name="settings_toolbar_bottom">Thanh công cụ ở dưới</string>
     <string name="settings_toolbar_bottom_desc">Chuyển thanh công cụ của trình duyệt tệp xuống dưới để dễ sử dụng bằng một tay</string>
@@ -1119,4 +1127,60 @@
     <string name="share_prepare_space">Không đủ dung lượng để chuẩn bị tệp.</string>
     <string name="share_prepare_incomplete">Tệp đã thay đổi hoặc không thể đọc đầy đủ.</string>
     <string name="nfs_port">Port (default 2049)</string>
+    <string name="root_drag_to_reorder">Kéo để sắp xếp lại</string>
+    <string name="root_reorder_hint">Kéo tay cầm để sắp xếp lại các mục gốc của cả hai ngăn.</string>
+    <string name="action_sort_favorites">Sắp xếp mục yêu thích</string>
+    <string name="action_sort_websites">Sắp xếp trang web</string>
+    <string name="conn_section_login">Đăng nhập</string>
+    <string name="conn_section_options">Tùy chọn</string>
+    <string name="music_import_playlist">Nhập từ tệp danh sách phát</string>
+    <string name="music_import_directory">Nhập từ thư mục (đệ quy)</string>
+    <string name="music_importing">Đang nhập nhạc…</string>
+    <string name="music_import_progress">%1$d bài · %2$s</string>
+    <string name="music_import_done">Đã thêm %1$d bài</string>
+    <string name="music_import_failed">Không thể nhập nhạc: %1$s</string>
+    <string name="music_import_playlist_only">Chọn danh sách phát M3U hoặc M3U8</string>
+    <string name="music_import_source_unsupported">Không thể lưu nguồn này vào danh sách phát</string>
+    <string name="info_track_number">Số thứ tự bài</string>
+    <string name="settings_action_strip">Bảng thao tác</string>
+    <string name="strip_reorder_hint">Kéo tay cầm để sắp xếp lại thao tác. Bỏ chọn để ẩn thao tác.</string>
+    <string name="info_symbolic_link">Liên kết tượng trưng</string>
+    <string name="info_link_target">Trỏ đến</string>
+    <string name="info_unavailable">Không khả dụng</string>
+    <string name="info_permissions">Quyền truy cập</string>
+    <string name="info_uid">UID</string>
+    <string name="info_gid">GID</string>
+    <string name="info_accessed">Truy cập lần cuối</string>
+    <string name="info_changed">Thay đổi trạng thái</string>
+    <string name="info_selinux_context">Ngữ cảnh SELinux</string>
+    <string name="info_section_unix">Unix</string>
+    <string name="settings_unix_permissions">Hiển thị quyền Unix</string>
+    <string name="settings_unix_permissions_desc">Hiển thị quyền có sẵn trong danh sách tệp. Thông tin đầy đủ nằm trong thẻ Unix của thuộc tính.</string>
+    <string name="player_subtitle_appearance">Kiểu phụ đề</string>
+    <string name="player_subtitle_text_color">Màu chữ</string>
+    <string name="pdf_password">Mật khẩu PDF</string>
+    <string name="pdf_password_retry">Mật khẩu không được chấp nhận hoặc PDF dùng kiểu mã hóa không được hỗ trợ. Hãy thử lại.</string>
+    <string name="pdf_password_unsupported">PDF này cần mật khẩu hoặc dùng kiểu mã hóa không được hỗ trợ. Phiên bản Android này không thể mở khóa trong Twig. Hãy thử ứng dụng PDF khác.</string>
+    <string name="theme_oled">Đen (OLED)</string>
+    <string name="transfer_retry">Thử lại các mục chưa hoàn tất</string>
+    <string name="transfer_retry_detail">Chỉ thử lại các mục chưa hoàn tất. Bỏ qua tệp đã hoàn tất; tiếp tục truyền tệp còn dở nếu được hỗ trợ.</string>
+    <string name="transfer_failed_target">Đích: %1$s</string>
+    <string name="transfer_skip_failed">Bỏ qua mục này</string>
+    <string name="dialog_reset">Đặt lại</string>
+    <string name="settings_unix_permissions_octal">Hiển thị quyền ở hệ bát phân</string>
+    <string name="settings_unix_permissions_octal_desc">Bật: 0755; tắt: rwxr-xr-x. Chỉ áp dụng cho danh sách tệp.</string>
+    <string name="settings_tap_row_to_select">Chạm vào hàng để chọn</string>
+    <string name="settings_tap_row_to_select_desc">Khi có mục được chọn, chạm vào hàng để chọn hoặc bỏ chọn. Chạm vào biểu tượng hoặc hình thu nhỏ để mở. Khi tắt, chỉ chọn bằng nút đánh dấu.</string>
+    <string name="strip_duplicate">Nhân bản</string>
+    <string name="settings_pane_layout">Bố cục bảng</string>
+    <string name="pane_layout_follow_orientation">Theo hướng màn hình</string>
+    <string name="pane_layout_single">Một bảng</string>
+    <string name="pane_layout_dual">Hai bảng</string>
+    <string name="compress_level">Mức nén</string>
+    <string name="compress_fast">Nhanh</string>
+    <string name="compress_standard">Tiêu chuẩn</string>
+    <string name="compress_store">Không nén</string>
+    <string name="compress_source_directory">Lưu vào thư mục nguồn</string>
+    <string name="compress_hide_names">Mã hóa tên tệp</string>
+    <string name="compress_destination_missing">Chọn nơi lưu</string>
 </resources>

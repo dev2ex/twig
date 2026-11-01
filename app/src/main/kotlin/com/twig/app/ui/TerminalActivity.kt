@@ -26,7 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
+import com.twig.app.TwigActivity
 import androidx.core.content.ContextCompat
 import com.termux.terminal.KeyHandler
 import com.termux.terminal.TermBridge
@@ -215,7 +215,7 @@ object TermManager {
  * to queue keypresses, with a bridge thread carrying them to SSH. Sessions live in [TermManager], switched via the top dropdown;
  * Activity lives in its own task stack, so users can swap back and forth with the file manager without losing the session.
  */
-class TerminalActivity : AppCompatActivity() {
+class TerminalActivity : TwigActivity() {
 
     private lateinit var b: ActivityTerminalBinding
     private lateinit var fullscreenLayout: StatusBarFullscreen
@@ -266,6 +266,13 @@ class TerminalActivity : AppCompatActivity() {
         CmdShims.ensureAsync(this) // Command-completion shims for local shells — build/repair symlinks in the background.
         SshHome.ensureAsync(this) // .mkshrc's ssh alias needs -F on this config, so it has to exist first.
 
+        ToolbarLongPress.bind(b.toolbar,
+            actions = mapOf(MENU_END_CURRENT to { TermManager.closeAll(); finish() }),
+            overflow = { locateCurrentDir() },
+            navigation = {
+                startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                finish()
+            })
         b.toolbar.setNavigationOnClickListener { finish() } // Back to file manager; the session keeps running.
         b.toolbar.menu.add(0, MENU_END_CURRENT, 0, getString(R.string.terminal_end_current)).apply {
             icon = ContextCompat.getDrawable(this@TerminalActivity, R.drawable.ic_close)
@@ -1289,7 +1296,8 @@ class TerminalActivity : AppCompatActivity() {
         b.terminal.post { maybeShowIme() }
         scheduleSizeSync() // attach will change this session's local emulator size to the current view size
         @Suppress("DEPRECATION")
-        setTaskDescription(ActivityManager.TaskDescription("SSH · ${t.title}"))
+        setTaskDescription(ActivityManager.TaskDescription("${getString(R.string.terminal_menu)} · ${t.title}",
+            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap))
         refreshSessions()
     }
 

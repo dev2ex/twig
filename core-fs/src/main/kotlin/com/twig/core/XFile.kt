@@ -30,6 +30,12 @@ data class XFile(
      * segment of `path`.
      */
     val displayName: String? = null,
+    /** Describes this entry, independently of whether its target is a directory or accessible. */
+    val isSymbolicLink: Boolean = false,
+    /** Raw link contents, preserving relative paths; null when not fetched or unavailable. */
+    val linkTarget: String? = null,
+    /** Raw lstat mode when the listing supplies it; null for unsupported or unreadable metadata. */
+    val unixMode: Int? = null,
 ) {
     /** File name; prefer [displayName], otherwise the last segment of `path`; returns "/" for the root. */
     val name: String

@@ -193,6 +193,38 @@ class CopyEngineTest {
     private fun srcFile(path: String) = src.resolve(path)
     private fun dstRoot() = dst.root()
 
+    @Test
+    fun sameDirectoryCopyUsesExplicitRootNamesAndKeepsNestedNames() {
+        src.put("/photo.jpg", "original")
+        src.put("/album.old/song.mp3", "music")
+        val files = listOf(srcFile("/photo.jpg"), srcFile("/album.old"))
+        CopyEngine.transfer(files, src.root(), move = false, targetNames = mapOf(
+            files[0].toUri() to "photo (1).jpg", files[1].toUri() to "album.old (1)",
+        ))
+        assertEquals("original", src.text("/photo.jpg"))
+        assertEquals("original", src.text("/photo (1).jpg"))
+        assertEquals("music", src.text("/album.old/song.mp3"))
+        assertEquals("music", src.text("/album.old (1)/song.mp3"))
+        assertFalse(src.dirs.contains("/album.old/album.old (1)"))
+    }
+
+    @Test
+    fun numberedDirectoryRetryKeepsItsDestinationAndSource() {
+        src.put("/album/song.mp3", "complete music", time = 1000L)
+        val directory = srcFile("/album")
+        val names = mapOf(directory.toUri() to "album (1)")
+        val checkpoint = TransferCheckpoint()
+        src.failAfter = 3
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(directory), src.root(), false, checkpoint = checkpoint, targetNames = names)
+        }
+        src.failAfter = null
+        CopyEngine.transfer(listOf(directory), src.root(), false, checkpoint = checkpoint, targetNames = names)
+        assertEquals("complete music", src.text("/album/song.mp3"))
+        assertEquals("complete music", src.text("/album (1)/song.mp3"))
+        assertFalse(src.dirs.contains("/album (2)"))
+    }
+
     // ---- Basics ----
 
     @Test
@@ -475,6 +507,37 @@ class CopyEngineTest {
     }
 
     @Test
+    fun cancelledPlanDoesNotStartListing() {
+        src.put("/d/x.txt", "123")
+        var listings = 0
+        FsRegistry.register(object : FileSystem by src {
+            override fun list(dir: XFile): List<XFile> {
+                listings++
+                return src.list(dir)
+            }
+        })
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            CopyEngine.plan(listOf(srcFile("/d")), cancelled = { true })
+        }
+        assertEquals(0, listings)
+    }
+
+    @Test
+    fun cancellationDuringTheLastEmptyListingDoesNotReturnAPlan() {
+        src.dirs.add("/empty")
+        var cancelled = false
+        FsRegistry.register(object : FileSystem by src {
+            override fun list(dir: XFile): List<XFile> {
+                cancelled = true
+                return src.list(dir)
+            }
+        })
+        assertThrows(java.util.concurrent.CancellationException::class.java) {
+            CopyEngine.plan(listOf(srcFile("/empty")), cancelled = { cancelled })
+        }
+    }
+
+    @Test
     fun listenerReportsEveryItem() {
         src.put("/d/x.txt", "x")
         src.put("/d/sub/y.txt", "y")
@@ -740,6 +803,47 @@ class CopyEngineTest {
         assertEquals(listOf("/file"), source.opened)
         assertEquals("complete", target.text("/file"))
         assertFalse(source.exists(item))
+    }
+
+    @Test fun retryRecopiesCompletedFileWithoutSourceModificationTime() {
+        val source = MemFs("unknown-time-source")
+        val target = MemFs("unknown-time-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "old")
+        source.deleteFailPath = "/file"
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        source.put("/file", "new")
+        source.deleteFailPath = null
+        CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        assertEquals("new", target.text("/file"))
+        assertFalse(source.exists(item))
+    }
+
+    @Test fun retryRefreshesSourceSizeEvenWithoutModificationTime() {
+        val source = MemFs("unknown-size-source")
+        val target = MemFs("unknown-size-target")
+        FsRegistry.register(source)
+        FsRegistry.register(target)
+        source.put("/file", "old")
+        source.deleteFailPath = "/file"
+        val item = source.resolve("/file")
+        val checkpoint = TransferCheckpoint()
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        source.put("/file", "longer content")
+        source.readLimit = 3
+        source.deleteFailPath = null
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), target.root(), true, checkpoint = checkpoint)
+        }
+        assertEquals("longer content", source.text("/file"))
+        assertEquals("old", target.text("/file"))
     }
 
     @Test fun sourcesWithoutStatOrModificationTimeStillCopyNormally() {
