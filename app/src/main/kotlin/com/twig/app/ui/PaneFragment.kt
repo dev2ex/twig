@@ -1251,62 +1251,77 @@ class PaneFragment : Fragment() {
 
     fun canCreateHere(): Boolean = viewModel.currentDir?.isWritableDir() == true
 
-    fun actionDuplicate(rename: Boolean = false) {
+    fun actionDuplicate(immediate: Boolean = false) {
         val files = selectionOrCurrent().distinctBy { it.scheme to it.path }
         if (files.isEmpty()) return toast(getString(R.string.msg_no_selection))
         if (!files.all { it.isMutable() }) return
-        // Snapshot tree parents on the UI thread; opaque SAF paths cannot be sliced.
         val parents = files.associateWith(viewModel::renameParent)
         noteSourceDirs(files)
         val context = requireContext()
-        if (rename) {
-            viewLifecycleOwner.lifecycleScope.launch {
-                var changed = false
-                val result = runCatching {
-                    withContext(Dispatchers.IO) {
-                        val pairs = DuplicateEntries.parents(context, files, parents)
-                        val names = DuplicateEntries.names(pairs)
-                        BatchRenameDialog.execute(context, files, files.map { names.getValue(it.toUri()) }, parents) {
-                            changed = true
-                        }
-                    }
+        viewLifecycleOwner.lifecycleScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val pairs = DuplicateEntries.parents(context, files, parents)
+                    pairs to if (immediate) null else DuplicateEntries.names(pairs)
                 }
-                if (changed) {
-                    adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
+            }.onSuccess { (pairs, names) ->
+                if (names == null) startDuplicate(pairs)
+                else DuplicateConfirmDialog.show(context, viewLifecycleOwner, pairs, names) { chosen ->
+                    startDuplicate(pairs, chosen)
                 }
-                result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
-            }
-        } else {
-            viewLifecycleOwner.lifecycleScope.launch {
-                runCatching { withContext(Dispatchers.IO) { DuplicateEntries.parents(context, files, parents) } }
-                    .onSuccess { pairs ->
-                        launchSession(Transfers.Session(
-                            Transfers.Work.Sync(pairs, move = false, duplicate = true),
-                            R.string.progress_copy, getString(R.string.strip_duplicate), R.drawable.ic_duplicate, null,
-                        ))
-                    }
-                    .onFailure { toast(it.message ?: getString(R.string.err_failed)) }
-            }
+            }.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
         }
     }
 
-    fun actionRename(selectExtension: Boolean = false) {
+    private fun startDuplicate(pairs: List<Pair<XFile, XFile>>, names: Map<String, String>? = null) {
+        launchSession(Transfers.Session(
+            Transfers.Work.Sync(pairs, move = false, duplicate = true).apply { targetNames = names },
+            R.string.progress_copy, getString(R.string.strip_duplicate), R.drawable.ic_duplicate, null,
+        ))
+    }
+
+    fun actionNumberedRename() {
+        val files = selectionOrCurrent().distinctBy { it.scheme to it.path }
+        if (files.isEmpty()) return toast(getString(R.string.msg_no_selection))
+        if (!files.all { it.isMutable() }) return
+        val parents = files.associateWith(viewModel::renameParent)
+        noteSourceDirs(files)
+        val context = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            var changed = false
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val pairs = DuplicateEntries.parents(context, files, parents)
+                    val names = DuplicateEntries.names(pairs)
+                    BatchRenameDialog.execute(context, files, files.map { names.getValue(it.toUri()) }, parents) {
+                        changed = true
+                    }
+                }
+            }
+            if (changed) {
+                adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
+            }
+            result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+        }
+    }
+
+    fun actionRename() {
         val sel = selectionOrCurrent()
         if (sel.isEmpty()) {
             toast(getString(R.string.msg_no_selection)); return
         }
         if (!sel.all { it.isMutable() }) return
         noteSourceDirs(sel)
-        if (sel.size == 1) performRename(sel.first(), selectExtension) else performBatchRename(sel, selectExtension)
+        if (sel.size == 1) performRename(sel.first()) else performBatchRename(sel)
     }
 
-    private fun performBatchRename(targets: List<XFile>, selectExtension: Boolean = false) {
-        BatchRenameDialog.show(requireContext(), this, targets.distinctBy { it.scheme to it.path }, viewModel::renameParent, selectExtension) {
+    private fun performBatchRename(targets: List<XFile>) {
+        BatchRenameDialog.show(requireContext(), this, targets.distinctBy { it.scheme to it.path }, viewModel::renameParent) {
             adapter.clearSelection(); clearMapSelection(); viewModel.refresh()
         }
     }
 
-    private fun performRename(target: XFile, selectExtension: Boolean = false) {
+    private fun performRename(target: XFile) {
         if (target.scheme == AppsFileSystem.SCHEME) {
             toast(getString(R.string.apps_read_only)); return
         }
@@ -1322,11 +1337,7 @@ class PaneFragment : Fragment() {
                     adapter.clearSelection(); clearMapSelection(); viewModel.refresh()
                 }
             }
-            .create().showNameInput(input, selectStem = !target.isDir).also {
-                val dot = target.name.lastIndexOf('.')
-                if (selectExtension && !target.isDir && dot > 0 && dot < target.name.lastIndex)
-                    input.setSelection(dot + 1, target.name.length)
-            }
+            .create().showNameInput(input, selectStem = !target.isDir)
     }
 
     fun actionDelete(skipTrashConfirmation: Boolean = false) {

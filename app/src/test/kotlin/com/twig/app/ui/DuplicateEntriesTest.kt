@@ -72,4 +72,25 @@ class DuplicateEntriesTest {
             DuplicateEntries.parents(ApplicationProvider.getApplicationContext<Application>(), listOf(folder, file), emptyMap())
         }
     }
+
+    @Test fun `edited duplicate names reject sources collisions and invalid paths`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val fs = FakeFileSystem("duplicate-edited", mapOf("/" to listOf("one.txt", "two.txt")),
+            mapOf("/one.txt" to "one", "/two.txt" to "two"), writable = true)
+        FsRegistry.register(fs)
+        val pairs = fs.list(fs.root()).map { it to fs.root() }
+        val initial = DuplicateEntries.names(pairs)
+        DuplicateEntries.validate(app, pairs, initial)
+        val first = pairs.first().first.toUri()
+        for (invalid in listOf("one.txt", "TWO.txt", "../escape.txt", "")) {
+            assertThrows(IllegalStateException::class.java) {
+                DuplicateEntries.validate(app, pairs, initial + (first to invalid))
+            }
+        }
+        assertThrows(IllegalStateException::class.java) {
+            DuplicateEntries.validate(app, pairs, pairs.associate { it.first.toUri() to "same.txt" })
+        }
+        assertEquals("one", fs.openInput(fs.resolve("/one.txt")).bufferedReader().use { it.readText() })
+        assertEquals("two", fs.openInput(fs.resolve("/two.txt")).bufferedReader().use { it.readText() })
+    }
 }

@@ -49,6 +49,24 @@ internal object DuplicateEntries {
         return result
     }
 
+    /** Edited copy names must not replace an existing file, including any selected source. */
+    fun validate(context: Context, pairs: List<Pair<XFile, XFile>>, names: Map<String, String>) {
+        for ((file, _) in pairs) {
+            val name = names[file.toUri()]
+            check(name != null && BatchRenameNames.valid(name)) {
+                context.getString(R.string.batch_invalid_name, name.orEmpty())
+            }
+        }
+        for (entries in pairs.groupBy { it.second.scheme to it.second.path }.values) {
+            val parent = entries.first().second
+            val taken = FsRegistry.of(parent).list(parent).mapTo(HashSet()) { it.name.lowercase(Locale.ROOT) }
+            for ((file, _) in entries) {
+                val name = names.getValue(file.toUri())
+                check(taken.add(name.lowercase(Locale.ROOT))) { context.getString(R.string.batch_conflict, name) }
+            }
+        }
+    }
+
     private fun nextName(file: XFile, taken: Set<String>): String {
         val dot = if (file.isDir) -1 else file.name.lastIndexOf('.')
         val stem = if (dot > 0) file.name.substring(0, dot) else file.name

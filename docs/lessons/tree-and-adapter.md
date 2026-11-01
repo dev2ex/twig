@@ -609,3 +609,11 @@
   Keep the full row focusable and at least 48 dp tall for touch access,
   and announce the action plus current path for accessibility. Reuse the existing
   destination draft/picker flow, including source-folder mode and rotation handling.
+
+- **Duplicate and Rename shortcuts share one numbering rule (2026-11-01, #35)**:
+  tapping Duplicate previews editable copy names; holding Duplicate copies immediately.
+  Holding Rename applies the numbering to the original entries without a dialog,
+  replacing the extension-selection shortcut. Confirmed copy names must be valid,
+  distinct within each parent and absent from that parent, including selected sources.
+  Failed listings remain failures. Freeze confirmed names in the existing transfer
+  work so retries keep them, and use the ordinary background progress/cancellation.

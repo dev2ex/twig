@@ -535,10 +535,10 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asRefresh.setOnLongClickListener { activePane()?.actionRefreshThumbnails(); true }
         s.asNewFolder.setOnLongClickListener { activePane()?.actionNewTextFile(); true }
         s.asCopy.setOnLongClickListener { activePane()?.actionCopy(move = false, immediate = true); true }
-        s.asDuplicate.setOnLongClickListener { activePane()?.actionDuplicate(rename = true); true }
+        s.asDuplicate.setOnLongClickListener { activePane()?.actionDuplicate(immediate = true); true }
         s.asMove.setOnLongClickListener { activePane()?.actionCopy(move = true, immediate = true); true }
         s.asCompress.setOnLongClickListener { activePane()?.actionCompress(immediate = true); true }
-        s.asRename.setOnLongClickListener { activePane()?.actionRename(selectExtension = true); true }
+        s.asRename.setOnLongClickListener { activePane()?.actionNumberedRename(); true }
         s.asDelete.setOnLongClickListener { activePane()?.actionDelete(skipTrashConfirmation = true); true }
         s.asCompare.setOnLongClickListener { startCompare(reversed = true); true }
         s.asMap.setOnLongClickListener {

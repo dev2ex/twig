@@ -243,7 +243,8 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
   files through the system chooser. The path bar shows the checked-item count.
 - Choose copy/move destinations directly in the opposite pane. Optionally tap rows to
   toggle selection once items are checked; external multi-file pickers select by tapping.
-  Enable the hidden **Duplicate** action to make numbered copies, or hold it to rename.
+  Enable the hidden **Duplicate** action to confirm editable copy names; hold it to make
+  numbered copies immediately. Hold **Rename** to apply the same numbering to the originals.
 - **Retry failed transfers** from the failure dialog, or skip the failing item and
   continue. Completed files are retained; local, FTP, SFTP and SMB destinations can
   resume partial writes when source size and modification time are known.
@@ -266,7 +267,7 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
   Completion vibration and foreground completion notifications are separate, default-off
   settings; background results and transfer failures retain a notification.
 - **Long-press shortcuts** on browser controls: copy/move/compress immediately, create
-  a text file, select the extension when renaming, open directory sorting or refresh
+  a text file, apply numbered renames, open directory sorting or refresh
   selected thumbnails. Terminal and music controls also offer direct actions.
 - **Directory details** include optional direct folder/file counts, with a local-only
   scope by default. Empty local directories hide their expand indicators. Symbolic links
