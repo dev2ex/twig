@@ -1183,4 +1183,6 @@
     <string name="compress_source_directory">Salvar na pasta de origem</string>
     <string name="compress_hide_names">Criptografar nomes de arquivos</string>
     <string name="compress_destination_missing">Escolha um destino</string>
+    <string name="settings_auto_tree_indent">Recuo automático da árvore</string>
+    <string name="settings_auto_tree_indent_desc">Reduz suavemente o recuo quando as pastas superiores saem da tela.</string>
 </resources>

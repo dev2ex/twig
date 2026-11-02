@@ -1219,4 +1219,6 @@
     <string name="compress_source_directory">Сохранить в исходную папку</string>
     <string name="compress_hide_names">Шифровать имена файлов</string>
     <string name="compress_destination_missing">Выберите место сохранения</string>
+    <string name="settings_auto_tree_indent">Автоматический отступ дерева</string>
+    <string name="settings_auto_tree_indent_desc">Плавно уменьшать отступ, когда родительские папки уходят за пределы экрана.</string>
 </resources>

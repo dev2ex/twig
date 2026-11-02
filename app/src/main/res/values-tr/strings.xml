@@ -1183,4 +1183,6 @@
     <string name="compress_source_directory">Kaynak klasöre kaydet</string>
     <string name="compress_hide_names">Dosya adlarını şifrele</string>
     <string name="compress_destination_missing">Kayıt konumunu seçin</string>
+    <string name="settings_auto_tree_indent">Otomatik ağaç girintisi</string>
+    <string name="settings_auto_tree_indent_desc">Üst klasörler ekran dışına kaydırıldığında girintiyi yumuşakça azaltır.</string>
 </resources>
