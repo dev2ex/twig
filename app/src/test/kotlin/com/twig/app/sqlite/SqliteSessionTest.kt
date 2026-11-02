@@ -37,6 +37,76 @@ class SqliteSessionTest {
     }
     @After fun cleanup() { dir.deleteRecursively(); FsRegistry.unregister("sqlite-test") }
 
+    @Test fun `LIKE searches count each row once and share filtering with pages and details`() {
+        val name = "quoted\" table"
+        writer().use { db ->
+            db.execSQL("CREATE TABLE ${SqliteSession.quote(name)}(id INTEGER PRIMARY KEY, a TEXT, b TEXT, payload BLOB, mixed)")
+            val sql = "INSERT INTO ${SqliteSession.quote(name)} VALUES (?,?,?,?,?)"
+            db.execSQL(sql, arrayOf(0, "not a match", null, null, null))
+            db.execSQL(sql, arrayOf(1, "needle first", "needle twice", null, null))
+            db.execSQL(sql, arrayOf(2, "binary only", null, "needle".toByteArray(), "needle".toByteArray()))
+            db.execSQL(sql, arrayOf(3, "prefix NEEDLE suffix", null, null, null))
+            db.execSQL(sql, arrayOf(4, "declared BLOB only", null, "needle", null))
+            db.execSQL(sql, arrayOf(5, "O'Reilly", null, null, null))
+            db.execSQL(sql, arrayOf(6, null, null, null, "needle in untyped column"))
+            db.execSQL("CREATE TABLE binary_only(payload BLOB)")
+            db.execSQL("INSERT INTO binary_only VALUES (?)", arrayOf("needle".toByteArray()))
+        }
+        session().use { s ->
+            val tables = s.tables(signal())
+            val table = tables.single { it.name == name }
+            assertEquals(3L, s.count(table, signal(), "needle"))
+            assertEquals(listOf(false, true, true, false, false),
+                s.page(table, 0, signal(), "needle").rows.first().map { it.matched })
+            assertFalse(s.page(table, 0, signal()).rows.any { row -> row.any { it.matched } })
+            assertTrue(s.cell(table, 0, 1, signal(), "needle%").matched)
+            assertFalse(s.cell(table, 0, 0, signal(), "needle%").matched)
+            assertEquals(listOf("1", "3", "6"), s.page(table, 0, signal(), "needle").rows.map { it[0].text })
+            assertEquals("3", s.page(table, 1, signal(), "needle").rows.first()[0].text)
+            assertEquals("prefix NEEDLE suffix", s.cell(table, 1, 1, signal(), "needle").text)
+            assertEquals(1L, s.count(table, signal(), "O'Reilly"))
+            assertEquals(0L, s.count(table, signal(), "x' OR 1=1 --"))
+            assertEquals(3L, s.count(table, signal(), "need_e"))
+            assertEquals(7L, s.count(table, signal(), "%"))
+            assertEquals(listOf("1", "6"), s.page(table, 0, signal(), "needle%").rows.map { it[0].text })
+            assertEquals(1L, s.count(table, signal(), "%suffix"))
+            assertEquals(0L, s.count(table, signal(), "prefix%NEEDLE"))
+            assertEquals("prefix NEEDLE suffix", s.cell(table, 0, 1, signal(), "%suffix").text)
+            assertEquals(1L, s.count(table, signal(), "5"))
+            assertEquals(0L, s.count(tables.single { it.name == "binary_only" }, signal(), "needle"))
+            assertEquals(7L, s.count(table, signal()))
+        }
+    }
+
+    @Test fun `search marks full values beyond previews using SQLite LIKE semantics`() {
+        writer().use { db ->
+            db.execSQL("CREATE TABLE entries(a TEXT, b TEXT, payload BLOB, mixed)")
+            db.execSQL("INSERT INTO entries VALUES (?,?,?,?)",
+                arrayOf("x".repeat(300) + "needle", "NEEDLE tail", "needle", "needle".toByteArray()))
+        }
+        session().use { s ->
+            val table = s.tables(signal()).single { it.name == "entries" }
+            val row = s.page(table, 0, signal(), "need_e%").rows.single()
+            assertEquals(listOf(false, true, false, false), row.map { it.matched })
+            val contains = s.page(table, 0, signal(), "needle").rows.single()
+            assertTrue(contains[0].truncated)
+            assertFalse(contains[0].text.contains("needle"))
+            assertEquals(listOf(true, true, false, false), contains.map { it.matched })
+        }
+    }
+
+    @Test fun `wide table searches reuse one parameter without exceeding expression depth`() {
+        writer().use { db ->
+            db.execSQL("CREATE TABLE wide (" + (0 until 1200).joinToString(",") { "c$it TEXT" } + ")")
+            db.execSQL("INSERT INTO wide(c1199) VALUES ('needle')")
+        }
+        session().use { s ->
+            val table = s.tables(signal()).single { it.name == "wide" }
+            assertEquals(1L, s.count(table, signal(), "needle"))
+            assertEquals("needle", s.page(table, 0, signal(), "needle").rows.single().last().text)
+        }
+    }
+
     @Test fun `emoji previews and bounded details detect truncation by code points`() {
         val emoji = "\uD83D\uDE00"
         assertFalse(SqliteCell.text(emoji).truncated)

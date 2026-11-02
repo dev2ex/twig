@@ -1289,4 +1289,6 @@
     <string name="player_retry_failed">Connection failed. Tap Play to retry.</string>
     <string name="player_retry_wait">Retry %1$d/5 in %2$d seconds…</string>
     <string name="player_retry_connecting">Reconnecting (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Text in any column (LIKE: % and _ are wildcards)</string>
+    <string name="sqlite_search_incomplete">Search incomplete: %1$d table(s) could not be searched.</string>
 </resources>

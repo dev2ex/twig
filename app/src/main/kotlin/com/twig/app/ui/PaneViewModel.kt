@@ -427,6 +427,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
     private val forcedSqlite = HashSet<String>()
+    private val pendingSqliteSearch = HashMap<String, String>()
     private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
 
     fun isSqlite(file: XFile, key: String = fileKey(file)): Boolean =
@@ -437,8 +438,24 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         sqliteTree.command(node, command)
     }
 
-    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset)
+    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query)
     suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
+
+    fun startSqliteSearch(node: FileNode, query: String) {
+        if (query.isEmpty()) return
+        if (node.key !in expanded) {
+            pendingSqliteSearch[node.key] = query
+            toggleSqlite(node)
+        } else sqliteTree.search(node.key, query)
+        if (node.key in expanded) currentKey = "${node.key}/sqlite-search"
+        rebuild()
+    }
+
+    fun closeSqliteSearch(node: SqliteSearchNode) {
+        sqliteTree.closeSearch(node.owner)
+        if (currentKey == node.key || currentKey?.startsWith("${node.owner}/search:") == true) currentKey = node.owner
+        rebuild()
+    }
 
     fun openAsSqlite(node: FileNode) {
         forcedSqlite.add(node.key)
@@ -460,6 +477,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             accordionExpand(key)
             sqliteTree.open(key, node.file, parentRow(node.file)?.let { mountRoots[it.first] ?: it.second })
+            pendingSqliteSearch.remove(key)?.let { sqliteTree.search(key, it) }
         }
         rebuild()
     }
@@ -1031,6 +1049,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
+            is SqliteSearchNode -> closeSqliteSearch(node)
             is SqliteNode -> sqliteCommand(node, if (node is SqliteInfoNode) SqliteCommand.CLOSE else SqliteCommand.TOGGLE)
             is GroupNode -> {
                 currentKey = node.key
@@ -1629,6 +1648,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Collapse every branch and abandon pending expansions without discarding cached listings. */
     fun collapseAll() {
+        pendingSqliteSearch.clear()
         abandoned.addAll(loadingKeys)
         abandoned.addAll(connecting)
         pendingExpand = null
@@ -3033,7 +3053,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun answerMaterializeConfirm(file: XFile, proceed: Boolean) {
         _state.value = _state.value.copy(confirmMaterialize = null)
-        if (!proceed) return
+        if (!proceed) {
+            pendingSqliteSearch.remove(fileKey(file))
+            return
+        }
         confirmedMaterialize.add(fileKey(file))
         expandFileNode(file)
     }

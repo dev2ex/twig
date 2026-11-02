@@ -34,6 +34,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private val foreground = ContextCompat.getColor(context, R.color.text_primary)
     private val secondary = ContextCompat.getColor(context, R.color.text_secondary)
     private val background = ContextCompat.getColor(context, R.color.surface)
+    private val matchedBackground = ContextCompat.getColor(context, R.color.selected)
     private val line = (secondary and 0x00ffffff) or 0x30000000
     private var headers = emptyList<String>()
     private var widths = emptyList<Float>()
@@ -207,8 +208,14 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
                 var x = -position.x
                 widths.forEachIndexed { column, w ->
                     val value = cells.getOrNull(column)
-                    if (x + w > 0 && x < width) drawCell(canvas, display(value), x, top, w,
-                        if (value?.kind == 'n' || value?.kind == 'b') secondary else foreground)
+                    if (x + w > 0 && x < width) {
+                        if (value?.matched == true) {
+                            paint.color = matchedBackground
+                            canvas.drawRect(x, top, x + w, top + rowHeight, paint)
+                        }
+                        drawCell(canvas, display(value), x, top, w,
+                            if (value?.kind == 'n' || value?.kind == 'b') secondary else foreground)
+                    }
                     x += w
                     if (x in 0f..width.toFloat()) {
                         paint.color = line; canvas.drawLine(x, top, x, top + rowHeight, paint)

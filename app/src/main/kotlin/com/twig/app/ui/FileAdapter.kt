@@ -962,6 +962,7 @@ class FileAdapter(
             }
 
             when (node) {
+                is SqliteSearchNode -> bindSqliteSearch(node)
                 is SqliteTableNode -> bindSqliteTable(node)
                 is SqliteNode -> Unit
                 is PaneViewModel.FileNode -> bindFile(node)
@@ -1128,6 +1129,17 @@ class FileAdapter(
             b.root.setOnLongClickListener { onLongClick(node); true }
             b.icon.setOnClickListener { onClick(node) }
             b.indicator.setOnClickListener { onClick(node) }
+        }
+
+        private fun bindSqliteSearch(node: SqliteSearchNode) {
+            b.name.text = b.root.context.getString(R.string.search_result_title, node.matches)
+            setMeta(node.query)
+            b.icon.setImageResource(R.drawable.ic_search)
+            setIndicator(if (node.scanning) null else true)
+            b.progress.visibility = if (node.scanning) View.VISIBLE else View.GONE
+            b.check.visibility = View.GONE
+            b.root.setOnClickListener { onClick(node) }
+            b.root.setOnLongClickListener { onLongClick(node); true }
         }
 
         /**

@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">Error de conexión. Toca Reproducir para reintentar.</string>
     <string name="player_retry_wait">Intento %1$d/5 en %2$d segundos…</string>
     <string name="player_retry_connecting">Reconectando (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Texto en cualquier columna (LIKE: % y _ son comodines)</string>
+    <string name="sqlite_search_incomplete">Búsqueda incompleta: no se pudo buscar en %1$d tabla(s).</string>
 </resources>

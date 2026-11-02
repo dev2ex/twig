@@ -24,16 +24,19 @@ data class SqliteTable(val name: String, val ddl: String, val columns: List<Sqli
     val identity: SqliteIdentity) {
     val visibleColumns = columns.filter { it.hidden != 1 }
 }
-data class SqliteCell(val kind: Char, val text: String, val length: Long = text.codePointCount(0, text.length).toLong()) {
+data class SqliteCell(val kind: Char, val text: String, val length: Long = text.codePointCount(0, text.length).toLong(),
+    val matched: Boolean = false) {
     val truncated get() = (kind == 't' && length > text.codePointCount(0, text.length)) || (kind == 'b' && length > text.length / 2)
     companion object {
         fun text(value: String) = SqliteCell('t', value)
-        fun decode(value: String): SqliteCell {
+        fun decode(encoded: String, search: Boolean = false): SqliteCell {
+            val value = if (search) encoded.substring(1) else encoded
             val kind = value.first()
-            return if (kind == 't' || kind == 'b') {
+            val cell = if (kind == 't' || kind == 'b') {
                 val sep = value.indexOf(':')
                 SqliteCell(kind, value.substring(sep + 1), value.substring(1, sep).toLong())
             } else SqliteCell(kind, value.substring(1))
+            return if (search) cell.copy(matched = encoded.first() == '1') else cell
         }
     }
 }
@@ -87,29 +90,30 @@ class SqliteSession private constructor(private val path: File, private val temp
         }
     }
 
-    fun count(table: SqliteTable, signal: CancellationSignal): Long = read(signal) { db ->
-        db.rawQuery("SELECT count(*) FROM ${quote(table.name)}", null, signal).use { it.moveToFirst(); it.getLong(0) }
+    fun count(table: SqliteTable, signal: CancellationSignal, query: String? = null): Long = read(signal) { db ->
+        db.rawQuery("SELECT count(*) FROM ${quote(table.name)}${where(table, query)}", arguments(query), signal)
+            .use { it.moveToFirst(); it.getLong(0) }
     }
 
-    fun page(table: SqliteTable, offset: Int, signal: CancellationSignal): SqlitePage = read(signal) { db ->
-        val projection = table.visibleColumns.joinToString(",") { preview(it.name, PREVIEW_CHARS, PREVIEW_BYTES) }
-        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${order(table)} LIMIT ${pageSize(table)} OFFSET $offset",
-            null, signal).use { c ->
+    fun page(table: SqliteTable, offset: Int, signal: CancellationSignal, query: String? = null): SqlitePage = read(signal) { db ->
+        val projection = table.visibleColumns.joinToString(",") { projection(it, PREVIEW_CHARS, PREVIEW_BYTES, query) }
+        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT ${pageSize(table)} OFFSET $offset",
+            arguments(query), signal).use { c ->
             SqlitePage(offset, buildList {
                 while (c.moveToNext()) {
                     signal.throwIfCanceled()
-                    add(List(c.columnCount) { SqliteCell.decode(c.getString(it)) })
+                    add(List(c.columnCount) { SqliteCell.decode(c.getString(it), query != null) })
                 }
             })
         }
     }
 
     /** Bounded detail read; the UI reports truncation explicitly rather than risking CursorWindow/OOM. */
-    fun cell(table: SqliteTable, row: Int, column: Int, signal: CancellationSignal): SqliteCell = read(signal) { db ->
-        val projection = preview(table.visibleColumns[column].name, 65536, 32768)
-        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${order(table)} LIMIT 1 OFFSET $row", null, signal).use {
+    fun cell(table: SqliteTable, row: Int, column: Int, signal: CancellationSignal, query: String? = null): SqliteCell = read(signal) { db ->
+        val projection = projection(table.visibleColumns[column], 65536, 32768, query)
+        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT 1 OFFSET $row", arguments(query), signal).use {
             check(it.moveToFirst())
-            SqliteCell.decode(it.getString(0))
+            SqliteCell.decode(it.getString(0), query != null)
         }
     }
 
@@ -131,6 +135,26 @@ class SqliteSession private constructor(private val path: File, private val temp
         fun recognizes(file: XFile) = !file.isDir && file.scheme != "trash" &&
             file.extension in setOf("db", "db3", "sqlite", "sqlite3", "s3db")
         fun quote(name: String) = "\"${name.replace("\"", "\"\"")}\""
+        private fun arguments(query: String?) = query?.let { arrayOf(if ('%' in it) it else "%$it%") }
+        private fun where(table: SqliteTable, query: String?): String {
+            if (query == null) return ""
+            // Reuse one bound parameter and group ORs to stay below old SQLite variable/depth limits.
+            val groups = table.visibleColumns.filterNot { it.type.contains("BLOB", ignoreCase = true) }
+                .map(::match)
+                .chunked(64).joinToString(" OR ") { "(" + it.joinToString(" OR ") + ")" }
+            // Keep the bound parameter valid even when all columns are excluded.
+            return " WHERE (" + groups.ifEmpty { "?1 IS NULL" } + ")"
+        }
+        private fun match(column: SqliteColumn): String {
+            if (column.type.contains("BLOB", ignoreCase = true)) return "0"
+            val name = quote(column.name)
+            return "(typeof($name) != 'blob' AND CAST($name AS TEXT) LIKE ?1)"
+        }
+        private fun projection(column: SqliteColumn, chars: Int, bytes: Int, query: String?): String {
+            val value = preview(column.name, chars, bytes)
+            // Evaluate against the full value, even when its matching text is outside the preview.
+            return if (query == null) value else "(CASE WHEN ${match(column)} THEN '1' ELSE '0' END)||($value)"
+        }
         private fun order(table: SqliteTable): String {
             val keys = table.identity.rowId?.let { listOf(it) } ?: table.identity.primaryKey
             return if (keys.isEmpty()) "" else " ORDER BY " + keys.joinToString(",") { quote(it) }

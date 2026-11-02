@@ -20,6 +20,79 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class SqliteTreeTest {
+    @Test fun `search results isolate counts pages and details while sharing the table accordion`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "search-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        fun rows() = tree.rows("db", 2)
+        fun summary() = rows().filterIsInstance<SqliteSearchNode>().single()
+        fun result(name: String) = rows().filterIsInstance<SqliteTableNode>()
+            .single { it.state.table.name == name && it.state.query != null }
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE users(id INTEGER PRIMARY KEY, value TEXT)")
+                db.execSQL("CREATE TABLE notes(value TEXT)")
+                db.execSQL("INSERT INTO notes VALUES ('needle note')")
+                db.beginTransaction()
+                try {
+                    repeat(305) { db.execSQL("INSERT INTO users VALUES (?,?)",
+                        arrayOf(it, if (it % 2 == 0) "needle$it" else "other$it")) }
+                    db.setTransactionSuccessful()
+                } finally { db.endTransaction() }
+            }
+            tree.open("db", XFile("file", file.path, false))
+            tree.search("db", "needle") // Searching before the database finishes opening is queued.
+            advanceUntilIdle()
+            assertEquals(154L, summary().matches)
+            assertFalse(summary().scanning)
+            assertEquals(0, summary().failures)
+            assertEquals(153L, result("users").state.count)
+            assertEquals(2, result("users").state.table.visibleColumns.size)
+            assertEquals(305L, rows().filterIsInstance<SqliteTableNode>()
+                .single { it.state.table.name == "users" && it.state.query == null }.state.count)
+            assertEquals(rows().size, rows().map { it.key }.toSet().size)
+            tree.command(result("users"), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            tree.page("db", "users", 100, "needle")
+            advanceUntilIdle()
+            assertEquals(53, result("users").state.pages[100]!!.rows.size)
+            val data = rows().filterIsInstance<SqliteDataNode>().single()
+            assertEquals("needle200", tree.cell(data, 100, 1)!!.text)
+            tree.command(result("notes"), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            assertFalse(result("users").state.expanded)
+            assertEquals(listOf("notes"), rows().filterIsInstance<SqliteDataNode>().map { it.state.table.name })
+
+            tree.page("db", "notes", 100, "needle")
+            tree.search("db", "other")
+            advanceUntilIdle()
+            assertEquals(152L, summary().matches)
+            assertEquals(listOf("users"), rows().filterIsInstance<SqliteTableNode>()
+                .filter { it.state.query != null }.map { it.state.table.name })
+            assertNull(tree.cell(data, 0, 1)) // Old result nodes cannot read a replacement query.
+            tree.closeSearch("db")
+            advanceUntilIdle()
+            assertTrue(rows().none { it is SqliteSearchNode || it is SqliteNode && it.state.query != null })
+
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("DROP TABLE notes") }
+            tree.search("db", "needle")
+            advanceUntilIdle()
+            assertEquals(153L, summary().matches)
+            assertEquals(1, summary().failures)
+            assertTrue(rows().filterIsInstance<PaneViewModel.ActionNode>().any { it.id.startsWith("sqlite_search_error:") })
+            tree.search("db", "cancelled")
+            tree.closeSearch("db")
+            advanceUntilIdle()
+            assertTrue(rows().none { it is SqliteSearchNode })
+        } finally {
+            scope.cancel()
+            advanceUntilIdle()
+            file.delete()
+        }
+    }
+
     @Test fun `refresh replaces schema while preserving expanded tables and bounded paging`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val file = File(context.cacheDir, "tree-${UUID.randomUUID()}.db")

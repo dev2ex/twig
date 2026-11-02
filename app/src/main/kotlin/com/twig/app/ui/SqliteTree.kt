@@ -14,6 +14,7 @@ class SqliteViewport(var x: Float = 0f, var y: Float = 0f)
 
 data class SqliteTableState(
     val table: SqliteTable,
+    val query: String? = null,
     val expanded: Boolean = false,
     val properties: Boolean = false,
     val tab: Int = 0,
@@ -36,7 +37,8 @@ data class SqliteTableState(
 sealed interface SqliteNode : PaneViewModel.Node {
     val owner: String
     val state: SqliteTableState
-    val tableKey: String get() = "$owner/sqlite:${state.table.name.length}:${state.table.name}"
+    val tableKey: String get() = owner + (state.query?.let { "/search:${it.length}:$it" } ?: "") +
+        "/sqlite:${state.table.name.length}:${state.table.name}"
 }
 data class SqliteTableNode(override val owner: String, override val depth: Int,
     override val state: SqliteTableState) : SqliteNode { override val key get() = tableKey }
@@ -45,18 +47,32 @@ data class SqliteDataNode(override val owner: String, override val depth: Int,
 data class SqliteInfoNode(override val owner: String, override val depth: Int,
     override val state: SqliteTableState) : SqliteNode { override val key get() = "$tableKey/info" }
 
+data class SqliteSearchNode(val owner: String, override val depth: Int, val query: String,
+    val matches: Long, val scanning: Boolean, val failures: Int) : PaneViewModel.Node {
+    override val key get() = "$owner/sqlite-search"
+}
+
 enum class SqliteCommand { TOGGLE, PROPERTIES, REFRESH, COLUMNS, DDL, CLOSE }
 
 /** Owns browsing leases/jobs; tree nodes contain immutable results, never cursors or database handles. */
 internal class SqliteTree(private val context: Context, private val scope: CoroutineScope,
     private val io: () -> CoroutineDispatcher, private val changed: () -> Unit) {
+    private class Search(val query: String) {
+        var job: Job? = null
+        var scanning = true
+        var failures = 0
+        val tables = LinkedHashMap<String, SqliteTableState>()
+    }
     private class Host(val file: XFile, val parent: XFile?) {
         var job: Job? = null
         var session: SqliteSession? = null
         var error: String? = null
         var loading = true
         val tables = LinkedHashMap<String, SqliteTableState>()
-        val pages = HashMap<Pair<String, Int>, Job>()
+        var search: Search? = null
+        val pages = HashMap<Triple<String, String?, Int>, Job>()
+        fun tables(query: String?) = if (query == null) tables else search?.takeIf { it.query == query }?.tables
+        fun ownerJob(query: String?) = if (query == null) job else search?.takeIf { it.query == query }?.job
     }
     private val hosts = HashMap<String, Host>()
     fun loading(key: String) = hosts[key]?.loading == true
@@ -70,9 +86,9 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         try { withContext(io()) { block(signal) } } finally { watcher.cancel() }
     }
 
-    fun open(key: String, file: XFile, parent: XFile? = null, remembered: Map<String, SqliteTableState> = emptyMap()) {
+    fun open(key: String, file: XFile, parent: XFile? = null, remembered: Map<String, SqliteTableState> = emptyMap(), query: String? = null) {
         if (hosts.containsKey(key)) return
-        val host = Host(file, parent)
+        val host = Host(file, parent).apply { search = query?.let(::Search) }
         hosts[key] = host
         host.job = scope.launch {
             // Keep the lease local until cancellation cleanup, including cancellation during open.
@@ -88,6 +104,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                         ?: SqliteTableState(table)
                 }
                 host.loading = false
+                runSearch(host)
                 changed()
                 // One count at a time; slow counts time out and never become a false zero.
                 launch {
@@ -112,48 +129,99 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         }
     }
 
+    fun search(key: String, query: String) {
+        val host = hosts[key] ?: return
+        closeSearch(key)
+        host.search = Search(query)
+        runSearch(host)
+        changed()
+    }
+
+    private fun runSearch(host: Host) {
+        val search = host.search ?: return
+        val session = host.session ?: return
+        if (search.job != null) return
+        search.job = scope.launch(context = checkNotNull(host.job), start = CoroutineStart.LAZY) {
+            for (table in host.tables.values.map { it.table }) {
+                try {
+                    val count = cancellable { session.count(table, it, search.query) }
+                    if (count > 0) search.tables[table.name] = SqliteTableState(table,
+                        query = search.query, count = count, counting = false)
+                } catch (e: CancellationException) { throw e }
+                catch (_: Exception) { search.failures++ }
+                changed()
+            }
+            search.scanning = false
+            changed()
+            // Keep a parent job for result pages and detail reads until this search closes.
+            awaitCancellation()
+        }
+        search.job?.start()
+    }
+
+    fun closeSearch(key: String) {
+        val host = hosts[key] ?: return
+        val search = host.search ?: return
+        host.search = null
+        search.job?.cancel()
+        host.pages.keys.filter { it.second == search.query }.forEach { host.pages.remove(it)?.cancel() }
+    }
+
     fun rows(key: String, depth: Int): List<PaneViewModel.Node> {
         val host = hosts[key] ?: return emptyList()
         val error = host.error
         if (error != null) return listOf(PaneViewModel.ActionNode("sqlite_error:$key", error, depth, informational = true))
-        if (!host.loading && host.tables.isEmpty()) return listOf(PaneViewModel.ActionNode("sqlite_empty:$key",
-            context.getString(R.string.sqlite_no_tables), depth, informational = true))
         return buildList {
-            host.tables.values.forEach { state ->
-                add(SqliteTableNode(key, depth, state))
-                if (state.properties) add(SqliteInfoNode(key, depth + 1, state))
-                if (state.expanded) add(SqliteDataNode(key, depth + 1, state))
+            fun addTables(tables: Collection<SqliteTableState>, tableDepth: Int) {
+                tables.forEach { state ->
+                    add(SqliteTableNode(key, tableDepth, state))
+                    if (state.properties) add(SqliteInfoNode(key, tableDepth + 1, state))
+                    if (state.expanded) add(SqliteDataNode(key, tableDepth + 1, state))
+                }
             }
+            host.search?.let { search ->
+                add(SqliteSearchNode(key, depth, search.query, search.tables.values.sumOf { it.count ?: 0L },
+                    search.scanning, search.failures))
+                addTables(search.tables.values, depth + 1)
+                if (search.failures > 0) add(PaneViewModel.ActionNode("sqlite_search_error:$key",
+                    context.getString(R.string.sqlite_search_incomplete, search.failures), depth + 1, informational = true))
+            }
+            if (!host.loading && host.tables.isEmpty()) add(PaneViewModel.ActionNode("sqlite_empty:$key",
+                context.getString(R.string.sqlite_no_tables), depth, informational = true))
+            addTables(host.tables.values, depth)
         }
     }
 
     fun command(node: SqliteNode, command: SqliteCommand) {
         val host = hosts[node.owner] ?: return
         val name = node.state.table.name
-        val state = host.tables[name] ?: return
+        val query = node.state.query
+        val tables = host.tables(query) ?: return
+        val state = tables[name] ?: return
         when (command) {
             SqliteCommand.TOGGLE -> {
                 if (!state.expanded) {
-                    // Match directory accordion behavior within this database.
-                    host.tables.keys.filter { it != name && host.tables[it]?.expanded == true }.forEach { other ->
-                        cancelPages(host, other)
-                        host.tables[other]?.let { previous ->
-                            host.tables[other] = previous.copy(expanded = false,
+                    // Normal tables and search results share one accordion within the database.
+                    for (bucket in listOfNotNull(host.tables, host.search?.tables)) {
+                        for ((other, previous) in bucket.toMap()) {
+                            if (bucket === tables && other == name || !previous.expanded) continue
+                            cancelPages(host, other, previous.query)
+                            bucket[other] = previous.copy(expanded = false,
                                 pages = emptyMap(), pending = emptySet(), errors = emptyMap(), end = null,
                                 loadedThrough = 0, viewport = SqliteViewport())
                         }
                     }
                 }
-                host.tables[name] = state.copy(expanded = !state.expanded,
+                tables[name] = state.copy(expanded = !state.expanded,
                     pages = emptyMap(), pending = emptySet(), errors = emptyMap(), end = null,
                     loadedThrough = 0, viewport = SqliteViewport())
-                cancelPages(host, name)
-                if (!state.expanded) page(node.owner, name, 0)
+                cancelPages(host, name, query)
+                if (!state.expanded) page(node.owner, name, 0, query)
             }
-            SqliteCommand.PROPERTIES -> host.tables[name] = state.copy(properties = !state.properties)
-            SqliteCommand.CLOSE -> host.tables[name] = state.copy(properties = false)
-            SqliteCommand.COLUMNS -> host.tables[name] = state.copy(tab = 0)
-            SqliteCommand.DDL -> host.tables[name] = state.copy(tab = 1)
+            SqliteCommand.PROPERTIES -> tables[name] = state.copy(properties = !state.properties)
+            SqliteCommand.CLOSE -> tables[name] = state.copy(properties = false)
+            SqliteCommand.COLUMNS -> tables[name] = state.copy(tab = 0)
+            SqliteCommand.DDL -> tables[name] = state.copy(tab = 1)
             SqliteCommand.REFRESH -> {
                 // Refresh schema/counts together, so a changed table cannot retain an old projection.
                 refresh(node.owner, host.file)
@@ -162,46 +230,48 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         changed()
     }
 
-    private fun cancelPages(host: Host, name: String) {
-        host.pages.keys.filter { it.first == name }.forEach { host.pages.remove(it)?.cancel() }
+    private fun cancelPages(host: Host, name: String, query: String?) {
+        host.pages.keys.filter { it.first == name && it.second == query }.forEach { host.pages.remove(it)?.cancel() }
     }
 
-    fun page(owner: String, name: String, offset: Int) {
+    fun page(owner: String, name: String, offset: Int, query: String? = null) {
         val host = hosts[owner] ?: return
         val session = host.session ?: return
-        val state = host.tables[name] ?: return
+        val tables = host.tables(query) ?: return
+        val state = tables[name] ?: return
         if (!state.expanded || offset in state.pages || offset in state.pending) return
-        host.tables[name] = state.copy(pending = state.pending + offset, errors = state.errors - offset)
-        val job = scope.launch(start = CoroutineStart.LAZY, context = checkNotNull(host.job)) {
+        tables[name] = state.copy(pending = state.pending + offset, errors = state.errors - offset)
+        val job = scope.launch(start = CoroutineStart.LAZY, context = host.ownerJob(query) ?: return) {
             try {
-                val page = cancellable { session.page(state.table, offset, it) }
-                val live = host.tables[name] ?: return@launch
+                val page = cancellable { session.page(state.table, offset, it, query) }
+                val live = tables[name] ?: return@launch
                 val pages = LinkedHashMap(live.pages).apply {
                     put(offset, page)
                     while (size > 8) remove(keys.first())
                 }
-                host.tables[name] = live.copy(pages = pages, pending = live.pending - offset,
+                tables[name] = live.copy(pages = pages, pending = live.pending - offset,
                     loadedThrough = maxOf(live.loadedThrough, offset + page.rows.size),
                     end = if (page.rows.size < live.pageSize) offset + page.rows.size else live.end)
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {
-                val live = host.tables[name] ?: return@launch
-                host.tables[name] = live.copy(pending = live.pending - offset,
+                val live = tables[name] ?: return@launch
+                tables[name] = live.copy(pending = live.pending - offset,
                     errors = live.errors + (offset to (e.message ?: context.getString(R.string.sqlite_read_failed))))
             }
-            host.pages.remove(name to offset)
+            host.pages.remove(Triple(name, query, offset))
             changed()
         }
-        host.pages[name to offset] = job
+        host.pages[Triple(name, query, offset)] = job
         job.start()
     }
 
     suspend fun cell(node: SqliteDataNode, row: Int, column: Int): SqliteCell? {
         val host = hosts[node.owner] ?: return null
         val session = host.session ?: return null
-        if (host.tables[node.state.table.name]?.table != node.state.table) return null
+        val query = node.state.query
+        if (host.tables(query)?.get(node.state.table.name)?.table != node.state.table) return null
         // Both leaving the screen and closing/refreshing the database cancel a detail read.
-        val operation = scope.async(checkNotNull(host.job)) { cancellable { session.cell(node.state.table, row, column, it) } }
+        val operation = scope.async(host.ownerJob(query) ?: return null) { cancellable { session.cell(node.state.table, row, column, it, query) } }
         return try { operation.await() } finally { operation.cancel() }
     }
 
@@ -209,8 +279,9 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
     fun refresh(key: String, file: XFile) {
         val remembered = hosts[key]?.tables?.toMap().orEmpty()
         val parent = hosts[key]?.parent
+        val query = hosts[key]?.search?.query
         close(key)
-        open(key, file, parent, remembered)
+        open(key, file, parent, remembered, query)
     }
     fun close(key: String) {
         hosts.remove(key)?.let { host -> host.pages.values.forEach { it.cancel() }; host.job?.cancel() }

@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">Koneksi gagal. Ketuk Putar untuk mencoba lagi.</string>
     <string name="player_retry_wait">Percobaan %1$d/5 dalam %2$d detik…</string>
     <string name="player_retry_connecting">Menghubungkan kembali (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Teks di semua kolom (LIKE: % dan _ adalah wildcard)</string>
+    <string name="sqlite_search_incomplete">Pencarian belum lengkap: %1$d tabel tidak dapat dicari.</string>
 </resources>

@@ -1045,6 +1045,36 @@ class PaneFragment : Fragment() {
             .show()
     }
 
+    private var lastSqliteQuery = ""
+
+    private fun promptSqliteSearch(node: PaneViewModel.FileNode, initial: String = lastSqliteQuery) {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.sqlite_search_hint)
+            setText(initial)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.strip_search)
+            .setView(input)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    lastSqliteQuery = query
+                    viewModel.startSqliteSearch(node, query)
+                }
+            }.show()
+    }
+
+    private fun sqliteSearchMenu(node: SqliteSearchNode) {
+        val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(source, node.query) }
+        actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query) }
+        actions.item(getString(R.string.dialog_close), R.drawable.ic_close) { viewModel.closeSqliteSearch(node) }
+        showActionMenu(requireContext(), getString(R.string.search_result_title, node.matches), actions)
+    }
+
     private fun editCurrentPath(): Boolean {
         val target = viewModel.pathEditTarget() ?: return false
         host?.onPaneTouched(this)
@@ -1851,6 +1881,7 @@ class PaneFragment : Fragment() {
 
     private fun onLongClick(node: PaneViewModel.Node) {
         when (node) {
+            is SqliteSearchNode -> sqliteSearchMenu(node)
             is SqliteTableNode -> {
                 val actions = ArrayList<MenuAct>()
                 actions.item(getString(R.string.file_info), R.drawable.ic_info) {
@@ -1931,6 +1962,9 @@ class PaneFragment : Fragment() {
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
         if (node.expandable) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
+        }
+        if (viewModel.isSqlite(node.file, node.key)) {
+            actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(node) }
         }
         if (!node.file.isDir && !viewModel.isSqlite(node.file, node.key) && FileIcons.baseIconRes(node.file) == R.drawable.ic_file) {
             actions.item(getString(R.string.sqlite_open_as), R.drawable.ic_sqlite_database) { viewModel.openAsSqlite(node) }

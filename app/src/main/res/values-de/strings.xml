@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">Verbindung fehlgeschlagen. Zum Wiederholen auf Wiedergabe tippen.</string>
     <string name="player_retry_wait">Versuch %1$d/5 in %2$d Sekunden…</string>
     <string name="player_retry_connecting">Verbindung wird wiederhergestellt (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Text in allen Spalten (LIKE: % und _ sind Platzhalter)</string>
+    <string name="sqlite_search_incomplete">Suche unvollständig: %1$d Tabelle(n) konnten nicht durchsucht werden.</string>
 </resources>

@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">接続に失敗しました。再生をタップして再試行してください。</string>
     <string name="player_retry_wait">%2$d 秒後に再試行（%1$d/5）…</string>
     <string name="player_retry_connecting">再接続中（%1$d/5）…</string>
+    <string name="sqlite_search_hint" formatted="false">すべての列を検索（LIKE：% と _ はワイルドカード）</string>
+    <string name="sqlite_search_incomplete">検索は未完了です：%1$d 個のテーブルを検索できませんでした。</string>
 </resources>

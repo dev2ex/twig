@@ -1215,4 +1215,6 @@
     <string name="player_retry_failed">فشل الاتصال. اضغط تشغيل لإعادة المحاولة.</string>
     <string name="player_retry_wait">المحاولة %1$d/5 بعد %2$d ثانية…</string>
     <string name="player_retry_connecting">جارٍ إعادة الاتصال (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">نص في أي عمود (LIKE: % و _ أحرف بدل)</string>
+    <string name="sqlite_search_incomplete">البحث غير مكتمل: تعذر البحث في %1$d جدول.</string>
 </resources>

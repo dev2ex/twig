@@ -69,6 +69,28 @@ Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added be
 this reader without changing tree or renderer contracts. Encrypted databases require a
 separate future reader; no SQLCipher library is bundled.
 
+## Database search
+
+The database menu searches all tables with a bound LIKE pattern. Keywords containing
+`%` are used as supplied; otherwise they become `%keyword%`. User `%` and `_` retain
+their wildcard meaning. Eligible columns are cast to text, excluding
+columns declared with a BLOB type and values whose runtime type is BLOB. A row matching
+multiple columns counts once. Identifiers remain quoted and the pattern is never SQL.
+
+A search-results branch reports the progressive total and includes only matching tables,
+with matched-row and visible-column counts. Search counts are cancellable full scans,
+without the ordinary background count deadline. Failed table scans produce an explicit
+incomplete-results notice rather than being counted as empty. Filtered counts, pages and
+cell details share the same predicate and ordering, so detail offsets refer to the result.
+Matching cells use the shared selection background. The reader evaluates each cell's
+match with SQLite against its full value, preserving LIKE semantics even when the
+matching text lies outside the bounded preview; rendering never reimplements LIKE.
+
+Normal and filtered tables have distinct node/cache identities but share the per-database
+expansion accordion and renderer. Replacing or closing a search cancels its counts, pages
+and details. Refresh reruns the current search; normal table expansion is preserved while
+filtered expansion resets. Search text and results remain session-only.
+
 ## Future editing
 
 Do not add mutations to `FileSystem`, or turn virtual tables into writable files. Add

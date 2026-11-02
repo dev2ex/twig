@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">कनेक्शन विफल। फिर से प्रयास करने के लिए चलाएँ दबाएँ।</string>
     <string name="player_retry_wait">%2$d सेकंड में प्रयास %1$d/5…</string>
     <string name="player_retry_connecting">फिर से कनेक्ट हो रहा है (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">किसी भी कॉलम में पाठ (LIKE: % और _ वाइल्डकार्ड हैं)</string>
+    <string name="sqlite_search_incomplete">खोज अधूरी है: %1$d तालिकाओं में खोज नहीं हो सकी।</string>
 </resources>

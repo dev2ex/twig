@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">연결에 실패했습니다. 재생을 눌러 다시 시도하세요.</string>
     <string name="player_retry_wait">%2$d초 후 재시도 (%1$d/5)…</string>
     <string name="player_retry_connecting">다시 연결 중 (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">모든 열에서 검색 (LIKE: %와 _는 와일드카드)</string>
+    <string name="sqlite_search_incomplete">검색 미완료: %1$d개 테이블을 검색할 수 없습니다.</string>
 </resources>

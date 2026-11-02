@@ -1211,4 +1211,6 @@
     <string name="player_retry_failed">Bağlantı başarısız. Yeniden denemek için Oynat düğmesine dokunun.</string>
     <string name="player_retry_wait">%2$d saniye sonra %1$d/5. deneme…</string>
     <string name="player_retry_connecting">Yeniden bağlanılıyor (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Tüm sütunlarda metin (LIKE: % ve _ joker karakterdir)</string>
+    <string name="sqlite_search_incomplete">Arama tamamlanamadı: %1$d tabloda arama yapılamadı.</string>
 </resources>
