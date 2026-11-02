@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Questo database ha un journal di rollback. Chiudi il programma che lo modifica o esporta prima una copia.</string>
     <string name="sqlite_source_changed">Il database è cambiato durante la copia. Chiudi il programma che lo modifica o esporta una copia e riprova.</string>
     <string name="sqlite_snapshot_confirm">Per esplorare %1$s occorre scaricare una copia locale. Se viene modificato, esporta prima una copia. Continuare?</string>
+    <string name="player_waiting_network">Rete disconnessa. In attesa della connessione…</string>
+    <string name="player_retry_failed">Connessione non riuscita. Tocca Riproduci per riprovare.</string>
+    <string name="player_retry_wait">Tentativo %1$d/5 tra %2$d secondi…</string>
+    <string name="player_retry_connecting">Riconnessione (%1$d/5)…</string>
 </resources>

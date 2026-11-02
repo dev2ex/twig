@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Bu veritabanında geri alma günlüğü var. Yazan programı kapatın veya önce bir kopya dışa aktarın.</string>
     <string name="sqlite_source_changed">Veritabanı kopyalama sırasında değişti. Yazan programı kapatın veya bir kopya dışa aktarıp yeniden deneyin.</string>
     <string name="sqlite_snapshot_confirm">Göz atmak için %1$s yerel bir anlık görüntü olarak indirilmelidir. Değiştiriliyorsa önce bir kopya dışa aktarın. Devam edilsin mi?</string>
+    <string name="player_waiting_network">Ağ bağlantısı kesildi. Bağlantı bekleniyor…</string>
+    <string name="player_retry_failed">Bağlantı başarısız. Yeniden denemek için Oynat düğmesine dokunun.</string>
+    <string name="player_retry_wait">%2$d saniye sonra %1$d/5. deneme…</string>
+    <string name="player_retry_connecting">Yeniden bağlanılıyor (%1$d/5)…</string>
 </resources>

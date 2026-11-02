@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">이 데이터베이스에 롤백 저널이 있습니다. 쓰기 프로그램을 닫거나 먼저 사본을 내보내세요.</string>
     <string name="sqlite_source_changed">복사 중 데이터베이스가 변경되었습니다. 쓰기 프로그램을 닫거나 사본을 내보낸 후 다시 시도하세요.</string>
     <string name="sqlite_snapshot_confirm">탐색하려면 %1$s의 로컬 스냅샷을 다운로드해야 합니다. 변경 중인 데이터베이스는 먼저 사본을 내보내세요. 계속할까요?</string>
+    <string name="player_waiting_network">네트워크 연결이 끊겼습니다. 연결 복구 대기 중…</string>
+    <string name="player_retry_failed">연결에 실패했습니다. 재생을 눌러 다시 시도하세요.</string>
+    <string name="player_retry_wait">%2$d초 후 재시도 (%1$d/5)…</string>
+    <string name="player_retry_connecting">다시 연결 중 (%1$d/5)…</string>
 </resources>

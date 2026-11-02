@@ -36,7 +36,8 @@ class RandomSourceDataSource(private val src: RandomSource) : BaseDataSource(/* 
         if (length == 0) return 0
         if (left <= 0L) return C.RESULT_END_OF_INPUT
         val n = src.readAt(pos, buffer, offset, minOf(length.toLong(), left).toInt())
-        if (n <= 0) return C.RESULT_END_OF_INPUT
+        // A disconnected reader must not masquerade as a successfully completed video.
+        if (n <= 0) throw java.io.EOFException("Source ended with $left bytes remaining")
         pos += n
         left -= n
         bytesTransferred(n)

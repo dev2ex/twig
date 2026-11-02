@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">इस डेटाबेस में रोलबैक जर्नल है। लिखने वाला प्रोग्राम बंद करें या पहले एक प्रति निर्यात करें।</string>
     <string name="sqlite_source_changed">कॉपी करते समय डेटाबेस बदल गया। लिखने वाला प्रोग्राम बंद करें या प्रति निर्यात करके फिर प्रयास करें।</string>
     <string name="sqlite_snapshot_confirm">देखने के लिए %1$s का स्थानीय स्नैपशॉट डाउनलोड करना होगा। बदलते डेटाबेस की पहले प्रति निर्यात करें। जारी रखें?</string>
+    <string name="player_waiting_network">नेटवर्क डिस्कनेक्ट है। दोबारा जुड़ने की प्रतीक्षा है…</string>
+    <string name="player_retry_failed">कनेक्शन विफल। फिर से प्रयास करने के लिए चलाएँ दबाएँ।</string>
+    <string name="player_retry_wait">%2$d सेकंड में प्रयास %1$d/5…</string>
+    <string name="player_retry_connecting">फिर से कनेक्ट हो रहा है (%1$d/5)…</string>
 </resources>

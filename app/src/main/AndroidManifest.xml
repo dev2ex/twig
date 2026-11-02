@@ -31,6 +31,7 @@
 
     <!-- FTP and other network filesystems -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- WiFi sharing (built-in HTTP/WebDAV server):

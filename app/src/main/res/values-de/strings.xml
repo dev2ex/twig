@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Diese Datenbank hat ein Rollback-Journal. Schreibendes Programm schließen oder zuerst eine Kopie exportieren.</string>
     <string name="sqlite_source_changed">Die Datenbank wurde beim Kopieren geändert. Schreibendes Programm schließen oder eine Kopie exportieren und erneut versuchen.</string>
     <string name="sqlite_snapshot_confirm">%1$s muss zum Anzeigen als lokale Momentaufnahme heruntergeladen werden. Eine sich ändernde Datenbank zuerst exportieren. Fortfahren?</string>
+    <string name="player_waiting_network">Netzwerk getrennt. Warte auf Verbindung…</string>
+    <string name="player_retry_failed">Verbindung fehlgeschlagen. Zum Wiederholen auf Wiedergabe tippen.</string>
+    <string name="player_retry_wait">Versuch %1$d/5 in %2$d Sekunden…</string>
+    <string name="player_retry_connecting">Verbindung wird wiederhergestellt (%1$d/5)…</string>
 </resources>

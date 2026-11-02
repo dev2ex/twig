@@ -1206,4 +1206,8 @@
     <string name="sqlite_journal_active">此資料庫存在回復日誌。請先關閉寫入程式或匯出資料庫副本。</string>
     <string name="sqlite_source_changed">複製期間資料庫發生變更。請先關閉寫入程式或匯出副本，再重試。</string>
     <string name="sqlite_snapshot_confirm">瀏覽 %1$s 前需要下載為本機快照。如果資料庫正在變更，請先匯出副本。是否繼續？</string>
+    <string name="player_waiting_network">網路已中斷，等待恢復…</string>
+    <string name="player_retry_failed">連線失敗，點擊播放重試</string>
+    <string name="player_retry_wait">%2$d 秒後重試（%1$d/5）…</string>
+    <string name="player_retry_connecting">正在重新連線（%1$d/5）…</string>
 </resources>

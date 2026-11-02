@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Basis data ini memiliki jurnal rollback. Tutup program penulis atau ekspor salinan terlebih dahulu.</string>
     <string name="sqlite_source_changed">Basis data berubah saat disalin. Tutup program penulis atau ekspor salinan lalu coba lagi.</string>
     <string name="sqlite_snapshot_confirm">%1$s harus diunduh sebagai snapshot lokal untuk dijelajahi. Jika sedang berubah, ekspor salinan terlebih dahulu. Lanjutkan?</string>
+    <string name="player_waiting_network">Jaringan terputus. Menunggu koneksi…</string>
+    <string name="player_retry_failed">Koneksi gagal. Ketuk Putar untuk mencoba lagi.</string>
+    <string name="player_retry_wait">Percobaan %1$d/5 dalam %2$d detik…</string>
+    <string name="player_retry_connecting">Menghubungkan kembali (%1$d/5)…</string>
 </resources>

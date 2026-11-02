@@ -1206,4 +1206,8 @@
     <string name="sqlite_journal_active">Cơ sở dữ liệu có nhật ký khôi phục. Hãy đóng chương trình đang ghi hoặc xuất bản sao trước.</string>
     <string name="sqlite_source_changed">Cơ sở dữ liệu đã thay đổi khi sao chép. Đóng chương trình đang ghi hoặc xuất bản sao rồi thử lại.</string>
     <string name="sqlite_snapshot_confirm">Cần tải %1$s thành bản chụp cục bộ để duyệt. Nếu đang thay đổi, hãy xuất bản sao trước. Tiếp tục?</string>
+    <string name="player_waiting_network">Mất kết nối mạng. Đang chờ kết nối lại…</string>
+    <string name="player_retry_failed">Kết nối thất bại. Nhấn Phát để thử lại.</string>
+    <string name="player_retry_wait">Lần thử %1$d/5 sau %2$d giây…</string>
+    <string name="player_retry_connecting">Đang kết nối lại (%1$d/5)…</string>
 </resources>

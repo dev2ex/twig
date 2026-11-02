@@ -1211,4 +1211,8 @@
     <string name="sqlite_journal_active">تحتوي القاعدة على سجل تراجع. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة أولاً.</string>
     <string name="sqlite_source_changed">تغيرت القاعدة أثناء النسخ. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة ثم أعد المحاولة.</string>
     <string name="sqlite_snapshot_confirm">يجب تنزيل %1$s كلقطة محلية لتصفحها. إذا كانت قيد التغيير، صدّر نسخة أولاً. هل تريد المتابعة؟</string>
+    <string name="player_waiting_network">انقطع اتصال الشبكة. في انتظار عودة الاتصال…</string>
+    <string name="player_retry_failed">فشل الاتصال. اضغط تشغيل لإعادة المحاولة.</string>
+    <string name="player_retry_wait">المحاولة %1$d/5 بعد %2$d ثانية…</string>
+    <string name="player_retry_connecting">جارٍ إعادة الاتصال (%1$d/5)…</string>
 </resources>

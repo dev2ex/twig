@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">このデータベースにはロールバックジャーナルがあります。書き込み元を閉じるか、先にコピーをエクスポートしてください。</string>
     <string name="sqlite_source_changed">コピー中にデータベースが変更されました。書き込み元を閉じるか、コピーをエクスポートして再試行してください。</string>
     <string name="sqlite_snapshot_confirm">閲覧するには %1$s をローカルスナップショットとしてダウンロードします。更新中の場合は先にコピーをエクスポートしてください。続行しますか？</string>
+    <string name="player_waiting_network">ネットワークが切断されました。接続の回復を待っています…</string>
+    <string name="player_retry_failed">接続に失敗しました。再生をタップして再試行してください。</string>
+    <string name="player_retry_wait">%2$d 秒後に再試行（%1$d/5）…</string>
+    <string name="player_retry_connecting">再接続中（%1$d/5）…</string>
 </resources>

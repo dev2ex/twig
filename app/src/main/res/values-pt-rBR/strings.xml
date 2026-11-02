@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Este banco possui um diário de reversão. Feche o programa que grava nele ou exporte uma cópia primeiro.</string>
     <string name="sqlite_source_changed">O banco mudou durante a cópia. Feche o programa que grava nele ou exporte uma cópia e tente novamente.</string>
     <string name="sqlite_snapshot_confirm">É preciso baixar %1$s como cópia local para navegar. Se estiver sendo alterado, exporte uma cópia primeiro. Continuar?</string>
+    <string name="player_waiting_network">Rede desconectada. Aguardando conexão…</string>
+    <string name="player_retry_failed">Falha na conexão. Toque em Reproduzir para tentar novamente.</string>
+    <string name="player_retry_wait">Tentativa %1$d/5 em %2$d segundos…</string>
+    <string name="player_retry_connecting">Reconectando (%1$d/5)…</string>
 </resources>

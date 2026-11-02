@@ -1207,4 +1207,8 @@
     <string name="sqlite_journal_active">Cette base possède un journal de restauration. Fermez le programme qui y écrit ou exportez une copie.</string>
     <string name="sqlite_source_changed">La base a changé pendant la copie. Fermez le programme qui y écrit ou exportez une copie, puis réessayez.</string>
     <string name="sqlite_snapshot_confirm">%1$s doit être téléchargée comme instantané local. Si elle est en cours de modification, exportez une copie. Continuer ?</string>
+    <string name="player_waiting_network">Réseau déconnecté. En attente de connexion…</string>
+    <string name="player_retry_failed">Échec de la connexion. Appuyez sur Lecture pour réessayer.</string>
+    <string name="player_retry_wait">Tentative %1$d/5 dans %2$d secondes…</string>
+    <string name="player_retry_connecting">Reconnexion (%1$d/5)…</string>
 </resources>

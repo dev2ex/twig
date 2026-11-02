@@ -1285,4 +1285,8 @@
     <string name="sqlite_journal_active">This database has a rollback journal. Close its writer or export a database copy first.</string>
     <string name="sqlite_source_changed">The database changed while copying. Close its writer or export a database copy, then retry.</string>
     <string name="sqlite_snapshot_confirm">%1$s must be downloaded as a local snapshot before browsing. For an actively changing database, export a copy first. Continue?</string>
+    <string name="player_waiting_network">Network disconnected. Waiting to reconnect…</string>
+    <string name="player_retry_failed">Connection failed. Tap Play to retry.</string>
+    <string name="player_retry_wait">Retry %1$d/5 in %2$d seconds…</string>
+    <string name="player_retry_connecting">Reconnecting (%1$d/5)…</string>
 </resources>

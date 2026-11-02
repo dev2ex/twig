@@ -1243,4 +1243,8 @@
     <string name="sqlite_journal_active">У базы есть журнал отката. Закройте записывающую программу или сначала экспортируйте копию.</string>
     <string name="sqlite_source_changed">База изменилась при копировании. Закройте записывающую программу или экспортируйте копию и повторите.</string>
     <string name="sqlite_snapshot_confirm">Для просмотра %1$s нужно загрузить локальный снимок. Если база изменяется, сначала экспортируйте копию. Продолжить?</string>
+    <string name="player_waiting_network">Сеть отключена. Ожидание подключения…</string>
+    <string name="player_retry_failed">Ошибка подключения. Нажмите «Воспроизвести», чтобы повторить.</string>
+    <string name="player_retry_wait">Попытка %1$d/5 через %2$d сек.…</string>
+    <string name="player_retry_connecting">Повторное подключение (%1$d/5)…</string>
 </resources>

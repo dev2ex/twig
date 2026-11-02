@@ -1237,4 +1237,8 @@
     <string name="sqlite_journal_active">此数据库存在回滚日志。请先关闭写入它的程序，或导出数据库副本。</string>
     <string name="sqlite_source_changed">复制期间数据库发生变化。请先关闭写入它的程序或导出副本，再重试。</string>
     <string name="sqlite_snapshot_confirm">浏览 %1$s 前需要下载为本地快照。如果数据库正在变化，请先导出副本。是否继续？</string>
+    <string name="player_waiting_network">网络已断开，等待恢复…</string>
+    <string name="player_retry_failed">连接失败，点击播放重试</string>
+    <string name="player_retry_wait">%2$d 秒后重试（%1$d/5）…</string>
+    <string name="player_retry_connecting">正在重新连接（%1$d/5）…</string>
 </resources>
