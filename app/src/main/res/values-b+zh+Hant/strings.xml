@@ -1184,4 +1184,26 @@
     <string name="compress_destination_missing">請選擇儲存位置</string>
     <string name="settings_auto_tree_indent">自動調整樹狀縮排</string>
     <string name="settings_auto_tree_indent_desc">父目錄捲出畫面後，平順收回子層級縮排。</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">以 SQLite 開啟</string>
+    <string name="sqlite_columns">欄位資訊</string>
+    <string name="sqlite_copy">複製</string>
+    <string name="sqlite_name">名稱</string>
+    <string name="sqlite_type">類型</string>
+    <string name="sqlite_not_null">非空</string>
+    <string name="sqlite_default">預設值</string>
+    <string name="sqlite_primary_key">主鍵</string>
+    <string name="sqlite_hidden">隱藏 / 產生欄位</string>
+    <string name="sqlite_loading">載入中…</string>
+    <string name="sqlite_no_rows">沒有資料</string>
+    <string name="sqlite_no_tables">沒有資料表</string>
+    <string name="sqlite_open_failed">無法開啟 SQLite 資料庫</string>
+    <string name="sqlite_read_failed">無法讀取資料表資料</string>
+    <string name="sqlite_blob">BLOB（%1$d 位元組）</string>
+    <string name="sqlite_grid_description">%1$s 列，%2$d 欄</string>
+    <string name="sqlite_value_truncated">預覽已截斷；原始長度：%1$d。複製僅包含顯示的預覽。</string>
+    <string name="sqlite_journal_active">此資料庫存在回復日誌。請先關閉寫入程式或匯出資料庫副本。</string>
+    <string name="sqlite_source_changed">複製期間資料庫發生變更。請先關閉寫入程式或匯出副本，再重試。</string>
+    <string name="sqlite_snapshot_confirm">瀏覽 %1$s 前需要下載為本機快照。如果資料庫正在變更，請先匯出副本。是否繼續？</string>
 </resources>

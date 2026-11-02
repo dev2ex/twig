@@ -426,6 +426,43 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val abandoned: MutableSet<String> = ConcurrentHashMap.newKeySet()
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
+    private val forcedSqlite = HashSet<String>()
+    private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+
+    fun isSqlite(file: XFile, key: String = fileKey(file)): Boolean =
+        com.twig.app.sqlite.SqliteSession.recognizes(file) || key in forcedSqlite
+
+    fun sqliteCommand(node: SqliteNode, command: SqliteCommand) {
+        currentKey = node.tableKey
+        sqliteTree.command(node, command)
+    }
+
+    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset)
+    suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
+
+    fun openAsSqlite(node: FileNode) {
+        forcedSqlite.add(node.key)
+        if (node.key in expanded) expanded.remove(node.key)
+        toggleFile(node.copy(expandable = true))
+    }
+
+    private fun toggleSqlite(node: FileNode) {
+        val key = node.key
+        currentKey = key
+        claimExpand(key)
+        if (expanded.remove(key)) {
+            sqliteTree.close(key)
+        } else {
+            if (key !in confirmedMaterialize && node.file.scheme != "file" &&
+                (node.file.size <= 0 || node.file.size >= materializeConfirmBytes)) {
+                _state.value = _state.value.copy(confirmMaterialize = node.file)
+                return
+            }
+            accordionExpand(key)
+            sqliteTree.open(key, node.file, parentRow(node.file)?.let { mountRoots[it.first] ?: it.second })
+        }
+        rebuild()
+    }
     /** Row keys the user already said "yes, download it" to (see [State.confirmMaterialize]) — don't ask again for the same row this session. */
     private val confirmedMaterialize = HashSet<String>()
     /** File key (fileKey) for which the properties card is open; the card content is cached and dropped when closed/folded. */
@@ -618,7 +655,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         // in other modes an archive is a normal row and doesn't deserve its own group.
         val archivesFirst = grid == 2
         return SortRules.sorted(list, cmp) { f ->
-            SortRules.groupOf(f.isDir, expandableArchive(f), Thumbs.canThumb(f), archivesFirst)
+            SortRules.groupOf(f.isDir, expandableArchive(f) || isSqlite(f), Thumbs.canThumb(f), archivesFirst)
         }
     }
 
@@ -855,6 +892,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Descriptors of saved-last positions (local / apps / network / group / server / favorite; restic repository nodes themselves, and SAF, are skipped). */
     fun expandedDescriptors(): List<String> = expandedSnapshot().mapNotNull { key ->
+        // Browsing sessions are temporary; restoring a database as a directory would misread its path.
+        if (keyFile[key]?.let { isSqlite(it, key) } == true) return@mapNotNull null
         TreeKeys.descriptorOf(key) { scheme -> schemeToConn[scheme]?.label() }
     }
 
@@ -992,6 +1031,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
+            is SqliteNode -> sqliteCommand(node, if (node is SqliteInfoNode) SqliteCommand.CLOSE else SqliteCommand.TOGGLE)
             is GroupNode -> {
                 currentKey = node.key
                 currentDir = null // Group heading (LAN/FTP/...) isn't a real directory; clear it so copy/new don't pick up the previously-selected directory.
@@ -1851,10 +1891,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         refreshTrashRoot()
         val targets = expandedSnapshot().mapNotNull { k -> keyFile[k]?.let { k to it } }
+        val (databases, directories) = targets.partition { (key, file) -> isSqlite(file, key) }
+        databases.forEach { (key, file) -> sqliteTree.refresh(key, file) }
         viewModelScope.launch {
             val fresh = HashMap<String, Listing>()
             withContext(io) {
-                for ((k, f) in targets) runCatching { fresh[k] = listChildren(f) }
+                for ((k, f) in directories) runCatching { fresh[k] = listChildren(f) }
             }
             for ((k, l) in fresh) putListing(k, l)
             rebuild()
@@ -2200,6 +2242,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refreshNode(n: FileNode) {
         if (!n.expandable) return
+        if (isSqlite(n.file, n.key)) {
+            if (n.key in expanded) sqliteTree.refresh(n.key, n.file) else sqliteTree.close(n.key)
+            rebuild()
+            return
+        }
         val key = n.key
         children.remove(key)
         // Even while collapsed, drop the git cache: a manual refresh is the only
@@ -2230,6 +2277,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun toggleFile(n: FileNode) {
         if (!n.expandable) return
+        if (isSqlite(n.file, n.key)) { toggleSqlite(n); return }
         if (n.file.isDir) currentDir = n.file
         val key = n.key
         currentKey = key
@@ -3149,6 +3197,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows.filterIsInstance<FileNode>().firstOrNull {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
+        sqliteTree.retain(rows.filterIsInstance<FileNode>().filter { it.expanded && isSqlite(it.file, it.key) }.mapTo(HashSet()) { it.key })
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
             restoring || revealLoadingKey != null, revealLoadingKey ?: scrollKey)
     }
@@ -3173,20 +3222,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val rowPrefix = if (keyPrefix.isEmpty() && depth > 0 && fileKey in storageShortcutKeys)
             TreeKeys.NESTED_STORAGE_PREFIX else keyPrefix
         val key = rowPrefix + fileKey
-        val expandable = file.isDir || expandableArchive(file, key)
+        val expandable = file.isDir || expandableArchive(file, key) || isSqlite(file, key)
         if (expandable) keyFile[key] = file
         val exp = expandable && expanded.contains(key)
         // A directory with a search result hangs shows the chevron as "expanded" (even if not actually expanded) — visually echoing the search-result virtual directory below; this only affects the icon, the actual children list is still only fetched/rendered when exp is true, so a collapsed directory that starts a search won't also show its original files/dirs below.
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
-            label, capacity, busy(key), rowPrefix,
+            label, capacity, busy(key) || sqliteTree.loading(key), rowPrefix,
             DirectoryCounts.known(file, showHidden),
             gridMode,
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )
         addAttachments(rows, file, depth)
-        if (exp) {
+        if (exp && isSqlite(file, key)) {
+            rows.addAll(sqliteTree.rows(key, depth + 1))
+        } else if (exp) {
             // Put the git virtual root first, no need to dig through a pile of real files.
             // Don't use the display name frozen at registration in gitInfo (after switching branches it'd keep showing the old one); read GitFileSystem.displayName instead — it follows the latest branch in statusCache.
             gitInfo[fileKey(file)]?.let { (s, gl) ->

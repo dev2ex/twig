@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">Kayıt konumunu seçin</string>
     <string name="settings_auto_tree_indent">Otomatik ağaç girintisi</string>
     <string name="settings_auto_tree_indent_desc">Üst klasörler ekran dışına kaydırıldığında girintiyi yumuşakça azaltır.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite olarak aç</string>
+    <string name="sqlite_columns">Sütunlar</string>
+    <string name="sqlite_copy">Kopyala</string>
+    <string name="sqlite_name">Ad</string>
+    <string name="sqlite_type">Tür</string>
+    <string name="sqlite_not_null">NULL olamaz</string>
+    <string name="sqlite_default">Varsayılan</string>
+    <string name="sqlite_primary_key">Birincil anahtar</string>
+    <string name="sqlite_hidden">Gizli / oluşturulan</string>
+    <string name="sqlite_loading">Yükleniyor…</string>
+    <string name="sqlite_no_rows">Satır yok</string>
+    <string name="sqlite_no_tables">Tablo yok</string>
+    <string name="sqlite_open_failed">SQLite veritabanı açılamadı</string>
+    <string name="sqlite_read_failed">Tablo verileri okunamadı</string>
+    <string name="sqlite_blob">BLOB (%1$d bayt)</string>
+    <string name="sqlite_grid_description">%1$s satır, %2$d sütun</string>
+    <string name="sqlite_value_truncated">Önizleme kısaltıldı; asıl uzunluk: %1$d. Yalnızca gösterilen önizleme kopyalanır.</string>
+    <string name="sqlite_journal_active">Bu veritabanında geri alma günlüğü var. Yazan programı kapatın veya önce bir kopya dışa aktarın.</string>
+    <string name="sqlite_source_changed">Veritabanı kopyalama sırasında değişti. Yazan programı kapatın veya bir kopya dışa aktarıp yeniden deneyin.</string>
+    <string name="sqlite_snapshot_confirm">Göz atmak için %1$s yerel bir anlık görüntü olarak indirilmelidir. Değiştiriliyorsa önce bir kopya dışa aktarın. Devam edilsin mi?</string>
 </resources>

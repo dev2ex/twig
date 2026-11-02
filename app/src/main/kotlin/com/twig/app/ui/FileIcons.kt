@@ -52,6 +52,7 @@ object FileIcons {
         // the real app icon is fetched live from PackageManager below by "pkg:" key (filled in async, doesn't go through the thumbnail pipeline)
         file.scheme == com.twig.app.AppsFileSystem.SCHEME -> R.drawable.ic_file_apk
         OpenFiles.isVideo(file) || file.extension == "wmv" -> R.drawable.ic_file_video
+        com.twig.app.sqlite.SqliteSession.recognizes(file) -> R.drawable.ic_sqlite_database
         OpenFiles.isPlaylist(file) -> R.drawable.ic_md_playlist
         OpenFiles.isAudio(file) -> R.drawable.ic_file_audio
         OpenFiles.isImage(file) -> R.drawable.ic_file_image

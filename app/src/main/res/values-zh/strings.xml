@@ -1215,4 +1215,26 @@
     <string name="compress_destination_missing">请选择保存位置</string>
     <string name="settings_auto_tree_indent">自动调整树缩进</string>
     <string name="settings_auto_tree_indent_desc">父目录滚出屏幕后，平滑收回子级缩进。</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">作为 SQLite 打开</string>
+    <string name="sqlite_columns">列信息</string>
+    <string name="sqlite_copy">复制</string>
+    <string name="sqlite_name">名称</string>
+    <string name="sqlite_type">类型</string>
+    <string name="sqlite_not_null">非空</string>
+    <string name="sqlite_default">默认值</string>
+    <string name="sqlite_primary_key">主键</string>
+    <string name="sqlite_hidden">隐藏 / 生成列</string>
+    <string name="sqlite_loading">加载中…</string>
+    <string name="sqlite_no_rows">没有数据</string>
+    <string name="sqlite_no_tables">没有表</string>
+    <string name="sqlite_open_failed">无法打开 SQLite 数据库</string>
+    <string name="sqlite_read_failed">无法读取表数据</string>
+    <string name="sqlite_blob">BLOB（%1$d 字节）</string>
+    <string name="sqlite_grid_description">%1$s 行，%2$d 列</string>
+    <string name="sqlite_value_truncated">预览已截断；原始长度：%1$d。复制仅包含显示的预览。</string>
+    <string name="sqlite_journal_active">此数据库存在回滚日志。请先关闭写入它的程序，或导出数据库副本。</string>
+    <string name="sqlite_source_changed">复制期间数据库发生变化。请先关闭写入它的程序或导出副本，再重试。</string>
+    <string name="sqlite_snapshot_confirm">浏览 %1$s 前需要下载为本地快照。如果数据库正在变化，请先导出副本。是否继续？</string>
 </resources>

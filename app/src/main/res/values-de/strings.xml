@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">Speicherort auswählen</string>
     <string name="settings_auto_tree_indent">Automatischer Baumeinzug</string>
     <string name="settings_auto_tree_indent_desc">Einzug sanft verringern, wenn übergeordnete Ordner aus dem Bild scrollen.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Als SQLite öffnen</string>
+    <string name="sqlite_columns">Spalten</string>
+    <string name="sqlite_copy">Kopieren</string>
+    <string name="sqlite_name">Name</string>
+    <string name="sqlite_type">Typ</string>
+    <string name="sqlite_not_null">Nicht NULL</string>
+    <string name="sqlite_default">Standardwert</string>
+    <string name="sqlite_primary_key">Primärschlüssel</string>
+    <string name="sqlite_hidden">Versteckt / generiert</string>
+    <string name="sqlite_loading">Wird geladen…</string>
+    <string name="sqlite_no_rows">Keine Zeilen</string>
+    <string name="sqlite_no_tables">Keine Tabellen</string>
+    <string name="sqlite_open_failed">SQLite-Datenbank konnte nicht geöffnet werden</string>
+    <string name="sqlite_read_failed">Tabellendaten konnten nicht gelesen werden</string>
+    <string name="sqlite_blob">BLOB (%1$d Bytes)</string>
+    <string name="sqlite_grid_description">%1$s Zeilen, %2$d Spalten</string>
+    <string name="sqlite_value_truncated">Vorschau gekürzt; ursprüngliche Länge: %1$d. Kopiert wird nur die angezeigte Vorschau.</string>
+    <string name="sqlite_journal_active">Diese Datenbank hat ein Rollback-Journal. Schreibendes Programm schließen oder zuerst eine Kopie exportieren.</string>
+    <string name="sqlite_source_changed">Die Datenbank wurde beim Kopieren geändert. Schreibendes Programm schließen oder eine Kopie exportieren und erneut versuchen.</string>
+    <string name="sqlite_snapshot_confirm">%1$s muss zum Anzeigen als lokale Momentaufnahme heruntergeladen werden. Eine sich ändernde Datenbank zuerst exportieren. Fortfahren?</string>
 </resources>

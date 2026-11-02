@@ -520,6 +520,14 @@ its listing size must still describe the followed stream for copy/resume checks.
   group. Archives get their own group only in the "All files" grid — there they are the
   only full-width row in a sea of cells, and leaving one in the middle would cut the grid
   in half.
+- SQLite: database files expand into dedicated table nodes; tables expand into a
+  pane-width virtual data grid, with row/column counts and Columns/DDL property tabs.
+  `SqliteSession` owns read-only source leases and bounded typed previews; `SqliteTree`
+  owns cancellable jobs and an eight-page cache per table. Never model tables as writable
+  filesystem directories or use displayed row offsets for future edits. Nonlocal sources
+  use disposable snapshots including WAL; opaque parents come from the tree, and failed
+  sibling listings cannot prove WAL absence. See [SQLite browsing](docs/sqlite-browser.md)
+  for limits, source consistency and the planned editing/query boundaries.
 - Info card: long-press → "Properties" inserts a tab card below the file's row
   (`PaneViewModel.InfoNode` + a second viewType in FileAdapter); the content comes from
   `FileInfo` using system APIs only (EXIF / MediaMetadataRetriever / PackageManager;

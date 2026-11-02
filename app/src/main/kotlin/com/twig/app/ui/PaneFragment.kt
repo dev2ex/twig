@@ -282,6 +282,9 @@ class PaneFragment : Fragment() {
             onInfoHash = { node -> viewModel.computeHash(node) },
             onInfo = { node -> viewModel.toggleInfo(node) },
             onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
+            onSqliteCommand = { node, command -> viewModel.sqliteCommand(node, command) },
+            onSqlitePage = { node, offset -> viewModel.sqlitePage(node, offset) },
+            onSqliteCell = { node, row, column -> showSqliteCell(node, row, column) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
         // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is
@@ -1770,7 +1773,9 @@ class PaneFragment : Fragment() {
         if (materializeDialogFor == key) return
         val ctx = context ?: return
         materializeDialogFor = key
-        val msg = if (file.size > 0) {
+        val msg = if (viewModel.isSqlite(file)) {
+            getString(R.string.sqlite_snapshot_confirm, file.name)
+        } else if (file.size > 0) {
             getString(R.string.archive_confirm_materialize, file.name, Format.size(file.size))
         } else {
             getString(R.string.archive_confirm_materialize_unknown, file.name)
@@ -1831,8 +1836,31 @@ class PaneFragment : Fragment() {
 
     // ---- Long-press context menu ----
 
+    private var sqliteCellJob: kotlinx.coroutines.Job? = null
+
+    private fun showSqliteCell(node: SqliteDataNode, row: Int, column: Int) {
+        sqliteCellJob?.cancel()
+        sqliteCellJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val value = viewModel.sqliteCell(node, row, column) ?: return@launch
+                SqliteCellDialog.show(requireContext(), node.state.table.visibleColumns[column].name, value)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+        }
+    }
+
     private fun onLongClick(node: PaneViewModel.Node) {
         when (node) {
+            is SqliteTableNode -> {
+                val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.file_info), R.drawable.ic_info) {
+                    viewModel.sqliteCommand(node, SqliteCommand.PROPERTIES)
+                }
+                actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) {
+                    viewModel.sqliteCommand(node, SqliteCommand.REFRESH)
+                }
+                showActionMenu(requireContext(), node.state.table.name, actions)
+            }
             is PaneViewModel.FileNode -> longClickFile(node)
             is PaneViewModel.ServerNode -> serverMenu(node)
             is PaneViewModel.FavoriteNode -> favoriteMenu(node)
@@ -1903,6 +1931,9 @@ class PaneFragment : Fragment() {
         actions.item(getString(R.string.file_info), R.drawable.ic_info) { viewModel.toggleInfo(node) }
         if (node.expandable) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
+        }
+        if (!node.file.isDir && !viewModel.isSqlite(node.file, node.key) && FileIcons.baseIconRes(node.file) == R.drawable.ic_file) {
+            actions.item(getString(R.string.sqlite_open_as), R.drawable.ic_sqlite_database) { viewModel.openAsSqlite(node) }
         }
         if (!node.file.isDir && OpenFiles.isInstallable(node.file)) {
             actions.item(getString(R.string.open_as_archive), R.drawable.ic_file_archive) {

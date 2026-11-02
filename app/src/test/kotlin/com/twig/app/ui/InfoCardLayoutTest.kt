@@ -25,6 +25,44 @@ import org.robolectric.util.ReflectionHelpers
 class InfoCardLayoutTest {
     private val app = ApplicationProvider.getApplicationContext<Application>()
 
+    @Test @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun `opaque property content cannot erase the upper rounded border`() {
+        val context = android.view.ContextThemeWrapper(app, com.twig.app.R.style.Theme_Twig)
+        val binding = com.twig.app.databinding.ItemInfoCardBinding.inflate(android.view.LayoutInflater.from(context))
+        val content = binding.infoContent
+        content.removeAllViews()
+        val dp = content.resources.displayMetrics.density
+        val width = (200 * dp).toInt()
+        val height = (80 * dp).toInt()
+        fun render(): android.graphics.Bitmap {
+            content.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+            content.layout(0, 0, width, height)
+            return android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888).also {
+                content.draw(android.graphics.Canvas(it))
+            }
+        }
+        val empty = render()
+        val fill = android.util.TypedValue().also { context.theme.resolveAttribute(com.twig.app.R.attr.twigSurface, it, true) }.data
+        content.addView(View(context).apply { setBackgroundColor(fill) },
+            LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                setMargins(dp.toInt(), dp.toInt(), dp.toInt(), dp.toInt())
+            })
+        val covered = render()
+        var strokePixels = 0
+        val corner = (6 * dp).toInt()
+        for (y in 0 until corner) for (dx in 0 until corner) for (x in listOf(dx, width - 1 - dx)) {
+            val expected = empty.getPixel(x, y)
+            if (android.graphics.Color.alpha(expected) > 200 && expected != fill) {
+                strokePixels++
+                assertEquals("Rounded border at $x,$y", expected, covered.getPixel(x, y))
+            }
+        }
+        assertTrue(strokePixels > 0)
+        empty.recycle()
+        covered.recycle()
+    }
+
     private class ScrollParent(app: Application) : FrameLayout(app) {
         var disallowed = false
         var verticalIntercepts = 0

@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">Escolha um destino</string>
     <string name="settings_auto_tree_indent">Recuo automático da árvore</string>
     <string name="settings_auto_tree_indent_desc">Reduz suavemente o recuo quando as pastas superiores saem da tela.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Abrir como SQLite</string>
+    <string name="sqlite_columns">Colunas</string>
+    <string name="sqlite_copy">Copiar</string>
+    <string name="sqlite_name">Nome</string>
+    <string name="sqlite_type">Tipo</string>
+    <string name="sqlite_not_null">Não nulo</string>
+    <string name="sqlite_default">Padrão</string>
+    <string name="sqlite_primary_key">Chave primária</string>
+    <string name="sqlite_hidden">Oculta / gerada</string>
+    <string name="sqlite_loading">Carregando…</string>
+    <string name="sqlite_no_rows">Nenhuma linha</string>
+    <string name="sqlite_no_tables">Nenhuma tabela</string>
+    <string name="sqlite_open_failed">Não foi possível abrir o banco SQLite</string>
+    <string name="sqlite_read_failed">Não foi possível ler os dados da tabela</string>
+    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_grid_description">%1$s linhas, %2$d colunas</string>
+    <string name="sqlite_value_truncated">Prévia truncada; tamanho original: %1$d. Apenas a prévia exibida é copiada.</string>
+    <string name="sqlite_journal_active">Este banco possui um diário de reversão. Feche o programa que grava nele ou exporte uma cópia primeiro.</string>
+    <string name="sqlite_source_changed">O banco mudou durante a cópia. Feche o programa que grava nele ou exporte uma cópia e tente novamente.</string>
+    <string name="sqlite_snapshot_confirm">É preciso baixar %1$s como cópia local para navegar. Se estiver sendo alterado, exporte uma cópia primeiro. Continuar?</string>
 </resources>

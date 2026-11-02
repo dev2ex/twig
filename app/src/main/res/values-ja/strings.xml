@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">保存先を選択してください</string>
     <string name="settings_auto_tree_indent">ツリーの字下げを自動調整</string>
     <string name="settings_auto_tree_indent_desc">親フォルダが画面外にスクロールすると、字下げを滑らかに縮めます。</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite として開く</string>
+    <string name="sqlite_columns">列情報</string>
+    <string name="sqlite_copy">コピー</string>
+    <string name="sqlite_name">名前</string>
+    <string name="sqlite_type">型</string>
+    <string name="sqlite_not_null">非 NULL</string>
+    <string name="sqlite_default">既定値</string>
+    <string name="sqlite_primary_key">主キー</string>
+    <string name="sqlite_hidden">非表示 / 生成列</string>
+    <string name="sqlite_loading">読み込み中…</string>
+    <string name="sqlite_no_rows">行がありません</string>
+    <string name="sqlite_no_tables">テーブルがありません</string>
+    <string name="sqlite_open_failed">SQLite データベースを開けませんでした</string>
+    <string name="sqlite_read_failed">テーブルのデータを読み取れませんでした</string>
+    <string name="sqlite_blob">BLOB（%1$d バイト）</string>
+    <string name="sqlite_grid_description">%1$s 行、%2$d 列</string>
+    <string name="sqlite_value_truncated">プレビューは省略されています。元の長さ：%1$d。コピーには表示部分のみが含まれます。</string>
+    <string name="sqlite_journal_active">このデータベースにはロールバックジャーナルがあります。書き込み元を閉じるか、先にコピーをエクスポートしてください。</string>
+    <string name="sqlite_source_changed">コピー中にデータベースが変更されました。書き込み元を閉じるか、コピーをエクスポートして再試行してください。</string>
+    <string name="sqlite_snapshot_confirm">閲覧するには %1$s をローカルスナップショットとしてダウンロードします。更新中の場合は先にコピーをエクスポートしてください。続行しますか？</string>
 </resources>

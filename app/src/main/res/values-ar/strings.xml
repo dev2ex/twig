@@ -1189,4 +1189,26 @@
     <string name="compress_destination_missing">اختر وجهة الحفظ</string>
     <string name="settings_auto_tree_indent">مسافة بادئة تلقائية للشجرة</string>
     <string name="settings_auto_tree_indent_desc">تقليل المسافة البادئة بسلاسة عندما تخرج المجلدات الأصلية من الشاشة بالتمرير.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">فتح كقاعدة SQLite</string>
+    <string name="sqlite_columns">الأعمدة</string>
+    <string name="sqlite_copy">نسخ</string>
+    <string name="sqlite_name">الاسم</string>
+    <string name="sqlite_type">النوع</string>
+    <string name="sqlite_not_null">غير فارغ</string>
+    <string name="sqlite_default">الافتراضي</string>
+    <string name="sqlite_primary_key">المفتاح الأساسي</string>
+    <string name="sqlite_hidden">مخفي / مولّد</string>
+    <string name="sqlite_loading">جارٍ التحميل…</string>
+    <string name="sqlite_no_rows">لا توجد صفوف</string>
+    <string name="sqlite_no_tables">لا توجد جداول</string>
+    <string name="sqlite_open_failed">تعذر فتح قاعدة بيانات SQLite</string>
+    <string name="sqlite_read_failed">تعذرت قراءة بيانات الجدول</string>
+    <string name="sqlite_blob">BLOB (%1$d بايت)</string>
+    <string name="sqlite_grid_description">%1$s صفوف، %2$d أعمدة</string>
+    <string name="sqlite_value_truncated">المعاينة مقتطعة؛ الطول الأصلي: %1$d. يشمل النسخ المعاينة المعروضة فقط.</string>
+    <string name="sqlite_journal_active">تحتوي القاعدة على سجل تراجع. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة أولاً.</string>
+    <string name="sqlite_source_changed">تغيرت القاعدة أثناء النسخ. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة ثم أعد المحاولة.</string>
+    <string name="sqlite_snapshot_confirm">يجب تنزيل %1$s كلقطة محلية لتصفحها. إذا كانت قيد التغيير، صدّر نسخة أولاً. هل تريد المتابعة؟</string>
 </resources>

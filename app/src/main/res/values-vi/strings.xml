@@ -1184,4 +1184,26 @@
     <string name="compress_destination_missing">Chọn nơi lưu</string>
     <string name="settings_auto_tree_indent">Tự động thụt lề cây thư mục</string>
     <string name="settings_auto_tree_indent_desc">Giảm thụt lề mượt mà khi thư mục cha cuộn ra khỏi màn hình.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Mở dưới dạng SQLite</string>
+    <string name="sqlite_columns">Cột</string>
+    <string name="sqlite_copy">Sao chép</string>
+    <string name="sqlite_name">Tên</string>
+    <string name="sqlite_type">Kiểu</string>
+    <string name="sqlite_not_null">Không null</string>
+    <string name="sqlite_default">Mặc định</string>
+    <string name="sqlite_primary_key">Khóa chính</string>
+    <string name="sqlite_hidden">Ẩn / được tạo</string>
+    <string name="sqlite_loading">Đang tải…</string>
+    <string name="sqlite_no_rows">Không có hàng</string>
+    <string name="sqlite_no_tables">Không có bảng</string>
+    <string name="sqlite_open_failed">Không thể mở cơ sở dữ liệu SQLite</string>
+    <string name="sqlite_read_failed">Không thể đọc dữ liệu bảng</string>
+    <string name="sqlite_blob">BLOB (%1$d byte)</string>
+    <string name="sqlite_grid_description">%1$s hàng, %2$d cột</string>
+    <string name="sqlite_value_truncated">Bản xem trước bị cắt; độ dài gốc: %1$d. Chỉ phần đang hiển thị được sao chép.</string>
+    <string name="sqlite_journal_active">Cơ sở dữ liệu có nhật ký khôi phục. Hãy đóng chương trình đang ghi hoặc xuất bản sao trước.</string>
+    <string name="sqlite_source_changed">Cơ sở dữ liệu đã thay đổi khi sao chép. Đóng chương trình đang ghi hoặc xuất bản sao rồi thử lại.</string>
+    <string name="sqlite_snapshot_confirm">Cần tải %1$s thành bản chụp cục bộ để duyệt. Nếu đang thay đổi, hãy xuất bản sao trước. Tiếp tục?</string>
 </resources>

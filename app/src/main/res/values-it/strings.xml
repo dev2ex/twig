@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">Scegli una destinazione</string>
     <string name="settings_auto_tree_indent">Rientro automatico ad albero</string>
     <string name="settings_auto_tree_indent_desc">Riduce gradualmente il rientro quando le cartelle superiori escono dallo schermo.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Apri come SQLite</string>
+    <string name="sqlite_columns">Colonne</string>
+    <string name="sqlite_copy">Copia</string>
+    <string name="sqlite_name">Nome</string>
+    <string name="sqlite_type">Tipo</string>
+    <string name="sqlite_not_null">Non nullo</string>
+    <string name="sqlite_default">Predefinito</string>
+    <string name="sqlite_primary_key">Chiave primaria</string>
+    <string name="sqlite_hidden">Nascosta / generata</string>
+    <string name="sqlite_loading">Caricamento…</string>
+    <string name="sqlite_no_rows">Nessuna riga</string>
+    <string name="sqlite_no_tables">Nessuna tabella</string>
+    <string name="sqlite_open_failed">Impossibile aprire il database SQLite</string>
+    <string name="sqlite_read_failed">Impossibile leggere i dati della tabella</string>
+    <string name="sqlite_blob">BLOB (%1$d byte)</string>
+    <string name="sqlite_grid_description">%1$s righe, %2$d colonne</string>
+    <string name="sqlite_value_truncated">Anteprima troncata; lunghezza originale: %1$d. Viene copiata solo la parte visualizzata.</string>
+    <string name="sqlite_journal_active">Questo database ha un journal di rollback. Chiudi il programma che lo modifica o esporta prima una copia.</string>
+    <string name="sqlite_source_changed">Il database è cambiato durante la copia. Chiudi il programma che lo modifica o esporta una copia e riprova.</string>
+    <string name="sqlite_snapshot_confirm">Per esplorare %1$s occorre scaricare una copia locale. Se viene modificato, esporta prima una copia. Continuare?</string>
 </resources>

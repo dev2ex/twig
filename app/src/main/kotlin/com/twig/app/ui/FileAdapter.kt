@@ -41,6 +41,7 @@ import com.twig.app.favoriteDisplayName
 import com.twig.app.favoriteFullPath
 import com.twig.app.databinding.ItemFileBinding
 import com.twig.app.databinding.ItemInfoCardBinding
+import com.twig.app.databinding.ItemSqliteDataBinding
 import com.twig.app.databinding.ItemThumbCellBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -75,6 +76,9 @@ class FileAdapter(
     private val onInfoLongClick: (PaneViewModel.FileNode) -> Unit = {},
     /** External multi-file picking always selects rows, regardless of the normal selection preference. */
     private val selectFilesByRow: Boolean = false,
+    private val onSqliteCommand: (SqliteNode, SqliteCommand) -> Unit = { _, _ -> },
+    private val onSqlitePage: (SqliteDataNode, Int) -> Unit = { _, _ -> },
+    private val onSqliteCell: (SqliteDataNode, Int, Int) -> Unit = { _, _, _ -> },
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
     var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
@@ -99,7 +103,7 @@ class FileAdapter(
             val content = row.findViewById<View>(R.id.row_content)
             val start = ((2 + (node.depth - indentOffset).coerceAtLeast(0f) * 14) * dp).toInt()
             if (content.paddingStart != start) content.setPaddingRelative(start, 0, 0, 0)
-        } else if (holder is InfoVH) {
+        } else if (holder is InfoVH || holder is SqliteInfoVH) {
             val tabs = row.findViewById<View>(R.id.tab_bar)
             val params = tabs.layoutParams as ViewGroup.MarginLayoutParams
             val start = ((16 + (node.depth - 1 - indentOffset).coerceAtLeast(0f) * 14) * dp).toInt()
@@ -150,7 +154,8 @@ class FileAdapter(
     /** Whether this position is a plain full row (neither grid cell nor info card); used by divider logic. */
     fun isPlainRowAt(position: Int): Boolean =
         position in currentList.indices &&
-            currentList[position] !is PaneViewModel.InfoNode && !isCell(currentList[position])
+            currentList[position] !is PaneViewModel.InfoNode &&
+            currentList[position] !is SqliteDataNode && currentList[position] !is SqliteInfoNode && !isCell(currentList[position])
 
     private fun isCell(n: PaneViewModel.Node): Boolean = when (n) {
         is PaneViewModel.WebsiteNode -> gridMode == 2 && !n.reordering
@@ -306,6 +311,8 @@ class FileAdapter(
     override fun getItemViewType(position: Int): Int {
         val n = getItem(position)
         return when {
+            n is SqliteDataNode -> TYPE_SQLITE_DATA
+            n is SqliteInfoNode -> TYPE_SQLITE_INFO
             n is PaneViewModel.InfoNode -> TYPE_INFO
             isCell(n) -> TYPE_CELL
             else -> TYPE_ROW
@@ -315,10 +322,33 @@ class FileAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         val inflater = LayoutInflater.from(parent.context)
         return when (viewType) {
+            TYPE_SQLITE_DATA -> SqliteDataVH(ItemSqliteDataBinding.inflate(inflater, parent, false).apply {
+                sqliteGrid.layoutParams.height = sqliteViewportHeight(parent, 280)
+            })
+            TYPE_SQLITE_INFO -> SqliteInfoVH(SqliteInfoView(parent.context).apply {
+                setGridHeight(sqliteViewportHeight(parent, 224))
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
             TYPE_INFO -> InfoVH(ItemInfoCardBinding.inflate(inflater, parent, false))
             TYPE_CELL -> CellVH(ItemThumbCellBinding.inflate(inflater, parent, false))
             else -> VH(ItemFileBinding.inflate(inflater, parent, false))
         }
+    }
+
+    private fun sqliteViewportHeight(parent: ViewGroup, maxDp: Int): Int {
+        val dp = parent.resources.displayMetrics.density
+        // Leave part of a short landscape pane outside the grid, so the user can leave
+        // a million-row table without scrolling its data all the way to an edge.
+        return if (parent.height > 0) (parent.height * 0.55f).toInt()
+            .coerceIn((72 * dp).toInt(), (maxDp * dp).toInt()) else (maxDp * dp).toInt()
+    }
+
+    private inner class SqliteDataVH(private val binding: ItemSqliteDataBinding) : RecyclerView.ViewHolder(binding.root) {
+        fun bind(node: SqliteDataNode) = binding.sqliteGrid.bind(node, { onSqlitePage(node, it) }, { row, column -> onSqliteCell(node, row, column) })
+        fun release() = binding.sqliteGrid.release()
+    }
+    private inner class SqliteInfoVH(private val card: SqliteInfoView) : RecyclerView.ViewHolder(card) {
+        fun bind(node: SqliteInfoNode) = card.bind(node, metaSp + 1f) { onSqliteCommand(node, it) }
     }
 
     private val attachedCountRows = HashSet<VH>()
@@ -349,6 +379,8 @@ class FileAdapter(
     }
 
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        if (holder is SqliteDataVH) holder.release()
+        if (holder is SqliteInfoVH) (holder.itemView as SqliteInfoView).release()
         (holder.itemView as? InfoCardLayout)?.resetPage()
         if (holder is VH) {
             attachedCountRows.remove(holder)
@@ -362,6 +394,8 @@ class FileAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         when (holder) {
+            is SqliteDataVH -> holder.bind(getItem(position) as SqliteDataNode)
+            is SqliteInfoVH -> holder.bind(getItem(position) as SqliteInfoNode)
             is VH -> holder.bind(getItem(position), position)
             is InfoVH -> holder.bind(getItem(position) as PaneViewModel.InfoNode)
             is CellVH -> holder.bind(getItem(position))
@@ -738,37 +772,8 @@ class FileAdapter(
         }
 
         private fun buildTabs(node: PaneViewModel.InfoNode, titles: List<String>, cur: Int) {
-            val ctx = b.root.context
-            val dpi = ctx.resources.displayMetrics.density
-            val active = ContextCompat.getColor(ctx, R.color.primary)
-            val idle = ContextCompat.getColor(ctx, R.color.text_secondary)
-            b.tabBar.visibility = View.VISIBLE
-            b.tabBar.removeAllViews()
-            titles.forEachIndexed { i, t ->
-                b.tabBar.addView(
-                    android.widget.TextView(ctx).apply {
-                        text = t
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp + 1f)
-                        setTextColor(if (i == cur) active else idle)
-                        typeface = if (i == cur) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                        setPadding((9 * dpi).toInt(), (6 * dpi).toInt(), (9 * dpi).toInt(), (6 * dpi).toInt())
-                        if (i != cur) setOnClickListener { onInfoTab(node, i) }
-                    },
-                )
-            }
-            b.tabBar.addView(
-                View(ctx),
-                LinearLayout.LayoutParams(0, 1).apply { weight = 1f },
-            )
-            b.tabBar.addView(
-                android.widget.TextView(ctx).apply {
-                    text = ctx.getString(R.string.info_close)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp + 1f)
-                    setTextColor(idle)
-                    setPadding((12 * dpi).toInt(), (6 * dpi).toInt(), (12 * dpi).toInt(), (6 * dpi).toInt())
-                    setOnClickListener { onClick(node) }
-                },
-            )
+            InfoCardTabs.bind(b.tabBar, titles, cur, metaSp + 1f,
+                onTab = { onInfoTab(node, it) }, onClose = { onClick(node) })
         }
 
         /** Field names are gray and values use the normal text color. */
@@ -895,6 +900,7 @@ class FileAdapter(
                 // Equal slots fit the icon plus 999+ and stay fixed even when a count is hidden.
                 count.layoutParams = count.layoutParams.apply { width = (count.textSize * 4f).toInt() }
             }
+            b.fileCount.setPaddingRelative(0, 0, 0, 0)
             b.folderCounts.alpha = IDLE_CHECK_ALPHA
             b.folderCounts.visibility = View.GONE
             b.permissions.visibility = View.GONE
@@ -956,6 +962,8 @@ class FileAdapter(
             }
 
             when (node) {
+                is SqliteTableNode -> bindSqliteTable(node)
+                is SqliteNode -> Unit
                 is PaneViewModel.FileNode -> bindFile(node)
                 is PaneViewModel.GroupNode -> bindGroup(node)
                 is PaneViewModel.ServerNode -> bindServer(node)
@@ -1089,6 +1097,37 @@ class FileAdapter(
             b.check.visibility = View.GONE
             b.root.setOnClickListener { onClick(node) }
             b.root.setOnLongClickListener { false }
+        }
+
+        private fun bindSqliteTable(node: SqliteTableNode) {
+            val ctx = b.root.context
+            val state = node.state
+            b.name.text = state.table.name
+            setMeta(null)
+            b.icon.setImageResource(R.drawable.ic_sqlite_table)
+            setIndicator(state.expanded)
+            b.check.visibility = View.GONE
+            b.folderCounts.visibility = View.VISIBLE
+            b.metaRow.visibility = View.VISIBLE
+            b.directoryCount.visibility = View.VISIBLE
+            b.fileCount.visibility = View.VISIBLE
+            b.directoryCount.text = state.count?.toString() ?: if (state.counting) "…" else "?"
+            b.fileCount.text = state.table.visibleColumns.size.toString()
+            for (count in listOf(b.directoryCount, b.fileCount)) {
+                count.layoutParams = count.layoutParams.apply { width = ViewGroup.LayoutParams.WRAP_CONTENT }
+            }
+            b.fileCount.setPaddingRelative((8 * ctx.resources.displayMetrics.density).toInt(), 0, 0, 0)
+            bindMetadataIcon(b.directoryCount, R.drawable.ic_sqlite_rows)
+            bindMetadataIcon(b.fileCount, R.drawable.ic_sqlite_columns)
+            b.folderCounts.contentDescription = ctx.getString(R.string.sqlite_grid_description,
+                b.directoryCount.text, state.table.visibleColumns.size)
+            b.infoToggle.visibility = View.VISIBLE
+            b.infoToggle.contentDescription = ctx.getString(R.string.file_info)
+            b.infoToggle.setOnClickListener { onSqliteCommand(node, SqliteCommand.PROPERTIES) }
+            b.root.setOnClickListener { onClick(node) }
+            b.root.setOnLongClickListener { onLongClick(node); true }
+            b.icon.setOnClickListener { onClick(node) }
+            b.indicator.setOnClickListener { onClick(node) }
         }
 
         /**
@@ -1478,6 +1517,8 @@ class FileAdapter(
         private const val TYPE_ROW = 0
         private const val TYPE_INFO = 1
         private const val TYPE_CELL = 2
+        private const val TYPE_SQLITE_DATA = 3
+        private const val TYPE_SQLITE_INFO = 4
 
         private const val IDLE_CHECK_ALPHA = 0.45f
 

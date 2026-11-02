@@ -1221,4 +1221,26 @@
     <string name="compress_destination_missing">Выберите место сохранения</string>
     <string name="settings_auto_tree_indent">Автоматический отступ дерева</string>
     <string name="settings_auto_tree_indent_desc">Плавно уменьшать отступ, когда родительские папки уходят за пределы экрана.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Открыть как SQLite</string>
+    <string name="sqlite_columns">Столбцы</string>
+    <string name="sqlite_copy">Копировать</string>
+    <string name="sqlite_name">Имя</string>
+    <string name="sqlite_type">Тип</string>
+    <string name="sqlite_not_null">Не NULL</string>
+    <string name="sqlite_default">По умолчанию</string>
+    <string name="sqlite_primary_key">Первичный ключ</string>
+    <string name="sqlite_hidden">Скрытый / вычисляемый</string>
+    <string name="sqlite_loading">Загрузка…</string>
+    <string name="sqlite_no_rows">Нет строк</string>
+    <string name="sqlite_no_tables">Нет таблиц</string>
+    <string name="sqlite_open_failed">Не удалось открыть базу SQLite</string>
+    <string name="sqlite_read_failed">Не удалось прочитать данные таблицы</string>
+    <string name="sqlite_blob">BLOB (%1$d байт)</string>
+    <string name="sqlite_grid_description">%1$s строк, %2$d столбцов</string>
+    <string name="sqlite_value_truncated">Предпросмотр обрезан; исходная длина: %1$d. Копируется только показанная часть.</string>
+    <string name="sqlite_journal_active">У базы есть журнал отката. Закройте записывающую программу или сначала экспортируйте копию.</string>
+    <string name="sqlite_source_changed">База изменилась при копировании. Закройте записывающую программу или экспортируйте копию и повторите.</string>
+    <string name="sqlite_snapshot_confirm">Для просмотра %1$s нужно загрузить локальный снимок. Если база изменяется, сначала экспортируйте копию. Продолжить?</string>
 </resources>

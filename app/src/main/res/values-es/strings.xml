@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">Elige un destino</string>
     <string name="settings_auto_tree_indent">Sangría automática del árbol</string>
     <string name="settings_auto_tree_indent_desc">Reduce suavemente la sangría cuando las carpetas superiores salen de la pantalla.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Abrir como SQLite</string>
+    <string name="sqlite_columns">Columnas</string>
+    <string name="sqlite_copy">Copiar</string>
+    <string name="sqlite_name">Nombre</string>
+    <string name="sqlite_type">Tipo</string>
+    <string name="sqlite_not_null">No nulo</string>
+    <string name="sqlite_default">Predeterminado</string>
+    <string name="sqlite_primary_key">Clave primaria</string>
+    <string name="sqlite_hidden">Oculta / generada</string>
+    <string name="sqlite_loading">Cargando…</string>
+    <string name="sqlite_no_rows">Sin filas</string>
+    <string name="sqlite_no_tables">Sin tablas</string>
+    <string name="sqlite_open_failed">No se pudo abrir la base de datos SQLite</string>
+    <string name="sqlite_read_failed">No se pudieron leer los datos de la tabla</string>
+    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_grid_description">%1$s filas, %2$d columnas</string>
+    <string name="sqlite_value_truncated">Vista previa truncada; longitud original: %1$d. Solo se copia la vista previa mostrada.</string>
+    <string name="sqlite_journal_active">Esta base de datos tiene un diario de reversión. Cierre el programa que escribe en ella o exporte una copia primero.</string>
+    <string name="sqlite_source_changed">La base de datos cambió durante la copia. Cierre el programa que escribe en ella o exporte una copia y reintente.</string>
+    <string name="sqlite_snapshot_confirm">Es necesario descargar %1$s como copia local para explorarla. Si está cambiando, exporte una copia primero. ¿Continuar?</string>
 </resources>

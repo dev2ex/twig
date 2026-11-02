@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">सहेजने का स्थान चुनें</string>
     <string name="settings_auto_tree_indent">ट्री का स्वचालित इंडेंट</string>
     <string name="settings_auto_tree_indent_desc">मूल फ़ोल्डर स्क्रीन से बाहर स्क्रॉल होने पर इंडेंट धीरे से कम करें।</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite के रूप में खोलें</string>
+    <string name="sqlite_columns">कॉलम</string>
+    <string name="sqlite_copy">कॉपी करें</string>
+    <string name="sqlite_name">नाम</string>
+    <string name="sqlite_type">प्रकार</string>
+    <string name="sqlite_not_null">NULL नहीं</string>
+    <string name="sqlite_default">डिफ़ॉल्ट</string>
+    <string name="sqlite_primary_key">प्राथमिक कुंजी</string>
+    <string name="sqlite_hidden">छिपा / जनरेट किया गया</string>
+    <string name="sqlite_loading">लोड हो रहा है…</string>
+    <string name="sqlite_no_rows">कोई पंक्ति नहीं</string>
+    <string name="sqlite_no_tables">कोई तालिका नहीं</string>
+    <string name="sqlite_open_failed">SQLite डेटाबेस नहीं खुल सका</string>
+    <string name="sqlite_read_failed">तालिका का डेटा नहीं पढ़ा जा सका</string>
+    <string name="sqlite_blob">BLOB (%1$d बाइट)</string>
+    <string name="sqlite_grid_description">%1$s पंक्तियाँ, %2$d कॉलम</string>
+    <string name="sqlite_value_truncated">पूर्वावलोकन सीमित है; मूल लंबाई: %1$d। केवल दिखाया गया भाग कॉपी होगा।</string>
+    <string name="sqlite_journal_active">इस डेटाबेस में रोलबैक जर्नल है। लिखने वाला प्रोग्राम बंद करें या पहले एक प्रति निर्यात करें।</string>
+    <string name="sqlite_source_changed">कॉपी करते समय डेटाबेस बदल गया। लिखने वाला प्रोग्राम बंद करें या प्रति निर्यात करके फिर प्रयास करें।</string>
+    <string name="sqlite_snapshot_confirm">देखने के लिए %1$s का स्थानीय स्नैपशॉट डाउनलोड करना होगा। बदलते डेटाबेस की पहले प्रति निर्यात करें। जारी रखें?</string>
 </resources>

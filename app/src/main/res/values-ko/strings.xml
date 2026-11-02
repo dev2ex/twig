@@ -1185,4 +1185,26 @@
     <string name="compress_destination_missing">저장 위치를 선택하세요</string>
     <string name="settings_auto_tree_indent">트리 들여쓰기 자동 조정</string>
     <string name="settings_auto_tree_indent_desc">상위 폴더가 화면 밖으로 스크롤되면 들여쓰기를 부드럽게 줄입니다.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite로 열기</string>
+    <string name="sqlite_columns">열 정보</string>
+    <string name="sqlite_copy">복사</string>
+    <string name="sqlite_name">이름</string>
+    <string name="sqlite_type">유형</string>
+    <string name="sqlite_not_null">NULL 불가</string>
+    <string name="sqlite_default">기본값</string>
+    <string name="sqlite_primary_key">기본 키</string>
+    <string name="sqlite_hidden">숨김 / 생성 열</string>
+    <string name="sqlite_loading">불러오는 중…</string>
+    <string name="sqlite_no_rows">행 없음</string>
+    <string name="sqlite_no_tables">테이블 없음</string>
+    <string name="sqlite_open_failed">SQLite 데이터베이스를 열 수 없습니다</string>
+    <string name="sqlite_read_failed">테이블 데이터를 읽을 수 없습니다</string>
+    <string name="sqlite_blob">BLOB (%1$d바이트)</string>
+    <string name="sqlite_grid_description">%1$s행, %2$d열</string>
+    <string name="sqlite_value_truncated">미리보기가 잘렸습니다. 원래 길이: %1$d. 표시된 부분만 복사됩니다.</string>
+    <string name="sqlite_journal_active">이 데이터베이스에 롤백 저널이 있습니다. 쓰기 프로그램을 닫거나 먼저 사본을 내보내세요.</string>
+    <string name="sqlite_source_changed">복사 중 데이터베이스가 변경되었습니다. 쓰기 프로그램을 닫거나 사본을 내보낸 후 다시 시도하세요.</string>
+    <string name="sqlite_snapshot_confirm">탐색하려면 %1$s의 로컬 스냅샷을 다운로드해야 합니다. 변경 중인 데이터베이스는 먼저 사본을 내보내세요. 계속할까요?</string>
 </resources>

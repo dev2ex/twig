@@ -1263,4 +1263,26 @@
     <string name="compress_destination_missing">Choose a destination</string>
     <string name="settings_auto_tree_indent">Automatic tree indentation</string>
     <string name="settings_auto_tree_indent_desc">Smoothly reduce indentation when parent folders scroll off screen.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Open as SQLite</string>
+    <string name="sqlite_columns">Columns</string>
+    <string name="sqlite_copy">Copy</string>
+    <string name="sqlite_name">Name</string>
+    <string name="sqlite_type">Type</string>
+    <string name="sqlite_not_null">Not null</string>
+    <string name="sqlite_default">Default</string>
+    <string name="sqlite_primary_key">Primary key</string>
+    <string name="sqlite_hidden">Hidden / generated</string>
+    <string name="sqlite_loading">Loading…</string>
+    <string name="sqlite_no_rows">No rows</string>
+    <string name="sqlite_no_tables">No tables</string>
+    <string name="sqlite_open_failed">Could not open SQLite database</string>
+    <string name="sqlite_read_failed">Could not read table data</string>
+    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_grid_description">%1$s rows, %2$d columns</string>
+    <string name="sqlite_value_truncated">Preview limited; original length: %1$d. Copy includes only the displayed preview.</string>
+    <string name="sqlite_journal_active">This database has a rollback journal. Close its writer or export a database copy first.</string>
+    <string name="sqlite_source_changed">The database changed while copying. Close its writer or export a database copy, then retry.</string>
+    <string name="sqlite_snapshot_confirm">%1$s must be downloaded as a local snapshot before browsing. For an actively changing database, export a copy first. Continue?</string>
 </resources>

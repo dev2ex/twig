@@ -1,0 +1,101 @@
+package com.twig.app.ui
+
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import androidx.test.core.app.ApplicationProvider
+import com.twig.core.XFile
+import kotlinx.coroutines.*
+import kotlinx.coroutines.test.*
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.SQLiteMode
+import java.io.File
+import java.util.UUID
+
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+@SQLiteMode(SQLiteMode.Mode.NATIVE)
+class SqliteTreeTest {
+    @Test fun `refresh replaces schema while preserving expanded tables and bounded paging`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "tree-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        fun table() = tree.rows("db", 2).filterIsInstance<SqliteTableNode>().single { it.state.table.name == "entries" }
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, value TEXT)")
+                db.execSQL("CREATE TABLE other(value TEXT)")
+                db.beginTransaction()
+                try {
+                    repeat(1500) { db.execSQL("INSERT INTO entries VALUES (?, 'value')", arrayOf(it)) }
+                    db.setTransactionSuccessful()
+                } finally { db.endTransaction() }
+            }
+            val source = XFile("file", file.path, false)
+            tree.open("db", source)
+            advanceUntilIdle()
+            assertEquals(1500L, table().state.count)
+            tree.command(table(), SqliteCommand.TOGGLE)
+            tree.command(table(), SqliteCommand.PROPERTIES)
+            advanceUntilIdle()
+            repeat(13) { index -> tree.page("db", "entries", index * 100); advanceUntilIdle() }
+            assertEquals(8, table().state.pages.size)
+            assertEquals(1500, table().state.rowCount)
+            // Evicting tail pages while scrolling back cannot shrink an unknown-count table.
+            val state = table().state.copy(count = null, end = null)
+            assertEquals(1400, state.rowCount)
+            tree.page("db", "entries", 0)
+            advanceUntilIdle()
+            assertEquals(1300, table().state.loadedThrough)
+            assertTrue(table().state.pages.containsKey(0))
+
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("ALTER TABLE entries ADD COLUMN added TEXT") }
+            tree.command(table(), SqliteCommand.REFRESH)
+            advanceUntilIdle()
+            assertEquals(3, table().state.table.columns.size)
+            assertTrue(table().state.expanded)
+            assertTrue(table().state.properties)
+            assertTrue(table().state.pages.isEmpty())
+            // Switching tables cancels queued reads and cannot resurrect the previous data.
+            tree.page("db", "entries", 1400)
+            val other = tree.rows("db", 2).filterIsInstance<SqliteTableNode>().single { it.state.table.name == "other" }
+            tree.command(other, SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            assertFalse(table().state.expanded)
+            assertTrue(table().state.pages.isEmpty())
+            assertTrue(table().state.pending.isEmpty())
+            assertEquals(listOf("other"), tree.rows("db", 2).filterIsInstance<SqliteDataNode>().map { it.state.table.name })
+            tree.command(other, SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            assertTrue(tree.rows("db", 2).none { it is SqliteDataNode })
+            tree.retain(emptySet())
+            advanceUntilIdle()
+            assertTrue(tree.rows("db", 2).isEmpty())
+        } finally {
+            scope.cancel()
+            advanceUntilIdle()
+            file.delete()
+        }
+    }
+
+    @Test fun `closing a pending database cannot repopulate its rows`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        var changed = 0
+        val tree = SqliteTree(context, scope, { dispatcher }, { changed++ })
+        try {
+            tree.open("db", XFile("file", "/not/a/database", false))
+            tree.close("db")
+            advanceUntilIdle()
+            assertEquals(0, changed)
+            assertTrue(tree.rows("db", 1).isEmpty())
+        } finally { scope.cancel(); advanceUntilIdle() }
+    }
+}
