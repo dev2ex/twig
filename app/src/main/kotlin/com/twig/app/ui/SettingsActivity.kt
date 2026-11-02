@@ -254,6 +254,11 @@ class SettingsActivity : TwigActivity() {
             get = { Prefs.rowDivider(this) },
             set = { Prefs.setRowDivider(this, it) },
         )
+        switchRow(
+            getString(R.string.settings_auto_tree_indent), getString(R.string.settings_auto_tree_indent_desc),
+            get = { Prefs.autoTreeIndent(this) },
+            set = { Prefs.setAutoTreeIndent(this, it) },
+        )
 
         switchRow(
             getString(R.string.settings_toolbar_bottom), getString(R.string.settings_toolbar_bottom_desc),

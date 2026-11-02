@@ -89,6 +89,28 @@ class FileAdapter(
     /** Image edge length (px) for grid cells, back-filled by PaneFragment based on pane width / column count. */
     var cellPx = 0
 
+    internal var indentOffset = 0f
+
+    /** Change only geometry: selection, thumbnails and count subscriptions keep their bound state. */
+    internal fun applyIndentation(holder: RecyclerView.ViewHolder, node: PaneViewModel.Node) {
+        val row = holder.itemView
+        val dp = row.resources.displayMetrics.density
+        if (holder is VH) {
+            val content = row.findViewById<View>(R.id.row_content)
+            val start = ((2 + (node.depth - indentOffset).coerceAtLeast(0f) * 14) * dp).toInt()
+            if (content.paddingStart != start) content.setPaddingRelative(start, 0, 0, 0)
+        } else if (holder is InfoVH) {
+            val tabs = row.findViewById<View>(R.id.tab_bar)
+            val params = tabs.layoutParams as ViewGroup.MarginLayoutParams
+            val start = ((16 + (node.depth - 1 - indentOffset).coerceAtLeast(0f) * 14) * dp).toInt()
+            if (params.marginStart != start) {
+                params.marginStart = start
+                tabs.layoutParams = params
+            }
+        }
+        // Grid cells already fill the available width and have no tree indentation.
+    }
+
     /** One small snapshot per adapter/resume, never JSON parsing or network I/O per row. */
     private var playbackProgress: Map<String, Float>? = null
 
@@ -344,6 +366,7 @@ class FileAdapter(
             is InfoVH -> holder.bind(getItem(position) as PaneViewModel.InfoNode)
             is CellVH -> holder.bind(getItem(position))
         }
+        applyIndentation(holder, getItem(position))
     }
 
     /**
@@ -548,7 +571,7 @@ class FileAdapter(
             val ctx = b.root.context
             val dpi = ctx.resources.displayMetrics.density
             (b.tabBar.layoutParams as LinearLayout.LayoutParams).marginStart =
-                ((16 + (node.depth - 1) * 14) * dpi).toInt().coerceAtLeast(0)
+                ((16 + (node.depth - 1 - indentOffset).coerceAtLeast(0f) * 14) * dpi).toInt()
             b.infoBody.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp + 1.5f)
             b.infoBody.visibility = View.VISIBLE
             b.btnHash.visibility = View.GONE
@@ -888,7 +911,7 @@ class FileAdapter(
             if (node !is PaneViewModel.FileNode) releaseDirectoryCounts()
             b.meta.setTag(R.id.size_probe, null)
             b.rowContent.setPaddingRelative(
-                ((2 + node.depth * 14) * dpi).toInt(), 0, 0, 0,
+                ((2 + (node.depth - indentOffset).coerceAtLeast(0f) * 14) * dpi).toInt(), 0, 0, 0,
             )
             // Reset reusable state
             b.icon.resetThumbnail()

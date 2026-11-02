@@ -1184,4 +1184,6 @@
     <string name="compress_source_directory">Salva nella cartella di origine</string>
     <string name="compress_hide_names">Cifra i nomi dei file</string>
     <string name="compress_destination_missing">Scegli una destinazione</string>
+    <string name="settings_auto_tree_indent">Rientro automatico ad albero</string>
+    <string name="settings_auto_tree_indent_desc">Riduce gradualmente il rientro quando le cartelle superiori escono dallo schermo.</string>
 </resources>

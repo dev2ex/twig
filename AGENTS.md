@@ -168,6 +168,11 @@ its listing size must still describe the followed stream for copy/resume checks.
   action-strip density still follow orientation. The setting participates in
   `uiSignature` and configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
+  `TreeIndentation` subtracts the shallowest visible depth from display indentation,
+  with a shared 250 ms transition; partially visible rows retain their depth, and
+  properties cards use their owner's depth. Grid cells retain their full width.
+  `Prefs.autoTreeIndent` defaults on, has a settings-only toggle, participates in
+  `uiSignature` and is backed up with `twig_prefs`. Actual node depths never change.
   Expanding a directory reuses its cached children immediately, then re-lists in the background
   (`relistQuietly`) on every backend, including server and favorite roots. Only changed listings
   update the rows. Expanded local directories stay live through inotify

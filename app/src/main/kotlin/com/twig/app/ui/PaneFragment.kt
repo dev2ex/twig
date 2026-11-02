@@ -75,6 +75,8 @@ import kotlinx.coroutines.withContext
  */
 class PaneFragment : Fragment() {
 
+    private var treeIndentation: TreeIndentation? = null
+
     interface Host {
         fun siblingOf(self: PaneFragment): PaneFragment?
         fun onAddServer(type: String)
@@ -298,6 +300,7 @@ class PaneFragment : Fragment() {
         }
         b.list.layoutManager = glm
         b.list.adapter = adapter
+        treeIndentation = TreeIndentation(b.list, adapter) { Prefs.autoTreeIndent(requireContext()) }
         val itemDrag = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
             override fun isLongPressDragEnabled() = false
             override fun getMovementFlags(rv: RecyclerView, holder: RecyclerView.ViewHolder): Int {
@@ -2899,6 +2902,8 @@ class PaneFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        treeIndentation?.dispose()
+        treeIndentation = null
         com.twig.app.WebsiteStore.preferences(requireContext()).unregisterOnSharedPreferenceChangeListener(websiteListener)
         super.onDestroyView()
         progressBox?.detach() // The transfer itself isn't affected — just no one's watching anymore (the notification is still there).

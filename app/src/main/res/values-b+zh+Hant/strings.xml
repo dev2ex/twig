@@ -1183,4 +1183,6 @@
     <string name="compress_source_directory">儲存到來源目錄</string>
     <string name="compress_hide_names">加密檔案名稱</string>
     <string name="compress_destination_missing">請選擇儲存位置</string>
+    <string name="settings_auto_tree_indent">自動調整樹狀縮排</string>
+    <string name="settings_auto_tree_indent_desc">父目錄捲出畫面後，平順收回子層級縮排。</string>
 </resources>

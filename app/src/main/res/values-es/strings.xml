@@ -1184,4 +1184,6 @@
     <string name="compress_source_directory">Guardar en la carpeta de origen</string>
     <string name="compress_hide_names">Cifrar nombres de archivo</string>
     <string name="compress_destination_missing">Elige un destino</string>
+    <string name="settings_auto_tree_indent">Sangría automática del árbol</string>
+    <string name="settings_auto_tree_indent_desc">Reduce suavemente la sangría cuando las carpetas superiores salen de la pantalla.</string>
 </resources>

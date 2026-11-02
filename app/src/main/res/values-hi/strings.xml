@@ -1184,4 +1184,6 @@
     <string name="compress_source_directory">स्रोत फ़ोल्डर में सहेजें</string>
     <string name="compress_hide_names">फ़ाइल नाम एन्क्रिप्ट करें</string>
     <string name="compress_destination_missing">सहेजने का स्थान चुनें</string>
+    <string name="settings_auto_tree_indent">ट्री का स्वचालित इंडेंट</string>
+    <string name="settings_auto_tree_indent_desc">मूल फ़ोल्डर स्क्रीन से बाहर स्क्रॉल होने पर इंडेंट धीरे से कम करें।</string>
 </resources>
