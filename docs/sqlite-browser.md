@@ -31,6 +31,10 @@ as directory paths after process death.
 
 ## Reading and resource limits
 
+Opening first reads only the 16-byte `SQLite format 3\0` signature. A mismatch stops
+before SQLite is opened or a remote snapshot is downloaded; schema reading remains the
+final validation for action-bar search availability.
+
 Directly accessible local sources use Android's SQLite implementation with
 `OPEN_READONLY | NO_LOCALIZED_COLLATORS`. The corruption callback never deletes the
 source or its journals. Each operation owns and closes its connection/cursor; a long
@@ -71,7 +75,10 @@ separate future reader; no SQLCipher library is bundled.
 
 ## Database search
 
-The database menu searches all tables with a bound LIKE pattern. Keywords containing
+The database menu and action-bar search (when a database, table or result branch is
+selected) search all tables with a bound LIKE pattern. Action-bar availability requires
+a successful schema read, not just a recognized suffix. Confirmation survives collapse,
+but reopening clears it until validation succeeds again. Removing the file from the visible tree also invalidates confirmation. Keywords containing
 `%` are used as supplied; otherwise they become `%keyword%`. User `%` and `_` retain
 their wildcard meaning. Eligible columns are cast to text, excluding
 columns declared with a BLOB type and values whose runtime type is BLOB. A row matching

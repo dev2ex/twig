@@ -43,14 +43,18 @@ class PaneViewModelSqliteTest {
             advanceUntilIdle()
             fun database() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().single { it.file.path == file.path }
             assertTrue(database().expandable)
+            assertNull(vm.sqliteSearchTarget())
             vm.toggle(database())
+            assertNull(vm.sqliteSearchTarget()) // Opening is still pending.
             advanceUntilIdle()
+            assertEquals(database().key, vm.sqliteSearchTarget()?.key)
             fun table() = vm.state.value.rows.filterIsInstance<SqliteTableNode>()
                 .single { it.state.table.name == "entries" && it.state.query == null }
             assertEquals(1L, table().state.count)
             vm.toggle(table())
             advanceUntilIdle()
             assertNull(vm.currentSelection())
+            assertEquals(database().key, vm.sqliteSearchTarget()?.key)
             assertTrue(vm.state.value.rows.any { it is SqliteDataNode })
             assertFalse(vm.expandedDescriptors().any { it.contains(file.name) })
             SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("INSERT INTO entries VALUES (2)") }
@@ -61,12 +65,15 @@ class PaneViewModelSqliteTest {
             vm.startSqliteSearch(database(), "2")
             advanceUntilIdle()
             val search = vm.state.value.rows.filterIsInstance<SqliteSearchNode>().single()
+            assertEquals(database().key, vm.sqliteSearchTarget()?.key)
             assertEquals(1L, search.matches)
             val result = vm.state.value.rows.filterIsInstance<SqliteTableNode>().single { it.state.query == "2" }
             assertEquals(1L, result.state.count)
             vm.toggle(result)
             advanceUntilIdle()
             val data = vm.state.value.rows.filterIsInstance<SqliteDataNode>().single()
+            assertEquals(database().key, vm.sqliteSearchTarget()?.key)
+            assertNull(vm.currentSelection())
             assertEquals("2", vm.sqliteCell(data, 0, 0)!!.text)
             assertFalse(table().state.expanded)
             vm.toggle(search)
@@ -75,12 +82,28 @@ class PaneViewModelSqliteTest {
             vm.toggle(database())
             advanceUntilIdle()
             assertFalse(vm.state.value.rows.any { it is SqliteNode })
+            assertEquals(database().key, vm.sqliteSearchTarget()?.key)
+            // A previously valid database must lose confirmation after a failed reopen.
+            file.writeText("not a SQLite database")
+            vm.toggle(database())
+            assertNull(vm.sqliteSearchTarget())
+            advanceUntilIdle()
+            assertNull(vm.sqliteSearchTarget())
+            vm.toggle(database())
+            advanceUntilIdle()
+            assertNull(vm.sqliteSearchTarget())
+            file.delete()
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY)")
+                db.execSQL("INSERT INTO entries VALUES (1)")
+            }
             vm.startSqliteSearch(database(), "1")
             advanceUntilIdle()
             assertEquals(1L, vm.state.value.rows.filterIsInstance<SqliteSearchNode>().single().matches)
             vm.collapseAll()
             advanceUntilIdle()
             assertTrue(vm.state.value.rows.none { it is SqliteSearchNode || it is SqliteNode })
+            assertNull(vm.sqliteSearchTarget())
         } finally {
             store.clear()
             advanceUntilIdle()

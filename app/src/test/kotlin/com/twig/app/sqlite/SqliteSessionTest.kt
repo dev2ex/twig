@@ -231,6 +231,27 @@ class SqliteSessionTest {
         }
     }
 
+    @Test fun `invalid remote header stops after sixteen bytes without listing or downloading`() {
+        var bytesRead = 0
+        var closed = false
+        val fs = object : com.twig.core.FileSystem by LocalFileSystem() {
+            override val scheme = "sqlite-test"
+            override fun list(dir: XFile): List<XFile> = error("Must reject before listing")
+            override fun openInput(file: XFile) = object : java.io.ByteArrayInputStream(ByteArray(100000) { 42 }) {
+                override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also {
+                    if (it > 0) bytesRead += it
+                }
+                override fun close() { closed = true; super.close() }
+            }
+        }
+        FsRegistry.register(fs)
+        val result = runCatching { SqliteSession.open(context, XFile(fs.scheme, "/fake.db", false, 100000), signal()) }
+        assertTrue(result.isFailure)
+        assertEquals(16, bytesRead)
+        assertTrue(closed)
+        assertTrue(File(context.cacheDir, "sqlite").listFiles().isNullOrEmpty())
+    }
+
     @Test fun `remote snapshot includes WAL and releases only its own lease`() {
         val local = LocalFileSystem()
         val fs = object : com.twig.core.FileSystem by local {

@@ -1015,8 +1015,14 @@ class PaneFragment : Fragment() {
     /** Last-entered glob; pre-filled in the dialog so consecutive searches don't re-type. */
     private var lastSearchPattern = ""
 
-    /** Action bar "Search": recursive search starting at the green-highlighted directory (current directory when nothing is highlighted). */
+    /** Search the selected database/table, otherwise the highlighted or current directory. */
     fun actionSearch() {
+        viewModel.sqliteSearchTarget()?.let { database ->
+            val query = viewModel.state.value.rows.filterIsInstance<SqliteSearchNode>()
+                .firstOrNull { it.owner == database.key }?.query ?: lastSqliteQuery
+            promptSqliteSearch(database, query)
+            return
+        }
         val t = viewModel.currentSelection() ?: viewModel.currentDir
         if (t == null || !t.isDir) {
             toast(getString(R.string.msg_pick_dir_first)); return
@@ -1280,7 +1286,7 @@ class PaneFragment : Fragment() {
             rename = modify,
             delete = modify,
             treemap = mapMode || target?.let { it.isDir || com.twig.fs.archive.Archives.isArchive(it) } == true,
-            search = target?.isDir == true,
+            search = viewModel.sqliteSearchTarget() != null || target?.isDir == true,
             info = !mapMode && transfer,
         )
     }

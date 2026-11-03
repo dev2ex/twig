@@ -75,6 +75,8 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         fun ownerJob(query: String?) = if (query == null) job else search?.takeIf { it.query == query }?.job
     }
     private val hosts = HashMap<String, Host>()
+    private val verified = HashSet<String>()
+    fun canSearch(key: String) = key in verified
     fun loading(key: String) = hosts[key]?.loading == true
 
     /** Cancellation reaches SQLite even while the IO thread is inside a native query. */
@@ -88,6 +90,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
 
     fun open(key: String, file: XFile, parent: XFile? = null, remembered: Map<String, SqliteTableState> = emptyMap(), query: String? = null) {
         if (hosts.containsKey(key)) return
+        verified.remove(key)
         val host = Host(file, parent).apply { search = query?.let(::Search) }
         hosts[key] = host
         host.job = scope.launch {
@@ -98,6 +101,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 val opened = checkNotNull(session)
                 val tables = cancellable { opened.tables(it) }
                 host.session = opened
+                verified.add(key)
                 tables.forEach { table ->
                     host.tables[table.name] = remembered[table.name]?.copy(table = table, count = null,
                         counting = true, pages = emptyMap(), pending = emptySet(), errors = emptyMap(), end = null)
@@ -275,7 +279,10 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         return try { operation.await() } finally { operation.cancel() }
     }
 
-    fun retain(keys: Set<String>) { hosts.keys.toList().filter { it !in keys }.forEach(::close) }
+    fun retain(keys: Set<String>, visible: Set<String> = keys) {
+        hosts.keys.toList().filter { it !in keys }.forEach(::close)
+        verified.retainAll(visible)
+    }
     fun refresh(key: String, file: XFile) {
         val remembered = hosts[key]?.tables?.toMap().orEmpty()
         val parent = hosts[key]?.parent

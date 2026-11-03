@@ -167,6 +167,23 @@ class SqliteSession private constructor(private val path: File, private val temp
         }
 
         fun open(context: Context, file: XFile, signal: CancellationSignal, parent: XFile? = null): SqliteSession {
+            // Reject misleading suffixes before opening SQLite or materializing a remote source.
+            signal.throwIfCanceled()
+            val direct = file.scheme == "file" && File(file.path).canRead()
+            val header = ByteArray(16)
+            (if (direct) File(file.path).inputStream() else FsRegistry.of(file).openInput(file)).use { input ->
+                var offset = 0
+                while (offset < header.size) {
+                    signal.throwIfCanceled()
+                    val read = input.read(header, offset, header.size - offset)
+                    if (read < 0) break
+                    if (read > 0) offset += read
+                }
+            }
+            signal.throwIfCanceled()
+            check(header.contentEquals("SQLite format 3\u0000".toByteArray(Charsets.US_ASCII))) {
+                context.getString(R.string.sqlite_open_failed)
+            }
             if (file.scheme == "file" && File(file.path).canRead() &&
                 (Build.VERSION.SDK_INT >= 28 || !File(file.path + "-wal").exists())) {
                 return SqliteSession(File(file.path), null)

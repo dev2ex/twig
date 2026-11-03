@@ -127,6 +127,55 @@ class StripWriteActionsTest {
         assertEquals("the rows never landed, so a selection over them could not be asserted", size, adapter.currentList.size)
     }
 
+    @Test fun `search strip follows the framed database before and after collapse and opens LIKE search`() {
+        val pane = pane0()
+        val vm = pane.viewModel
+        val database = PaneViewModel.FileNode(XFile("file", "/source/example.db", false), 1, true, true)
+        val schema = com.twig.app.sqlite.SqliteTable("entries", "", emptyList(),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        ReflectionHelpers.getField<MutableMap<String, XFile>>(vm, "keyFile")[database.key] = database.file
+        val table = SqliteTableNode(database.key, 2, SqliteTableState(schema))
+        val result = SqliteSearchNode(database.key, 2, "needle", 1, false, 0)
+        val state = ReflectionHelpers.getField<kotlinx.coroutines.flow.MutableStateFlow<PaneViewModel.State>>(vm, "_state")
+        vm.currentDir = XFile("file", "/source", true)
+        ReflectionHelpers.setField(activity, "activeIndex", 0)
+        ReflectionHelpers.setField(vm, "currentKey", database.key)
+        state.value = state.value.copy(rows = listOf(database), currentKey = database.key)
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_search, false) // A suffix alone is not evidence that SQLite can read it.
+        val tree = ReflectionHelpers.getField<Lazy<SqliteTree>>(vm, "sqliteTree\$delegate").value
+        ReflectionHelpers.getField<MutableSet<String>>(tree, "verified").add(database.key)
+        for (selected in listOf(database, database.copy(expanded = false), table, result)) {
+            val rows = if (selected is PaneViewModel.FileNode) listOf(selected) else listOf(database, selected)
+            ReflectionHelpers.setField(vm, "currentKey", selected.key)
+            state.value = state.value.copy(rows = rows, currentKey = selected.key)
+            idle()
+            activity.onClipTargetChanged()
+            assertStrip(R.id.as_search, true)
+            for (strip in listOf(R.id.strip_left, R.id.strip_mid, R.id.strip_right)) {
+                activity.findViewById<View>(strip).findViewById<View>(R.id.as_search).performClick()
+                idle()
+                val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+                val input = editInputs(dialog.window!!.decorView).single()
+                assertEquals(activity.getString(R.string.sqlite_search_hint), input.hint.toString())
+                assertEquals(if (selected == result) "needle" else "", input.text.toString())
+                dialog.dismiss()
+            }
+        }
+        // A database elsewhere in the tree must not redirect an ordinary directory search.
+        ReflectionHelpers.setField(vm, "currentKey", null)
+        state.value = state.value.copy(currentKey = null)
+        activity.onClipTargetChanged()
+        activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_search).performClick()
+        idle()
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        assertEquals(activity.getString(R.string.search_hint), editInputs(dialog.window!!.decorView).single().hint.toString())
+        dialog.dismiss()
+        vm.currentDir = null
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_search, false)
+    }
+
     @Test
     fun `checking a writable file enables the write actions without switching panes`() {
         val pane = pane0()

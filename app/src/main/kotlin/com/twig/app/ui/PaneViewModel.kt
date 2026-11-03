@@ -441,6 +441,18 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query)
     suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
 
+    /** Resolve virtual table/result selections without exposing them to filesystem actions. */
+    fun sqliteSearchTarget(): FileNode? {
+        val rows = state.value.rows
+        val key = when (val selected = rows.firstOrNull { it.key == currentKey }) {
+            is SqliteNode -> selected.owner
+            is SqliteSearchNode -> selected.owner
+            is FileNode -> selected.key.takeIf { isSqlite(selected.file, it) }
+            else -> null
+        } ?: return null
+        return rows.filterIsInstance<FileNode>().firstOrNull { it.key == key && sqliteTree.canSearch(key) }
+    }
+
     fun startSqliteSearch(node: FileNode, query: String) {
         if (query.isEmpty()) return
         if (node.key !in expanded) {
@@ -3220,7 +3232,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows.filterIsInstance<FileNode>().firstOrNull {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
-        sqliteTree.retain(rows.filterIsInstance<FileNode>().filter { it.expanded && isSqlite(it.file, it.key) }.mapTo(HashSet()) { it.key })
+        val databases = rows.filterIsInstance<FileNode>().filter { isSqlite(it.file, it.key) }
+        sqliteTree.retain(databases.filter { it.expanded }.mapTo(HashSet()) { it.key }, databases.mapTo(HashSet()) { it.key })
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
             restoring || revealLoadingKey != null, revealLoadingKey ?: scrollKey)
     }
