@@ -8,6 +8,8 @@ import com.twig.app.sqlite.SqlitePage
 import com.twig.app.sqlite.SqliteSession
 import com.twig.app.sqlite.SqliteTable
 import com.twig.app.sqlite.SqliteSort
+import com.twig.app.sqlite.SqliteQueryResult
+import android.os.SystemClock
 import com.twig.core.XFile
 import kotlinx.coroutines.*
 
@@ -16,6 +18,7 @@ class SqliteViewport(var x: Float = 0f, var y: Float = 0f, var selectedRow: Int 
 data class SqliteTableState(
     val table: SqliteTable,
     val query: String? = null,
+    val execution: String? = null,
     val sort: SqliteSort? = null,
     val expanded: Boolean = false,
     val properties: Boolean = false,
@@ -38,7 +41,7 @@ data class SqliteTableState(
 sealed interface SqliteNode : PaneViewModel.Node {
     val owner: String
     val state: SqliteTableState
-    val tableKey: String get() = owner + (state.query?.let { "/search:${it.length}:$it" } ?: "") +
+    val tableKey: String get() = owner + (state.execution?.let { "/query:$it" } ?: "") + (state.query?.let { "/search:${it.length}:$it" } ?: "") +
         "/sqlite:${state.table.name.length}:${state.table.name}"
 }
 data class SqliteTableNode(override val owner: String, override val depth: Int,
@@ -53,6 +56,10 @@ data class SqliteSearchNode(val owner: String, override val depth: Int, val quer
     override val key get() = "$owner/sqlite-search"
 }
 
+data class SqliteQueryNode(val owner: String, override val depth: Int, val id: String, val sql: String,
+    val expanded: Boolean, val running: Boolean, val elapsedSeconds: Long, val error: String?,
+    val state: SqliteTableState?) : PaneViewModel.Node { override val key get() = "$owner/sqlite-query" }
+
 enum class SqliteCommand { TOGGLE, PROPERTIES, REFRESH, COLUMNS, DDL, CLOSE }
 
 /** Owns browsing leases/jobs; tree nodes contain immutable results, never cursors or database handles. */
@@ -64,6 +71,17 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         var failures = 0
         val tables = LinkedHashMap<String, SqliteTableState>()
     }
+    private class Query(val sql: String) {
+        val id = java.util.UUID.randomUUID().toString()
+        var job: Job? = null
+        var result: SqliteQueryResult? = null
+        var running = true
+        var expanded = true
+        var elapsedSeconds = 0L
+        var error: String? = null
+        val tables = LinkedHashMap<String, SqliteTableState>()
+    }
+    private data class PageKey(val name: String, val query: String?, val execution: String?, val offset: Int)
     private class Host(val file: XFile, val parent: XFile?) {
         var job: Job? = null
         var session: SqliteSession? = null
@@ -71,9 +89,14 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         var loading = true
         val tables = LinkedHashMap<String, SqliteTableState>()
         var search: Search? = null
-        val pages = HashMap<Triple<String, String?, Int>, Job>()
-        fun tables(query: String?) = if (query == null) tables else search?.takeIf { it.query == query }?.tables
-        fun ownerJob(query: String?) = if (query == null) job else search?.takeIf { it.query == query }?.job
+        var execution: Query? = null
+        var queuedSql: String? = null
+        val pages = HashMap<PageKey, Job>()
+        fun tables(query: String?, id: String? = null) = if (id != null) execution?.takeIf { it.id == id }?.tables
+            else if (query == null) tables else search?.takeIf { it.query == query }?.tables
+        fun ownerJob(query: String?, id: String? = null) = if (id != null) execution?.takeIf { it.id == id }?.job
+            else if (query == null) job else search?.takeIf { it.query == query }?.job
+        fun session(id: String?) = if (id == null) session else execution?.takeIf { it.id == id }?.result?.session
     }
     private val hosts = HashMap<String, Host>()
     private val verified = HashSet<String>()
@@ -112,6 +135,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 }
                 host.loading = false
                 runSearch(key, host)
+                host.queuedSql?.let { host.queuedSql = null; execute(key, it) }
                 changed()
                 // One count at a time; slow counts time out and never become a false zero.
                 launch {
@@ -136,8 +160,100 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         }
     }
 
+    fun execute(key: String, sql: String) {
+        val host = hosts[key] ?: return
+        if (host.loading) { host.queuedSql = sql; return }
+        val source = host.session ?: return
+        closeQuery(key)
+        closeSearch(key)
+        collapseTables(host)
+        val query = Query(sql)
+        host.execution = query
+        query.job = scope.launch(context = host.job ?: return, start = CoroutineStart.LAZY) {
+            var result: SqliteQueryResult? = null
+            val started = SystemClock.elapsedRealtime()
+            val timer = launch {
+                while (query.running) {
+                    delay(1000)
+                    query.elapsedSeconds = (SystemClock.elapsedRealtime() - started) / 1000
+                    if (query.running) changed()
+                }
+            }
+            try {
+                try {
+                    cancellable { result = source.executeQuery(context, sql, it) }
+                    val opened = checkNotNull(result)
+                    query.result = opened
+                    query.tables[opened.table.name] = SqliteTableState(opened.table, execution = query.id,
+                        expanded = query.expanded, count = opened.count, counting = false)
+                    query.running = false
+                    page(key, opened.table.name, 0, execution = query.id)
+                } catch (e: CancellationException) { throw e }
+                catch (e: Exception) { query.error = e.message ?: context.getString(R.string.sqlite_read_failed) }
+                finally {
+                    query.running = false
+                    timer.cancel()
+                    query.elapsedSeconds = (SystemClock.elapsedRealtime() - started) / 1000
+                    changed()
+                }
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable + io()) { result?.close() }
+            }
+        }
+        query.job?.start()
+        changed()
+    }
+
+    private fun collapseTables(host: Host) {
+        for (tables in listOfNotNull(host.tables, host.search?.tables)) {
+            for ((name, state) in tables.toMap()) {
+                cancelPages(host, name, state.query)
+                tables[name] = state.copy(expanded = false, pages = emptyMap(), pending = emptySet(),
+                    errors = emptyMap(), end = null, loadedThrough = 0, viewport = SqliteViewport())
+            }
+        }
+    }
+
+    private fun collapseQuery(host: Host) {
+        val query = host.execution ?: return
+        query.expanded = false
+        query.tables.entries.toList().forEach { (name, state) ->
+            cancelPages(host, name, null, query.id)
+            query.tables[name] = state.copy(expanded = false, pages = emptyMap(), pending = emptySet(),
+                errors = emptyMap(), end = null, loadedThrough = 0, viewport = SqliteViewport())
+        }
+    }
+
+    fun toggleQuery(node: SqliteQueryNode) {
+        val host = hosts[node.owner] ?: return
+        val query = host.execution?.takeIf { it.id == node.id } ?: return
+        if (query.expanded) collapseQuery(host)
+        else {
+            closeSearch(node.owner)
+            collapseTables(host)
+            query.expanded = true
+            query.tables.entries.toList().forEach { (name, state) ->
+                query.tables[name] = state.copy(expanded = true)
+                page(node.owner, name, 0, execution = query.id)
+            }
+        }
+        changed()
+    }
+
+    fun closeQuery(key: String, id: String? = null) {
+        val host = hosts[key] ?: return
+        host.queuedSql = null
+        val query = host.execution?.takeIf { id == null || it.id == id } ?: return
+        host.execution = null
+        host.pages.keys.filter { it.execution == query.id }.forEach { host.pages.remove(it)?.cancel() }
+        query.job?.cancel()
+        changed()
+    }
+
     fun search(key: String, query: String, table: String? = null) {
         val host = hosts[key] ?: return
+        closeQuery(key)
         closeSearch(key)
         host.search = Search(query, table)
         runSearch(key, host)
@@ -174,7 +290,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val search = host.search ?: return
         host.search = null
         search.job?.cancel()
-        host.pages.keys.filter { it.second == search.query }.forEach { host.pages.remove(it)?.cancel() }
+        host.pages.keys.filter { it.query == search.query && it.execution == null }.forEach { host.pages.remove(it)?.cancel() }
     }
 
     fun rows(key: String, depth: Int): List<PaneViewModel.Node> {
@@ -196,6 +312,12 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 if (search.failures > 0) add(PaneViewModel.ActionNode("sqlite_search_error:$key",
                     context.getString(R.string.sqlite_search_incomplete, search.failures), searchDepth + 1, informational = true))
             }
+            host.execution?.let { query ->
+                val state = query.tables.values.firstOrNull()
+                add(SqliteQueryNode(key, depth, query.id, query.sql, query.expanded, query.running,
+                    query.elapsedSeconds, query.error, state))
+                if (query.expanded && state != null) add(SqliteDataNode(key, depth + 1, state))
+            }
             host.search?.takeIf { it.table == null }?.let { addSearch(it, depth) }
             if (!host.loading && host.tables.isEmpty()) add(PaneViewModel.ActionNode("sqlite_empty:$key",
                 context.getString(R.string.sqlite_no_tables), depth, informational = true))
@@ -212,6 +334,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
     }
 
     fun command(node: SqliteNode, command: SqliteCommand) {
+        if (node.state.execution != null) return
         val host = hosts[node.owner] ?: return
         val name = node.state.table.name
         val query = node.state.query
@@ -227,6 +350,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         when (command) {
             SqliteCommand.TOGGLE -> {
                 if (!state.expanded) {
+                    collapseQuery(host)
                     // Normal tables and search results share one accordion within the database.
                     for (bucket in listOfNotNull(host.tables, host.search?.tables)) {
                         for ((other, previous) in bucket.toMap()) {
@@ -257,6 +381,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
     }
 
     fun sort(node: SqliteDataNode, column: Int) {
+        if (node.state.execution != null) return
         val host = hosts[node.owner] ?: return
         val tables = host.tables(node.state.query) ?: return
         val state = tables[node.state.table.name] ?: return
@@ -269,18 +394,18 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         changed()
     }
 
-    private fun cancelPages(host: Host, name: String, query: String?) {
-        host.pages.keys.filter { it.first == name && it.second == query }.forEach { host.pages.remove(it)?.cancel() }
+    private fun cancelPages(host: Host, name: String, query: String?, execution: String? = null) {
+        host.pages.keys.filter { it.name == name && it.query == query && it.execution == execution }.forEach { host.pages.remove(it)?.cancel() }
     }
 
-    fun page(owner: String, name: String, offset: Int, query: String? = null) {
+    fun page(owner: String, name: String, offset: Int, query: String? = null, execution: String? = null) {
         val host = hosts[owner] ?: return
-        val session = host.session ?: return
-        val tables = host.tables(query) ?: return
+        val session = host.session(execution) ?: return
+        val tables = host.tables(query, execution) ?: return
         val state = tables[name] ?: return
         if (!state.expanded || offset in state.pages || offset in state.pending) return
         tables[name] = state.copy(pending = state.pending + offset, errors = state.errors - offset)
-        val job = scope.launch(start = CoroutineStart.LAZY, context = host.ownerJob(query) ?: return) {
+        val job = scope.launch(start = CoroutineStart.LAZY, context = host.ownerJob(query, execution) ?: return) {
             try {
                 val page = cancellable { session.page(state.table, offset, it, query, state.sort) }
                 val live = tables[name] ?: return@launch
@@ -297,30 +422,30 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 tables[name] = live.copy(pending = live.pending - offset,
                     errors = live.errors + (offset to (e.message ?: context.getString(R.string.sqlite_read_failed))))
             }
-            host.pages.remove(Triple(name, query, offset))
+            host.pages.remove(PageKey(name, query, execution, offset))
             changed()
         }
-        host.pages[Triple(name, query, offset)] = job
+        host.pages[PageKey(name, query, execution, offset)] = job
         job.start()
     }
 
     suspend fun cell(node: SqliteDataNode, row: Int, column: Int): SqliteCell? {
         val host = hosts[node.owner] ?: return null
-        val session = host.session ?: return null
+        val session = host.session(node.state.execution) ?: return null
         val query = node.state.query
-        if (host.tables(query)?.get(node.state.table.name)?.table != node.state.table) return null
+        if (host.tables(query, node.state.execution)?.get(node.state.table.name)?.table != node.state.table) return null
         // Both leaving the screen and closing/refreshing the database cancel a detail read.
-        val operation = scope.async(host.ownerJob(query) ?: return null) { cancellable { session.cell(node.state.table, row, column, it, query, node.state.sort) } }
+        val operation = scope.async(host.ownerJob(query, node.state.execution) ?: return null) { cancellable { session.cell(node.state.table, row, column, it, query, node.state.sort) } }
         return try { operation.await() } finally { operation.cancel() }
     }
 
     /** Capture the current lease/job, so refreshing or replacing a search cannot retarget later chunks. */
     fun blobReader(node: SqliteDataNode, row: Int, column: Int, size: Long): (suspend (Long, Int) -> ByteArray)? {
         val host = hosts[node.owner] ?: return null
-        val session = host.session ?: return null
+        val session = host.session(node.state.execution) ?: return null
         val query = node.state.query
-        if (host.tables(query)?.get(node.state.table.name)?.table != node.state.table) return null
-        val owner = host.ownerJob(query) ?: return null
+        if (host.tables(query, node.state.execution)?.get(node.state.table.name)?.table != node.state.table) return null
+        val owner = host.ownerJob(query, node.state.execution) ?: return null
         return { offset, length ->
             val operation = scope.async(owner) {
                 cancellable { session.blob(node.state.table, row, column, offset, length, size, it, query, node.state.sort) }
@@ -336,12 +461,14 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
 
     fun csvWriter(node: SqliteNode, columns: Set<String>): (suspend (java.io.OutputStream, (Long) -> Unit) -> Unit)? {
         val host = hosts[node.owner] ?: return null
-        val session = host.session ?: return null
+        val session = host.session(node.state.execution) ?: return null
         val query = node.state.query
-        if (host.tables[node.state.table.name]?.table != node.state.table) return null
-        if (query != null && (host.search?.query != query ||
+        val table = if (node.state.execution == null) host.tables[node.state.table.name]
+            else host.tables(query, node.state.execution)?.get(node.state.table.name)
+        if (table?.table != node.state.table) return null
+        if (node.state.execution == null && query != null && (host.search?.query != query ||
             host.search?.table?.let { it != node.state.table.name } == true)) return null
-        val owner = host.ownerJob(query) ?: return null
+        val owner = host.ownerJob(query, node.state.execution) ?: return null
         return { output, progress ->
             val operation = scope.async(owner) {
                 runCatching { cancellable { session.exportCsv(node.state.table, columns, it, output, query, progress, node.state.sort) } }

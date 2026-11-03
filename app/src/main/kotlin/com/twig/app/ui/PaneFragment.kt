@@ -466,6 +466,8 @@ class PaneFragment : Fragment() {
         bb.tvSelectionCount.visibility = if (count > 0) View.VISIBLE else View.GONE
     }
 
+    private var pendingSqliteQueryScroll: String? = null
+
     private fun render(s: PaneViewModel.State) {
         updateSelectionCount()
         b.tvPath.text = s.currentDir?.let { pathLabel(it) } ?: ""
@@ -480,6 +482,16 @@ class PaneFragment : Fragment() {
                 pendingDestinationSelection = emptyList()
             }
             bb.list.invalidate() // The highlight frame redraws as currentKey changes.
+            pendingSqliteQueryScroll?.let { owner ->
+                val index = s.rows.indexOfFirst { it is SqliteQueryNode && it.owner == owner }
+                if (index >= 0) {
+                    (bb.list.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(index, bb.list.height / 4)
+                    pendingSqliteQueryScroll = null
+                } else if (s.rows.none { it.key == owner } ||
+                    s.rows.any { it is PaneViewModel.ActionNode && it.id == "sqlite_error:$owner" }) {
+                    pendingSqliteQueryScroll = null
+                }
+            }
             if (pendingSelectionInfoScroll) {
                 val index = s.rows.indexOfFirst { it is PaneViewModel.InfoNode && it.selection }
                 if (index >= 0) (bb.list.layoutManager as? LinearLayoutManager)
@@ -1029,7 +1041,7 @@ class PaneFragment : Fragment() {
                 .firstOrNull { it.owner == database.key }?.query ?: lastSqliteQuery
             val selected = viewModel.state.value.let { state -> state.rows.firstOrNull { it.key == state.currentKey } }
             val table = when (selected) {
-                is SqliteNode -> selected.state.table.name
+                is SqliteNode -> selected.state.table.name.takeIf { selected.state.execution == null }
                 is SqliteSearchNode -> selected.table
                 else -> null
             }
@@ -1062,6 +1074,59 @@ class PaneFragment : Fragment() {
                 viewModel.startSearch(dir, pattern)
             }
             .show()
+    }
+
+    private fun promptSqliteSql(node: PaneViewModel.FileNode, initial: String? = null, table: String? = null) {
+        val history = com.twig.app.sqlite.SqliteQueryHistory(requireContext())
+        val input = EditText(requireContext()).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            typeface = android.graphics.Typeface.MONOSPACE
+            minLines = 4
+            maxLines = 12
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            hint = getString(R.string.sqlite_sql_read_only)
+            setText(initial ?: table?.let { "SELECT * FROM ${com.twig.app.sqlite.SqliteSession.quote(it)} LIMIT 100" }
+                ?: history.recent(node.file).firstOrNull().orEmpty())
+        }
+        val dialog = AlertDialog.Builder(requireContext()).setTitle(R.string.sqlite_sql_query).setView(input)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setNeutralButton(R.string.history_title, null)
+            .setPositiveButton(R.string.sqlite_sql_run, null).create()
+        dialog.showNameInput(input)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val sql = input.text.toString().trim()
+            try { com.twig.app.sqlite.SqliteSql.statement(requireContext(), sql) }
+            catch (e: IllegalArgumentException) { input.error = e.message; return@setOnClickListener }
+            history.remember(node.file, sql)
+            pendingSqliteQueryScroll = node.key
+            viewModel.startSqliteSql(node, sql)
+            dialog.dismiss()
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            val recent = history.recent(node.file)
+            if (recent.isEmpty()) toast(getString(R.string.history_empty))
+            else AlertDialog.Builder(requireContext()).setTitle(R.string.sqlite_sql_query)
+                .setItems(recent.toTypedArray()) { _, index -> input.setText(recent[index]); input.setSelection(input.length()) }
+                .setNeutralButton(R.string.history_clear) { _, _ -> history.clear(node.file) }
+                .setNegativeButton(R.string.dialog_cancel, null).show()
+        }
+    }
+
+    private fun sqliteQueryMenu(node: SqliteQueryNode) {
+        val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.sqlite_sql_edit), R.drawable.ic_edit) { promptSqliteSql(source, node.sql) }
+        actions.item(getString(R.string.sqlite_sql_rerun), R.drawable.ic_refresh) { viewModel.startSqliteSql(source, node.sql) }
+        node.state?.let { state ->
+            actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) {
+                exportSqliteCsv(SqliteDataNode(node.owner, node.depth + 1, state))
+            }
+        }
+        actions.item(getString(if (node.running) R.string.dialog_cancel else R.string.dialog_close), R.drawable.ic_close) {
+            viewModel.closeSqliteQuery(node)
+        }
+        showActionMenu(requireContext(), getString(R.string.sqlite_sql_result), actions)
     }
 
     private var lastSqliteQuery = ""
@@ -1911,7 +1976,8 @@ class PaneFragment : Fragment() {
             .setPositiveButton(R.string.sqlite_export_csv) { _, _ ->
                 val names = columns.filterIndexed { index, _ -> selected[index] }.toSet()
                 val writer = viewModel.sqliteCsvWriter(node, names) ?: return@setPositiveButton
-                saveAsDialog.offerStream(node.state.table.name.take(100) + ".csv", write = writer) {
+                val name = if (node.state.execution == null) node.state.table.name else getString(R.string.sqlite_sql_result)
+                saveAsDialog.offerStream(name.take(100) + ".csv", write = writer) {
                     viewModel.refreshOnResume()
                     host?.siblingOf(this@PaneFragment)?.viewModel?.refreshOnResume()
                 }
@@ -1951,9 +2017,15 @@ class PaneFragment : Fragment() {
 
     private fun onLongClick(node: PaneViewModel.Node) {
         when (node) {
+            is SqliteQueryNode -> sqliteQueryMenu(node)
             is SqliteSearchNode -> sqliteSearchMenu(node)
             is SqliteTableNode -> {
                 val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.sqlite_sql_query), R.drawable.ic_terminal) {
+                    val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
+                        .firstOrNull { it.key == node.owner } ?: return@item
+                    promptSqliteSql(source, table = node.state.table.name)
+                }
                 actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) { exportSqliteCsv(node) }
                 actions.item(getString(R.string.strip_search), R.drawable.ic_search) {
                     val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
@@ -2040,6 +2112,7 @@ class PaneFragment : Fragment() {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
         }
         if (viewModel.isSqlite(node.file, node.key)) {
+            actions.item(getString(R.string.sqlite_sql_query), R.drawable.ic_terminal) { promptSqliteSql(node) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(node) }
         }
         if (!node.file.isDir && OpenFiles.isInstallable(node.file)) {

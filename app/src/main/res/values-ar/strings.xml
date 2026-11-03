@@ -1222,4 +1222,13 @@
     <string name="sqlite_export_columns">اختيار الأعمدة</string>
     <string name="sqlite_sort_ascending">تصاعدي</string>
     <string name="sqlite_sort_descending">تنازلي</string>
+    <string name="sqlite_sql_query">استعلام SQL</string>
+    <string name="sqlite_sql_run">تشغيل</string>
+    <string name="sqlite_sql_result">نتيجة الاستعلام</string>
+    <string name="sqlite_sql_running">جارٍ التشغيل · %1$d ث</string>
+    <string name="sqlite_sql_read_only">أدخل عبارة SELECT أو WITH أو VALUES أو EXPLAIN أو PRAGMA واحدة للقراءة فقط.</string>
+    <string name="sqlite_sql_single_statement">شغّل عبارة SQL واحدة في كل مرة.</string>
+    <string name="sqlite_sql_no_columns">لا تُرجع هذه العبارة أعمدة.</string>
+    <string name="sqlite_sql_edit">تعديل SQL</string>
+    <string name="sqlite_sql_rerun">تشغيل مجددًا</string>
 </resources>

@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">Sütunları seç</string>
     <string name="sqlite_sort_ascending">Artan</string>
     <string name="sqlite_sort_descending">Azalan</string>
+    <string name="sqlite_sql_query">SQL sorgusu</string>
+    <string name="sqlite_sql_run">Çalıştır</string>
+    <string name="sqlite_sql_result">Sorgu sonucu</string>
+    <string name="sqlite_sql_running">Çalışıyor · %1$d sn</string>
+    <string name="sqlite_sql_read_only">Salt okunur bir SELECT, WITH, VALUES, EXPLAIN veya PRAGMA ifadesi girin.</string>
+    <string name="sqlite_sql_single_statement">Her seferinde tek bir SQL ifadesi çalıştırın.</string>
+    <string name="sqlite_sql_no_columns">Bu ifade sütun döndürmüyor.</string>
+    <string name="sqlite_sql_edit">SQL düzenle</string>
+    <string name="sqlite_sql_rerun">Yeniden çalıştır</string>
 </resources>

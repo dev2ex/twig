@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">Elegir columnas</string>
     <string name="sqlite_sort_ascending">Ascendente</string>
     <string name="sqlite_sort_descending">Descendente</string>
+    <string name="sqlite_sql_query">Consulta SQL</string>
+    <string name="sqlite_sql_run">Ejecutar</string>
+    <string name="sqlite_sql_result">Resultado de consulta</string>
+    <string name="sqlite_sql_running">Ejecutando · %1$d s</string>
+    <string name="sqlite_sql_read_only">Introduce una sentencia de solo lectura SELECT, WITH, VALUES, EXPLAIN o PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Ejecuta una sola sentencia SQL cada vez.</string>
+    <string name="sqlite_sql_no_columns">Esta sentencia no devuelve columnas.</string>
+    <string name="sqlite_sql_edit">Editar SQL</string>
+    <string name="sqlite_sql_rerun">Volver a ejecutar</string>
 </resources>

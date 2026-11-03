@@ -100,6 +100,49 @@ pressing a cell opens its text/copy or BLOB dialog. Accessibility exposes select
 long-click actions independently. Sorting, collapsing or refreshing clears selection;
 property-grid cells retain their existing click behavior.
 
+## Read-only SQL queries
+
+Database and table menus open a multiline SQL editor. Table entries prefill a quoted
+`SELECT * FROM ... LIMIT 100`; database entries offer recent SQL for that source.
+History keeps up to ten statements per database and 32 databases; statements over
+16,384 UTF-16 units are not persisted. Loading history never executes it.
+
+A query adds one result heading directly under the database, followed by the shared
+data grid. Running queries show elapsed seconds; their long-press menu offers cancellation. Results support
+collapse, edit, rerun, CSV column selection/export and close. They share the normal
+accordion, row selection, striping, long-press cell/BLOB viewers and accessibility;
+headers retain the SQL's ordering rather than applying another sort.
+
+`SqliteSql` lexes comments, quoted identifiers/literals and a trailing semicolon to
+reject multiple statements. SELECT/WITH/VALUES, EXPLAIN and an explicit allowlist of
+read-only PRAGMA getters/introspection calls run through a source cursor with
+query_only enabled. Original local sources retain OPEN_READONLY; existing disposable
+remote/SAF and old-Android WAL browsing snapshots retain their existing recovery mode.
+SQL execution does not create an additional copy of any source database. PRAGMA
+setters, ATTACH, transactions and DDL/DML entry points are rejected; query_only also
+blocks WITH-prefixed writes before they can execute.
+
+`SqliteQueryResult` consumes returned rows into a separate private result database,
+using affinity-free columns to preserve runtime value types. Duplicate column names
+get numbered suffixes. Android 9+ uses a bounded 8 MiB CursorWindow; older versions
+use the platform window. Rows exceeding that window fail explicitly and discard the
+partial result, rather than truncating values or cloning the source. Only returned
+rows are copied; no INSERT/ATTACH or other write SQL runs on the source connection.
+
+Complete reading finishes before the first data page is displayed. Result viewing
+then loads bounded pages/cell/BLOB ranges from the immutable cache. SQLiteCursor can
+refill its window internally, so this is ordinary cursor execution rather than an
+atomic snapshot of a concurrently changing source or a guarantee that nondeterministic
+expressions evaluate just once inside the platform. All subsequent view/detail/export
+operations use the cached values without rerunning the query.
+
+Each execution has an ID, owning job, immutable result lease and separate page-cache
+namespace. Pages, details, BLOB ranges and CSV all read that result rather than
+rerunning SQL. Rerun, close, database refresh/collapse and screen destruction cancel
+its jobs and remove the result; refresh/reopen never automatically reruns SQL. Failed
+or cancelled builds remove partial results. Active result
+folders protect one another; a later query prunes orphan folders after process death.
+
 ## Table ordering
 
 Tapping a data header sorts the complete table or current result set in ascending

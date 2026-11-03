@@ -171,7 +171,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             request = { row ->
                 val offset = row / state.pageSize * state.pageSize
                 if (offset !in state.pending) load(offset)
-            }, cell = cell, header = header, sort = state.sort, selectRows = true)
+            }, cell = cell, header = header.takeIf { state.execution == null }, sort = state.sort, selectRows = true)
     }
 
     fun bind(key: String, headings: List<String>, count: Int, viewport: SqliteViewport,

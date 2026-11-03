@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">कॉलम चुनें</string>
     <string name="sqlite_sort_ascending">आरोही</string>
     <string name="sqlite_sort_descending">अवरोही</string>
+    <string name="sqlite_sql_query">SQL क्वेरी</string>
+    <string name="sqlite_sql_run">चलाएँ</string>
+    <string name="sqlite_sql_result">क्वेरी परिणाम</string>
+    <string name="sqlite_sql_running">चल रहा है · %1$d सेकंड</string>
+    <string name="sqlite_sql_read_only">एक केवल-पढ़ने वाला SELECT, WITH, VALUES, EXPLAIN या PRAGMA कथन दर्ज करें।</string>
+    <string name="sqlite_sql_single_statement">एक बार में एक SQL कथन चलाएँ।</string>
+    <string name="sqlite_sql_no_columns">यह कथन कोई कॉलम नहीं लौटाता।</string>
+    <string name="sqlite_sql_edit">SQL संपादित करें</string>
+    <string name="sqlite_sql_rerun">फिर चलाएँ</string>
 </resources>

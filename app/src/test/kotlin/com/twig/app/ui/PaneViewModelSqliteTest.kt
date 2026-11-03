@@ -24,6 +24,48 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class PaneViewModelSqliteTest {
+    @Test fun `SQL opens a collapsed database and never becomes a filesystem selection or auto-runs on reopen`() = runTest {
+        val app: Application = ApplicationProvider.getApplicationContext()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val store = ViewModelStore()
+        val root = Environment.getExternalStorageDirectory()
+        val file = File(root, "query-${UUID.randomUUID()}.db")
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        store.put("query", vm)
+        try {
+            FsRegistry.register(LocalFileSystem())
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("CREATE TABLE entries(id INTEGER)") }
+            vm.bootstrap(listOf("file\t${root.path}"))
+            advanceUntilIdle()
+            fun database() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().single { it.file.path == file.path }
+            assertFalse(database().expanded)
+            vm.startSqliteSql(database(), "SELECT 42 AS value")
+            advanceUntilIdle()
+            val query = vm.state.value.rows.filterIsInstance<SqliteQueryNode>().single()
+            assertFalse(query.running)
+            assertNull(query.error)
+            assertEquals(1L, query.state!!.count)
+            assertEquals(database().key, vm.sqliteSearchTarget()!!.key)
+            assertNull(vm.currentSelection())
+            assertEquals("42", vm.sqliteCell(vm.state.value.rows.filterIsInstance<SqliteDataNode>().single(), 0, 0)!!.text)
+            vm.toggle(query)
+            advanceUntilIdle()
+            assertTrue(vm.state.value.rows.none { it is SqliteDataNode })
+            vm.toggle(database())
+            advanceUntilIdle()
+            vm.toggle(database())
+            advanceUntilIdle()
+            assertTrue(vm.state.value.rows.none { it is SqliteQueryNode })
+            assertTrue(vm.expandedDescriptors().none { "sqlite-query" in it || "query_result" in it })
+        } finally {
+            store.clear()
+            advanceUntilIdle()
+            Dispatchers.resetMain()
+            file.delete()
+        }
+    }
+
     @Test fun `database expands in place and table contents never become file selections`() = runTest {
         val app: Application = ApplicationProvider.getApplicationContext()
         val dispatcher = StandardTestDispatcher(testScheduler)

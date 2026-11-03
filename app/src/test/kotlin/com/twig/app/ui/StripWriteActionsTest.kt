@@ -80,6 +80,64 @@ class StripWriteActionsTest {
         dialog.dismiss()
     }
 
+    @Test fun `SQL menus prefill quoted table names and reject writes without executing history`() {
+        val pane = pane0()
+        val database = PaneViewModel.FileNode(XFile("file", "/source/example.db", false), 1, true, false)
+        val schema = com.twig.app.sqlite.SqliteTable("quoted\" table", "", emptyList(),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val table = SqliteTableNode(database.key, 2, SqliteTableState(schema))
+        val adapter = adapterOf(pane)
+        adapter.submitList(listOf(database, table))
+        awaitList(adapter, 2)
+        fun menu(node: PaneViewModel.Node): androidx.appcompat.app.AlertDialog {
+            ReflectionHelpers.callInstanceMethod<Unit>(pane, "onLongClick",
+                ReflectionHelpers.ClassParameter.from(PaneViewModel.Node::class.java, node))
+            return org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        }
+        val tableMenu = menu(table)
+        val sql = (0 until tableMenu.listView.adapter.count).map { tableMenu.listView.adapter.getItem(it) as MenuAct }
+            .single { it.label == activity.getString(R.string.sqlite_sql_query) }
+        tableMenu.dismiss()
+        sql.run()
+        val editor = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val input = editor.findViewById<android.widget.EditText>(android.R.id.edit) ?: run {
+            fun find(view: View): android.widget.EditText? = when (view) {
+                is android.widget.EditText -> view
+                is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
+                else -> null
+            }
+            find(editor.window!!.decorView)!!
+        }
+        assertEquals("SELECT * FROM \"quoted\"\" table\" LIMIT 100", input.text.toString())
+        assertTrue(input.maxLines > 1)
+        for (invalid in listOf("DELETE FROM entries", "SELECT 1; SELECT 2", "")) {
+            input.setText(invalid)
+            editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+            assertTrue(editor.isShowing)
+            assertTrue(input.error != null)
+        }
+        assertTrue(pane.viewModel.state.value.rows.none { it is SqliteQueryNode })
+        editor.dismiss()
+        val databaseMenu = menu(database)
+        assertTrue((0 until databaseMenu.listView.adapter.count).any {
+            (databaseMenu.listView.adapter.getItem(it) as MenuAct).label == activity.getString(R.string.sqlite_sql_query)
+        })
+        databaseMenu.dismiss()
+        val history = com.twig.app.sqlite.SqliteQueryHistory(activity)
+        history.remember(database.file, "SELECT 42")
+        pane.javaClass.getDeclaredMethod("promptSqliteSql", PaneViewModel.FileNode::class.java, String::class.java, String::class.java)
+            .apply { isAccessible = true }.invoke(pane, database, null, null)
+        val recentEditor = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun findInput(view: View): android.widget.EditText? = when (view) {
+            is android.widget.EditText -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { findInput(view.getChildAt(it)) }
+            else -> null
+        }
+        assertEquals("SELECT 42", findInput(recentEditor.window!!.decorView)!!.text.toString())
+        assertTrue(pane.viewModel.state.value.rows.none { it is SqliteQueryNode })
+        recentEditor.dismiss()
+    }
+
     private fun idle() {
         shadowOf(Looper.getMainLooper()).idle()
     }

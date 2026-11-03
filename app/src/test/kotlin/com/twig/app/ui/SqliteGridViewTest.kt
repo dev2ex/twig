@@ -78,6 +78,30 @@ class SqliteGridViewTest {
         assertEquals(1, position.selectedRow)
     }
 
+    @Test fun `SQL result headers leave ordering to SQL and retain row selection`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val table = SqliteTable("query_result", "", listOf(SqliteColumn("value", "", false, null, 0)), SqliteIdentity("rowid", emptyList()))
+        val state = SqliteTableState(table, execution = "execution", count = 1, counting = false,
+            pages = mapOf(0 to com.twig.app.sqlite.SqlitePage(0, listOf(listOf(SqliteCell.text("result"))))))
+        var sorts = 0
+        var cells = 0
+        grid.bind(SqliteDataNode("db", 2, state), {}, { _, _ -> cells++ }, { sorts++ })
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val provider = grid.accessibilityNodeProvider!!
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isClickable)
+        assertFalse(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(0, state.viewport.selectedRow)
+        assertEquals(0, sorts)
+        assertEquals(0, cells)
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(1, cells)
+    }
+
     @Test fun `headers sort through taps and accessibility while property headers remain static`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))

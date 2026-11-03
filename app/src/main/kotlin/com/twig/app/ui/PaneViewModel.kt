@@ -427,6 +427,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
     private val forcedSqlite = HashSet<String>()
+    private val pendingSqliteSql = HashMap<String, String>()
     private val pendingSqliteSearch = HashMap<String, Pair<String, String?>>()
     private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
 
@@ -438,7 +439,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         sqliteTree.command(node, command)
     }
 
-    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query)
+    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query, node.state.execution)
     fun sqliteSort(node: SqliteDataNode, column: Int) = sqliteTree.sort(node, column)
     suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
     fun sqliteBlobReader(node: SqliteDataNode, row: Int, column: Int, size: Long) =
@@ -452,14 +453,33 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val key = when (val selected = rows.firstOrNull { it.key == currentKey }) {
             is SqliteNode -> selected.owner
             is SqliteSearchNode -> selected.owner
+            is SqliteQueryNode -> selected.owner
             is FileNode -> selected.key.takeIf { isSqlite(selected.file, it) }
             else -> null
         } ?: return null
         return rows.filterIsInstance<FileNode>().firstOrNull { it.key == key && sqliteTree.canSearch(key) }
     }
 
+    fun startSqliteSql(node: FileNode, sql: String) {
+        if (sql.isBlank()) return
+        pendingSqliteSearch.remove(node.key)
+        if (node.key !in expanded) {
+            pendingSqliteSql[node.key] = sql
+            toggleSqlite(node)
+        } else sqliteTree.execute(node.key, sql)
+        if (node.key in expanded) currentKey = "${node.key}/sqlite-query"
+        rebuild()
+    }
+
+    fun closeSqliteQuery(node: SqliteQueryNode) {
+        sqliteTree.closeQuery(node.owner, node.id)
+        if (currentKey == node.key || currentKey?.startsWith("${node.owner}/query:") == true) currentKey = node.owner
+        rebuild()
+    }
+
     fun startSqliteSearch(node: FileNode, query: String, table: String? = null) {
         if (query.isEmpty()) return
+        pendingSqliteSql.remove(node.key)
         if (node.key !in expanded) {
             pendingSqliteSearch[node.key] = query to table
             toggleSqlite(node)
@@ -495,6 +515,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             accordionExpand(key)
             sqliteTree.open(key, node.file, parentRow(node.file)?.let { mountRoots[it.first] ?: it.second })
             pendingSqliteSearch.remove(key)?.let { (query, table) -> sqliteTree.search(key, query, table) }
+            pendingSqliteSql.remove(key)?.let { sqliteTree.execute(key, it) }
         }
         rebuild()
     }
@@ -1066,6 +1087,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
+            is SqliteQueryNode -> { currentKey = node.key; sqliteTree.toggleQuery(node); rebuild() }
             is SqliteSearchNode -> closeSqliteSearch(node)
             is SqliteNode -> sqliteCommand(node, if (node is SqliteInfoNode) SqliteCommand.CLOSE else SqliteCommand.TOGGLE)
             is GroupNode -> {
@@ -1666,6 +1688,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Collapse every branch and abandon pending expansions without discarding cached listings. */
     fun collapseAll() {
         pendingSqliteSearch.clear()
+        pendingSqliteSql.clear()
         abandoned.addAll(loadingKeys)
         abandoned.addAll(connecting)
         pendingExpand = null
@@ -3072,6 +3095,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(confirmMaterialize = null)
         if (!proceed) {
             pendingSqliteSearch.remove(fileKey(file))
+            pendingSqliteSql.remove(fileKey(file))
             return
         }
         confirmedMaterialize.add(fileKey(file))

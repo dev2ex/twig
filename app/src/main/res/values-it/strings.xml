@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">Scegli colonne</string>
     <string name="sqlite_sort_ascending">Crescente</string>
     <string name="sqlite_sort_descending">Decrescente</string>
+    <string name="sqlite_sql_query">Query SQL</string>
+    <string name="sqlite_sql_run">Esegui</string>
+    <string name="sqlite_sql_result">Risultato query</string>
+    <string name="sqlite_sql_running">In esecuzione · %1$d s</string>
+    <string name="sqlite_sql_read_only">Inserisci una sola istruzione SELECT, WITH, VALUES, EXPLAIN o PRAGMA di sola lettura.</string>
+    <string name="sqlite_sql_single_statement">Esegui una sola istruzione SQL alla volta.</string>
+    <string name="sqlite_sql_no_columns">Questa istruzione non restituisce colonne.</string>
+    <string name="sqlite_sql_edit">Modifica SQL</string>
+    <string name="sqlite_sql_rerun">Esegui di nuovo</string>
 </resources>

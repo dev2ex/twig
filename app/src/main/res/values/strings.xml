@@ -1296,4 +1296,13 @@
     <string name="sqlite_export_columns">Choose columns</string>
     <string name="sqlite_sort_ascending">Ascending</string>
     <string name="sqlite_sort_descending">Descending</string>
+    <string name="sqlite_sql_query">SQL query</string>
+    <string name="sqlite_sql_run">Run</string>
+    <string name="sqlite_sql_result">Query result</string>
+    <string name="sqlite_sql_running">Running · %1$d s</string>
+    <string name="sqlite_sql_read_only">Enter one read-only SELECT, WITH, VALUES, EXPLAIN or PRAGMA statement.</string>
+    <string name="sqlite_sql_single_statement">Run one SQL statement at a time.</string>
+    <string name="sqlite_sql_no_columns">This statement does not return columns.</string>
+    <string name="sqlite_sql_edit">Edit SQL</string>
+    <string name="sqlite_sql_rerun">Run again</string>
 </resources>

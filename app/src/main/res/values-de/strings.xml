@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">Spalten auswählen</string>
     <string name="sqlite_sort_ascending">Aufsteigend</string>
     <string name="sqlite_sort_descending">Absteigend</string>
+    <string name="sqlite_sql_query">SQL-Abfrage</string>
+    <string name="sqlite_sql_run">Ausführen</string>
+    <string name="sqlite_sql_result">Abfrageergebnis</string>
+    <string name="sqlite_sql_running">Wird ausgeführt · %1$d s</string>
+    <string name="sqlite_sql_read_only">Eine schreibgeschützte SELECT-, WITH-, VALUES-, EXPLAIN- oder PRAGMA-Anweisung eingeben.</string>
+    <string name="sqlite_sql_single_statement">Jeweils nur eine SQL-Anweisung ausführen.</string>
+    <string name="sqlite_sql_no_columns">Diese Anweisung gibt keine Spalten zurück.</string>
+    <string name="sqlite_sql_edit">SQL bearbeiten</string>
+    <string name="sqlite_sql_rerun">Erneut ausführen</string>
 </resources>

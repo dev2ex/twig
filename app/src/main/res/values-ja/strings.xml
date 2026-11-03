@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">列を選択</string>
     <string name="sqlite_sort_ascending">昇順</string>
     <string name="sqlite_sort_descending">降順</string>
+    <string name="sqlite_sql_query">SQL クエリ</string>
+    <string name="sqlite_sql_run">実行</string>
+    <string name="sqlite_sql_result">クエリ結果</string>
+    <string name="sqlite_sql_running">実行中 · %1$d 秒</string>
+    <string name="sqlite_sql_read_only">読み取り専用の SELECT、WITH、VALUES、EXPLAIN または PRAGMA 文を 1 つ入力してください。</string>
+    <string name="sqlite_sql_single_statement">一度に実行できる SQL 文は 1 つです。</string>
+    <string name="sqlite_sql_no_columns">この文は列を返しません。</string>
+    <string name="sqlite_sql_edit">SQL を編集</string>
+    <string name="sqlite_sql_rerun">再実行</string>
 </resources>

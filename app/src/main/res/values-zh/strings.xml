@@ -1248,4 +1248,13 @@
     <string name="sqlite_export_columns">选择导出的列</string>
     <string name="sqlite_sort_ascending">升序</string>
     <string name="sqlite_sort_descending">降序</string>
+    <string name="sqlite_sql_query">SQL 查询</string>
+    <string name="sqlite_sql_run">运行</string>
+    <string name="sqlite_sql_result">查询结果</string>
+    <string name="sqlite_sql_running">执行中 · %1$d 秒</string>
+    <string name="sqlite_sql_read_only">输入一条只读的 SELECT、WITH、VALUES、EXPLAIN 或 PRAGMA 语句。</string>
+    <string name="sqlite_sql_single_statement">每次只能运行一条 SQL 语句。</string>
+    <string name="sqlite_sql_no_columns">此语句没有返回列。</string>
+    <string name="sqlite_sql_edit">修改 SQL</string>
+    <string name="sqlite_sql_rerun">重新运行</string>
 </resources>

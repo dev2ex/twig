@@ -1254,4 +1254,13 @@
     <string name="sqlite_export_columns">Выбор столбцов</string>
     <string name="sqlite_sort_ascending">По возрастанию</string>
     <string name="sqlite_sort_descending">По убыванию</string>
+    <string name="sqlite_sql_query">SQL-запрос</string>
+    <string name="sqlite_sql_run">Выполнить</string>
+    <string name="sqlite_sql_result">Результат запроса</string>
+    <string name="sqlite_sql_running">Выполнение · %1$d с</string>
+    <string name="sqlite_sql_read_only">Введите одну инструкцию только для чтения: SELECT, WITH, VALUES, EXPLAIN или PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Выполняйте по одной инструкции SQL.</string>
+    <string name="sqlite_sql_no_columns">Эта инструкция не возвращает столбцов.</string>
+    <string name="sqlite_sql_edit">Изменить SQL</string>
+    <string name="sqlite_sql_rerun">Выполнить снова</string>
 </resources>

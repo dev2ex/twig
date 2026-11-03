@@ -1217,4 +1217,13 @@
     <string name="sqlite_export_columns">選擇匯出的欄位</string>
     <string name="sqlite_sort_ascending">升冪</string>
     <string name="sqlite_sort_descending">降冪</string>
+    <string name="sqlite_sql_query">SQL 查詢</string>
+    <string name="sqlite_sql_run">執行</string>
+    <string name="sqlite_sql_result">查詢結果</string>
+    <string name="sqlite_sql_running">執行中 · %1$d 秒</string>
+    <string name="sqlite_sql_read_only">輸入一條唯讀的 SELECT、WITH、VALUES、EXPLAIN 或 PRAGMA 陳述式。</string>
+    <string name="sqlite_sql_single_statement">每次只能執行一條 SQL 陳述式。</string>
+    <string name="sqlite_sql_no_columns">此陳述式未傳回欄位。</string>
+    <string name="sqlite_sql_edit">修改 SQL</string>
+    <string name="sqlite_sql_rerun">重新執行</string>
 </resources>

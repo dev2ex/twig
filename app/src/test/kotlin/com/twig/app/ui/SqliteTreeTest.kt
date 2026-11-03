@@ -20,6 +20,98 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class SqliteTreeTest {
+    @Test fun `SQL results share the accordion and use a stable cancellable execution lease`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        com.twig.core.FsRegistry.register(com.twig.fs.local.LocalFileSystem())
+        val file = File(context.cacheDir, "query-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        val source = XFile("file", file.path, false)
+        fun header() = tree.rows("db", 2).filterIsInstance<SqliteQueryNode>().single()
+        fun data() = tree.rows("db", 2).filterIsInstance<SqliteDataNode>().single()
+        fun table(name: String) = tree.rows("db", 2).filterIsInstance<SqliteTableNode>().single { it.state.table.name == name }
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, label TEXT, payload BLOB)")
+                db.execSQL("CREATE TABLE query_result(label TEXT)")
+                db.execSQL("INSERT INTO query_result VALUES ('ordinary table')")
+                db.beginTransaction()
+                try {
+                    repeat(205) { db.execSQL("INSERT INTO entries VALUES (?,?,?)", arrayOf(it, "row$it", byteArrayOf(it.toByte(), 7))) }
+                    db.setTransactionSuccessful()
+                } finally { db.endTransaction() }
+            }
+            tree.open("db", source)
+            advanceUntilIdle()
+            tree.command(table("entries"), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            val sql = "SELECT id, label, payload, random() AS nonce FROM entries ORDER BY id DESC"
+            tree.execute("db", sql)
+            assertTrue(header().running)
+            advanceUntilIdle()
+            val first = header()
+            assertFalse(first.running)
+            assertNull(first.error)
+            assertEquals(205L, first.state!!.count)
+            assertEquals(2, first.depth)
+            assertEquals(3, data().depth)
+            assertFalse(table("entries").state.expanded)
+            assertTrue(tree.rows("db", 2).filterIsInstance<SqliteTableNode>().all { it.state.execution == null })
+            val original = data()
+            assertEquals(first.id, original.state.execution)
+            assertEquals("204", tree.cell(original, 0, 0)!!.text)
+            val nonce = tree.cell(original, 0, 3)!!.text
+            val blob = tree.blobReader(original, 0, 2, 2)!!
+            assertArrayEquals(byteArrayOf(204.toByte(), 7), blob(0, 2))
+            val csv = tree.csvWriter(original, setOf("id", "nonce"))!!
+            val output = java.io.ByteArrayOutputStream()
+            csv(output) {}
+            assertTrue(output.toString("UTF-8").startsWith("\uFEFF\"id\",\"nonce\"\r\n204,$nonce\r\n"))
+            tree.sort(original, 0)
+            assertNull(data().state.sort)
+            tree.page("db", original.state.table.name, 100, execution = first.id)
+            advanceUntilIdle()
+            assertEquals(setOf(0, 100), data().state.pages.keys)
+            assertEquals("4", tree.cell(data(), 200, 0)!!.text)
+            tree.command(table("query_result"), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            assertFalse(header().expanded)
+            assertEquals("ordinary table", tree.cell(data(), 0, 0)!!.text)
+            tree.toggleQuery(header())
+            advanceUntilIdle()
+            assertFalse(table("query_result").state.expanded)
+            assertEquals(nonce, tree.cell(data(), 0, 3)!!.text)
+            tree.execute("db", sql)
+            advanceUntilIdle()
+            assertNotEquals(first.id, header().id)
+            assertNull(tree.cell(original, 0, 0))
+            assertTrue(runCatching { blob(0, 2) }.exceptionOrNull() is CancellationException)
+            assertTrue(runCatching { csv(java.io.ByteArrayOutputStream()) {} }.exceptionOrNull() is CancellationException)
+            tree.execute("db", "SELECT FROM")
+            advanceUntilIdle()
+            assertNotNull(header().error)
+            assertFalse(header().running)
+            assertNull(header().state)
+            assertTrue(tree.canSearch("db"))
+            tree.execute("db", "SELECT 42 AS value")
+            val pending = header()
+            tree.closeQuery("db", pending.id)
+            advanceUntilIdle()
+            assertTrue(tree.rows("db", 2).none { it is SqliteQueryNode })
+            tree.execute("db", "SELECT 42 AS value")
+            advanceUntilIdle()
+            tree.refresh("db", source)
+            advanceUntilIdle()
+            assertTrue(tree.rows("db", 2).none { it is SqliteQueryNode })
+        } finally {
+            scope.cancel()
+            advanceUntilIdle()
+            file.delete()
+        }
+        assertTrue(File(context.cacheDir, "sqlite-query").listFiles().orEmpty().isEmpty())
+    }
+
     @Test fun `sorting clears pages resets vertical scroll and keeps search ordering independent`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val file = File(context.cacheDir, "sort-${UUID.randomUUID()}.db")

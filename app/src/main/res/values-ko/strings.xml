@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">열 선택</string>
     <string name="sqlite_sort_ascending">오름차순</string>
     <string name="sqlite_sort_descending">내림차순</string>
+    <string name="sqlite_sql_query">SQL 쿼리</string>
+    <string name="sqlite_sql_run">실행</string>
+    <string name="sqlite_sql_result">쿼리 결과</string>
+    <string name="sqlite_sql_running">실행 중 · %1$d초</string>
+    <string name="sqlite_sql_read_only">읽기 전용 SELECT, WITH, VALUES, EXPLAIN 또는 PRAGMA 문 하나를 입력하세요.</string>
+    <string name="sqlite_sql_single_statement">한 번에 SQL 문 하나만 실행하세요.</string>
+    <string name="sqlite_sql_no_columns">이 문은 열을 반환하지 않습니다.</string>
+    <string name="sqlite_sql_edit">SQL 편집</string>
+    <string name="sqlite_sql_rerun">다시 실행</string>
 </resources>

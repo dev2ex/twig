@@ -541,7 +541,8 @@ class FileAdapter(
                 b.cellCheck.visibility = View.GONE
                 b.infoToggle.visibility = View.GONE
                 b.cellCheck.setOnClickListener(null)
-                b.infoToggle.setOnClickListener(null)
+                b.infoToggle.setImageResource(R.drawable.ic_info)
+            b.infoToggle.setOnClickListener(null)
                 b.infoToggle.setOnLongClickListener(null)
                 b.root.setOnTouchListener(null)
                 b.root.setOnClickListener { onClick(node) }
@@ -963,6 +964,7 @@ class FileAdapter(
             }
 
             when (node) {
+                is SqliteQueryNode -> bindSqliteQuery(node)
                 is SqliteSearchNode -> bindSqliteSearch(node)
                 is SqliteTableNode -> bindSqliteTable(node)
                 is SqliteNode -> Unit
@@ -1126,6 +1128,24 @@ class FileAdapter(
             b.infoToggle.visibility = View.VISIBLE
             b.infoToggle.contentDescription = ctx.getString(R.string.file_info)
             b.infoToggle.setOnClickListener { onSqliteCommand(node, SqliteCommand.PROPERTIES) }
+            b.root.setOnClickListener { onClick(node) }
+            b.root.setOnLongClickListener { onLongClick(node); true }
+            b.icon.setOnClickListener { onClick(node) }
+            b.indicator.setOnClickListener { onClick(node) }
+        }
+
+        private fun bindSqliteQuery(node: SqliteQueryNode) {
+            val ctx = b.root.context
+            if (node.state != null) bindSqliteTable(SqliteTableNode(node.owner, node.depth, node.state))
+            b.name.setText(R.string.sqlite_sql_result)
+            setMeta(if (node.running) ctx.getString(R.string.sqlite_sql_running, node.elapsedSeconds)
+                else node.error ?: node.sql.replace('\n', ' '))
+            b.icon.setImageResource(R.drawable.ic_sqlite_table)
+            setIndicator(if (node.running) null else node.expanded)
+            b.progress.visibility = if (node.running) View.VISIBLE else View.GONE
+            b.check.visibility = View.GONE
+            b.infoToggle.visibility = View.INVISIBLE
+            b.infoToggle.setOnClickListener(null)
             b.root.setOnClickListener { onClick(node) }
             b.root.setOnLongClickListener { onLongClick(node); true }
             b.icon.setOnClickListener { onClick(node) }

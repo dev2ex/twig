@@ -66,6 +66,9 @@ class SqliteSession private constructor(private val path: File, private val temp
         }
     }
 
+    internal fun executeQuery(context: Context, sql: String, signal: CancellationSignal): SqliteQueryResult =
+        read(signal) { SqliteQueryResult.create(context, it, sql, signal) }
+
     fun tables(signal: CancellationSignal): List<SqliteTable> = read(signal) { db ->
         val schemas = db.rawQuery("SELECT name, sql FROM sqlite_master WHERE type='table' " +
             "AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' ORDER BY name COLLATE NOCASE", null, signal).use { c ->

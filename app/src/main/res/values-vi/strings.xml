@@ -1217,4 +1217,13 @@
     <string name="sqlite_export_columns">Chọn cột</string>
     <string name="sqlite_sort_ascending">Tăng dần</string>
     <string name="sqlite_sort_descending">Giảm dần</string>
+    <string name="sqlite_sql_query">Truy vấn SQL</string>
+    <string name="sqlite_sql_run">Chạy</string>
+    <string name="sqlite_sql_result">Kết quả truy vấn</string>
+    <string name="sqlite_sql_running">Đang chạy · %1$d giây</string>
+    <string name="sqlite_sql_read_only">Nhập một câu lệnh chỉ đọc SELECT, WITH, VALUES, EXPLAIN hoặc PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Mỗi lần chỉ chạy một câu lệnh SQL.</string>
+    <string name="sqlite_sql_no_columns">Câu lệnh này không trả về cột.</string>
+    <string name="sqlite_sql_edit">Sửa SQL</string>
+    <string name="sqlite_sql_rerun">Chạy lại</string>
 </resources>

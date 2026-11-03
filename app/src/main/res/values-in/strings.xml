@@ -1218,4 +1218,13 @@
     <string name="sqlite_export_columns">Pilih kolom</string>
     <string name="sqlite_sort_ascending">Menaik</string>
     <string name="sqlite_sort_descending">Menurun</string>
+    <string name="sqlite_sql_query">Kueri SQL</string>
+    <string name="sqlite_sql_run">Jalankan</string>
+    <string name="sqlite_sql_result">Hasil kueri</string>
+    <string name="sqlite_sql_running">Berjalan · %1$d dtk</string>
+    <string name="sqlite_sql_read_only">Masukkan satu pernyataan baca-saja SELECT, WITH, VALUES, EXPLAIN, atau PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Jalankan satu pernyataan SQL setiap kali.</string>
+    <string name="sqlite_sql_no_columns">Pernyataan ini tidak menghasilkan kolom.</string>
+    <string name="sqlite_sql_edit">Edit SQL</string>
+    <string name="sqlite_sql_rerun">Jalankan lagi</string>
 </resources>
