@@ -41,6 +41,7 @@ data class SqliteCell(val kind: Char, val text: String, val length: Long = text.
     }
 }
 data class SqlitePage(val offset: Int, val rows: List<List<SqliteCell>>)
+data class SqliteSort(val column: String, val descending: Boolean = false)
 
 /**
  * One browsing lease. Connections/cursors never escape a read; original databases are
@@ -96,9 +97,9 @@ class SqliteSession private constructor(private val path: File, private val temp
             .use { it.moveToFirst(); it.getLong(0) }
     }
 
-    fun page(table: SqliteTable, offset: Int, signal: CancellationSignal, query: String? = null): SqlitePage = read(signal) { db ->
+    fun page(table: SqliteTable, offset: Int, signal: CancellationSignal, query: String? = null, sort: SqliteSort? = null): SqlitePage = read(signal) { db ->
         val projection = table.visibleColumns.joinToString(",") { projection(it, PREVIEW_CHARS, PREVIEW_BYTES, query) }
-        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT ${pageSize(table)} OFFSET $offset",
+        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table, sort)} LIMIT ${pageSize(table)} OFFSET $offset",
             arguments(query), signal).use { c ->
             SqlitePage(offset, buildList {
                 while (c.moveToNext()) {
@@ -110,9 +111,9 @@ class SqliteSession private constructor(private val path: File, private val temp
     }
 
     /** Bounded detail read; the UI reports truncation explicitly rather than risking CursorWindow/OOM. */
-    fun cell(table: SqliteTable, row: Int, column: Int, signal: CancellationSignal, query: String? = null): SqliteCell = read(signal) { db ->
+    fun cell(table: SqliteTable, row: Int, column: Int, signal: CancellationSignal, query: String? = null, sort: SqliteSort? = null): SqliteCell = read(signal) { db ->
         val projection = projection(table.visibleColumns[column], 65536, 32768, query)
-        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT 1 OFFSET $row", arguments(query), signal).use {
+        db.rawQuery("SELECT $projection FROM ${quote(table.name)}${where(table, query)}${order(table, sort)} LIMIT 1 OFFSET $row", arguments(query), signal).use {
             check(it.moveToFirst())
             SqliteCell.decode(it.getString(0), query != null)
         }
@@ -120,12 +121,12 @@ class SqliteSession private constructor(private val path: File, private val temp
 
     /** Read one bounded BLOB range; row offsets use the same filter/order as the grid. */
     fun blob(table: SqliteTable, row: Int, column: Int, offset: Long, length: Int,
-        expectedSize: Long, signal: CancellationSignal, query: String? = null): ByteArray = read(signal) { db ->
+        expectedSize: Long, signal: CancellationSignal, query: String? = null, sort: SqliteSort? = null): ByteArray = read(signal) { db ->
         require(row >= 0 && offset >= 0 && length in 0..65536 && expectedSize >= 0)
         require(offset <= expectedSize && length.toLong() <= expectedSize - offset)
         val name = quote(table.visibleColumns[column].name)
         db.rawQuery("SELECT typeof($name), length($name), substr($name,${offset + 1},$length) " +
-            "FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT 1 OFFSET $row",
+            "FROM ${quote(table.name)}${where(table, query)}${order(table, sort)} LIMIT 1 OFFSET $row",
             arguments(query), signal).use { cursor ->
             check(cursor.moveToFirst()) { "BLOB row no longer exists" }
             check(cursor.getString(0) == "blob" && cursor.getLong(1) == expectedSize) { "BLOB value changed" }
@@ -142,10 +143,10 @@ class SqliteSession private constructor(private val path: File, private val temp
     }
 
     fun exportCsv(table: SqliteTable, selected: Set<String>, signal: CancellationSignal,
-        output: java.io.OutputStream, query: String? = null, progress: (Long) -> Unit = {}) = read(signal) { db ->
+        output: java.io.OutputStream, query: String? = null, progress: (Long) -> Unit = {}, sort: SqliteSort? = null) = read(signal) { db ->
         val columns = table.visibleColumns.filter { it.name in selected }
         require(columns.isNotEmpty() && columns.size == selected.size)
-        SqliteCsv.write(db, table, columns, where(table, query) + order(table), arguments(query), signal, output, progress, readFailure)
+        SqliteCsv.write(db, table, columns, where(table, query) + order(table, sort), arguments(query), signal, output, progress, readFailure)
     }
 
     companion object {
@@ -178,9 +179,14 @@ class SqliteSession private constructor(private val path: File, private val temp
             // Evaluate against the full value, even when its matching text is outside the preview.
             return if (query == null) value else "(CASE WHEN ${match(column)} THEN '1' ELSE '0' END)||($value)"
         }
-        private fun order(table: SqliteTable): String {
+        private fun order(table: SqliteTable, sort: SqliteSort?): String {
             val keys = table.identity.rowId?.let { listOf(it) } ?: table.identity.primaryKey
-            return if (keys.isEmpty()) "" else " ORDER BY " + keys.joinToString(",") { quote(it) }
+            if (sort != null) require(table.visibleColumns.any { it.name == sort.column })
+            val terms = buildList {
+                if (sort != null) add(quote(sort.column) + if (sort.descending) " DESC" else " ASC")
+                addAll(keys.filterNot { it.equals(sort?.column, ignoreCase = true) }.map(::quote))
+            }
+            return if (terms.isEmpty()) "" else " ORDER BY " + terms.joinToString(",")
         }
         private fun preview(name: String, chars: Int, bytes: Int): String {
             val c = quote(name)

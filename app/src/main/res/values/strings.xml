@@ -1294,4 +1294,6 @@
     <string name="save_as">Save as…</string>
     <string name="sqlite_export_csv">Export CSV</string>
     <string name="sqlite_export_columns">Choose columns</string>
+    <string name="sqlite_sort_ascending">Ascending</string>
+    <string name="sqlite_sort_descending">Descending</string>
 </resources>

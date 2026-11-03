@@ -94,6 +94,20 @@ Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added be
 this reader without changing tree or renderer contracts. Encrypted databases require a
 separate future reader; no SQLCipher library is bundled.
 
+## Table ordering
+
+Tapping a data header sorts the complete table or current result set in ascending
+SQLite value order; tapping it again reverses direction. Another column starts in
+ascending order. The active header shows an arrow and exposes its direction and click
+action to accessibility. Property-grid headers remain static.
+
+`SqliteSort` is part of table state. Sorting cancels pending page reads, clears the
+page cache and resets vertical scrolling while preserving horizontal position. SQL
+quotes the selected column and appends rowid/primary-key tie breakers. Pages, cell
+reads, BLOB ranges and CSV export all use the captured ordering, including readers
+opened before a later sort change. Normal and searched tables keep separate ordering.
+Database refresh retains normal-table ordering while its column still exists.
+
 ## CSV export
 
 Table menus export all rows; result-table menus and scoped search headers export only

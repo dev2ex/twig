@@ -19,6 +19,7 @@ import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.customview.widget.ExploreByTouchHelper
 import com.twig.app.R
 import com.twig.app.sqlite.SqliteCell
+import com.twig.app.sqlite.SqliteSort
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -43,6 +44,8 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private var errorAt: (Int) -> String? = { null }
     private var requestRow: (Int) -> Unit = {}
     private var onCell: (Int, Int) -> Unit = { _, _ -> }
+    private var onHeader: ((Int) -> Unit)? = null
+    private var sort: SqliteSort? = null
     private var position = SqliteViewport()
     private var owner: String? = null
     private var pendingRequests = false
@@ -89,13 +92,19 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             if (cell != null) {
                 info.setCollectionItemInfo(AccessibilityNodeInfoCompat.CollectionItemInfoCompat.obtain(
                     cell.row + 1, 1, cell.column, 1, cell.row < 0))
-                if (cell.row >= 0) { info.isClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK) }
+                if (cell.row >= 0 || onHeader != null) {
+                    info.isClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
+                }
+                if (cell.row < 0 && sort?.column == headers[cell.column]) {
+                    info.stateDescription = context.getString(if (sort?.descending == true)
+                        R.string.sqlite_sort_descending else R.string.sqlite_sort_ascending)
+                }
             }
         }
         override fun onPerformActionForVirtualView(id: Int, action: Int, args: Bundle?): Boolean {
             val cell = accessibleCells()[id] ?: return false
-            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK || cell.row < 0) return false
-            onCell(cell.row, cell.column)
+            if (action != AccessibilityNodeInfoCompat.ACTION_CLICK) return false
+            if (cell.row < 0) (onHeader ?: return false)(cell.column) else onCell(cell.row, cell.column)
             return true
         }
         override fun onPopulateNodeForHost(info: AccessibilityNodeInfoCompat) {
@@ -115,7 +124,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapUp(e: MotionEvent): Boolean { click(e); performClick(); return true }
-        override fun onLongPress(e: MotionEvent) { click(e) }
+        override fun onLongPress(e: MotionEvent) { if (e.y >= rowHeight) click(e) }
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
             flingX = 0; flingY = 0
             scroller.fling(0, 0, if (axis == SwipeGesture.HORIZONTAL) -velocityX.toInt() else 0,
@@ -134,7 +143,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         minimumHeight = (rowHeight * 3).toInt()
     }
 
-    fun bind(node: SqliteDataNode, load: (Int) -> Unit, cell: (Int, Int) -> Unit) {
+    fun bind(node: SqliteDataNode, load: (Int) -> Unit, cell: (Int, Int) -> Unit, header: (Int) -> Unit = {}) {
         val state = node.state
         bind(node.key, state.table.visibleColumns.map { it.name }, state.rowCount, state.viewport,
             rowAt = { row -> state.pages[row / state.pageSize * state.pageSize]
@@ -143,13 +152,14 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             request = { row ->
                 val offset = row / state.pageSize * state.pageSize
                 if (offset !in state.pending) load(offset)
-            }, cell = cell)
+            }, cell = cell, header = header, sort = state.sort)
     }
 
     fun bind(key: String, headings: List<String>, count: Int, viewport: SqliteViewport,
         rowAt: (Int) -> List<SqliteCell>?, errorAt: (Int) -> String? = { null },
-        request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> }) {
-        if (owner != key) scroller.abortAnimation()
+        request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> },
+        header: ((Int) -> Unit)? = null, sort: SqliteSort? = null) {
+        if (owner != key || this.sort != sort) scroller.abortAnimation()
         owner = key
         position = viewport
         headers = headings
@@ -158,6 +168,8 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         this.errorAt = errorAt
         requestRow = request
         onCell = cell
+        onHeader = header
+        this.sort = sort
         // Stable widths: incoming pages cannot shift columns underneath a finger.
         widths = headings.map { max(112 * dp, min(240 * dp, paint.measureText(it) + 24 * dp)) }
         contentDescription = context.getString(R.string.sqlite_grid_description, count, headings.size)
@@ -172,6 +184,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         owner = null
         headers = emptyList(); widths = emptyList(); rows = 0
         rowAt = { null }; errorAt = { null }; requestRow = {}; onCell = { _, _ -> }
+        onHeader = null; sort = null
         position = SqliteViewport()
     }
     private val maxX get() = max(0f, contentWidth - width)
@@ -227,7 +240,11 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         var x = -position.x
         paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
         headers.forEachIndexed { index, text ->
-            drawCell(canvas, text, x, 0f, widths[index], foreground)
+            val sorted = sort?.column == text
+            val arrow = if (sort?.descending == true) "↓" else "↑"
+            val arrowWidth = if (sorted) paint.measureText(arrow) + 16 * dp else 0f
+            drawCell(canvas, text, x, 0f, widths[index] - arrowWidth, foreground)
+            if (sorted) drawCell(canvas, arrow, x + widths[index] - arrowWidth, 0f, arrowWidth, foreground)
             x += widths[index]
         }
         paint.typeface = Typeface.MONOSPACE
@@ -276,13 +293,17 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     }
 
     private fun click(event: MotionEvent) {
-        if (event.y < rowHeight) return
-        val row = ((event.y - rowHeight + position.y) / rowHeight).toInt()
-        if (row !in 0 until rows) return
-        if (rowAt(row) == null) { requestRow(row); return }
+        if (event.x < 0 || event.y < 0) return
+        val header = event.y < rowHeight
+        val row = if (header) -1 else ((event.y - rowHeight + position.y) / rowHeight).toInt()
+        if (!header && row !in 0 until rows) return
+        if (!header && rowAt(row) == null) { requestRow(row); return }
         var x = event.x + position.x
         widths.forEachIndexed { column, w ->
-            if (x < w) { onCell(row, column); return }
+            if (x < w) {
+                if (header) onHeader?.invoke(column) else onCell(row, column)
+                return
+            }
             x -= w
         }
     }

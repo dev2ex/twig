@@ -1215,4 +1215,6 @@
     <string name="save_as">Lưu thành…</string>
     <string name="sqlite_export_csv">Xuất CSV</string>
     <string name="sqlite_export_columns">Chọn cột</string>
+    <string name="sqlite_sort_ascending">Tăng dần</string>
+    <string name="sqlite_sort_descending">Giảm dần</string>
 </resources>

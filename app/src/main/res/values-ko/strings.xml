@@ -1216,4 +1216,6 @@
     <string name="save_as">다른 이름으로 저장…</string>
     <string name="sqlite_export_csv">CSV 내보내기</string>
     <string name="sqlite_export_columns">열 선택</string>
+    <string name="sqlite_sort_ascending">오름차순</string>
+    <string name="sqlite_sort_descending">내림차순</string>
 </resources>

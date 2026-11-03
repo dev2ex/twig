@@ -1216,4 +1216,6 @@
     <string name="save_as">Simpan sebagai…</string>
     <string name="sqlite_export_csv">Ekspor CSV</string>
     <string name="sqlite_export_columns">Pilih kolom</string>
+    <string name="sqlite_sort_ascending">Menaik</string>
+    <string name="sqlite_sort_descending">Menurun</string>
 </resources>

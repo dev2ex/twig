@@ -284,6 +284,7 @@ class PaneFragment : Fragment() {
             onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
             onSqliteCommand = { node, command -> viewModel.sqliteCommand(node, command) },
             onSqlitePage = { node, offset -> viewModel.sqlitePage(node, offset) },
+            onSqliteSort = { node, column -> viewModel.sqliteSort(node, column) },
             onSqliteCell = { node, row, column -> showSqliteCell(node, row, column) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
@@ -1092,7 +1093,10 @@ class PaneFragment : Fragment() {
             val table = adapter.currentList.filterIsInstance<SqliteTableNode>()
                 .firstOrNull { it.owner == node.owner && it.state.table.name == node.table }
             if (table != null) actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) {
-                exportSqliteCsv(table.copy(state = table.state.copy(query = node.query)))
+                val state = adapter.currentList.filterIsInstance<SqliteDataNode>()
+                    .firstOrNull { it.owner == node.owner && it.state.query == node.query && it.state.table.name == node.table }?.state
+                    ?: table.state.copy(query = node.query, sort = null)
+                exportSqliteCsv(table.copy(state = state))
             }
         }
         actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query, node.table) }

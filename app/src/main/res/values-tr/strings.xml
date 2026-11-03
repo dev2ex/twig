@@ -1216,4 +1216,6 @@
     <string name="save_as">Farklı kaydet…</string>
     <string name="sqlite_export_csv">CSV olarak dışa aktar</string>
     <string name="sqlite_export_columns">Sütunları seç</string>
+    <string name="sqlite_sort_ascending">Artan</string>
+    <string name="sqlite_sort_descending">Azalan</string>
 </resources>

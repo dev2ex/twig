@@ -1246,4 +1246,6 @@
     <string name="save_as">另存为…</string>
     <string name="sqlite_export_csv">导出 CSV</string>
     <string name="sqlite_export_columns">选择导出的列</string>
+    <string name="sqlite_sort_ascending">升序</string>
+    <string name="sqlite_sort_descending">降序</string>
 </resources>

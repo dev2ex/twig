@@ -1215,4 +1215,6 @@
     <string name="save_as">另存為…</string>
     <string name="sqlite_export_csv">匯出 CSV</string>
     <string name="sqlite_export_columns">選擇匯出的欄位</string>
+    <string name="sqlite_sort_ascending">升冪</string>
+    <string name="sqlite_sort_descending">降冪</string>
 </resources>

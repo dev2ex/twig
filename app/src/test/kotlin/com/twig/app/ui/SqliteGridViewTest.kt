@@ -24,6 +24,40 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class SqliteGridViewTest {
+    @Test fun `headers sort through taps and accessibility while property headers remain static`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val headers = mutableListOf<Int>()
+        var cells = 0
+        grid.bind("data", listOf("id", "value", "extra"), 1, SqliteViewport(x = 100f),
+            rowAt = { List(3) { SqliteCell.text("data") } }, cell = { _, _ -> cells++ },
+            header = headers::add, sort = com.twig.app.sqlite.SqliteSort("value", true))
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 200, 160)
+        fun touch(action: Int, x: Float, y: Float, time: Long) {
+            MotionEvent.obtain(0, time, action, x, y, 0).also { grid.onTouchEvent(it); it.recycle() }
+        }
+        touch(MotionEvent.ACTION_DOWN, 30f, 10f, 0)
+        touch(MotionEvent.ACTION_UP, 30f, 10f, 20)
+        assertEquals(listOf(1), headers)
+        assertEquals(0, cells)
+        val provider = grid.accessibilityNodeProvider!!
+        val header = provider.createAccessibilityNodeInfo(-3)!!
+        assertTrue(header.isClickable)
+        assertEquals(activity.getString(R.string.sqlite_sort_descending), header.stateDescription.toString())
+        assertTrue(provider.performAction(-3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(listOf(1, 1), headers)
+        touch(MotionEvent.ACTION_DOWN, 100f, 10f, 1000)
+        touch(MotionEvent.ACTION_MOVE, 20f, 10f, 1050)
+        touch(MotionEvent.ACTION_UP, 20f, 10f, 1070)
+        assertEquals(2, headers.size)
+        grid.bind("columns", listOf("name"), 0, SqliteViewport(), rowAt = { null })
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isClickable)
+        assertFalse(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+    }
+
     @Test fun `accessibility can scroll both axes independently in a wide tall table`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))

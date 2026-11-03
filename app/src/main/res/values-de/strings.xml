@@ -1216,4 +1216,6 @@
     <string name="save_as">Speichern unter…</string>
     <string name="sqlite_export_csv">CSV exportieren</string>
     <string name="sqlite_export_columns">Spalten auswählen</string>
+    <string name="sqlite_sort_ascending">Aufsteigend</string>
+    <string name="sqlite_sort_descending">Absteigend</string>
 </resources>

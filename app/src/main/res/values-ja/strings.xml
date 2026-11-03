@@ -1216,4 +1216,6 @@
     <string name="save_as">名前を付けて保存…</string>
     <string name="sqlite_export_csv">CSV をエクスポート</string>
     <string name="sqlite_export_columns">列を選択</string>
+    <string name="sqlite_sort_ascending">昇順</string>
+    <string name="sqlite_sort_descending">降順</string>
 </resources>

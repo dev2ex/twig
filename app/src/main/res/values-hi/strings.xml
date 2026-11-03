@@ -1216,4 +1216,6 @@
     <string name="save_as">इस नाम से सहेजें…</string>
     <string name="sqlite_export_csv">CSV निर्यात करें</string>
     <string name="sqlite_export_columns">कॉलम चुनें</string>
+    <string name="sqlite_sort_ascending">आरोही</string>
+    <string name="sqlite_sort_descending">अवरोही</string>
 </resources>

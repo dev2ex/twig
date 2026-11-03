@@ -1252,4 +1252,6 @@
     <string name="save_as">Сохранить как…</string>
     <string name="sqlite_export_csv">Экспорт CSV</string>
     <string name="sqlite_export_columns">Выбор столбцов</string>
+    <string name="sqlite_sort_ascending">По возрастанию</string>
+    <string name="sqlite_sort_descending">По убыванию</string>
 </resources>

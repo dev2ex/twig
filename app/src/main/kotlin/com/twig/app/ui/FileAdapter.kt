@@ -78,6 +78,7 @@ class FileAdapter(
     private val selectFilesByRow: Boolean = false,
     private val onSqliteCommand: (SqliteNode, SqliteCommand) -> Unit = { _, _ -> },
     private val onSqlitePage: (SqliteDataNode, Int) -> Unit = { _, _ -> },
+    private val onSqliteSort: (SqliteDataNode, Int) -> Unit = { _, _ -> },
     private val onSqliteCell: (SqliteDataNode, Int, Int) -> Unit = { _, _, _ -> },
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
@@ -344,7 +345,7 @@ class FileAdapter(
     }
 
     private inner class SqliteDataVH(private val binding: ItemSqliteDataBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(node: SqliteDataNode) = binding.sqliteGrid.bind(node, { onSqlitePage(node, it) }, { row, column -> onSqliteCell(node, row, column) })
+        fun bind(node: SqliteDataNode) = binding.sqliteGrid.bind(node, { onSqlitePage(node, it) }, { row, column -> onSqliteCell(node, row, column) }, { onSqliteSort(node, it) })
         fun release() = binding.sqliteGrid.release()
     }
     private inner class SqliteInfoVH(private val card: SqliteInfoView) : RecyclerView.ViewHolder(card) {

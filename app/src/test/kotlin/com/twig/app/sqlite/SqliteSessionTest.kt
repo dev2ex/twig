@@ -37,6 +37,39 @@ class SqliteSessionTest {
     }
     @After fun cleanup() { dir.deleteRecursively(); FsRegistry.unregister("sqlite-test") }
 
+    @Test fun `sorting applies before paging and agrees with filtered cells blobs and CSV`() {
+        writer().use { db ->
+            db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, score INTEGER, label TEXT, payload BLOB)")
+            db.beginTransaction()
+            try {
+                repeat(251) { id -> db.execSQL("INSERT INTO entries VALUES (?,?,?,?)", arrayOf(
+                    id, id % 7, if (id % 2 == 0) "needle" else "other", "blob$id".toByteArray())) }
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+        }
+        session().use { reader ->
+            val table = reader.tables(signal()).single { it.name == "entries" }
+            for (descending in listOf(false, true)) {
+                val sort = SqliteSort("score", descending)
+                val expected = (0 until 251).sortedWith(compareBy<Int> { if (descending) -(it % 7) else it % 7 }.thenBy { it })
+                val actual = (0 until 251 step 100).flatMap { offset ->
+                    reader.page(table, offset, signal(), sort = sort).rows.map { it[0].text.toInt() }
+                }
+                assertEquals(expected, actual)
+                assertEquals(expected[117].toString(), reader.cell(table, 117, 0, signal(), sort = sort).text)
+                val blob = "blob${expected[117]}".toByteArray()
+                assertArrayEquals(blob, reader.blob(table, 117, 3, 0, blob.size, blob.size.toLong(), signal(), sort = sort))
+                val filtered = expected.filter { it % 2 == 0 }
+                assertEquals(filtered.take(100), reader.page(table, 0, signal(), "needle", sort).rows.map { it[0].text.toInt() })
+                assertEquals(filtered[110].toString(), reader.cell(table, 110, 0, signal(), "needle", sort).text)
+                val output = java.io.ByteArrayOutputStream()
+                reader.exportCsv(table, setOf("id"), signal(), output, "needle", sort = sort)
+                assertEquals("\uFEFF\"id\"\r\n" + filtered.joinToString("") { "$it\r\n" }, output.toString("UTF-8"))
+            }
+            assertTrue(runCatching { reader.page(table, 0, signal(), sort = SqliteSort("missing")) }.isFailure)
+        }
+    }
+
     @Test fun `CSV preserves full values escapes fields and exports selected columns in schema order`() {
         val text = "🙂,\"\r\n\u0000尾".repeat(18000)
         val blob = ByteArray(140003) { (it % 251).toByte() }

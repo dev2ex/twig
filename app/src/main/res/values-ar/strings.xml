@@ -1220,4 +1220,6 @@
     <string name="save_as">حفظ باسم…</string>
     <string name="sqlite_export_csv">تصدير CSV</string>
     <string name="sqlite_export_columns">اختيار الأعمدة</string>
+    <string name="sqlite_sort_ascending">تصاعدي</string>
+    <string name="sqlite_sort_descending">تنازلي</string>
 </resources>

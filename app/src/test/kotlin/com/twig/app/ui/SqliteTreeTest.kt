@@ -20,6 +20,71 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class SqliteTreeTest {
+    @Test fun `sorting clears pages resets vertical scroll and keeps search ordering independent`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "sort-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        fun table() = tree.rows("db", 0).filterIsInstance<SqliteTableNode>().single { it.state.table.name == "entries" }
+        fun data() = tree.rows("db", 0).filterIsInstance<SqliteDataNode>().single()
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, value INTEGER)")
+                db.beginTransaction()
+                try {
+                    repeat(251) { db.execSQL("INSERT INTO entries VALUES (?,?)", arrayOf(it, 250 - it)) }
+                    db.setTransactionSuccessful()
+                } finally { db.endTransaction() }
+            }
+            val source = XFile("file", file.path, false)
+            tree.open("db", source)
+            advanceUntilIdle()
+            tree.command(table(), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            tree.page("db", "entries", 100)
+            advanceUntilIdle()
+            data().state.viewport.x = 20f
+            data().state.viewport.y = 300f
+            tree.page("db", "entries", 200) // Pending old-order reads must not repopulate the new cache.
+            tree.sort(data(), 1)
+            advanceUntilIdle()
+            assertEquals(setOf(0), data().state.pages.keys)
+            assertEquals(20f, data().state.viewport.x, 0f)
+            assertEquals(0f, data().state.viewport.y, 0f)
+            assertEquals("250", data().state.pages[0]!!.rows.first()[0].text)
+            tree.sort(data(), 1)
+            advanceUntilIdle()
+            assertTrue(data().state.sort!!.descending)
+            assertEquals("0", tree.cell(data(), 0, 0)!!.text)
+            tree.search("db", "2%", "entries")
+            advanceUntilIdle()
+            assertNull(data().state.sort)
+            tree.sort(data(), 0)
+            tree.sort(data(), 0)
+            advanceUntilIdle()
+            assertTrue(data().state.sort!!.descending)
+            assertEquals("250", tree.cell(data(), 0, 0)!!.text)
+            assertEquals("value", table().state.sort!!.column)
+            tree.closeSearch("db")
+            tree.refresh("db", source)
+            advanceUntilIdle()
+            assertEquals("value", table().state.sort!!.column)
+            assertTrue(table().state.sort!!.descending)
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("DROP TABLE entries")
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY)")
+            }
+            tree.refresh("db", source)
+            advanceUntilIdle()
+            assertNull(table().state.sort)
+        } finally {
+            scope.cancel()
+            advanceUntilIdle()
+            file.delete()
+        }
+    }
+
     @Test fun `CSV writer captures the filtered lease and cannot read a replaced search`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val file = File(context.cacheDir, "csv-${UUID.randomUUID()}.db")
