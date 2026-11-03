@@ -687,7 +687,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    private fun chooseOpen(file: XFile) {
+    private fun chooseOpen(file: XFile, sourceNode: PaneViewModel.FileNode? = null) {
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.open_with_app), R.drawable.ic_open_with) { openExternal(file) }
         // preview = false: this entry means "show me the text", even for markdown/html,
@@ -700,6 +700,12 @@ class PaneFragment : Fragment() {
         }
         actions.item(getString(R.string.open_video), R.drawable.ic_file_video) {
             MediaPlayerActivity.start(requireContext(), file, asVideo = true)
+        }
+        val node = sourceNode ?: viewModel.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .firstOrNull { it.file.scheme == file.scheme && it.file.path == file.path }
+        if (node != null && !file.isDir && file.scheme != "trash" &&
+            !viewModel.isSqlite(file, node.key) && FileIcons.baseIconRes(file) == R.drawable.ic_file) {
+            actions.item(getString(R.string.sqlite_open_as), R.drawable.ic_sqlite_database) { viewModel.openAsSqlite(node) }
         }
         showActionMenu(requireContext(), getString(R.string.open_how), actions)
     }
@@ -1994,9 +2000,6 @@ class PaneFragment : Fragment() {
         if (viewModel.isSqlite(node.file, node.key)) {
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(node) }
         }
-        if (!node.file.isDir && !viewModel.isSqlite(node.file, node.key) && FileIcons.baseIconRes(node.file) == R.drawable.ic_file) {
-            actions.item(getString(R.string.sqlite_open_as), R.drawable.ic_sqlite_database) { viewModel.openAsSqlite(node) }
-        }
         if (!node.file.isDir && OpenFiles.isInstallable(node.file)) {
             actions.item(getString(R.string.open_as_archive), R.drawable.ic_file_archive) {
                 viewModel.openAsArchive(node)
@@ -2017,7 +2020,7 @@ class PaneFragment : Fragment() {
             actions.item(getString(R.string.strip_map), R.drawable.ic_treemap) { enterTreemap(node.file) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(node.file) }
         }
-        actions += commonFileActions(node.file)
+        actions += commonFileActions(node.file, sourceNode = node)
         showActionMenu(requireContext(), node.file.name, actions) {
             noteSourceDirs(listOf(node.file))
         }
@@ -2122,6 +2125,7 @@ class PaneFragment : Fragment() {
         includeFavorite: Boolean = true,
         includeShell: Boolean = true,
         includeCopy: Boolean = includeEdit,
+        sourceNode: PaneViewModel.FileNode? = null,
     ): ArrayList<MenuAct> {
         val actions = ArrayList<MenuAct>()
         if (file.isDir) {
@@ -2182,7 +2186,7 @@ class PaneFragment : Fragment() {
             }
         } else {
             actions.item(getString(R.string.open_with_external), R.drawable.ic_open_with) { openExternal(file) }
-            actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file) }
+            actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file, sourceNode) }
             actions.item(getString(R.string.action_pin_shortcut), R.drawable.ic_shortcut) { pinFileOpenShortcut(file) }
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFile(file) }
         }

@@ -6,7 +6,7 @@ file operation. Only one table per database is expanded at a time, matching dire
 accordion behavior; switching tables cancels the previous table's page reads and drops
 its data cache. Database files retain their ordinary file actions. Recognized suffixes
 are `.db`, `.db3`, `.sqlite`, `.sqlite3` and `.s3db`; unknown file types have an explicit
-**Open as SQLite** action. Database browsing leases are temporary and are not restored
+**Open as SQLite** action inside **Open with**. Database browsing leases are temporary and are not restored
 as directory paths after process death.
 
 ## Responsibilities
