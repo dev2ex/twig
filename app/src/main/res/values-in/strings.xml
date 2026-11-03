@@ -217,6 +217,10 @@
     <string name="player_orientation_auto">Orientasi mengikuti sistem</string>
     <string name="player_brightness">Kecerahan %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Suara dibisukan</string>
+    <string name="player_unmuted">Suara diaktifkan</string>
+    <string name="player_subtitles_on">Subtitel diaktifkan</string>
+    <string name="player_subtitles_off">Subtitel dinonaktifkan</string>
     <string name="player_subtitle">Subtitel</string>
     <string name="player_subtitle_size">Ukuran subtitel teks</string>
     <string name="player_subtitle_size_value">Ukuran subtitel teks: %1$d sp</string>

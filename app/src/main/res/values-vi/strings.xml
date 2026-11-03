@@ -217,6 +217,10 @@
     <string name="player_orientation_auto">Hướng theo hệ thống</string>
     <string name="player_brightness">Độ sáng %1$d%%</string>
     <string name="player_volume">Âm lượng %1$d%%</string>
+    <string name="player_muted">Đã tắt tiếng</string>
+    <string name="player_unmuted">Đã bật tiếng</string>
+    <string name="player_subtitles_on">Đã bật phụ đề</string>
+    <string name="player_subtitles_off">Đã tắt phụ đề</string>
     <string name="player_subtitle">Phụ đề</string>
     <string name="player_subtitle_size">Cỡ phụ đề văn bản</string>
     <string name="player_subtitle_size_value">Cỡ phụ đề văn bản: %1$d sp</string>

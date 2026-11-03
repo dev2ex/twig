@@ -217,6 +217,10 @@
     <string name="player_orientation_auto">Orientação do sistema</string>
     <string name="player_brightness">Brilho %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Som desativado</string>
+    <string name="player_unmuted">Som ativado</string>
+    <string name="player_subtitles_on">Legendas ativadas</string>
+    <string name="player_subtitles_off">Legendas desativadas</string>
     <string name="player_subtitle">Legenda</string>
     <string name="player_subtitle_size">Tamanho das legendas de texto</string>
     <string name="player_subtitle_size_value">Tamanho das legendas de texto: %1$d sp</string>

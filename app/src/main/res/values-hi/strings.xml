@@ -217,6 +217,10 @@
     <string name="player_orientation_auto">अभिविन्यास सिस्टम के अनुसार</string>
     <string name="player_brightness">चमक %1$d%%</string>
     <string name="player_volume">आवाज़ %1$d%%</string>
+    <string name="player_muted">आवाज़ बंद</string>
+    <string name="player_unmuted">आवाज़ चालू</string>
+    <string name="player_subtitles_on">उपशीर्षक चालू</string>
+    <string name="player_subtitles_off">उपशीर्षक बंद</string>
     <string name="player_subtitle">उपशीर्षक</string>
     <string name="player_subtitle_size">टेक्स्ट उपशीर्षक का आकार</string>
     <string name="player_subtitle_size_value">टेक्स्ट उपशीर्षक का आकार: %1$d sp</string>

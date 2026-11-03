@@ -217,6 +217,10 @@
     <string name="player_orientation_auto">Orientamento di sistema</string>
     <string name="player_brightness">Luminosità %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Audio disattivato</string>
+    <string name="player_unmuted">Audio riattivato</string>
+    <string name="player_subtitles_on">Sottotitoli attivati</string>
+    <string name="player_subtitles_off">Sottotitoli disattivati</string>
     <string name="player_subtitle">Sottotitolo</string>
     <string name="player_subtitle_size">Dimensione dei sottotitoli di testo</string>
     <string name="player_subtitle_size_value">Dimensione dei sottotitoli di testo: %1$d sp</string>

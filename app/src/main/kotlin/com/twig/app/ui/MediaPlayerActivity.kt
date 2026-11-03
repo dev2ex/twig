@@ -162,6 +162,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var orientationLocked = false
     private var speedBoosted = false // long-press to speed up; release to restore original speed
     private var speedBeforeBoost = 1f
+    private var muted = false
+    private var volumeBeforeMute = 1f
     private lateinit var audio: AudioManager
 
     // Subtitles: external (self-parsed) preferred; embedded text tracks (SRT/ASS in MKV etc.) are decoded by ExoPlayer and shown via onCues
@@ -171,6 +173,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var textGroups: List<Tracks.Group> = emptyList()
     private var audioGroups: List<Tracks.Group> = emptyList()
     private var subChoice = 0 // 0=off; 1..subFiles.size=external; afterwards=embedded text track
+    private var subtitleLoadGeneration = 0
+    private var previousSubFile: XFile? = null
+    private var previousSubTrack: Tracks.Group? = null
     private var subUserChosen = false // once the user has manually picked subtitles, no longer auto-enable embedded tracks
 
     /**
@@ -262,6 +267,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         b.btnPlay.setOnClickListener { toggle() }
         b.btnSubtitle.setOnClickListener { showSubtitleDialog() }
         b.btnAudioTrack.setOnClickListener { showAudioTrackDialog() }
+        b.btnAudioTrack.setOnLongClickListener { toggleMute(); true }
+        b.btnSubtitle.setOnLongClickListener { toggleSubtitles(); true }
         b.btnScale.setOnClickListener { cycleScaleMode() }
         b.btnOrientation.setOnClickListener { toggleOrientationLock() }
         if (!isVideo) {
@@ -449,6 +456,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = p
+        p.volume = if (muted) 0f else volumeBeforeMute
         // Metadata tracks (SCTE-35 ad insertion signaling, etc.) are never consumed by this player,
         // yet have crashed in practice: SCTE-35 data in some m2ts remuxes is non-conforming, and
         // media3's SpliceInfoDecoder throws IllegalStateException directly on out-of-bounds,
@@ -613,7 +621,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 // A remembered subtitle choice takes precedence over both the container's
                 // default flags and the "enable the first track" rule below.
                 if (restoreSub()) return
-                if (cues.isNotEmpty()) return // external subtitles take priority
+                if (cues.isNotEmpty() || (subEnabled && subChoice in 1..subFiles.size)) return // includes pending external loads
                 autoSelectSub()
             }
         })
@@ -974,23 +982,24 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     /** Background scan the same directory for .srt/.ass/.ssa (same-name ones first); same-name files auto-load. */
     private fun scanSubtitles() {
+        val target = file
         Thread {
             runCatching {
-                val fs = FsRegistry.of(file)
+                val fs = FsRegistry.of(target)
                 // External subtitles from the source itself (media servers expose them as subtitle
                 // streams, with nothing in the same directory to scan); they come back as ordinary
                 // XFile, and the read/parse/select path below is the same
                 val remote = runCatching {
-                    (fs as? com.twig.core.MediaInfoSource)?.subtitlesOf(file).orEmpty()
+                    (fs as? com.twig.core.MediaInfoSource)?.subtitlesOf(target).orEmpty()
                 }.getOrDefault(emptyList())
-                val base = file.name.substringBeforeLast('.').lowercase()
+                val base = target.name.substringBeforeLast('.').lowercase()
                 // Don't list the parent directory again when the source already provided some:
                 // those sources don't have subtitle files in their directories, just a wasted
                 // network round-trip
                 val sidecars = if (remote.isNotEmpty()) {
                     emptyList()
                 } else {
-                    val parent = XFile(file.scheme, file.parentPath, isDir = true)
+                    val parent = XFile(target.scheme, target.parentPath, isDir = true)
                     fs.list(parent)
                         .filter {
                             !it.isDir &&
@@ -1004,13 +1013,17 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 val fallback = remote.firstOrNull()
                     ?: sidecars.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base }
                 runOnUiThread {
+                    if (file != target || isFinishing || isDestroyed) return@runOnUiThread
+                    // Embedded dialog indices move when the sidecar list arrives.
+                    if (subChoice > subFiles.size) subChoice += subs.size - subFiles.size
                     subFiles = subs
+                    extScanned = true
+                    if (subUserChosen) return@runOnUiThread
                     // A remembered sidecar wins; when this episode doesn't have its counterpart we
                     // fall back to the usual pick, and with neither, hand back to the embedded-track
                     // rule — which by now has already run and been held off by [restoreSub].
                     val remembered = rememberedExternalSub(subs)
                     if (remembered != null) subMemoApplied = true
-                    extScanned = true
                     // Without a memory the old default applies; a remembered sidecar that this
                     // episode lacks still prefers a subtitle *file* over jumping to an embedded
                     // track. An OFF or embedded memory must never have a sidecar attached on top.
@@ -1024,11 +1037,20 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     /** Background read and parse an external subtitle file (reads bytes via openInput from any source). */
     private fun loadSubtitleFile(f: XFile) {
+        val generation = ++subtitleLoadGeneration
+        val target = file
+        subChoice = subFiles.indexOf(f) + 1
+        subEnabled = true
+        player?.let { p ->
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        }
         Thread {
             runCatching {
                 if (f.size > 4L shl 20) return@runCatching // >4MB doesn't look like subtitles
-                val parsed = SubtitleParser.parse(FsRegistry.of(file).openInput(f).use { OpenFiles.readAllBytes(it) })
+                val parsed = SubtitleParser.parse(FsRegistry.of(f).openInput(f).use { OpenFiles.readAllBytes(it) })
                 if (parsed.isNotEmpty()) runOnUiThread {
+                    if (generation != subtitleLoadGeneration || file != target || isFinishing || isDestroyed) return@runOnUiThread
                     cues = parsed
                     subChoice = subFiles.indexOf(f) + 1
                     subEnabled = true
@@ -1134,6 +1156,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         seriesKey = seriesKeyFor(file)
         memo = MediaPrefStore.memoFor(this, MediaPrefStore.fileKey(file), seriesKey?.let { MediaPrefStore.seriesKey(it) })
         audioRestored = false
+        subtitleLoadGeneration++
+        previousSubFile = null
+        previousSubTrack = null
         subMemoApplied = false
         extScanned = false
         audioUserChosen = false
@@ -1313,7 +1338,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         memo = fresh
         if (isVideo) fresh.scale?.let { scaleMode = it.coerceIn(0, 2); resizeSurface() }
         if (!audioUserChosen) { audioRestored = false; restoreAudio() }
-        if (memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
+        if (!subUserChosen && memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
             rememberedExternalSub(subFiles)?.let { subMemoApplied = true; loadSubtitleFile(it) }
         } else {
             restoreSub()
@@ -1379,7 +1404,44 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         )
     }
 
+    private fun toggleMute() {
+        val p = player ?: return
+        if (!muted) volumeBeforeMute = p.volume
+        muted = !muted
+        p.volume = if (muted) 0f else volumeBeforeMute
+        b.btnAudioTrack.alpha = if (muted) 0.45f else 1f
+        showGestureHint(getString(if (muted) R.string.player_muted else R.string.player_unmuted), autoHide = true)
+    }
+
+    private fun toggleSubtitles() {
+        if (player == null) return
+        if (subEnabled && subChoice > 0) {
+            applySubChoice(0)
+        } else {
+            val external = previousSubFile?.let { subFiles.indexOf(it) } ?: -1
+            val embedded = previousSubTrack?.let { previous ->
+                textGroups.indexOfFirst { it.mediaTrackGroup == previous.mediaTrackGroup }
+            } ?: -1
+            val which = when {
+                external >= 0 -> external + 1
+                embedded >= 0 -> subFiles.size + 1 + embedded
+                else -> return // Nothing has been turned off in this file yet.
+            }
+            applySubChoice(which)
+        }
+        showGestureHint(getString(if (subEnabled) R.string.player_subtitles_on else R.string.player_subtitles_off), autoHide = true)
+    }
+
+    private fun rememberSubChoice(which: Int) {
+        if (which <= 0) return
+        previousSubFile = subFiles.getOrNull(which - 1)
+        previousSubTrack = if (previousSubFile == null) textGroups.getOrNull(which - subFiles.size - 1) else null
+    }
+
     private fun applySubChoice(which: Int) {
+        // Keep the actual source, since asynchronous discovery can change dialog indices.
+        rememberSubChoice(if (which == 0) subChoice else which)
+        subtitleLoadGeneration++
         subUserChosen = true
         saveSubMemo(which)
         subChoice = which

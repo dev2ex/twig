@@ -220,6 +220,10 @@
     <string name="player_orientation_auto">方向跟随系统</string>
     <string name="player_brightness">亮度 %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
+    <string name="player_muted">已静音</string>
+    <string name="player_unmuted">已取消静音</string>
+    <string name="player_subtitles_on">已恢复字幕</string>
+    <string name="player_subtitles_off">已关闭字幕</string>
     <string name="player_subtitle">字幕</string>
     <string name="player_subtitle_size">文本字幕大小</string>
     <string name="player_subtitle_size_value">文本字幕大小: %1$d sp</string>
