@@ -1133,7 +1133,7 @@ class FileAdapter(
 
         private fun bindSqliteSearch(node: SqliteSearchNode) {
             b.name.text = b.root.context.getString(R.string.search_result_title, node.matches)
-            setMeta(node.query)
+            setMeta(listOfNotNull(node.table, node.query).joinToString(" · "))
             b.icon.setImageResource(R.drawable.ic_search)
             setIndicator(if (node.scanning) null else true)
             b.progress.visibility = if (node.scanning) View.VISIBLE else View.GONE

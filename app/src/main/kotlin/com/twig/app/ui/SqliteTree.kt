@@ -48,7 +48,7 @@ data class SqliteInfoNode(override val owner: String, override val depth: Int,
     override val state: SqliteTableState) : SqliteNode { override val key get() = "$tableKey/info" }
 
 data class SqliteSearchNode(val owner: String, override val depth: Int, val query: String,
-    val matches: Long, val scanning: Boolean, val failures: Int) : PaneViewModel.Node {
+    val matches: Long, val scanning: Boolean, val failures: Int, val table: String? = null) : PaneViewModel.Node {
     override val key get() = "$owner/sqlite-search"
 }
 
@@ -57,7 +57,7 @@ enum class SqliteCommand { TOGGLE, PROPERTIES, REFRESH, COLUMNS, DDL, CLOSE }
 /** Owns browsing leases/jobs; tree nodes contain immutable results, never cursors or database handles. */
 internal class SqliteTree(private val context: Context, private val scope: CoroutineScope,
     private val io: () -> CoroutineDispatcher, private val changed: () -> Unit) {
-    private class Search(val query: String) {
+    private class Search(val query: String, val table: String? = null) {
         var job: Job? = null
         var scanning = true
         var failures = 0
@@ -88,10 +88,10 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         try { withContext(io()) { block(signal) } } finally { watcher.cancel() }
     }
 
-    fun open(key: String, file: XFile, parent: XFile? = null, remembered: Map<String, SqliteTableState> = emptyMap(), query: String? = null) {
+    fun open(key: String, file: XFile, parent: XFile? = null, remembered: Map<String, SqliteTableState> = emptyMap(), query: String? = null, searchTable: String? = null) {
         if (hosts.containsKey(key)) return
         verified.remove(key)
-        val host = Host(file, parent).apply { search = query?.let(::Search) }
+        val host = Host(file, parent).apply { search = query?.let { Search(it, searchTable) } }
         hosts[key] = host
         host.job = scope.launch {
             // Keep the lease local until cancellation cleanup, including cancellation during open.
@@ -108,7 +108,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                         ?: SqliteTableState(table)
                 }
                 host.loading = false
-                runSearch(host)
+                runSearch(key, host)
                 changed()
                 // One count at a time; slow counts time out and never become a false zero.
                 launch {
@@ -133,24 +133,27 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         }
     }
 
-    fun search(key: String, query: String) {
+    fun search(key: String, query: String, table: String? = null) {
         val host = hosts[key] ?: return
         closeSearch(key)
-        host.search = Search(query)
-        runSearch(host)
+        host.search = Search(query, table)
+        runSearch(key, host)
         changed()
     }
 
-    private fun runSearch(host: Host) {
+    private fun runSearch(key: String, host: Host) {
         val search = host.search ?: return
         val session = host.session ?: return
         if (search.job != null) return
         search.job = scope.launch(context = checkNotNull(host.job), start = CoroutineStart.LAZY) {
-            for (table in host.tables.values.map { it.table }) {
+            for (table in host.tables.values.map { it.table }.filter { search.table == null || it.name == search.table }) {
                 try {
                     val count = cancellable { session.count(table, it, search.query) }
-                    if (count > 0) search.tables[table.name] = SqliteTableState(table,
-                        query = search.query, count = count, counting = false)
+                    if (count > 0) {
+                        val state = SqliteTableState(table, query = search.query, count = count, counting = false)
+                        search.tables[table.name] = state
+                        if (search.table != null) command(SqliteTableNode(key, 0, state), SqliteCommand.TOGGLE)
+                    }
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) { search.failures++ }
                 changed()
@@ -176,23 +179,32 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val error = host.error
         if (error != null) return listOf(PaneViewModel.ActionNode("sqlite_error:$key", error, depth, informational = true))
         return buildList {
-            fun addTables(tables: Collection<SqliteTableState>, tableDepth: Int) {
-                tables.forEach { state ->
-                    add(SqliteTableNode(key, tableDepth, state))
-                    if (state.properties) add(SqliteInfoNode(key, tableDepth + 1, state))
-                    if (state.expanded) add(SqliteDataNode(key, tableDepth + 1, state))
+            fun addContent(state: SqliteTableState, contentDepth: Int) {
+                if (state.properties) add(SqliteInfoNode(key, contentDepth, state))
+                if (state.expanded) add(SqliteDataNode(key, contentDepth, state))
+            }
+            fun addSearch(search: Search, searchDepth: Int) {
+                add(SqliteSearchNode(key, searchDepth, search.query, search.tables.values.sumOf { it.count ?: 0L },
+                    search.scanning, search.failures, search.table))
+                search.tables.values.forEach { state ->
+                    if (search.table == null) add(SqliteTableNode(key, searchDepth + 1, state))
+                    addContent(state, searchDepth + if (search.table == null) 2 else 1)
                 }
-            }
-            host.search?.let { search ->
-                add(SqliteSearchNode(key, depth, search.query, search.tables.values.sumOf { it.count ?: 0L },
-                    search.scanning, search.failures))
-                addTables(search.tables.values, depth + 1)
                 if (search.failures > 0) add(PaneViewModel.ActionNode("sqlite_search_error:$key",
-                    context.getString(R.string.sqlite_search_incomplete, search.failures), depth + 1, informational = true))
+                    context.getString(R.string.sqlite_search_incomplete, search.failures), searchDepth + 1, informational = true))
             }
+            host.search?.takeIf { it.table == null }?.let { addSearch(it, depth) }
             if (!host.loading && host.tables.isEmpty()) add(PaneViewModel.ActionNode("sqlite_empty:$key",
                 context.getString(R.string.sqlite_no_tables), depth, informational = true))
-            addTables(host.tables.values, depth)
+            host.tables.values.forEach { state ->
+                val search = host.search?.takeIf { it.table == state.table.name }
+                add(SqliteTableNode(key, depth, if (search == null) state else state.copy(expanded = true)))
+                if (search == null) addContent(state, depth + 1)
+                else {
+                    if (state.properties) add(SqliteInfoNode(key, depth + 1, state))
+                    addSearch(search, depth + 1)
+                }
+            }
         }
     }
 
@@ -202,6 +214,13 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val query = node.state.query
         val tables = host.tables(query) ?: return
         val state = tables[name] ?: return
+        if (command == SqliteCommand.TOGGLE && query == null && host.search?.table == name) {
+            closeSearch(node.owner)
+            if (!state.expanded) {
+                changed()
+                return
+            }
+        }
         when (command) {
             SqliteCommand.TOGGLE -> {
                 if (!state.expanded) {
@@ -286,9 +305,9 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
     fun refresh(key: String, file: XFile) {
         val remembered = hosts[key]?.tables?.toMap().orEmpty()
         val parent = hosts[key]?.parent
-        val query = hosts[key]?.search?.query
+        val search = hosts[key]?.search
         close(key)
-        open(key, file, parent, remembered, query)
+        open(key, file, parent, remembered, search?.query, search?.table)
     }
     fun close(key: String) {
         hosts.remove(key)?.let { host -> host.pages.values.forEach { it.cancel() }; host.job?.cancel() }

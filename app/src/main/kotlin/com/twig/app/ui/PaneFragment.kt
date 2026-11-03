@@ -1020,7 +1020,13 @@ class PaneFragment : Fragment() {
         viewModel.sqliteSearchTarget()?.let { database ->
             val query = viewModel.state.value.rows.filterIsInstance<SqliteSearchNode>()
                 .firstOrNull { it.owner == database.key }?.query ?: lastSqliteQuery
-            promptSqliteSearch(database, query)
+            val selected = viewModel.state.value.let { state -> state.rows.firstOrNull { it.key == state.currentKey } }
+            val table = when (selected) {
+                is SqliteNode -> selected.state.table.name
+                is SqliteSearchNode -> selected.table
+                else -> null
+            }
+            promptSqliteSearch(database, query, table)
             return
         }
         val t = viewModel.currentSelection() ?: viewModel.currentDir
@@ -1053,21 +1059,21 @@ class PaneFragment : Fragment() {
 
     private var lastSqliteQuery = ""
 
-    private fun promptSqliteSearch(node: PaneViewModel.FileNode, initial: String = lastSqliteQuery) {
+    private fun promptSqliteSearch(node: PaneViewModel.FileNode, initial: String = lastSqliteQuery, table: String? = null) {
         val input = EditText(requireContext()).apply {
             hint = getString(R.string.sqlite_search_hint)
             setText(initial)
             setSelection(text.length)
         }
         AlertDialog.Builder(requireContext())
-            .setTitle(R.string.strip_search)
+            .setTitle(listOfNotNull(getString(R.string.strip_search), table).joinToString(" · "))
             .setView(input)
             .setNegativeButton(R.string.dialog_cancel, null)
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 val query = input.text.toString().trim()
                 if (query.isNotEmpty()) {
                     lastSqliteQuery = query
-                    viewModel.startSqliteSearch(node, query)
+                    viewModel.startSqliteSearch(node, query, table)
                 }
             }.show()
     }
@@ -1075,8 +1081,8 @@ class PaneFragment : Fragment() {
     private fun sqliteSearchMenu(node: SqliteSearchNode) {
         val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
         val actions = ArrayList<MenuAct>()
-        actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(source, node.query) }
-        actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query) }
+        actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(source, node.query, node.table) }
+        actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query, node.table) }
         actions.item(getString(R.string.dialog_close), R.drawable.ic_close) { viewModel.closeSqliteSearch(node) }
         showActionMenu(requireContext(), getString(R.string.search_result_title, node.matches), actions)
     }
@@ -1890,6 +1896,11 @@ class PaneFragment : Fragment() {
             is SqliteSearchNode -> sqliteSearchMenu(node)
             is SqliteTableNode -> {
                 val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.strip_search), R.drawable.ic_search) {
+                    val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
+                        .firstOrNull { it.key == node.owner } ?: return@item
+                    promptSqliteSearch(source, node.state.query ?: lastSqliteQuery, node.state.table.name)
+                }
                 actions.item(getString(R.string.file_info), R.drawable.ic_info) {
                     viewModel.sqliteCommand(node, SqliteCommand.PROPERTIES)
                 }

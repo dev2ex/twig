@@ -84,6 +84,14 @@ their wildcard meaning. Eligible columns are cast to text, excluding
 columns declared with a BLOB type and values whose runtime type is BLOB. A row matching
 multiple columns counts once. Identifiers remain quoted and the pattern is never SQL.
 
+The table menu searches only that table. Action-bar search follows the selected table
+or an existing result branch's scope; selecting the database searches all tables.
+Single-table results attach beneath their original table: a search summary followed by
+the filtered grid directly, without a duplicate table node. The first page opens
+automatically; tapping the original table closes the search. Database-wide results keep
+the list of matching tables. Retry/refresh retains the scope. Filtering, pagination,
+cell details and highlighting reuse the same reader.
+
 A search-results branch reports the progressive total and includes only matching tables,
 with matched-row and visible-column counts. Search counts are cancellable full scans,
 without the ordinary background count deadline. Failed table scans produce an explicit
@@ -96,7 +104,8 @@ matching text lies outside the bounded preview; rendering never reimplements LIK
 Normal and filtered tables have distinct node/cache identities but share the per-database
 expansion accordion and renderer. Replacing or closing a search cancels its counts, pages
 and details. Refresh reruns the current search; normal table expansion is preserved while
-filtered expansion resets. Search text and results remain session-only.
+database-wide result expansion resets; a single-table result grid opens automatically
+with fresh pages. Search text and results remain session-only.
 
 ## Future editing
 

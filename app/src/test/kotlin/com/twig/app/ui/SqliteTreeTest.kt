@@ -76,6 +76,42 @@ class SqliteTreeTest {
             advanceUntilIdle()
             assertTrue(rows().none { it is SqliteSearchNode || it is SqliteNode && it.state.query != null })
 
+            tree.search("db", "needle", "notes")
+            advanceUntilIdle()
+            assertEquals("notes", summary().table)
+            assertEquals(1L, summary().matches)
+            assertTrue(rows().filterIsInstance<SqliteTableNode>().none { it.state.query != null })
+            val notes = rows().filterIsInstance<SqliteTableNode>().single { it.state.table.name == "notes" }
+            assertTrue(notes.state.expanded)
+            assertEquals(rows().indexOf(notes) + 1, rows().indexOf(summary()))
+            assertEquals(notes.depth + 1, summary().depth)
+            val note = rows().filterIsInstance<SqliteDataNode>().single()
+            assertEquals(rows().indexOf(summary()) + 1, rows().indexOf(note))
+            assertEquals(summary().depth + 1, note.depth)
+            assertEquals("needle note", tree.cell(note, 0, 0)!!.text)
+            assertTrue(tree.cell(note, 0, 0)!!.matched)
+            tree.refresh("db", XFile("file", file.path, false))
+            advanceUntilIdle()
+            assertEquals("notes", summary().table)
+            assertEquals(1L, summary().matches)
+            tree.search("db", "needle", "users")
+            advanceUntilIdle()
+            assertEquals(153L, summary().matches)
+            assertTrue(rows().filterIsInstance<SqliteTableNode>().none { it.state.query != null })
+            assertEquals("users", rows().filterIsInstance<SqliteDataNode>().single().state.table.name)
+            tree.command(rows().filterIsInstance<SqliteTableNode>().single { it.state.table.name == "users" }, SqliteCommand.TOGGLE)
+            assertTrue(rows().none { it is SqliteSearchNode || it is SqliteDataNode })
+
+            val users = rows().filterIsInstance<SqliteTableNode>().single { it.state.table.name == "users" }
+            tree.command(users, SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            tree.search("db", "no matches", "users")
+            advanceUntilIdle()
+            assertEquals(0L, summary().matches)
+            assertTrue(rows().none { it is SqliteDataNode }) // Never show unfiltered data under an empty result.
+            tree.command(rows().filterIsInstance<SqliteTableNode>().single { it.state.table.name == "users" }, SqliteCommand.TOGGLE)
+            assertTrue(rows().none { it is SqliteSearchNode || it is SqliteDataNode })
+
             SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("DROP TABLE notes") }
             tree.search("db", "needle")
             advanceUntilIdle()
