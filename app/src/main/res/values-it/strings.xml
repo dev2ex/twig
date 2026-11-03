@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Questo launcher non supporta scorciatoie fissate</string>
     <string name="group_fav">Preferiti</string>
     <string name="group_internal_storage">Memoria interna</string>
+    <string name="group_removable_storage">Memoria rimovibile (SD / USB)</string>
     <string name="group_root">Radice</string>
     <string name="group_lan">Rete locale (SMB)</string>
     <string name="group_saf">Albero documenti (SAF)</string>

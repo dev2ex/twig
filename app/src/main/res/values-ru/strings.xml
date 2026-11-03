@@ -461,6 +461,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">Избранное</string>
     <string name="group_internal_storage">Внутренний накопитель</string>
+    <string name="group_removable_storage">Съёмный накопитель (SD / USB)</string>
     <string name="group_root">Корневой каталог</string>
     <string name="group_lan">Локальная сеть (SMB)</string>
     <string name="group_saf">Дерево документов (SAF)</string>

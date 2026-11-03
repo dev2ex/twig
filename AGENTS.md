@@ -223,7 +223,9 @@ its listing size must still describe the followed stream for copy/resume checks.
 - Private space: `PrivateSpace` uses `applicationInfo.dataDir/private_space` through
   the ordinary local filesystem. The main menu's root-item visibility choices are
   stored per pane in one dialog with left/right columns. Dragging its handles saves a
-  shared order for configurable roots; fixed entries retain their slots. Private space defaults
+  shared order for configurable roots, including internal storage and one removable-storage
+  slot. The latter renders mounted SD/USB volumes directly, without an extra group row;
+  its per-pane visibility also applies to newly attached volumes. Fixed entries retain their slots. Private space defaults
   visible; an explicit hidden choice is retained. Root-item and action-panel dialogs
   offer Reset for their draft order and visibility; only OK persists it, and Cancel
   retains the saved configuration. Its files are excluded from all

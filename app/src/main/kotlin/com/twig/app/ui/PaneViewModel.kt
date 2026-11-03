@@ -3195,9 +3195,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val volumes = StorageVolumes.cached(getApplication())
             // Register all shortcut identities before rendering any expanded subtree:
             // Their paths may also appear below another root, regardless of root order.
-            storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
+            if (rootVisible("internal")) storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
             if (rootVisible("root")) storageShortcutKeys.add(fileKey(XFile("file", "/", isDir = true)))
-            volumes.forEach { storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true))) }
+            if (rootVisible("removable")) volumes.forEach {
+                storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true)))
+            }
             val privateDir = XFile("file", PrivateSpace.directory(getApplication()).path, isDir = true)
             if (rootVisible("private")) storageShortcutKeys.add(fileKey(privateDir))
             // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
@@ -3209,6 +3211,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 val item = orderedRoots.next()
                 if (!rootVisible(item.id)) return
                 when (item.id) {
+                    "internal" -> addFile(rows, XFile("file", ext, isDir = true), 0,
+                        str(R.string.group_internal_storage), capacity(ext))
+                    "removable" -> volumes.forEach { v ->
+                        addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
+                    }
                     "root" -> addFile(rows, XFile("file", "/", isDir = true), 0,
                         str(R.string.group_root), capacity("/"))
                     "private" -> addFile(rows, privateDir, 0, str(R.string.private_space))
@@ -3221,12 +3228,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (CompareStore.all(getApplication()).isNotEmpty()) {
                 addGroup(rows, "cmp", str(R.string.compare_saved))
             }
-            addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
-            addNextRoot()
-            for (v in volumes) {
-                addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
-            }
-            addNextRoot()
+            repeat(4) { addNextRoot() }
             if (trashEnabled && (!trashPresenceLoaded ||
                     children[fileKey(XFile("trash", "/", isDir = true))]?.isNotEmpty() != false || trashNotices.isNotEmpty())) {
                 addFile(rows, XFile("trash", "/", isDir = true, canWrite = false), 0, str(R.string.trash_title))

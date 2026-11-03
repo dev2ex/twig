@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Este lanzador no admite accesos directos fijados</string>
     <string name="group_fav">Favoritos</string>
     <string name="group_internal_storage">Almacenamiento interno</string>
+    <string name="group_removable_storage">Almacenamiento extraíble (SD / USB)</string>
     <string name="group_root">Raíz</string>
     <string name="group_lan">Red local (SMB)</string>
     <string name="group_saf">Árbol de documentos (SAF)</string>

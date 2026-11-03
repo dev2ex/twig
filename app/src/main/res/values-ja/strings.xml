@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">このランチャーはショートカットの追加に対応していません</string>
     <string name="group_fav">お気に入り</string>
     <string name="group_internal_storage">内部ストレージ</string>
+    <string name="group_removable_storage">外部ストレージ（SD / USB）</string>
     <string name="group_root">ルート</string>
     <string name="group_lan">ローカルネットワーク（SMB）</string>
     <string name="group_saf">ドキュメントツリー（SAF）</string>

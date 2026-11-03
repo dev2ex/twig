@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">이 런처는 바로가기 고정을 지원하지 않습니다</string>
     <string name="group_fav">즐겨찾기</string>
     <string name="group_internal_storage">내부 저장소</string>
+    <string name="group_removable_storage">이동식 저장소(SD / USB)</string>
     <string name="group_root">루트</string>
     <string name="group_lan">로컬 네트워크 (SMB)</string>
     <string name="group_saf">문서 트리 (SAF)</string>

@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">यह लॉन्चर शॉर्टकट पिन करना समर्थित नहीं करता</string>
     <string name="group_fav">पसंदीदा</string>
     <string name="group_internal_storage">आंतरिक स्टोरेज</string>
+    <string name="group_removable_storage">हटाने योग्य स्टोरेज (SD / USB)</string>
     <string name="group_root">मूल</string>
     <string name="group_lan">स्थानीय नेटवर्क (SMB)</string>
     <string name="group_saf">दस्तावेज़ ट्री (SAF)</string>

@@ -188,7 +188,7 @@ class PrivateSpaceTest {
         assertEquals(RootItems.all.size, ids.size)
     }
 
-    @Test fun `reordering keeps expanded subtrees selection and fixed roots in place`() = runTest(dispatcher) {
+    @Test fun `reordering keeps expanded subtrees and selection together`() = runTest(dispatcher) {
         val file = File(PrivateSpace.directory(app).apply { mkdirs() }, "reorder.txt").apply { writeText("test") }
         val vm = PaneViewModel(app).apply { io = dispatcher }
         vm.bootstrap()
@@ -207,8 +207,8 @@ class PrivateSpaceTest {
         assertTrue((rows.first() as PaneViewModel.FileNode).expanded)
         val after = rows.filter { it.depth == 0 }.map { it.key }
         val internal = before.first { it.startsWith("f:file:") && it != privateRow.key && it != "f:file:/" }
-        assertEquals(before.indexOf(internal), after.indexOf(internal))
-        assertEquals("g:fav", after[before.indexOf(privateRow.key)])
+        assertEquals(3, after.indexOf(internal))
+        assertEquals("g:fav", after[2])
     }
 
     @Test
@@ -242,7 +242,7 @@ class PrivateSpaceTest {
             confirmed.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             assertTrue(saved)
-            assertEquals(listOf("root", "private", "fav"), Prefs.rootItemOrder(app).take(3).map { it.id })
+            assertEquals(listOf("internal", "root", "fav"), Prefs.rootItemOrder(app).take(3).map { it.id })
             assertFalse(Prefs.rootItemVisible(app, 0, "fav"))
             assertTrue(Prefs.rootItemVisible(app, 1, "fav"))
             assertTrue(Prefs.rootItemVisible(app, 0, "private"))

@@ -451,6 +451,7 @@
     <string name="playlist_favorites">我的最愛</string>
     <string name="group_fav">收藏</string>
     <string name="group_internal_storage">內部儲存</string>
+    <string name="group_removable_storage">卸除式儲存裝置（SD 卡 / USB）</string>
     <string name="group_root">根目錄</string>
     <string name="group_lan">區域網 (SMB)</string>
     <string name="group_saf">文件樹 (SAF)</string>

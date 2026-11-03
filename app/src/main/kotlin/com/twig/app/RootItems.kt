@@ -6,7 +6,9 @@ object RootItems {
 
     val all = listOf(
         Item("fav", R.string.group_fav, R.drawable.ic_star),
+        Item("internal", R.string.group_internal_storage, R.drawable.ic_storage),
         Item("root", R.string.group_root, R.drawable.ic_storage_root),
+        Item("removable", R.string.group_removable_storage, R.drawable.ic_sd_card),
         Item("private", R.string.private_space, R.drawable.ic_private_space),
         Item("lan", R.string.group_lan, R.drawable.ic_lan),
         Item("ftp", R.string.group_ftp, R.drawable.ic_ftp),

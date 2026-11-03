@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">المشغل الحالي لا يدعم تثبيت الاختصارات</string>
     <string name="group_fav">المفضلة</string>
     <string name="group_internal_storage">التخزين الداخلي</string>
+    <string name="group_removable_storage">وحدة تخزين قابلة للإزالة (SD / USB)</string>
     <string name="group_root">الجذر</string>
     <string name="group_lan">الشبكة المحلية (SMB)</string>
     <string name="group_saf">شجرة المستندات (SAF)</string>

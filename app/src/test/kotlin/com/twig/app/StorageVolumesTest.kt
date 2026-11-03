@@ -47,6 +47,7 @@ class StorageVolumesTest {
         app = ApplicationProvider.getApplicationContext()
         Dispatchers.setMain(dispatcher)
         StorageVolumes.reset()
+        app.getSharedPreferences("twig_prefs", 0).edit().clear().commit()
         sd = File(System.getProperty("java.io.tmpdir"), "twig-sd-1A2B-3C4D").apply { mkdirs() }
     }
 
@@ -138,6 +139,61 @@ class StorageVolumesTest {
         assertEquals(app.getString(R.string.group_internal_storage), labels[i - 2])
         assertEquals(app.getString(R.string.group_root), labels[i - 1])
         assertEquals(app.getString(R.string.private_space), labels[i + 1])
+    }
+
+    @Test
+    fun `storage shortcuts move independently and visibility is scoped to each pane`() {
+        addVolume(sd, "SD Card", primary = false)
+        val left = PaneViewModel(app).apply { io = dispatcher; paneIndex = 0 }
+        val right = PaneViewModel(app).apply { io = dispatcher; paneIndex = 1 }
+        val others = RootItems.all.map { it.id }.filter { it !in setOf("internal", "removable") }
+        Prefs.setRootItemOrder(app, others + listOf("removable", "internal"))
+        left.refreshTree()
+        val internalKey = "f:file:${Environment.getExternalStorageDirectory().absolutePath}"
+        val volumeKey = "f:file:${sd.absolutePath}"
+        assertEquals(listOf(volumeKey, internalKey), left.state.value.rows.takeLast(2).map { it.key })
+        val internal = left.state.value.rows.last()
+        left.toggle(internal)
+        assertEquals(internalKey, left.state.value.currentKey)
+
+        Prefs.setRootItemVisible(app, 0, "internal", false)
+        left.refreshRootItems()
+        right.refreshTree()
+        assertFalse(left.state.value.rows.any { it.key == internalKey })
+        assertNull(left.currentDir)
+        assertTrue(left.state.value.rows.any { it.key == volumeKey })
+        assertEquals(listOf(volumeKey, internalKey), right.state.value.rows.takeLast(2).map { it.key })
+
+        Prefs.setRootItemVisible(app, 0, "removable", false)
+        left.refreshRootItems()
+        assertFalse(left.state.value.rows.any { it.key == volumeKey })
+        assertTrue(right.state.value.rows.any { it.key == volumeKey })
+    }
+
+    @Test
+    fun `removable slot survives unplugging and hides newly attached volumes`() {
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        Prefs.setRootItemOrder(app, RootItems.all.map { it.id }.filter { it != "removable" } + "removable")
+        Prefs.setRootItemVisible(app, 0, "removable", false)
+        vm.refreshTree()
+        addVolume(sd, "SD Card", primary = false)
+        assertTrue(StorageVolumes.refresh(app))
+        vm.refreshRootItems()
+        val volumeKey = "f:file:${sd.absolutePath}"
+        assertFalse(vm.state.value.rows.any { it.key == volumeKey })
+
+        Prefs.setRootItemVisible(app, 0, "removable", true)
+        vm.refreshRootItems()
+        assertEquals(volumeKey, vm.state.value.rows.last().key)
+        assertFalse(vm.state.value.rows.any { it.key == "g:removable" })
+        ShadowStorageManager.reset()
+        assertTrue(StorageVolumes.refresh(app))
+        vm.refreshRootItems()
+        assertFalse(vm.state.value.rows.any { it.key == volumeKey })
+        addVolume(sd, "SD Card", primary = false)
+        assertTrue(StorageVolumes.refresh(app))
+        vm.refreshRootItems()
+        assertEquals(volumeKey, vm.state.value.rows.last().key)
     }
 
     @Test

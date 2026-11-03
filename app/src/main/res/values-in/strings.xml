@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Peluncur ini tidak mendukung pintasan yang disematkan</string>
     <string name="group_fav">Favorit</string>
     <string name="group_internal_storage">Penyimpanan internal</string>
+    <string name="group_removable_storage">Penyimpanan lepas-pasang (SD / USB)</string>
     <string name="group_root">Akar</string>
     <string name="group_lan">Jaringan lokal (SMB)</string>
     <string name="group_saf">Pohon dokumen (SAF)</string>

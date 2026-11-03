@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Ce lanceur ne permet pas d’épingler des raccourcis</string>
     <string name="group_fav">Favoris</string>
     <string name="group_internal_storage">Stockage interne</string>
+    <string name="group_removable_storage">Stockage amovible (SD / USB)</string>
     <string name="group_root">Racine</string>
     <string name="group_lan">Réseau local (SMB)</string>
     <string name="group_saf">Arbre de documents (SAF)</string>

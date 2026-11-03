@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Dieser Launcher unterstützt keine angehefteten Verknüpfungen</string>
     <string name="group_fav">Favoriten</string>
     <string name="group_internal_storage">Interner Speicher</string>
+    <string name="group_removable_storage">Wechselspeicher (SD / USB)</string>
     <string name="group_root">Rootverzeichnis</string>
     <string name="group_lan">Lokales Netzwerk (SMB)</string>
     <string name="group_saf">Dokumentenbaum (SAF)</string>

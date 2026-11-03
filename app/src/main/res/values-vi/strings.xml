@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Trình khởi chạy này không hỗ trợ ghim lối tắt</string>
     <string name="group_fav">Yêu thích</string>
     <string name="group_internal_storage">Bộ nhớ trong</string>
+    <string name="group_removable_storage">Bộ nhớ di động (SD / USB)</string>
     <string name="group_root">Gốc</string>
     <string name="group_lan">Mạng cục bộ (SMB)</string>
     <string name="group_saf">Cây tài liệu (SAF)</string>

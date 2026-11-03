@@ -478,6 +478,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">Favorites</string>
     <string name="group_internal_storage">Internal Storage</string>
+    <string name="group_removable_storage">Removable storage (SD / USB)</string>
     <string name="group_root">Root</string>
     <string name="group_lan">Local Network (SMB)</string>
     <string name="group_saf">Document Tree (SAF)</string>

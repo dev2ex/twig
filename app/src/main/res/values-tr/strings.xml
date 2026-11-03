@@ -450,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Bu başlatıcı kısayol sabitlemeyi desteklemiyor</string>
     <string name="group_fav">Sık kullanılanlar</string>
     <string name="group_internal_storage">Dahili depolama</string>
+    <string name="group_removable_storage">Çıkarılabilir depolama (SD / USB)</string>
     <string name="group_root">Kök</string>
     <string name="group_lan">Yerel ağ (SMB)</string>
     <string name="group_saf">Belge ağacı (SAF)</string>
