@@ -117,6 +117,21 @@ class SqliteSession private constructor(private val path: File, private val temp
         }
     }
 
+    /** Read one bounded BLOB range; row offsets use the same filter/order as the grid. */
+    fun blob(table: SqliteTable, row: Int, column: Int, offset: Long, length: Int,
+        expectedSize: Long, signal: CancellationSignal, query: String? = null): ByteArray = read(signal) { db ->
+        require(row >= 0 && offset >= 0 && length in 0..65536 && expectedSize >= 0)
+        require(offset <= expectedSize && length.toLong() <= expectedSize - offset)
+        val name = quote(table.visibleColumns[column].name)
+        db.rawQuery("SELECT typeof($name), length($name), substr($name,${offset + 1},$length) " +
+            "FROM ${quote(table.name)}${where(table, query)}${order(table)} LIMIT 1 OFFSET $row",
+            arguments(query), signal).use { cursor ->
+            check(cursor.moveToFirst()) { "BLOB row no longer exists" }
+            check(cursor.getString(0) == "blob" && cursor.getLong(1) == expectedSize) { "BLOB value changed" }
+            (cursor.getBlob(2) ?: ByteArray(0)).also { check(it.size == length) { "BLOB range changed" } }
+        }
+    }
+
     override fun close(): Unit = lock.write {
         closed = true
         temporary?.let { dir -> synchronized(activeSnapshots) {

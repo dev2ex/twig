@@ -67,7 +67,15 @@ remain unknown; failure is never a zero. Native reads use a `CancellationSignal`
 
 Preview SQL bounds text to 256 characters and BLOBs to 32 bytes before crossing the
 CursorWindow boundary. Cell details are bounded to 65,536 text characters or 32,768
-BLOB bytes and explicitly report truncation, including what copying contains. NULL,
+BLOB bytes and explicitly report truncation, including what copying contains. Clicking
+a BLOB opens `SqliteBlobDialog` with the shared `HexPane`, not a truncated text dump.
+`HexByteSource` separates row rendering from file access; `ChunkedHexSource` requests
+64 KiB ranges through SQLite `substr()` and retains at most eight chunks (512 KiB).
+Filtered row offsets use the same predicate/order as the grid. A reader captures its
+database/search job, so refresh, replacement or closure cannot silently retarget later
+chunks. Dismissal and screen destruction cancel pending reads. Type/length changes
+reject a range; as with other browsing reads, concurrent same-size value changes are
+not an atomic snapshot. Reopen from a stable database copy for a consistent inspection. NULL,
 empty text and BLOBs retain distinct types. SQL identifiers are quoted centrally.
 Ordering prefers an unshadowed SQLite rowid alias, then the declared primary key.
 Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added behind

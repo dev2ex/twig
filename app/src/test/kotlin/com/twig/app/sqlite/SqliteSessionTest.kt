@@ -199,6 +199,34 @@ class SqliteSessionTest {
         }
     }
 
+    @Test fun `BLOB ranges read the complete filtered value with bounded windows and detect changed values`() {
+        val bytes = ByteArray(200123) { (it % 251).toByte() }
+        writer().use { db ->
+            db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, name TEXT, payload BLOB)")
+            db.execSQL("INSERT INTO entries VALUES (1,'skip',?)", arrayOf(byteArrayOf(42)))
+            db.execSQL("INSERT INTO entries VALUES (2,'keep',?)", arrayOf(bytes))
+            db.execSQL("INSERT INTO entries VALUES (3,'empty',?)", arrayOf(ByteArray(0)))
+        }
+        session().use { s ->
+            val table = s.tables(signal()).single { it.name == "entries" }
+            assertTrue(s.cell(table, 0, 2, signal(), "keep").truncated)
+            val result = java.io.ByteArrayOutputStream()
+            for (offset in bytes.indices step 65536) {
+                result.write(s.blob(table, 0, 2, offset.toLong(), minOf(65536, bytes.size - offset),
+                    bytes.size.toLong(), signal(), "keep"))
+            }
+            assertArrayEquals(bytes, result.toByteArray())
+            assertArrayEquals(bytes.copyOfRange(65530, 65550), s.blob(table, 0, 2, 65530, 20, bytes.size.toLong(), signal(), "keep"))
+            assertArrayEquals(ByteArray(0), s.blob(table, 2, 2, 0, 0, 0, signal()))
+            assertTrue(runCatching { s.blob(table, 0, 2, 0, 65537, bytes.size.toLong(), signal(), "keep") }.isFailure)
+            val cancelled = signal().apply { cancel() }
+            assertTrue(runCatching { s.blob(table, 0, 2, 0, 1, bytes.size.toLong(), cancelled, "keep") }
+                .exceptionOrNull() is OperationCanceledException)
+            writer().use { it.execSQL("UPDATE entries SET payload = X'01' WHERE id=2") }
+            assertTrue(runCatching { s.blob(table, 0, 2, 0, 1, bytes.size.toLong(), signal(), "keep") }.isFailure)
+        }
+    }
+
     @Test fun `read only browsing sees committed uncheckpointed WAL rows`() {
         writer().use { db ->
             assertTrue(db.enableWriteAheadLogging())

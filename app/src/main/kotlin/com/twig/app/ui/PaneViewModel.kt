@@ -440,6 +440,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query)
     suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
+    fun sqliteBlobReader(node: SqliteDataNode, row: Int, column: Int, size: Long) =
+        sqliteTree.blobReader(node, row, column, size)
 
     /** Resolve virtual table/result selections without exposing them to filesystem actions. */
     fun sqliteSearchTarget(): FileNode? {

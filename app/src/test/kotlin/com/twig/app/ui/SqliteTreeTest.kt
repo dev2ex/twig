@@ -193,6 +193,39 @@ class SqliteTreeTest {
         }
     }
 
+    @Test fun `BLOB readers remain bound to the database and search lease that created them`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "blob-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        val source = XFile("file", file.path, false)
+        fun data() = tree.rows("db", 1).filterIsInstance<SqliteDataNode>().single()
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(name TEXT, payload BLOB)")
+                db.execSQL("INSERT INTO entries VALUES ('keep', X'01020304')")
+            }
+            tree.open("db", source)
+            advanceUntilIdle()
+            tree.search("db", "keep", "entries")
+            advanceUntilIdle()
+            val filtered = tree.blobReader(data(), 0, 1, 4)!!
+            assertArrayEquals(byteArrayOf(2, 3), filtered(1, 2))
+            tree.search("db", "keep", "entries") // Even the same query owns a new lease.
+            advanceUntilIdle()
+            assertTrue(runCatching { filtered(0, 1) }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+            val refreshed = tree.blobReader(data(), 0, 1, 4)!!
+            tree.refresh("db", source)
+            advanceUntilIdle()
+            assertTrue(runCatching { refreshed(0, 1) }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+            val closed = tree.blobReader(data(), 0, 1, 4)!!
+            tree.close("db")
+            advanceUntilIdle()
+            assertTrue(runCatching { closed(0, 1) }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        } finally { scope.cancel(); advanceUntilIdle(); file.delete() }
+    }
+
     @Test fun `closing a pending database cannot repopulate its rows`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val dispatcher = StandardTestDispatcher(testScheduler)

@@ -297,6 +297,21 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         return try { operation.await() } finally { operation.cancel() }
     }
 
+    /** Capture the current lease/job, so refreshing or replacing a search cannot retarget later chunks. */
+    fun blobReader(node: SqliteDataNode, row: Int, column: Int, size: Long): (suspend (Long, Int) -> ByteArray)? {
+        val host = hosts[node.owner] ?: return null
+        val session = host.session ?: return null
+        val query = node.state.query
+        if (host.tables(query)?.get(node.state.table.name)?.table != node.state.table) return null
+        val owner = host.ownerJob(query) ?: return null
+        return { offset, length ->
+            val operation = scope.async(owner) {
+                cancellable { session.blob(node.state.table, row, column, offset, length, size, it, query) }
+            }
+            try { operation.await() } finally { operation.cancel() }
+        }
+    }
+
     fun retain(keys: Set<String>, visible: Set<String> = keys) {
         hosts.keys.toList().filter { it !in keys }.forEach(::close)
         verified.retainAll(visible)

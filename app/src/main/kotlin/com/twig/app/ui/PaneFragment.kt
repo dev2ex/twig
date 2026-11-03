@@ -1885,7 +1885,11 @@ class PaneFragment : Fragment() {
         sqliteCellJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val value = viewModel.sqliteCell(node, row, column) ?: return@launch
-                SqliteCellDialog.show(requireContext(), node.state.table.visibleColumns[column].name, value)
+                val title = node.state.table.visibleColumns[column].name
+                if (value.kind == 'b') {
+                    val reader = viewModel.sqliteBlobReader(node, row, column, value.length) ?: return@launch
+                    SqliteBlobDialog.show(requireContext(), title, value.length, viewLifecycleOwner.lifecycleScope, reader)
+                } else SqliteCellDialog.show(requireContext(), title, value)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
         }
