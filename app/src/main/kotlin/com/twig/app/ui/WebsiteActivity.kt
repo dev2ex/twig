@@ -719,7 +719,8 @@ class WebsiteActivity : TwigActivity() {
 
     @Suppress("DEPRECATION")
     private fun updateTaskDescription() {
-        setTaskDescription(ActivityManager.TaskDescription(site.name, taskIcon ?: defaultTaskIcon))
+        // Recents uses this opaque color behind transparent icons; zero falls back to white.
+        setTaskDescription(ActivityManager.TaskDescription(site.name, taskIcon ?: defaultTaskIcon, Color.BLACK))
     }
 
     private fun syncTaskDescription() {

@@ -1305,9 +1305,10 @@ class TerminalActivity : TwigActivity() {
         b.terminal.attachSession(t.session)
         b.terminal.post { maybeShowIme() }
         scheduleSizeSync() // attach will change this session's local emulator size to the current view size
+        // Recents uses this opaque color as the transparent terminal glyph's icon background.
         @Suppress("DEPRECATION")
         setTaskDescription(ActivityManager.TaskDescription("${getString(R.string.terminal_menu)} · ${t.title}",
-            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap))
+            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap, Color.BLACK))
         refreshSessions()
     }
 
