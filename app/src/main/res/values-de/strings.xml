@@ -1232,4 +1232,11 @@
     <string name="sqlite_filter_empty_text">(Leerer Text)</string>
     <string name="sqlite_filter_active">Gefiltert</string>
     <string name="sqlite_filter_oversized">(Zu groß zur Auswahl)</string>
+    <string name="sqlite_filter_values" formatted="false">Werte auswählen</string>
+    <string name="sqlite_filter_keyword" formatted="false">Suchbegriff</string>
+    <string name="sqlite_filter_custom" formatted="false">Eigene Bedingung</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Fügt beidseitig % hinzu, wenn der Begriff kein % enthält. Leer lassen zum Löschen.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Zahlen werden numerisch verglichen; Text in einfache Anführungszeichen setzen. Leer lassen zum Löschen.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operator</string>
+    <string name="sqlite_filter_invalid" formatted="false">Bedingung eingeben, etwa &gt;= 18, = \'abc\', LIKE \'%abc%\' oder IS NULL.</string>
 </resources>

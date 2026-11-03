@@ -1232,4 +1232,11 @@
     <string name="sqlite_filter_empty_text">(खाली पाठ)</string>
     <string name="sqlite_filter_active">फ़िल्टर किया गया</string>
     <string name="sqlite_filter_oversized">(चुनने के लिए बहुत बड़ा)</string>
+    <string name="sqlite_filter_values" formatted="false">मान चुनें</string>
+    <string name="sqlite_filter_keyword" formatted="false">कीवर्ड</string>
+    <string name="sqlite_filter_custom" formatted="false">कस्टम शर्त</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">कीवर्ड में % न होने पर दोनों ओर % जोड़ा जाता है। हटाने के लिए खाली छोड़ें।</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">संख्याओं की तुलना संख्यात्मक है; पाठ के लिए एकल उद्धरण लगाएँ। हटाने के लिए खाली छोड़ें।</string>
+    <string name="sqlite_filter_operator" formatted="false">ऑपरेटर</string>
+    <string name="sqlite_filter_invalid" formatted="false">जैसी शर्त दर्ज करें: &gt;= 18, = \'abc\', LIKE \'%abc%\' या IS NULL।</string>
 </resources>

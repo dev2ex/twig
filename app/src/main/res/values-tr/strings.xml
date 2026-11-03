@@ -1232,4 +1232,11 @@
     <string name="sqlite_filter_empty_text">(Boş metin)</string>
     <string name="sqlite_filter_active">Filtrelendi</string>
     <string name="sqlite_filter_oversized">(Seçmek için çok büyük)</string>
+    <string name="sqlite_filter_values" formatted="false">Değer seç</string>
+    <string name="sqlite_filter_keyword" formatted="false">Anahtar kelime</string>
+    <string name="sqlite_filter_custom" formatted="false">Özel koşul</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Anahtar kelimede % yoksa iki uca % ekler. Temizlemek için boş bırakın.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Sayılar sayısal karşılaştırılır; metin için tek tırnak kullanın. Temizlemek için boş bırakın.</string>
+    <string name="sqlite_filter_operator" formatted="false">İşleç</string>
+    <string name="sqlite_filter_invalid" formatted="false">&gt;= 18, = \'abc\', LIKE \'%abc%\' veya IS NULL gibi bir koşul girin.</string>
 </resources>

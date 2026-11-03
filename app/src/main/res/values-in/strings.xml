@@ -1232,4 +1232,11 @@
     <string name="sqlite_filter_empty_text">(Teks kosong)</string>
     <string name="sqlite_filter_active">Difilter</string>
     <string name="sqlite_filter_oversized">(Terlalu besar untuk dipilih)</string>
+    <string name="sqlite_filter_values" formatted="false">Pilih nilai</string>
+    <string name="sqlite_filter_keyword" formatted="false">Kata kunci</string>
+    <string name="sqlite_filter_custom" formatted="false">Kondisi khusus</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Menambahkan % di kedua ujung kecuali kata kunci sudah berisi %. Kosongkan untuk menghapus.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Angka dibandingkan secara numerik; gunakan kutip tunggal untuk teks. Kosongkan untuk menghapus.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operator</string>
+    <string name="sqlite_filter_invalid" formatted="false">Masukkan kondisi seperti &gt;= 18, = \'abc\', LIKE \'%abc%\' atau IS NULL.</string>
 </resources>

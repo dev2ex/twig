@@ -1236,4 +1236,11 @@
     <string name="sqlite_filter_empty_text">(نص فارغ)</string>
     <string name="sqlite_filter_active">تمت التصفية</string>
     <string name="sqlite_filter_oversized">(كبير جدًا للاختيار)</string>
+    <string name="sqlite_filter_values" formatted="false">اختيار القيم</string>
+    <string name="sqlite_filter_keyword" formatted="false">كلمة مفتاحية</string>
+    <string name="sqlite_filter_custom" formatted="false">شرط مخصص</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">تضاف % في الطرفين ما لم تتضمن الكلمة %. اتركه فارغًا للمسح.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">تقارن الأرقام كقيم عددية. ضع النص بين علامتي اقتباس مفردتين. اتركه فارغًا للمسح.</string>
+    <string name="sqlite_filter_operator" formatted="false">عامل المقارنة</string>
+    <string name="sqlite_filter_invalid" formatted="false">أدخل شرطًا مثل &gt;= 18 أو = \'abc\' أو LIKE \'%abc%\' أو IS NULL.</string>
 </resources>

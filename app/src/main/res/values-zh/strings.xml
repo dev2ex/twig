@@ -1262,4 +1262,11 @@
     <string name="sqlite_filter_empty_text">（空文本）</string>
     <string name="sqlite_filter_active">已筛选</string>
     <string name="sqlite_filter_oversized">（值过大，无法选择）</string>
+    <string name="sqlite_filter_values" formatted="false">按值选择</string>
+    <string name="sqlite_filter_keyword" formatted="false">关键字</string>
+    <string name="sqlite_filter_custom" formatted="false">自定义条件</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">默认首尾加 %；关键字已有 % 时按原样匹配。留空清除。</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">数字按数值比较，文本可用单引号包围。留空清除。</string>
+    <string name="sqlite_filter_operator" formatted="false">运算符</string>
+    <string name="sqlite_filter_invalid" formatted="false">请输入条件，如 &gt;= 18、= \'abc\'、LIKE \'%abc%\' 或 IS NULL。</string>
 </resources>

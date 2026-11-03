@@ -1966,6 +1966,74 @@ class PaneFragment : Fragment() {
     private fun showSqliteFilter(node: SqliteDataNode, column: Int) {
         val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
         if (spec.type.contains("BLOB", ignoreCase = true)) return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.sqlite_filter_values), R.drawable.ic_filter) { showSqliteFilterValues(node, column) }
+        actions.item(getString(R.string.sqlite_filter_keyword), R.drawable.ic_search) { promptSqliteFilter(node, column, keyword = true) }
+        actions.item(getString(R.string.sqlite_filter_custom), R.drawable.ic_edit) { promptSqliteFilter(node, column, keyword = false) }
+        if (node.state.filters.any { it.column == spec.name }) {
+            actions.item(getString(R.string.sqlite_filter_clear), R.drawable.ic_close) { viewModel.sqliteFilter(node, column, emptyList()) }
+        }
+        showActionMenu(requireContext(), getString(R.string.sqlite_filter_title, spec.name), actions)
+    }
+
+    private fun promptSqliteFilter(node: SqliteDataNode, column: Int, keyword: Boolean) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        val current = node.state.filters.firstOrNull { it.column == spec.name }?.condition
+        val input = EditText(requireContext()).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine()
+            hint = if (keyword) getString(R.string.sqlite_filter_keyword) else ">= 18 / LIKE '%abc%' / IS NULL"
+            setText(if (keyword) current?.keyword.orEmpty() else current?.expression.orEmpty())
+            setSelection(text.length)
+        }
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, 0, padding, 0)
+            addView(TextView(context).apply { setText(if (keyword) R.string.sqlite_filter_keyword_hint else R.string.sqlite_filter_custom_hint) })
+            addView(input)
+        }
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+            .setView(content)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok, null)
+        if (!keyword) builder.setNeutralButton(R.string.sqlite_filter_operator, null)
+        val dialog = builder.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val raw = input.text.toString()
+                val condition = if (raw.isBlank()) null else if (keyword)
+                    com.twig.app.sqlite.SqliteCondition.keyword(raw) else com.twig.app.sqlite.SqliteCondition.parse(raw)
+                if (raw.isNotBlank() && condition == null) {
+                    input.error = getString(R.string.sqlite_filter_invalid)
+                } else {
+                    viewModel.sqliteFilter(node, column, emptyList(), condition)
+                    dialog.dismiss()
+                }
+            }
+            if (!keyword) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val operators = com.twig.app.sqlite.SqliteOperator.entries
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.sqlite_filter_operator)
+                    .setItems(operators.map { it.sql }.toTypedArray()) { _, index ->
+                        val operator = operators[index]
+                        val parsed = com.twig.app.sqlite.SqliteCondition.parse(input.text.toString())
+                        val operand = parsed?.expression?.removePrefix(parsed.operator.sql)?.trim().orEmpty()
+                        input.setText(operator.sql + if (operator.unary) "" else " $operand")
+                        input.setSelection(input.text.length)
+                        input.error = null
+                    }.show()
+            }
+        }
+        input.requestFocus()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
+    }
+
+    private fun showSqliteFilterValues(node: SqliteDataNode, column: Int) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        if (spec.type.contains("BLOB", ignoreCase = true)) return
         sqliteFilterJob?.cancel()
         val loading = AlertDialog.Builder(requireContext())
             .setTitle(getString(R.string.sqlite_filter_title, spec.name))
@@ -1986,8 +2054,7 @@ class PaneFragment : Fragment() {
                         else -> value.text.replace('\n', ' ').replace('\r', ' ').take(160) +
                             if (value.text.length > 160) "…" else ""
                     }
-                    val label = if (value.kind == 't' && value.text.isNotEmpty()) "\"$text\"" else text
-                    label + (options.firstOrNull { it.value == value }?.let { " · ${it.count}" } ?: "") +
+                    text + (options.firstOrNull { it.value == value }?.let { " · ${it.count}" } ?: "") +
                         if (value.truncated) " " + getString(R.string.sqlite_filter_oversized) else ""
                 }
                 val list = android.widget.ListView(requireContext()).apply {

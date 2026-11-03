@@ -1232,4 +1232,11 @@
     <string name="sqlite_filter_empty_text">（空のテキスト）</string>
     <string name="sqlite_filter_active">絞り込み中</string>
     <string name="sqlite_filter_oversized">（値が大きすぎるため選択不可）</string>
+    <string name="sqlite_filter_values" formatted="false">値を選択</string>
+    <string name="sqlite_filter_keyword" formatted="false">キーワード</string>
+    <string name="sqlite_filter_custom" formatted="false">カスタム条件</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">キーワードに % がなければ前後に % を追加します。空欄で解除します。</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">数値は数値として比較します。テキストは単一引用符で囲めます。空欄で解除します。</string>
+    <string name="sqlite_filter_operator" formatted="false">演算子</string>
+    <string name="sqlite_filter_invalid" formatted="false">&gt;= 18、= \'abc\'、LIKE \'%abc%\'、IS NULL などの条件を入力してください。</string>
 </resources>

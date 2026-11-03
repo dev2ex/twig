@@ -1231,4 +1231,11 @@
     <string name="sqlite_filter_empty_text">（空文字）</string>
     <string name="sqlite_filter_active">已篩選</string>
     <string name="sqlite_filter_oversized">（值過大，無法選取）</string>
+    <string name="sqlite_filter_values" formatted="false">依值選取</string>
+    <string name="sqlite_filter_keyword" formatted="false">關鍵字</string>
+    <string name="sqlite_filter_custom" formatted="false">自訂條件</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">預設首尾加 %；關鍵字已有 % 時依原樣比對。留空清除。</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">數字依數值比較，文字可用單引號包圍。留空清除。</string>
+    <string name="sqlite_filter_operator" formatted="false">運算子</string>
+    <string name="sqlite_filter_invalid" formatted="false">請輸入條件，如 &gt;= 18、= \'abc\'、LIKE \'%abc%\' 或 IS NULL。</string>
 </resources>

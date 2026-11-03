@@ -101,6 +101,64 @@ class SqliteFilterTest {
         assertEquals(1L, s.count(entries, signal(), filters = listOf(SqliteFilter("category", listOf(numbers[1].value)))))
     }
 
+    @Test fun `custom operators compare typed values and keep null empty and blob semantics`() = database { db, s ->
+        listOf<Any?>(null, "", 7, 18, 25, "18", "abc", "prefixABCtail", byteArrayOf(1)).forEach {
+            db.execSQL("INSERT INTO entries(category,tag) VALUES (?, 'keep')", arrayOf(it))
+        }
+        val table = s.tables(signal()).single { it.name == "entries" }
+        fun ids(expression: String) = s.page(table, 0, signal(), filters = listOf(
+            SqliteFilter("category", condition = SqliteCondition.parse(expression)!!))).rows.map { it[0].text.toInt() }
+        assertEquals(listOf(5), ids("> 18"))
+        assertEquals(listOf(4, 5), ids(">= 18"))
+        assertEquals(listOf(3), ids("< 18"))
+        assertEquals(listOf(3, 4), ids("<= 18"))
+        assertEquals(listOf(4), ids("= 18"))
+        assertEquals(listOf(3, 5), ids("!= 18"))
+        assertEquals(listOf(6), ids("= '18'"))
+        assertEquals(listOf(2), ids("= ''"))
+        assertEquals(listOf(1), ids("IS NULL"))
+        assertEquals((2..9).toList(), ids("IS NOT NULL"))
+        assertEquals(listOf(7), ids("LIKE abc"))
+        assertEquals(listOf(7, 8), ids("LIKE '%abc%'"))
+        assertEquals(listOf(2, 3, 4, 5, 6), ids("NOT LIKE '%abc%'"))
+        val filter = SqliteFilter("category", condition = SqliteCondition.keyword("ABC"))
+        assertEquals(2L, s.count(table, signal(), filters = listOf(filter)))
+        assertEquals(listOf("prefixABCtail"), s.page(table, 0, signal(), filters = listOf(
+            SqliteFilter("category", condition = SqliteCondition.keyword("prefix%")))).rows.map { it[1].text })
+    }
+
+    @Test fun `custom conditions share search arguments paging details blobs export and group counts`() = database { db, s ->
+        repeat(320) { id -> db.execSQL("INSERT INTO entries VALUES (?,?,?,?)", arrayOf(
+            id, id, if (id % 2 == 0) "keep" else "skip", "blob$id".toByteArray())) }
+        val table = s.tables(signal()).single { it.name == "entries" }
+        val filters = listOf(SqliteFilter("category", condition = SqliteCondition.parse(">= 100")),
+            SqliteFilter("tag", condition = SqliteCondition.keyword("keep")))
+        val sort = SqliteSort("id", true)
+        val expected = (318 downTo 100 step 2).map(Int::toString)
+        assertEquals(110L, s.count(table, signal(), "keep", filters))
+        val rows = listOf(0, 100).flatMap { s.page(table, it, signal(), "keep", sort, filters).rows }
+        assertEquals(expected, rows.map { it[0].text })
+        assertEquals(expected[103], s.cell(table, 103, 0, signal(), "keep", sort, filters).text)
+        val bytes = "blob${expected[103]}".toByteArray()
+        assertArrayEquals(bytes, s.blob(table, 103, 3, 0, bytes.size, bytes.size.toLong(), signal(), "keep", sort, filters))
+        val groups = s.filterOptions(table, "tag", signal(), filters = filters)
+        assertEquals(listOf(110L, 110L), groups.map { it.count })
+        val output = java.io.ByteArrayOutputStream()
+        s.exportCsv(table, setOf("id"), signal(), output, "keep", sort = sort, filters = filters)
+        assertEquals(expected, output.toString("UTF-8").trim().lines().drop(1))
+    }
+
+    @Test fun `handwritten filter operands stay bound even when they contain SQL syntax`() = database { db, s ->
+        val text = "x'; DROP TABLE entries; --"
+        db.execSQL("INSERT INTO entries(category) VALUES (?)", arrayOf(text))
+        val table = s.tables(signal()).single { it.name == "entries" }
+        val filter = SqliteFilter("category", condition = SqliteCondition.parse("= " + text))
+        assertEquals(1L, s.count(table, signal(), filters = listOf(filter)))
+        assertEquals(1L, s.count(table, signal(), filters = listOf(
+            SqliteFilter("category", condition = SqliteCondition.keyword(text)))))
+        assertTrue(s.tables(signal()).any { it.name == "entries" })
+    }
+
     @Test fun `oversized candidates remain bounded and cannot silently filter a prefix`() = database { db, s ->
         db.execSQL("INSERT INTO entries(category) VALUES (?)", arrayOf("x".repeat(2_000_000)))
         val table = s.tables(signal()).single { it.name == "entries" }

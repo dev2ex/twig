@@ -1268,4 +1268,11 @@
     <string name="sqlite_filter_empty_text">(Пустой текст)</string>
     <string name="sqlite_filter_active">Отфильтровано</string>
     <string name="sqlite_filter_oversized">(Значение слишком большое для выбора)</string>
+    <string name="sqlite_filter_values" formatted="false">Выбрать значения</string>
+    <string name="sqlite_filter_keyword" formatted="false">Ключевое слово</string>
+    <string name="sqlite_filter_custom" formatted="false">Своё условие</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Добавляет % с обеих сторон, если слово не содержит %. Пустое поле сбрасывает фильтр.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Числа сравниваются численно; текст заключайте в одинарные кавычки. Пустое поле сбрасывает фильтр.</string>
+    <string name="sqlite_filter_operator" formatted="false">Оператор</string>
+    <string name="sqlite_filter_invalid" formatted="false">Введите условие: &gt;= 18, = \'abc\', LIKE \'%abc%\' или IS NULL.</string>
 </resources>

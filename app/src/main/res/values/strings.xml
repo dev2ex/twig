@@ -1310,4 +1310,11 @@
     <string name="sqlite_filter_empty_text">(Empty text)</string>
     <string name="sqlite_filter_active">Filtered</string>
     <string name="sqlite_filter_oversized">(Too large to select)</string>
+    <string name="sqlite_filter_values" formatted="false">Choose values</string>
+    <string name="sqlite_filter_keyword" formatted="false">Keyword</string>
+    <string name="sqlite_filter_custom" formatted="false">Custom condition</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Adds % at both ends unless the keyword already contains %. Leave blank to clear.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Numbers compare numeric values; use single quotes for text. Leave blank to clear.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operator</string>
+    <string name="sqlite_filter_invalid" formatted="false">Enter a condition such as &gt;= 18, = \'abc\', LIKE \'%abc%\' or IS NULL.</string>
 </resources>

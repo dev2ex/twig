@@ -53,6 +53,53 @@ class StripWriteActionsTest {
         idle()
     }
 
+    @Test fun `column menu offers filter modes and custom editor validates without dismissing`() {
+        val column = com.twig.app.sqlite.SqliteColumn("value", "TEXT", false, null, 0)
+        val table = com.twig.app.sqlite.SqliteTable("entries", "", listOf(column),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val state = SqliteTableState(table, filters = listOf(com.twig.app.sqlite.SqliteFilter("value",
+            condition = com.twig.app.sqlite.SqliteCondition.parse("= 'abc'"))))
+        fun latest() = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun menu(state: SqliteTableState): List<MenuAct> {
+            ReflectionHelpers.callInstanceMethod<Unit>(pane0(), "showSqliteFilter",
+                ReflectionHelpers.ClassParameter.from(SqliteDataNode::class.java, SqliteDataNode("db", 1, state)),
+                ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType!!, 0))
+            val dialog = latest()
+            return (0 until dialog.listView.adapter.count).map { dialog.listView.adapter.getItem(it) as MenuAct }
+                .also { dialog.dismiss() }
+        }
+        fun input(view: View): android.widget.EditText? = when (view) {
+            is android.widget.EditText -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { input(view.getChildAt(it)) }
+            else -> null
+        }
+        val actions = menu(state)
+        assertEquals(listOf(R.string.sqlite_filter_values, R.string.sqlite_filter_keyword,
+            R.string.sqlite_filter_custom, R.string.sqlite_filter_clear).map(activity::getString), actions.map { it.label })
+        actions[2].run()
+        idle()
+        val editor = latest()
+        val field = input(editor.window!!.decorView)!!
+        assertEquals("= 'abc'", field.text.toString())
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).performClick()
+        val operators = latest()
+        operators.listView.performItemClick(null, 2, 2)
+        assertEquals("> 'abc'", field.text.toString())
+        field.setText(">")
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertTrue(editor.isShowing)
+        assertTrue(field.error != null)
+        field.setText(">= 18")
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertFalse(editor.isShowing)
+        menu(state.copy(filters = listOf(com.twig.app.sqlite.SqliteFilter("value",
+            condition = com.twig.app.sqlite.SqliteCondition.keyword("prefix%")))))[1].run()
+        val keyword = latest()
+        assertEquals("prefix%", input(keyword.window!!.decorView)!!.text.toString())
+        keyword.dismiss()
+        assertEquals(3, menu(state.copy(filters = emptyList())).size)
+    }
+
     @Test fun `CSV column chooser defaults to all and disallows an empty selection`() {
         val columns = listOf("id", "value").map { com.twig.app.sqlite.SqliteColumn(it, "TEXT", false, null, 0) }
         val table = com.twig.app.sqlite.SqliteTable("entries", "", columns,

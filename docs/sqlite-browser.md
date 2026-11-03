@@ -150,8 +150,9 @@ SQLite value order; tapping it again reverses direction. Another column starts i
 ascending order. The active header shows an arrow and exposes its direction and click
 action to accessibility. Property-grid headers remain static.
 
-Long-pressing a data column header opens a cancellable background aggregation:
-`GROUP BY` that column, ordered by `COUNT(*) DESC`, limited to ten candidates.
+Long-pressing a data column header offers value selection, keyword matching, a custom
+condition and (when active) clearing that column. Only value selection starts the
+cancellable background aggregation: `GROUP BY` that column, ordered by `COUNT(*) DESC`, limited to ten candidates.
 The existing LIKE search and other column filters apply; this column's own filter
 is excluded so it can be changed. Checked values outside the current top ten remain
 available without inventing counts. NULL and empty text are distinct; BLOB columns
@@ -166,6 +167,21 @@ Filtered headers show a dot and background. Clearing a column restores its value
 Paging, details, BLOB reads, sorting and CSV all share these predicates. Normal tables,
 LIKE results and cached SQL results share the same implementation; filtering a SQL
 result never reruns its SQL or changes its ordering. Source tables remain live reads.
+
+Each column has either selected values or one condition; changing modes replaces that
+column's previous filter. Keyword mode uses the same automatic `%keyword%` rule as
+search, while a handwritten LIKE uses the exact pattern. Custom input accepts `=`,
+`!=`/`<>`, `>`, `>=`, `<`, `<=`, `LIKE`, `NOT LIKE`, `IS NULL` and `IS NOT NULL`.
+The editor can insert operators or accept a handwritten condition. Empty input clears
+the column; invalid input leaves the editor open. Single quotes preserve text (with
+SQL doubled-quote escaping); bare numbers compare numeric values, quoted numbers
+compare text, and bare nonnumeric operands are text. `= NULL` and `!= NULL` normalize
+to null checks. Comparisons keep text and numeric storage classes separate; LIKE
+casts non-BLOB values to text. Operators come from an enum and all operands are bound
+parameters, so this editor never runs arbitrary SQL or accepts compound expressions.
+Conditions use the same count/page/detail/BLOB/CSV path and column markers as value
+selection, including on cached SQL results. Candidate aggregation retains other
+columns' conditions and ignores its own condition.
 
 `SqliteSort` is part of table state. Sorting cancels pending page reads, clears the
 page cache and resets vertical scrolling while preserving horizontal position. SQL

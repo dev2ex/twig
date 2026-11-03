@@ -1231,4 +1231,11 @@
     <string name="sqlite_filter_empty_text">(Văn bản trống)</string>
     <string name="sqlite_filter_active">Đã lọc</string>
     <string name="sqlite_filter_oversized">(Quá lớn để chọn)</string>
+    <string name="sqlite_filter_values" formatted="false">Chọn giá trị</string>
+    <string name="sqlite_filter_keyword" formatted="false">Từ khóa</string>
+    <string name="sqlite_filter_custom" formatted="false">Điều kiện tùy chỉnh</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Thêm % ở hai đầu nếu từ khóa chưa chứa %. Để trống để xóa.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Số được so sánh theo giá trị; dùng nháy đơn cho văn bản. Để trống để xóa.</string>
+    <string name="sqlite_filter_operator" formatted="false">Toán tử</string>
+    <string name="sqlite_filter_invalid" formatted="false">Nhập điều kiện như &gt;= 18, = \'abc\', LIKE \'%abc%\' hoặc IS NULL.</string>
 </resources>

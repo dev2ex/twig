@@ -42,7 +42,7 @@ data class SqliteCell(val kind: Char, val text: String, val length: Long = text.
 }
 data class SqlitePage(val offset: Int, val rows: List<List<SqliteCell>>)
 data class SqliteSort(val column: String, val descending: Boolean = false)
-data class SqliteFilter(val column: String, val values: List<SqliteCell>)
+data class SqliteFilter(val column: String, val values: List<SqliteCell> = emptyList(), val condition: SqliteCondition? = null)
 data class SqliteFilterOption(val value: SqliteCell, val count: Long)
 
 /**
@@ -204,8 +204,13 @@ class SqliteSession private constructor(private val path: File, private val temp
             where(table, query).takeIf { it.isNotEmpty() }?.let { terms.add(it.removePrefix(" WHERE ")) }
             for (filter in filters) {
                 require(table.visibleColumns.any { it.name == filter.column })
-                require(filter.values.isNotEmpty())
                 val name = quote(filter.column)
+                if (filter.condition != null) {
+                    require(filter.values.isEmpty())
+                    terms.add(filter.condition.predicate(name, args))
+                    continue
+                }
+                require(filter.values.isNotEmpty())
                 terms.add(filter.values.joinToString(" OR ", "(", ")") { value ->
                     require(!value.truncated && value.kind in "ntir")
                     if (value.kind == 'n') "$name IS NULL"

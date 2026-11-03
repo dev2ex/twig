@@ -8,6 +8,7 @@ import com.twig.app.sqlite.SqlitePage
 import com.twig.app.sqlite.SqliteSession
 import com.twig.app.sqlite.SqliteTable
 import com.twig.app.sqlite.SqliteFilter
+import com.twig.app.sqlite.SqliteCondition
 import com.twig.app.sqlite.SqliteFilterOption
 import com.twig.app.sqlite.SqliteSort
 import com.twig.app.sqlite.SqliteQueryResult
@@ -411,16 +412,17 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         return try { operation.await().getOrThrow() } finally { operation.cancel() }
     }
 
-    fun filter(node: SqliteDataNode, column: Int, values: List<SqliteCell>) {
+    fun filter(node: SqliteDataNode, column: Int, values: List<SqliteCell>, condition: SqliteCondition? = null) {
         val host = hosts[node.owner] ?: return
         val tables = host.tables(node.state.query, node.state.execution) ?: return
         val state = tables[node.state.table.name] ?: return
         if (state.table != node.state.table || state.filters != node.state.filters) return
         val spec = state.table.visibleColumns.getOrNull(column) ?: return
         if (spec.type.contains("BLOB", ignoreCase = true)) return
+        require(condition == null || values.isEmpty())
         require(values.all { !it.truncated && it.kind in "ntir" })
         val filters = state.filters.filterNot { it.column == spec.name } +
-            if (values.isEmpty()) emptyList() else listOf(SqliteFilter(spec.name, values.distinct()))
+            if (values.isEmpty() && condition == null) emptyList() else listOf(SqliteFilter(spec.name, values.distinct(), condition))
         if (filters == state.filters) return
         cancelPages(host, state.table.name, state.query, state.execution)
         val updated = state.copy(filters = filters, count = null, counting = true, pages = emptyMap(),
