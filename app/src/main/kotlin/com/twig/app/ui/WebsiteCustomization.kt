@@ -1,6 +1,7 @@
 package com.twig.app.ui
 
 import com.twig.app.Website
+import com.twig.app.WebsiteStore
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Locale
@@ -34,15 +35,7 @@ internal object WebsiteCustomization {
 
     fun validUserAgent(value: String) = value.none { it.code < 32 || it.code == 127 }
 
-    fun sameOrigin(first: String, second: String?): Boolean = runCatching {
-        if (second == null) return false
-        val a = URI(first)
-        val b = URI(second)
-        fun scheme(uri: URI) = uri.scheme?.lowercase(Locale.ROOT)
-        fun port(uri: URI) = if (uri.port != -1) uri.port else if (scheme(uri) == "https") 443 else 80
-        scheme(a) in setOf("http", "https") && scheme(a) == scheme(b) &&
-            a.host != null && a.host.equals(b.host, ignoreCase = true) && port(a) == port(b)
-    }.getOrDefault(false)
+    fun sameOrigin(first: String, second: String?) = WebsiteStore.sameOrigin(first, second)
 
     fun headersFor(site: Website, url: String): Map<String, String> =
         if (sameOrigin(site.url, url)) parseHeaders(site.headers).orEmpty() else emptyMap()

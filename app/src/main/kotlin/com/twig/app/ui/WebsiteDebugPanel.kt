@@ -28,7 +28,7 @@ internal class WebsiteDebugPanel(
     private val host: LinearLayout,
     private val web: WebsiteWebView,
     private val currentSite: () -> Website,
-    private val persist: Boolean = true,
+    private val persist: () -> Boolean = { true },
     private val saved: (Website) -> Unit,
 ) {
     private val entries = ArrayDeque<String>()
@@ -285,7 +285,7 @@ internal class WebsiteDebugPanel(
     }
 
     private fun saveCustomization(script: String? = null, style: String? = null, hiddenSelector: String? = null): Website? {
-        val latest = if (persist) WebsiteStore.all(activity).firstOrNull { it.id == currentSite().id }
+        val latest = if (persist()) WebsiteStore.all(activity).firstOrNull { it.id == currentSite().id }
             else currentSite()
         if (latest == null) {
             Toast.makeText(activity, R.string.website_missing, Toast.LENGTH_LONG).show()
@@ -295,7 +295,7 @@ internal class WebsiteDebugPanel(
             hiddenElements = if (hiddenSelector == null) latest.hiddenElements else
                 (WebsiteCustomization.hiddenSelectors(latest.hiddenElements) + hiddenSelector).distinct().joinToString("\n"))
         return try {
-            if (persist) WebsiteStore.save(activity, updated)
+            if (persist()) WebsiteStore.save(activity, updated)
             saved(updated)
             Toast.makeText(activity, R.string.viewer_saved, Toast.LENGTH_SHORT).show()
             updated

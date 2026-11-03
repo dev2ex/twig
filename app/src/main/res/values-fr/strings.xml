@@ -1256,4 +1256,5 @@
     <string name="website_copy_link">Copier le lien</string>
     <string name="website_share_link">Partager le lien</string>
     <string name="website_open_browser">Ouvrir dans le navigateur par défaut</string>
+    <string name="website_apply_to_domain">Appliquer aux pages du même domaine</string>
 </resources>

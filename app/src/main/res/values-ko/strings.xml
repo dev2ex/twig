@@ -1256,4 +1256,5 @@
     <string name="website_copy_link">링크 복사</string>
     <string name="website_share_link">링크 공유</string>
     <string name="website_open_browser">기본 브라우저에서 열기</string>
+    <string name="website_apply_to_domain">같은 도메인의 페이지에 적용</string>
 </resources>

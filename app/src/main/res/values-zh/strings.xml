@@ -1286,4 +1286,5 @@
     <string name="website_copy_link">复制链接</string>
     <string name="website_share_link">分享链接</string>
     <string name="website_open_browser">在默认浏览器中打开</string>
+    <string name="website_apply_to_domain">应用到同域名页面</string>
 </resources>

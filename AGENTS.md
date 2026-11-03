@@ -257,6 +257,16 @@ its listing size must still describe the followed stream for copy/resume checks.
   per-site fields separate from effective settings, including debug edits and browser saves,
   so global values never become permanent site additions. Open pages observe global changes;
   locked pages defer applying them until unlock.
+  Each bookmark can opt into `applyToDomain`: external links, system searches and navigation
+  borrow its raw configuration on the exact same hostname, then merge global additions once.
+  Enabling a second bookmark for that host disables the earlier choice; directly opened saved
+  bookmarks retain their own configuration on their saved origin. Resolve again for top-level
+  navigation and history, never for subresources. Keep the document's identity separate from
+  its current page configuration. Domain sharing does not inherit capture/location grants or
+  background execution; headers and Basic credentials retain their original scheme/host/port
+  scope. Temporary and borrowed-page debug edits stay in memory, without rewriting the source
+  bookmark. Prepare changed UAs before intercepted GET loads; history/POST loads that bypass
+  interception finish before changing UA, since changing it mid-load restarts the request.
   `WebsiteMediaPermissions` handles HTTPS microphone/camera requests with explicit
   origin-specific consent followed by Android runtime permissions. Grant only selected,
   recognized capture resources, after the WebView resumes. Saved bookmarks have independent

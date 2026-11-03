@@ -61,12 +61,18 @@ class WebsiteActivity : TwigActivity() {
     private lateinit var b: ActivityWebsiteBinding
     private lateinit var site: Website
     private lateinit var localSite: Website
+    private lateinit var pageLocalSite: Website
+    private lateinit var pageSite: Website
+    private var pageEdits: Website? = null
     private var taskIconIdentity: Pair<String, String>? = null
     private var taskIcon: Bitmap? = null
     private val defaultTaskIcon by lazy { requireNotNull(ShortcutIcons.of(this, R.drawable.ic_website).bitmap) }
     private val globalSettingsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "defaults" && ::site.isInitialized && !Secrets.locked(this)) {
-            applyWebsiteIntent()
+        if (key in setOf("defaults", "list") && ::site.isInitialized && !Secrets.locked(this)) {
+            // Remembered permission decisions and debug saves finish before the page reacts.
+            if (key == "list") b.root.post {
+                if (!isDestroyed && !isFinishing && !Secrets.locked(this)) applyWebsiteIntent()
+            } else applyWebsiteIntent()
         }
     }
     private var pendingSavedState: Bundle? = null
@@ -143,7 +149,7 @@ class WebsiteActivity : TwigActivity() {
             if (isFinishing) return@gate
             if (pendingWebsiteIntent) {
                 pendingWebsiteIntent = false
-                applyWebsiteIntent()
+                applyWebsiteIntent(forceNavigation = true)
             }
             if (isFinishing) return@gate
             lockCover?.let { (it.parent as? ViewGroup)?.removeView(it) }
@@ -160,7 +166,7 @@ class WebsiteActivity : TwigActivity() {
 
     private fun syncScreenshotProtection() {
         val secure = if (Secrets.locked(this)) true else {
-            requestedWebsite()?.blockScreenshots ?: false
+            if (::pageSite.isInitialized) pageSite.blockScreenshots else requestedWebsite()?.blockScreenshots ?: false
         }
         if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -219,16 +225,24 @@ class WebsiteActivity : TwigActivity() {
         }
         localSite = requireNotNull(requested)
         site = saved
+        val restoredAddress = savedInstanceState?.takeIf { it.getString("bookmark_url") == localSite.url }
+            ?.getString("page_url") ?: localSite.url
+        pageLocalSite = WebsiteStore.forPage(this, localSite, restoredAddress, isBrowserPage())
+        pageSite = WebsiteStore.effective(this, pageLocalSite)
         lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
             override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
                 if (!Secrets.locked(this@WebsiteActivity)) resumeWebsite()
             }
         })
-        requestBlocker = WebsiteRequestBlocker.parse(saved.blockedRequests) ?: WebsiteRequestBlocker.EMPTY
-        debugger = WebsiteDebugPanel(this, b.debugHost, b.web, { localSite }, persist = !isBrowserPage()) { updated ->
-            localSite = updated
-            site = WebsiteStore.effective(this, updated)
-            customStyleApplied = WebsiteCustomization.hasStyles(site)
+        requestBlocker = WebsiteRequestBlocker.parse(pageSite.blockedRequests) ?: WebsiteRequestBlocker.EMPTY
+        debugger = WebsiteDebugPanel(this, b.debugHost, b.web, { pageLocalSite }, persist = { persistPageEdits() }) { updated ->
+            if (persistPageEdits()) {
+                localSite = updated
+                site = WebsiteStore.effective(this, updated)
+            } else pageEdits = updated
+            pageLocalSite = updated
+            pageSite = WebsiteStore.effective(this, updated)
+            customStyleApplied = WebsiteCustomization.hasStyles(pageSite)
         }
         backgroundNotificationRequested = savedInstanceState?.getBoolean("background_notification_requested") ?: false
         toolbarVisibleOverride = savedInstanceState?.takeIf { it.containsKey("toolbar_visible_override") }
@@ -237,8 +251,8 @@ class WebsiteActivity : TwigActivity() {
             toolbarVisibleOverride = b.toolbar.visibility != View.VISIBLE
             applyWebsiteOptions()
         }
-        immersiveFullscreen = savedInstanceState?.getBoolean("immersive_fullscreen", site.openFullscreen)
-            ?: site.openFullscreen
+        immersiveFullscreen = savedInstanceState?.getBoolean("immersive_fullscreen", pageSite.openFullscreen)
+            ?: pageSite.openFullscreen
         fullscreenFromToolbar = immersiveFullscreen &&
             (savedInstanceState?.getBoolean("fullscreen_from_toolbar") == true)
         title = site.name
@@ -297,7 +311,7 @@ class WebsiteActivity : TwigActivity() {
             b.toolbar.menu.add(R.string.website_open_url).setOnMenuItemClickListener { openAddress(); true }
             b.toolbar.menu.add(R.string.website_add).setOnMenuItemClickListener {
                 val address = WebsiteStore.normalizeUrl(b.web.url ?: site.url) ?: site.url
-                WebsiteDialogs.add(this, localSite.copy(name = Uri.parse(address).host.orEmpty(), url = address))
+                WebsiteDialogs.add(this, pageLocalSite.copy(name = Uri.parse(address).host.orEmpty(), url = address))
                 true
             }
         } else b.toolbar.menu.add(R.string.action_pin_shortcut).setOnMenuItemClickListener {
@@ -322,8 +336,8 @@ class WebsiteActivity : TwigActivity() {
         syncRemoteDebugMenu()
         // Insets for independently hidden system bars, including the on-screen keyboard.
         ViewCompat.setOnApplyWindowInsetsListener(b.root) { view, insets ->
-            val hideStatus = immersiveFullscreen || site.hideStatusBar
-            val hideNavigation = immersiveFullscreen || site.hideNavigationBar
+            val hideStatus = immersiveFullscreen || pageSite.hideStatusBar
+            val hideNavigation = immersiveFullscreen || pageSite.hideNavigationBar
             if (hideStatus || hideNavigation) {
                 val types = WindowInsetsCompat.Type.ime() or
                     (if (hideStatus) 0 else WindowInsetsCompat.Type.statusBars()) or
@@ -368,7 +382,7 @@ class WebsiteActivity : TwigActivity() {
             }
 
             override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String) {
-                val credentials = WebsiteCustomization.basicAuthFor(site, view.url ?: pendingMainUrl, host)
+                val credentials = WebsiteCustomization.basicAuthFor(pageSite, view.url ?: pendingMainUrl, host)
                 if (credentials != null && handler.useHttpAuthUsernamePassword()) {
                     handler.proceed(credentials.first, credentials.second)
                 } else handler.cancel()
@@ -382,6 +396,9 @@ class WebsiteActivity : TwigActivity() {
                 mediaPermissions.cancel()
                 locationPermissions.cancel()
                 pendingMainUrl = url
+                // History and POST loads can reach here without an override callback.
+                // Changing their UA mid-load would restart the request.
+                updatePageSettings(url, updateUserAgent = false)
                 debugger.navigation(url)
                 customStyleApplied = false
                 cancelCertificateRequests()
@@ -394,13 +411,21 @@ class WebsiteActivity : TwigActivity() {
                 if (scheme == "https" || scheme == "http") {
                     if (request.isForMainFrame && request.method == "GET") {
                         val url = request.url.toString()
-                        val headers = WebsiteCustomization.headersFor(site, url)
-                        if (!request.isRedirect && headers.isNotEmpty()) {
+                        val previous = pageSite
+                        updatePageSettings(url, updateUserAgent = false)
+                        val headers = WebsiteCustomization.headersFor(pageSite, url)
+                        if (view.settings.userAgentString != pageUserAgent()) {
+                            view.stopLoading()
+                            applyWebsiteOptions()
+                            if (headers.isEmpty()) view.loadUrl(url) else view.loadUrl(url, headers.toMutableMap())
+                            return true
+                        }
+                        if (headers.isNotEmpty() && (!request.isRedirect || !WebsiteCustomization.sameOrigin(previous.url, url))) {
                             view.loadUrl(url, headers.toMutableMap())
                             return true
                         }
-                        if (request.isRedirect && site.headers.isNotEmpty() &&
-                            !WebsiteCustomization.sameOrigin(site.url, url)) {
+                        if (request.isRedirect && previous.headers.isNotEmpty() &&
+                            !WebsiteCustomization.sameOrigin(previous.url, url)) {
                             // Restart a foreign redirect without this bookmark's additional headers.
                             view.loadUrl(url)
                             return true
@@ -425,10 +450,12 @@ class WebsiteActivity : TwigActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                // Prepare the next request after an unobserved history/POST navigation completes.
+                applyWebsiteOptions()
                 applyPageOptions()
                 applyCustomStyle()
-                if (WebsiteCustomization.sameOrigin(site.url, view.url)) {
-                    WebsiteCustomization.pageScript(site)?.let { view.evaluateJavascript(it, null) }
+                if (WebsiteCustomization.sameOrigin(pageSite.url, view.url)) {
+                    WebsiteCustomization.pageScript(pageSite)?.let { view.evaluateJavascript(it, null) }
                 }
                 if (b.searchBar.visibility == View.VISIBLE) searchPage()
                 b.toolbar.subtitle = Uri.parse(url).host
@@ -496,9 +523,9 @@ class WebsiteActivity : TwigActivity() {
             override fun handleOnBackPressed() = back()
         })
         val sameRequest = savedInstanceState?.getString("website_request_key")?.let {
-            it == WebsiteCustomization.requestKey(site)
-        } ?: (site.userAgent.isEmpty() && site.headers.isEmpty() && site.script.isEmpty() &&
-            site.basicAuthUsername.isEmpty() && site.basicAuthPassword.isEmpty())
+            it == WebsiteCustomization.requestKey(pageSite)
+        } ?: (pageSite.userAgent.isEmpty() && pageSite.headers.isEmpty() && pageSite.script.isEmpty() &&
+            pageSite.basicAuthUsername.isEmpty() && pageSite.basicAuthPassword.isEmpty())
         if (savedInstanceState?.getString("bookmark_url") != site.url || !sameRequest ||
             b.web.restoreState(savedInstanceState) == null) loadWebsite(site.url)
     }
@@ -510,9 +537,30 @@ class WebsiteActivity : TwigActivity() {
         unlockWebsite()
     }
 
-    private fun applyWebsiteIntent() {
-        // Bringing an existing document task forward must keep its live WebView,
-        // including navigation, scroll position and unsaved form contents.
+    private fun persistPageEdits() = !isBrowserPage() &&
+        WebsiteCustomization.sameOrigin(localSite.url, pageLocalSite.url)
+
+    /** Resolve once for each top-level navigation; resource interception reads the resulting snapshot. */
+    private fun updatePageSettings(address: String, updateUserAgent: Boolean = true) {
+        if (Secrets.locked(this)) return
+        val raw = WebsiteStore.forPage(this, localSite, address, isBrowserPage())
+        pageEdits = pageEdits?.takeIf { WebsiteCustomization.sameOrigin(it.url, raw.url) }
+        pageLocalSite = pageEdits ?: raw
+        val updated = WebsiteStore.effective(this, pageLocalSite)
+        if (updated == pageSite) return
+        if (updated.fullscreen != pageSite.fullscreen || updated.openFullscreen != pageSite.openFullscreen ||
+            updated.doubleTapToolbar != pageSite.doubleTapToolbar) toolbarVisibleOverride = null
+        if (updated.openFullscreen != pageSite.openFullscreen) {
+            immersiveFullscreen = updated.openFullscreen
+            fullscreenFromToolbar = false
+        }
+        pageSite = updated
+        requestBlocker = WebsiteRequestBlocker.parse(updated.blockedRequests) ?: WebsiteRequestBlocker.EMPTY
+        applyWebsiteOptions(updateUserAgent)
+    }
+
+    private fun applyWebsiteIntent(forceNavigation: Boolean = false) {
+        // Bringing an existing document task forward keeps its live page and navigation.
         val requested = requestedWebsite()
         val saved = requested?.let { WebsiteStore.effective(this, it) }
         if (!::site.isInitialized || saved == null || saved.id != site.id ||
@@ -520,30 +568,28 @@ class WebsiteActivity : TwigActivity() {
             recreate()
             return
         }
-        localSite = requireNotNull(requested)
-        if (saved == site && !isSearchPage()) return
+        val changedDocument = saved != site
         val changedUrl = saved.url != site.url
-        if (saved.fullscreen != site.fullscreen || saved.openFullscreen != site.openFullscreen ||
-            saved.doubleTapToolbar != site.doubleTapToolbar) toolbarVisibleOverride = null
-        val changedDesktop = saved.desktopSite != site.desktopSite
-        val changedAgent = saved.userAgent != site.userAgent
-        val changedHeaders = saved.headers != site.headers
-        val changedScript = saved.script != site.script
-        val changedAuth = saved.basicAuthUsername != site.basicAuthUsername || saved.basicAuthPassword != site.basicAuthPassword
         val revokedPermission = WebsiteCustomization.sameOrigin(site.url, b.web.url) &&
             ((saved.microphonePermission != site.microphonePermission && saved.microphonePermission != com.twig.app.WebsitePermission.ALLOW) ||
                 (saved.cameraPermission != site.cameraPermission && saved.cameraPermission != com.twig.app.WebsitePermission.ALLOW) ||
                 (saved.locationPermission != site.locationPermission && saved.locationPermission != com.twig.app.WebsitePermission.ALLOW))
-        if (saved.openFullscreen != site.openFullscreen) {
-            immersiveFullscreen = saved.openFullscreen
-            fullscreenFromToolbar = false
-        }
+        localSite = requireNotNull(requested)
         site = saved
-        requestBlocker = WebsiteRequestBlocker.parse(saved.blockedRequests) ?: WebsiteRequestBlocker.EMPTY
-        if (isSearchPage() || changedUrl || changedDesktop || changedAgent || changedHeaders || changedScript || changedAuth) hidePageFullscreen()
+        val navigate = changedUrl || (forceNavigation && isSearchPage())
+        val previous = pageSite
+        updatePageSettings(if (navigate) site.url else b.web.url ?: site.url)
+        if (!changedDocument && previous == pageSite && !navigate) return
+        val changedDesktop = previous.desktopSite != pageSite.desktopSite
+        val changedAgent = previous.userAgent != pageSite.userAgent
+        val changedHeaders = previous.headers != pageSite.headers
+        val changedScript = previous.script != pageSite.script
+        val changedAuth = previous.basicAuthUsername != pageSite.basicAuthUsername ||
+            previous.basicAuthPassword != pageSite.basicAuthPassword
+        if (navigate || changedDesktop || changedAgent || changedHeaders || changedScript || changedAuth) hidePageFullscreen()
         applyWebsiteOptions()
         when {
-            isSearchPage() || changedUrl -> loadWebsite(site.url)
+            navigate -> loadWebsite(site.url)
             changedHeaders || changedAuth -> {
                 mediaPermissions.cancel()
                 locationPermissions.cancel()
@@ -561,14 +607,17 @@ class WebsiteActivity : TwigActivity() {
 
     private fun loadWebsite(url: String) {
         pendingMainUrl = url
-        val headers = WebsiteCustomization.headersFor(site, url)
+        b.web.stopLoading()
+        updatePageSettings(url)
+        applyWebsiteOptions()
+        val headers = WebsiteCustomization.headersFor(pageSite, url)
         if (headers.isEmpty()) b.web.loadUrl(url) else b.web.loadUrl(url, headers.toMutableMap())
     }
 
     private fun applyCustomStyle() {
-        val styled = WebsiteStore.effective(this, debugger.styleSite(localSite))
+        val styled = WebsiteStore.effective(this, debugger.styleSite(pageLocalSite))
         if (!WebsiteCustomization.hasStyles(styled) && !customStyleApplied) return
-        if (WebsiteCustomization.sameOrigin(site.url, b.web.url)) {
+        if (WebsiteCustomization.sameOrigin(pageSite.url, b.web.url)) {
             b.web.evaluateJavascript(WebsiteCustomization.styleScript(styled), null)
             customStyleApplied = WebsiteCustomization.hasStyles(styled)
         }
@@ -689,8 +738,12 @@ class WebsiteActivity : TwigActivity() {
         updateTaskDescription()
     }
 
-    private fun applyWebsiteOptions() {
-        val orientation = when (site.orientation) {
+    private fun pageUserAgent() = pageSite.userAgent.takeIf { WebsiteCustomization.validUserAgent(it) }.orEmpty().ifBlank {
+        if (pageSite.desktopSite) desktopUserAgent(mobileUserAgent) else mobileUserAgent
+    }
+
+    private fun applyWebsiteOptions(updateUserAgent: Boolean = true) {
+        val orientation = when (pageSite.orientation) {
             WebsiteOrientation.SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_USER
             WebsiteOrientation.FREE -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             WebsiteOrientation.LOCKED -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
@@ -702,20 +755,19 @@ class WebsiteActivity : TwigActivity() {
         title = site.name
         b.toolbar.title = site.name
         syncTaskDescription()
-        b.toolbar.visibility = if (toolbarVisibleOverride ?: !(site.fullscreen || immersiveFullscreen)) View.VISIBLE else View.GONE
-        b.web.doubleTapToolbar = site.doubleTapToolbar
-        b.web.pullToRefresh = site.pullToRefresh
-        b.web.lockScrollAxis = site.lockScrollAxis
+        b.toolbar.visibility = if (toolbarVisibleOverride ?: !(pageSite.fullscreen || immersiveFullscreen)) View.VISIBLE else View.GONE
+        b.web.doubleTapToolbar = pageSite.doubleTapToolbar
+        b.web.pullToRefresh = pageSite.pullToRefresh
+        b.web.lockScrollAxis = pageSite.lockScrollAxis
         b.web.settings.apply {
-            val wanted = site.userAgent.takeIf { WebsiteCustomization.validUserAgent(it) }.orEmpty().ifBlank {
-                if (site.desktopSite) desktopUserAgent(mobileUserAgent) else mobileUserAgent
-            }
-            if (userAgentString != wanted) userAgentString = wanted
+            val wanted = pageUserAgent()
+            if (updateUserAgent && userAgentString != wanted) userAgentString = wanted
             useWideViewPort = true
-            loadWithOverviewMode = site.desktopSite
+            loadWithOverviewMode = pageSite.desktopSite
         }
         syncBackgroundRunning()
         applySystemBars()
+        syncScreenshotProtection()
         ViewCompat.requestApplyInsets(b.root)
     }
 
@@ -742,8 +794,8 @@ class WebsiteActivity : TwigActivity() {
     private fun applySystemBars() {
         if (!::site.isInitialized) return
         val pageFullscreen = fullscreenLayer != null
-        val hideStatus = pageFullscreen || immersiveFullscreen || site.hideStatusBar
-        val hideNavigation = pageFullscreen || immersiveFullscreen || site.hideNavigationBar
+        val hideStatus = pageFullscreen || immersiveFullscreen || pageSite.hideStatusBar
+        val hideNavigation = pageFullscreen || immersiveFullscreen || pageSite.hideNavigationBar
         if (pageFullscreen) NavBarTint.apply(this, Color.BLACK) else NavBarTint.surface(this)
         WindowCompat.setDecorFitsSystemWindows(window, !hideStatus && !hideNavigation)
         if (Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
@@ -766,7 +818,7 @@ class WebsiteActivity : TwigActivity() {
             (() => {
                 const key = '__twig_selection_style';
                 let style = document.getElementById(key);
-                if (${site.disableTextSelection}) {
+                if (${pageSite.disableTextSelection}) {
                     if (!style) {
                         style = document.createElement('style');
                         style.id = key;
@@ -776,7 +828,7 @@ class WebsiteActivity : TwigActivity() {
                         'input,textarea,[contenteditable],[contenteditable] *{-webkit-user-select:text!important;user-select:text!important}';
                 } else if (style) style.remove();
                 let viewport = document.querySelector('meta[name="viewport"]');
-                if (${site.desktopSite}) {
+                if (${pageSite.desktopSite}) {
                     if (!viewport) {
                         viewport = document.createElement('meta');
                         viewport.name = 'viewport';
@@ -916,7 +968,8 @@ class WebsiteActivity : TwigActivity() {
         outState.putBoolean("fullscreen_from_toolbar", fullscreenFromToolbar)
         if (::site.isInitialized) {
             outState.putString("bookmark_url", site.url)
-            outState.putString("website_request_key", WebsiteCustomization.requestKey(site))
+            outState.putString("page_url", b.web.url)
+            outState.putString("website_request_key", WebsiteCustomization.requestKey(pageSite))
         }
         b.web.saveState(outState)
         super.onSaveInstanceState(outState)

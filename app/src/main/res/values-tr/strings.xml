@@ -1256,4 +1256,5 @@
     <string name="website_copy_link">Bağlantıyı kopyala</string>
     <string name="website_share_link">Bağlantıyı paylaş</string>
     <string name="website_open_browser">Varsayılan tarayıcıda aç</string>
+    <string name="website_apply_to_domain">Aynı alan adındaki sayfalara uygula</string>
 </resources>

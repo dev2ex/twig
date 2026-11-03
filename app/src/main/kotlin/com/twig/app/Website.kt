@@ -40,6 +40,8 @@ data class Website(
     val microphonePermission: WebsitePermission = WebsitePermission.ASK,
     val cameraPermission: WebsitePermission = WebsitePermission.ASK,
     val locationPermission: WebsitePermission = WebsitePermission.ASK,
+    /** Offer this bookmark's configuration to pages opened through other entry points. */
+    val applyToDomain: Boolean = false,
 )
 
 enum class WebsitePermission(val key: String) {
@@ -130,6 +132,7 @@ object WebsiteStore {
                     microphonePermission = WebsitePermission.fromKey(o.optString("microphonePermission")),
                     cameraPermission = WebsitePermission.fromKey(o.optString("cameraPermission")),
                     locationPermission = WebsitePermission.fromKey(o.optString("locationPermission")),
+                    applyToDomain = o.optBoolean("applyToDomain"),
                     hideStatusBar = o.optBoolean("hideStatusBar", fullscreen),
                     hideNavigationBar = o.optBoolean("hideNavigationBar", fullscreen),
                     disableTextSelection = o.optBoolean("disableTextSelection"),
@@ -148,7 +151,12 @@ object WebsiteStore {
     }
 
     fun save(ctx: Context, site: Website) {
-        val items = all(ctx).toMutableList()
+        // One explicit configuration per host; enabling another bookmark replaces the previous choice.
+        val host = domain(site.url)
+        val items = all(ctx).map {
+            if (site.applyToDomain && host != null && it.id != site.id && domain(it.url) == host)
+                it.copy(applyToDomain = false) else it
+        }.toMutableList()
         val index = items.indexOfFirst { it.id == site.id }
         if (index < 0) items.add(site) else items[index] = site
         persist(ctx, items)
@@ -204,11 +212,48 @@ object WebsiteStore {
                 .put("microphonePermission", it.microphonePermission.key)
                 .put("cameraPermission", it.cameraPermission.key)
                 .put("locationPermission", it.locationPermission.key)
+                .put("applyToDomain", it.applyToDomain)
                 .put("headers", sealSecret(it.headers))
                 .put("basicAuthUsername", sealSecret(it.basicAuthUsername))
                 .put("basicAuthPassword", sealSecret(it.basicAuthPassword)))
         }
         return items
+    }
+
+    private fun domain(url: String): String? = runCatching {
+        val uri = URI(url)
+        uri.host?.lowercase(java.util.Locale.ROOT)?.takeIf { uri.scheme?.lowercase() in setOf("http", "https") }
+    }.getOrNull()
+
+    fun sameOrigin(first: String, second: String?): Boolean = runCatching {
+        if (second == null) return false
+        val a = URI(first)
+        val b = URI(second)
+        fun scheme(uri: URI) = uri.scheme?.lowercase(java.util.Locale.ROOT)
+        fun port(uri: URI) = if (uri.port != -1) uri.port else if (scheme(uri) == "https") 443 else 80
+        scheme(a) in setOf("http", "https") && scheme(a) == scheme(b) &&
+            a.host != null && a.host.equals(b.host, ignoreCase = true) && port(a) == port(b)
+    }.getOrDefault(false)
+
+    /** Raw page settings. Global additions are merged only after resolving the source. */
+    fun forPage(ctx: Context, owner: Website, address: String, temporary: Boolean): Website {
+        if (!temporary && sameOrigin(owner.url, address)) return owner
+        val host = domain(address)
+        val source = if (host == null) null else all(ctx).firstOrNull { it.applyToDomain && domain(it.url) == host }
+        if (source == null) {
+            // Temporary browser navigation starts with defaults on each new origin.
+            return if (temporary && !sameOrigin(owner.url, address)) newSite(ctx).copy(
+                id = owner.id, name = owner.name, url = address) else owner
+        }
+        val credentialsAllowed = sameOrigin(source.url, address)
+        return source.copy(id = owner.id, name = owner.name, url = address, applyToDomain = false,
+            headers = source.headers.takeIf { credentialsAllowed }.orEmpty(),
+            basicAuthUsername = source.basicAuthUsername.takeIf { credentialsAllowed }.orEmpty(),
+            basicAuthPassword = source.basicAuthPassword.takeIf { credentialsAllowed }.orEmpty(),
+            // Grants and background sessions belong to the opened bookmark, never the borrowed profile.
+            allowBackgroundRunning = owner.allowBackgroundRunning,
+            microphonePermission = owner.microphonePermission, cameraPermission = owner.cameraPermission,
+            locationPermission = owner.locationPermission)
     }
 
     /** Bare hosts use HTTPS; never accept local-file or executable URLs. */

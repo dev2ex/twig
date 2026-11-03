@@ -1255,4 +1255,5 @@
     <string name="website_copy_link">Sao chép liên kết</string>
     <string name="website_share_link">Chia sẻ liên kết</string>
     <string name="website_open_browser">Mở trong trình duyệt mặc định</string>
+    <string name="website_apply_to_domain">Áp dụng cho trang cùng tên miền</string>
 </resources>

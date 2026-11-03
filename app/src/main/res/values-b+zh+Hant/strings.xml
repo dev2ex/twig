@@ -1255,4 +1255,5 @@
     <string name="website_copy_link">複製連結</string>
     <string name="website_share_link">分享連結</string>
     <string name="website_open_browser">在預設瀏覽器中開啟</string>
+    <string name="website_apply_to_domain">套用至同網域頁面</string>
 </resources>

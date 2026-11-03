@@ -1256,4 +1256,5 @@
     <string name="website_copy_link">लिंक कॉपी करें</string>
     <string name="website_share_link">लिंक साझा करें</string>
     <string name="website_open_browser">डिफ़ॉल्ट ब्राउज़र में खोलें</string>
+    <string name="website_apply_to_domain">समान डोमेन के पेजों पर लागू करें</string>
 </resources>

@@ -237,6 +237,9 @@ object WebsiteDialogs {
         form.addView(advancedHeader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
             (48 * ctx.resources.displayMetrics.density).toInt()))
         form.addView(advanced)
+        val applyToDomain = option(advanced, R.string.website_apply_to_domain, initial.applyToDomain).apply {
+            visibility = if (defaults) View.GONE else View.VISIBLE
+        }
         val permissionFields = LinearLayout(ctx).apply {
             this.orientation = LinearLayout.VERTICAL
             visibility = if (defaults) View.GONE else View.VISIBLE
@@ -366,6 +369,7 @@ object WebsiteDialogs {
                 val validatedAddress = requireNotNull(address)
                 val label = name.text.toString().trim().ifEmpty { android.net.Uri.parse(validatedAddress).host.orEmpty() }
                 val saved = (site ?: Website(name = label, url = validatedAddress)).copy(
+                    applyToDomain = applyToDomain.isChecked,
                     name = label, url = validatedAddress, fullscreen = fullscreen.isChecked, doubleTapToolbar = doubleTap.isChecked,
                     openFullscreen = openFullscreen.isChecked, allowBackgroundRunning = backgroundRunning.isChecked,
                     blockScreenshots = blockScreenshots.isChecked,

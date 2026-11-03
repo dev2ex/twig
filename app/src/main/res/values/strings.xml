@@ -1334,4 +1334,5 @@
     <string name="website_copy_link">Copy link</string>
     <string name="website_share_link">Share link</string>
     <string name="website_open_browser">Open in default browser</string>
+    <string name="website_apply_to_domain">Apply to pages on the same domain</string>
 </resources>

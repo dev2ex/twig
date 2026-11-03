@@ -1292,4 +1292,5 @@
     <string name="website_copy_link">Копировать ссылку</string>
     <string name="website_share_link">Поделиться ссылкой</string>
     <string name="website_open_browser">Открыть в браузере по умолчанию</string>
+    <string name="website_apply_to_domain">Применять к страницам того же домена</string>
 </resources>
