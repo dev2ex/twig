@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Izgara · Yalnızca medya</string>
     <string name="view_mode_grid_all">Izgara · Tüm dosyalar</string>
     <string name="theme_system">Sistemi izle</string>
+    <string name="theme_system_oled">Sistemi izle (OLED)</string>
     <string name="theme_light">Açık</string>
     <string name="theme_dark">Koyu</string>
     <string name="conn_connect">Bağlan</string>

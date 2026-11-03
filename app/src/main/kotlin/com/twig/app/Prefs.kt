@@ -690,7 +690,7 @@ object Prefs {
         return id
     }
 
-    /** Theme choice: AppCompatDelegate.MODE_NIGHT_* or AppTheme.MODE_OLED. */
+    /** Theme choice: AppCompatDelegate.MODE_NIGHT_* or AppTheme.MODE_OLED / MODE_SYSTEM_OLED. */
     fun themeMode(ctx: Context): Int =
         sp(ctx).getInt(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
 

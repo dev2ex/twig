@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Cuadrícula · Solo multimedia</string>
     <string name="view_mode_grid_all">Cuadrícula · Todos los archivos</string>
     <string name="theme_system">Seguir el sistema</string>
+    <string name="theme_system_oled">Seguir el sistema (OLED)</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Oscuro</string>
     <string name="conn_connect">Conectar</string>

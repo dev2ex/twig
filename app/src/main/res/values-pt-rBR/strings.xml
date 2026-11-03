@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Grade · Só mídia</string>
     <string name="view_mode_grid_all">Grade · Todos os arquivos</string>
     <string name="theme_system">Seguir o sistema</string>
+    <string name="theme_system_oled">Seguir o sistema (OLED)</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Escuro</string>
     <string name="conn_connect">Conectar</string>

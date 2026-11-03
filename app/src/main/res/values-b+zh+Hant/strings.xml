@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">網格 · 僅媒體檔案</string>
     <string name="view_mode_grid_all">網格 · 全部檔案</string>
     <string name="theme_system">跟隨系統</string>
+    <string name="theme_system_oled">跟隨系統 (OLED)</string>
     <string name="theme_light">淺色</string>
     <string name="theme_dark">深色</string>
     <string name="theme_oled">純黑（OLED）</string>

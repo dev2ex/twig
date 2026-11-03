@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">شبكة · الوسائط فقط</string>
     <string name="view_mode_grid_all">شبكة · كل الملفات</string>
     <string name="theme_system">حسب النظام</string>
+    <string name="theme_system_oled">حسب النظام (OLED)</string>
     <string name="theme_light">فاتح</string>
     <string name="theme_dark">داكن</string>
     <string name="conn_connect">اتصال</string>

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">ग्रिड · केवल मीडिया</string>
     <string name="view_mode_grid_all">ग्रिड · सभी फ़ाइलें</string>
     <string name="theme_system">सिस्टम के अनुसार</string>
+    <string name="theme_system_oled">सिस्टम के अनुसार (OLED)</string>
     <string name="theme_light">हल्का</string>
     <string name="theme_dark">गहरा</string>
     <string name="conn_connect">कनेक्ट करें</string>

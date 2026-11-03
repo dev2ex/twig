@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Lưới · Chỉ đa phương tiện</string>
     <string name="view_mode_grid_all">Lưới · Mọi tệp</string>
     <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_system_oled">Theo hệ thống (OLED)</string>
     <string name="theme_light">Sáng</string>
     <string name="theme_dark">Tối</string>
     <string name="conn_connect">Kết nối</string>

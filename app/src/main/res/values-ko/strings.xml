@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">격자 · 미디어만</string>
     <string name="view_mode_grid_all">격자 · 모든 파일</string>
     <string name="theme_system">시스템 설정 따르기</string>
+    <string name="theme_system_oled">시스템 설정 따르기 (OLED)</string>
     <string name="theme_light">밝게</string>
     <string name="theme_dark">어둡게</string>
     <string name="conn_connect">연결</string>

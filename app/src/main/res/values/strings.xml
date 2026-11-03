@@ -182,6 +182,7 @@
     <string name="view_mode_grid_media">Grid · Media only</string>
     <string name="view_mode_grid_all">Grid · All files</string>
     <string name="theme_system">Follow system</string>
+    <string name="theme_system_oled">Follow system (OLED)</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_oled">Black (OLED)</string>

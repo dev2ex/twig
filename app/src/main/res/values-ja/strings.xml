@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">グリッド · メディアのみ</string>
     <string name="view_mode_grid_all">グリッド · すべてのファイル</string>
     <string name="theme_system">システムに従う</string>
+    <string name="theme_system_oled">システムに従う (OLED)</string>
     <string name="theme_light">ライト</string>
     <string name="theme_dark">ダーク</string>
     <string name="conn_connect">接続</string>

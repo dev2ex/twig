@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Griglia · Solo media</string>
     <string name="view_mode_grid_all">Griglia · Tutti i file</string>
     <string name="theme_system">Segui il sistema</string>
+    <string name="theme_system_oled">Segui il sistema (OLED)</string>
     <string name="theme_light">Chiaro</string>
     <string name="theme_dark">Scuro</string>
     <string name="conn_connect">Connetti</string>

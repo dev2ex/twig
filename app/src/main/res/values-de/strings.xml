@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Raster · Nur Medien</string>
     <string name="view_mode_grid_all">Raster · Alle Dateien</string>
     <string name="theme_system">Systemdesign</string>
+    <string name="theme_system_oled">Systemdesign (OLED)</string>
     <string name="theme_light">Hell</string>
     <string name="theme_dark">Dunkel</string>
     <string name="conn_connect">Verbinden</string>

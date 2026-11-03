@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Kisi · Hanya media</string>
     <string name="view_mode_grid_all">Kisi · Semua file</string>
     <string name="theme_system">Ikuti sistem</string>
+    <string name="theme_system_oled">Ikuti sistem (OLED)</string>
     <string name="theme_light">Terang</string>
     <string name="theme_dark">Gelap</string>
     <string name="conn_connect">Hubungkan</string>

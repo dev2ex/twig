@@ -166,6 +166,7 @@
     <string name="view_mode_grid_media">Сетка · Только медиа</string>
     <string name="view_mode_grid_all">Сетка · Все файлы</string>
     <string name="theme_system">Как в системе</string>
+    <string name="theme_system_oled">Как в системе (OLED)</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="conn_connect">Подключиться</string>
