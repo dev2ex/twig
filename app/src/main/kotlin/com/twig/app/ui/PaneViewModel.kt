@@ -443,6 +443,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun sqliteBlobReader(node: SqliteDataNode, row: Int, column: Int, size: Long) =
         sqliteTree.blobReader(node, row, column, size)
 
+    fun sqliteCsvWriter(node: SqliteNode, columns: Set<String>) = sqliteTree.csvWriter(node, columns)
+
     /** Resolve virtual table/result selections without exposing them to filesystem actions. */
     fun sqliteSearchTarget(): FileNode? {
         val rows = state.value.rows

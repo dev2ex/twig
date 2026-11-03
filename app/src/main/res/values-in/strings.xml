@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">Teks di semua kolom (LIKE: % dan _ adalah wildcard)</string>
     <string name="sqlite_search_incomplete">Pencarian belum lengkap: %1$d tabel tidak dapat dicari.</string>
     <string name="save_as">Simpan sebagai…</string>
+    <string name="sqlite_export_csv">Ekspor CSV</string>
+    <string name="sqlite_export_columns">Pilih kolom</string>
 </resources>

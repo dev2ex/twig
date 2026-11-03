@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">Text in allen Spalten (LIKE: % und _ sind Platzhalter)</string>
     <string name="sqlite_search_incomplete">Suche unvollständig: %1$d Tabelle(n) konnten nicht durchsucht werden.</string>
     <string name="save_as">Speichern unter…</string>
+    <string name="sqlite_export_csv">CSV exportieren</string>
+    <string name="sqlite_export_columns">Spalten auswählen</string>
 </resources>

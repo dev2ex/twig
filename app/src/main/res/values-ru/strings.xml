@@ -1250,4 +1250,6 @@
     <string name="sqlite_search_hint" formatted="false">Текст во всех столбцах (LIKE: % и _ — шаблоны)</string>
     <string name="sqlite_search_incomplete">Поиск неполный: не удалось выполнить поиск в %1$d таблицах.</string>
     <string name="save_as">Сохранить как…</string>
+    <string name="sqlite_export_csv">Экспорт CSV</string>
+    <string name="sqlite_export_columns">Выбор столбцов</string>
 </resources>

@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">모든 열에서 검색 (LIKE: %와 _는 와일드카드)</string>
     <string name="sqlite_search_incomplete">검색 미완료: %1$d개 테이블을 검색할 수 없습니다.</string>
     <string name="save_as">다른 이름으로 저장…</string>
+    <string name="sqlite_export_csv">CSV 내보내기</string>
+    <string name="sqlite_export_columns">열 선택</string>
 </resources>

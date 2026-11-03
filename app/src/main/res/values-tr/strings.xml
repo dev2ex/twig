@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">Tüm sütunlarda metin (LIKE: % ve _ joker karakterdir)</string>
     <string name="sqlite_search_incomplete">Arama tamamlanamadı: %1$d tabloda arama yapılamadı.</string>
     <string name="save_as">Farklı kaydet…</string>
+    <string name="sqlite_export_csv">CSV olarak dışa aktar</string>
+    <string name="sqlite_export_columns">Sütunları seç</string>
 </resources>

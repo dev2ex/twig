@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">Texte dans toutes les colonnes (LIKE : % et _ sont des jokers)</string>
     <string name="sqlite_search_incomplete">Recherche incomplète : impossible de rechercher dans %1$d table(s).</string>
     <string name="save_as">Enregistrer sous…</string>
+    <string name="sqlite_export_csv">Exporter en CSV</string>
+    <string name="sqlite_export_columns">Choisir les colonnes</string>
 </resources>

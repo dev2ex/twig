@@ -94,6 +94,26 @@ Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added be
 this reader without changing tree or renderer contracts. Encrypted databases require a
 separate future reader; no SQLCipher library is bundled.
 
+## CSV export
+
+Table menus export all rows; result-table menus and scoped search headers export only
+matching rows. The column chooser defaults to all visible columns, supports select
+all/none and requires at least one column. Output keeps schema order regardless of
+selection order. Filtering still considers every searchable column.
+
+`SqliteCsv` writes UTF-8 with a BOM, a column-name header and CRLF records. Text/header
+fields are quoted with doubled embedded quotes; NULL is an empty field, empty text is
+`""`, and BLOBs are uppercase `0x` hex (including `0x` for empty BLOBs). Complete values
+are read in bounded byte chunks rather than through grid previews. Very large cells
+use additional LIMIT/OFFSET range queries with the grid's ordering. Like other browsing
+reads, export requires a stable source when concurrent writers may change its contents.
+
+`SaveAsDialog.offerStream` shares the filename/picker, progress, existing-name checks
+and partial-file cleanup with text/BLOB Save as. CSV size is unknown in advance, so
+progress displays bytes written. The writer captures its database/search job; closing,
+refreshing or replacing that source cancels it. Cancellation joins the reader before
+closing/removing the destination. No temporary CSV or full-table byte array is needed.
+
 ## Database search
 
 The database menu and action-bar search (when a database, table or result branch is

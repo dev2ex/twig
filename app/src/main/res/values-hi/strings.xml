@@ -1214,4 +1214,6 @@
     <string name="sqlite_search_hint" formatted="false">किसी भी कॉलम में पाठ (LIKE: % और _ वाइल्डकार्ड हैं)</string>
     <string name="sqlite_search_incomplete">खोज अधूरी है: %1$d तालिकाओं में खोज नहीं हो सकी।</string>
     <string name="save_as">इस नाम से सहेजें…</string>
+    <string name="sqlite_export_csv">CSV निर्यात करें</string>
+    <string name="sqlite_export_columns">कॉलम चुनें</string>
 </resources>

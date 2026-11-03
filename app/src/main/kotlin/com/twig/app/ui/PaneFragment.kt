@@ -1088,6 +1088,13 @@ class PaneFragment : Fragment() {
         val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(source, node.query, node.table) }
+        if (node.table != null) {
+            val table = adapter.currentList.filterIsInstance<SqliteTableNode>()
+                .firstOrNull { it.owner == node.owner && it.state.table.name == node.table }
+            if (table != null) actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) {
+                exportSqliteCsv(table.copy(state = table.state.copy(query = node.query)))
+            }
+        }
         actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query, node.table) }
         actions.item(getString(R.string.dialog_close), R.drawable.ic_close) { viewModel.closeSqliteSearch(node) }
         showActionMenu(requireContext(), getString(R.string.search_result_title, node.matches), actions)
@@ -1887,6 +1894,36 @@ class PaneFragment : Fragment() {
     private var sqliteCellJob: kotlinx.coroutines.Job? = null
     private val saveAsDialog = SaveAsDialog(this)
 
+    private fun exportSqliteCsv(node: SqliteNode) {
+        val columns = node.state.table.visibleColumns.map { it.name }
+        val selected = BooleanArray(columns.size) { true }
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.sqlite_export_columns)
+            .setMultiChoiceItems(columns.toTypedArray(), selected) { alert, _, _ ->
+                (alert as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = selected.any { it }
+            }
+            .setNeutralButton(R.string.action_select_all, null)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.sqlite_export_csv) { _, _ ->
+                val names = columns.filterIndexed { index, _ -> selected[index] }.toSet()
+                val writer = viewModel.sqliteCsvWriter(node, names) ?: return@setPositiveButton
+                saveAsDialog.offerStream(node.state.table.name.take(100) + ".csv", write = writer) {
+                    viewModel.refreshOnResume()
+                    host?.siblingOf(this@PaneFragment)?.viewModel?.refreshOnResume()
+                }
+            }.create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = selected.any { it }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            val checked = !selected.all { it }
+            selected.indices.forEach { index ->
+                selected[index] = checked
+                dialog.listView.setItemChecked(index, checked)
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = checked
+        }
+    }
+
     private fun showSqliteCell(node: SqliteDataNode, row: Int, column: Int) {
         sqliteCellJob?.cancel()
         sqliteCellJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -1913,6 +1950,7 @@ class PaneFragment : Fragment() {
             is SqliteSearchNode -> sqliteSearchMenu(node)
             is SqliteTableNode -> {
                 val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) { exportSqliteCsv(node) }
                 actions.item(getString(R.string.strip_search), R.drawable.ic_search) {
                     val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
                         .firstOrNull { it.key == node.owner } ?: return@item

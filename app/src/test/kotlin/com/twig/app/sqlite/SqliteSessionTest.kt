@@ -37,6 +37,71 @@ class SqliteSessionTest {
     }
     @After fun cleanup() { dir.deleteRecursively(); FsRegistry.unregister("sqlite-test") }
 
+    @Test fun `CSV preserves full values escapes fields and exports selected columns in schema order`() {
+        val text = "🙂,\"\r\n\u0000尾".repeat(18000)
+        val blob = ByteArray(140003) { (it % 251).toByte() }
+        writer().use { db ->
+            db.execSQL("CREATE TABLE \"quoted\"\"table\"(id INTEGER PRIMARY KEY, \"a,b\" TEXT, payload BLOB, optional, empty TEXT)")
+            db.execSQL("INSERT INTO \"quoted\"\"table\" VALUES (?,?,?,?,?)", arrayOf(1, text, blob, null, ""))
+        }
+        session().use { reader ->
+            val table = reader.tables(signal()).single { it.name == "quoted\"table" }
+            val output = java.io.ByteArrayOutputStream()
+            val progress = mutableListOf<Long>()
+            reader.exportCsv(table, linkedSetOf("empty", "optional", "payload", "a,b"), signal(), output, progress = progress::add)
+            val expected = "\uFEFF\"a,b\",\"payload\",\"optional\",\"empty\"\r\n" +
+                "\"" + text.replace("\"", "\"\"") + "\",0x" +
+                blob.joinToString("") { "%02X".format(it.toInt() and 255) } + ",,\"\"\r\n"
+            assertArrayEquals(expected.toByteArray(Charsets.UTF_8), output.toByteArray())
+            assertEquals(output.size().toLong(), progress.last())
+            assertTrue(progress.zipWithNext().all { (a, b) -> b > a && b - a <= 65536 })
+        }
+    }
+
+    @Test fun `CSV converts UTF16 database text and numbers to UTF8 across surrogate boundaries`() {
+        for (encoding in listOf("UTF-16le", "UTF-16be")) {
+            file.delete()
+            val text = "x".repeat(8191) + "🙂\"尾".repeat(10000)
+            SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.CREATE_IF_NECESSARY or
+                SQLiteDatabase.NO_LOCALIZED_COLLATORS).use { db ->
+                db.execSQL("PRAGMA encoding = '$encoding'")
+                db.execSQL("CREATE TABLE entries(id INTEGER, value TEXT)")
+                db.rawQuery("PRAGMA encoding", null).use { it.moveToFirst(); assertEquals(encoding, it.getString(0)) }
+                db.execSQL("INSERT INTO entries VALUES (?, ?)", arrayOf(123, text))
+            }
+            session().use { reader ->
+                val table = reader.tables(signal()).single { it.name == "entries" }
+                val output = java.io.ByteArrayOutputStream()
+                reader.exportCsv(table, setOf("id", "value"), signal(), output)
+                assertEquals("\uFEFF\"id\",\"value\"\r\n123,\"" + text.replace("\"", "\"\"") + "\"\r\n", output.toString("UTF-8"))
+            }
+        }
+    }
+
+    @Test fun `CSV filtering considers unselected columns and empty results still have headers`() {
+        writer().use { db ->
+            db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, value TEXT, payload BLOB)")
+            db.execSQL("INSERT INTO entries VALUES (1, 'needle', X'6E6565646C65')")
+            db.execSQL("INSERT INTO entries VALUES (2, 'other', X'6E6565646C65')")
+        }
+        session().use { reader ->
+            val table = reader.tables(signal()).single { it.name == "entries" }
+            fun export(query: String?): String {
+                val output = java.io.ByteArrayOutputStream()
+                reader.exportCsv(table, setOf("id"), signal(), output, query)
+                return output.toString("UTF-8")
+            }
+            assertEquals("\uFEFF\"id\"\r\n1\r\n2\r\n", export(null))
+            assertEquals("\uFEFF\"id\"\r\n1\r\n", export("need%"))
+            assertEquals("\uFEFF\"id\"\r\n", export("missing"))
+            assertTrue(runCatching { reader.exportCsv(table, emptySet(), signal(), java.io.ByteArrayOutputStream()) }.isFailure)
+            assertTrue(runCatching { reader.exportCsv(table, setOf("missing"), signal(), java.io.ByteArrayOutputStream()) }.isFailure)
+            val cancelled = signal().apply { cancel() }
+            assertTrue(runCatching { reader.exportCsv(table, setOf("id"), cancelled, java.io.ByteArrayOutputStream()) }
+                .exceptionOrNull() is OperationCanceledException)
+        }
+    }
+
     @Test fun `LIKE searches count each row once and share filtering with pages and details`() {
         val name = "quoted\" table"
         writer().use { db ->

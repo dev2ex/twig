@@ -316,6 +316,22 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         hosts.keys.toList().filter { it !in keys }.forEach(::close)
         verified.retainAll(visible)
     }
+
+    fun csvWriter(node: SqliteNode, columns: Set<String>): (suspend (java.io.OutputStream, (Long) -> Unit) -> Unit)? {
+        val host = hosts[node.owner] ?: return null
+        val session = host.session ?: return null
+        val query = node.state.query
+        if (host.tables[node.state.table.name]?.table != node.state.table) return null
+        if (query != null && (host.search?.query != query ||
+            host.search?.table?.let { it != node.state.table.name } == true)) return null
+        val owner = host.ownerJob(query) ?: return null
+        return { output, progress ->
+            val operation = scope.async(owner) {
+                runCatching { cancellable { session.exportCsv(node.state.table, columns, it, output, query, progress) } }
+            }
+            try { operation.await().getOrThrow() } finally { withContext(NonCancellable) { operation.cancelAndJoin() } }
+        }
+    }
     fun refresh(key: String, file: XFile) {
         val remembered = hosts[key]?.tables?.toMap().orEmpty()
         val parent = hosts[key]?.parent

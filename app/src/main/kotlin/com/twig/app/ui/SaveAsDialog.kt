@@ -26,8 +26,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.OutputStream
 
-/** Shared foreground Save as flow; callers supply complete bytes through bounded range reads. */
+/** Shared foreground Save as flow for bounded range readers and streaming producers. */
 internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
     private val getContext: () -> Context, private val getScope: () -> CoroutineScope,
     private val isAlive: () -> Boolean) {
@@ -37,7 +38,7 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
         { activity.lifecycleScope }, { !activity.isFinishing && !activity.isDestroyed })
 
     data class Saved(val file: XFile, val directory: XFile)
-    private data class Draft(val name: String, val size: Long, val read: suspend (Long, Int) -> ByteArray,
+    private data class Draft(val name: String, val size: Long?, val write: suspend (OutputStream, (Long) -> Unit) -> Unit,
         val onSaved: (Saved) -> Unit)
     private var pending: Draft? = null
     private var prompt: AlertDialog? = null
@@ -61,6 +62,13 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
         }, onSaved)
 
     fun offer(name: String, size: Long, read: suspend (Long, Int) -> ByteArray, onSaved: (Saved) -> Unit = {}) {
+        require(size >= 0)
+        val failure = getContext().getString(R.string.transfer_failed)
+        offerStream(name, size, { output, progress -> copy(size, read, output, progress, failure) }, onSaved)
+    }
+
+    fun offerStream(name: String, size: Long? = null,
+        write: suspend (OutputStream, (Long) -> Unit) -> Unit, onSaved: (Saved) -> Unit = {}) {
         val context = getContext()
         if (saving?.isCompleted == false) {
             Toast.makeText(context, R.string.transfer_busy, Toast.LENGTH_SHORT).show()
@@ -81,7 +89,7 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
             if (!validName(name)) {
                 input.error = context.getString(R.string.batch_invalid_name, name)
             } else {
-                pending = Draft(name, size, read, onSaved)
+                pending = Draft(name, size, write, onSaved)
                 dialog.dismiss()
                 picker.launch(PickerActivity.dirIntent(context, context.getString(R.string.save_as)))
             }
@@ -103,8 +111,11 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
         dialog.show()
         saving = getScope().launch {
             try {
-                val target = write(context, directory, draft.name, draft.size, draft.read) { done ->
-                    status.post { status.text = "${Format.size(done)} / ${Format.size(draft.size)}" }
+                val target = writeStream(context, directory, draft.name) { output ->
+                    draft.write(output) { done ->
+                        status.post { status.text = draft.size?.let { "${Format.size(done)} / ${Format.size(it)}" }
+                            ?: Format.size(done) }
+                    }
                 }
                 Toast.makeText(context, R.string.transfer_done, Toast.LENGTH_SHORT).show()
                 draft.onSaved(Saved(target, directory))
@@ -139,8 +150,29 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
 
         /** Stream a new file; failed listings never grant permission to overwrite, and failed writes are removed. */
         suspend fun write(context: Context, directory: XFile, name: String, size: Long,
-            read: suspend (Long, Int) -> ByteArray, progress: (Long) -> Unit = {}): XFile = withContext(Dispatchers.IO) {
-            require(validName(name) && size >= 0)
+            read: suspend (Long, Int) -> ByteArray, progress: (Long) -> Unit = {}): XFile {
+            require(size >= 0)
+            return writeStream(context, directory, name) { output -> copy(size, read, output, progress, context.getString(R.string.transfer_failed)) }
+        }
+
+        private suspend fun copy(size: Long, read: suspend (Long, Int) -> ByteArray,
+            output: OutputStream, progress: (Long) -> Unit, failure: String) {
+            var offset = 0L
+            while (offset < size) {
+                currentCoroutineContext().ensureActive()
+                val count = minOf(BUFFER_SIZE.toLong(), size - offset).toInt()
+                val bytes = read(offset, count)
+                check(bytes.size == count) { failure }
+                currentCoroutineContext().ensureActive()
+                output.write(bytes)
+                offset += bytes.size
+                progress(offset)
+            }
+        }
+
+        suspend fun writeStream(context: Context, directory: XFile, name: String,
+            write: suspend (OutputStream) -> Unit): XFile = withContext(Dispatchers.IO) {
+            require(validName(name))
             currentCoroutineContext().ensureActive()
             require(directory.isWritableDir()) { context.getString(R.string.msg_pick_dir_first) }
             val fs = FsRegistry.of(directory)
@@ -151,17 +183,7 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
             val target = fs.createFile(directory, name)
             try {
                 fs.openOutput(target).use { output ->
-                    var offset = 0L
-                    while (offset < size) {
-                        currentCoroutineContext().ensureActive()
-                        val count = minOf(BUFFER_SIZE.toLong(), size - offset).toInt()
-                        val bytes = read(offset, count)
-                        check(bytes.size == count) { context.getString(R.string.transfer_failed) }
-                        currentCoroutineContext().ensureActive()
-                        output.write(bytes)
-                        offset += bytes.size
-                        progress(offset)
-                    }
+                    write(output)
                     currentCoroutineContext().ensureActive()
                 }
                 target

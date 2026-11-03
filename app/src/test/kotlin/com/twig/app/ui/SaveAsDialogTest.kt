@@ -62,6 +62,25 @@ class SaveAsDialogTest {
         assertEquals(0, File(directory, "empty.bin").length())
     }
 
+    @Test fun `streaming producers share destination checks and remove failed partial files`() = runTest {
+        SaveAsDialog.writeStream(context, destination(), "table.csv") { output ->
+            output.write("\uFEFF\"id\"\r\n1\r\n".toByteArray(Charsets.UTF_8))
+        }
+        assertEquals("\uFEFF\"id\"\r\n1\r\n", File(directory, "table.csv").readText())
+        assertTrue(runCatching {
+            SaveAsDialog.writeStream(context, destination(), "partial.csv") { output ->
+                output.write(ByteArray(65536))
+                throw java.io.IOException("Database read failed")
+            }
+        }.isFailure)
+        assertFalse(File(directory, "partial.csv").exists())
+        var invoked = false
+        assertTrue(runCatching {
+            SaveAsDialog.writeStream(context, destination(), "TABLE.csv") { invoked = true }
+        }.isFailure)
+        assertFalse(invoked)
+    }
+
     @Test fun `existing files and failed listings never permit an overwrite`() = runTest {
         val existing = File(directory, "keep.bin").apply { writeText("keep") }
         var read = false

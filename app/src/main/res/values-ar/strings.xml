@@ -1218,4 +1218,6 @@
     <string name="sqlite_search_hint" formatted="false">نص في أي عمود (LIKE: % و _ أحرف بدل)</string>
     <string name="sqlite_search_incomplete">البحث غير مكتمل: تعذر البحث في %1$d جدول.</string>
     <string name="save_as">حفظ باسم…</string>
+    <string name="sqlite_export_csv">تصدير CSV</string>
+    <string name="sqlite_export_columns">اختيار الأعمدة</string>
 </resources>

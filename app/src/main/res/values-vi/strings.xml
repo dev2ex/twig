@@ -1213,4 +1213,6 @@
     <string name="sqlite_search_hint" formatted="false">Tìm trong mọi cột (LIKE: % và _ là ký tự đại diện)</string>
     <string name="sqlite_search_incomplete">Tìm kiếm chưa hoàn tất: không thể tìm trong %1$d bảng.</string>
     <string name="save_as">Lưu thành…</string>
+    <string name="sqlite_export_csv">Xuất CSV</string>
+    <string name="sqlite_export_columns">Chọn cột</string>
 </resources>

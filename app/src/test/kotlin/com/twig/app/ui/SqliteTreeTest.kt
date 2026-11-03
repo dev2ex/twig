@@ -20,6 +20,54 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class SqliteTreeTest {
+    @Test fun `CSV writer captures the filtered lease and cannot read a replaced search`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "csv-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, value TEXT)")
+                db.execSQL("INSERT INTO entries VALUES (1, 'needle'), (2, 'other')")
+            }
+            tree.open("db", XFile("file", file.path, false))
+            advanceUntilIdle()
+            val table = tree.rows("db", 0).filterIsInstance<SqliteTableNode>().single { it.state.table.name == "entries" }
+            tree.search("db", "needle", "entries")
+            advanceUntilIdle()
+            val result = tree.rows("db", 0).filterIsInstance<SqliteDataNode>().single()
+            val writer = tree.csvWriter(result, setOf("id"))!!
+            val output = java.io.ByteArrayOutputStream()
+            writer(output) {}
+            assertEquals("\uFEFF\"id\"\r\n1\r\n", output.toString("UTF-8"))
+            assertTrue(runCatching {
+                writer(object : java.io.OutputStream() {
+                    override fun write(value: Int) { throw java.io.IOException("Destination unavailable") }
+                }) {}
+            }.exceptionOrNull() is java.io.IOException)
+            val retry = java.io.ByteArrayOutputStream()
+            writer(retry) {}
+            assertEquals(output.toString("UTF-8"), retry.toString("UTF-8"))
+            tree.search("db", "missing", "entries")
+            advanceUntilIdle()
+            assertTrue(runCatching { writer(java.io.ByteArrayOutputStream()) {} }.exceptionOrNull() is CancellationException)
+            assertNull(tree.csvWriter(result, setOf("id")))
+            val empty = table.copy(state = table.state.copy(query = "missing"))
+            val emptyWriter = tree.csvWriter(empty, setOf("id"))!!
+            val header = java.io.ByteArrayOutputStream()
+            emptyWriter(header) {}
+            assertEquals("\uFEFF\"id\"\r\n", header.toString("UTF-8"))
+            tree.close("db")
+            advanceUntilIdle()
+            assertTrue(runCatching { emptyWriter(java.io.ByteArrayOutputStream()) {} }.exceptionOrNull() is CancellationException)
+        } finally {
+            scope.cancel()
+            advanceUntilIdle()
+            file.delete()
+        }
+    }
+
     @Test fun `search results isolate counts pages and details while sharing the table accordion`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         val file = File(context.cacheDir, "search-${UUID.randomUUID()}.db")

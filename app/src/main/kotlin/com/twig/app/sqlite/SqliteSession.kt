@@ -47,7 +47,8 @@ data class SqlitePage(val offset: Int, val rows: List<List<SqliteCell>>)
  * opened read-only, with a non-destructive corruption handler. Remote/SAF sources use
  * a private, disposable snapshot, including any WAL. No write API is exposed yet.
  */
-class SqliteSession private constructor(private val path: File, private val temporary: File?) : Closeable {
+class SqliteSession private constructor(private val path: File, private val temporary: File?,
+    private val readFailure: String) : Closeable {
     private var closed = false
     private val lock = ReentrantReadWriteLock()
 
@@ -140,6 +141,13 @@ class SqliteSession private constructor(private val path: File, private val temp
         } }
     }
 
+    fun exportCsv(table: SqliteTable, selected: Set<String>, signal: CancellationSignal,
+        output: java.io.OutputStream, query: String? = null, progress: (Long) -> Unit = {}) = read(signal) { db ->
+        val columns = table.visibleColumns.filter { it.name in selected }
+        require(columns.isNotEmpty() && columns.size == selected.size)
+        SqliteCsv.write(db, table, columns, where(table, query) + order(table), arguments(query), signal, output, progress, readFailure)
+    }
+
     companion object {
         const val PAGE_SIZE = 100
         const val PREVIEW_CHARS = 256
@@ -201,7 +209,7 @@ class SqliteSession private constructor(private val path: File, private val temp
             }
             if (file.scheme == "file" && File(file.path).canRead() &&
                 (Build.VERSION.SDK_INT >= 28 || !File(file.path + "-wal").exists())) {
-                return SqliteSession(File(file.path), null)
+                return SqliteSession(File(file.path), null, context.getString(R.string.sqlite_read_failed))
             }
             val fs = FsRegistry.of(file)
             val dir = synchronized(activeSnapshots) {
@@ -245,7 +253,7 @@ class SqliteSession private constructor(private val path: File, private val temp
                 check(after.none { it.name == file.name + "-journal" && it.size != 0L }) {
                     context.getString(R.string.sqlite_source_changed)
                 }
-                return SqliteSession(File(dir, "database"), dir)
+                return SqliteSession(File(dir, "database"), dir, context.getString(R.string.sqlite_read_failed))
             } catch (e: Throwable) {
                 synchronized(activeSnapshots) { dir.deleteRecursively(); activeSnapshots.remove(dir) }
                 throw e

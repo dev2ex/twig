@@ -1244,4 +1244,6 @@
     <string name="sqlite_search_hint" formatted="false">搜索所有列（LIKE：% 和 _ 为通配符）</string>
     <string name="sqlite_search_incomplete">搜索未完成：有 %1$d 张表无法搜索。</string>
     <string name="save_as">另存为…</string>
+    <string name="sqlite_export_csv">导出 CSV</string>
+    <string name="sqlite_export_columns">选择导出的列</string>
 </resources>

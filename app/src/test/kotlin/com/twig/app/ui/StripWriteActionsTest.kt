@@ -53,6 +53,33 @@ class StripWriteActionsTest {
         idle()
     }
 
+    @Test fun `CSV column chooser defaults to all and disallows an empty selection`() {
+        val columns = listOf("id", "value").map { com.twig.app.sqlite.SqliteColumn(it, "TEXT", false, null, 0) }
+        val table = com.twig.app.sqlite.SqliteTable("entries", "", columns,
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val node: SqliteNode = SqliteTableNode("db", 1, SqliteTableState(table))
+        ReflectionHelpers.callInstanceMethod<Unit>(pane0(), "exportSqliteCsv",
+            ReflectionHelpers.ClassParameter.from(SqliteNode::class.java, node))
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        idle()
+        dialog.listView.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1600, View.MeasureSpec.AT_MOST))
+        dialog.listView.layout(0, 0, 1080, 1600)
+        val positive = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+        val toggle = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+        assertTrue(dialog.listView.isItemChecked(0))
+        assertTrue(dialog.listView.isItemChecked(1))
+        toggle.performClick()
+        assertFalse(positive.isEnabled)
+        assertFalse(dialog.listView.isItemChecked(0))
+        dialog.listView.performItemClick(dialog.listView.getChildAt(0), 0, 0)
+        assertTrue(positive.isEnabled)
+        toggle.performClick()
+        assertTrue(dialog.listView.isItemChecked(0))
+        assertTrue(dialog.listView.isItemChecked(1))
+        dialog.dismiss()
+    }
+
     private fun idle() {
         shadowOf(Looper.getMainLooper()).idle()
     }
