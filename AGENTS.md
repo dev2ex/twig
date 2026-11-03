@@ -245,6 +245,10 @@ its listing size must still describe the followed stream for copy/resume checks.
   carrying the requested URL as an extra; reused intents load the new request only
   after the app lock gate. Bookmarks and externally opened browser pages keep their
   separate document identities.
+  `TerminalSelectionMenu` replaces Termux's unused More entry with sharing and
+  installed `ACTION_PROCESS_TEXT` handlers. It reads the live selection at click time,
+  passes text as read-only and ignores results; external processing must never write
+  returned text to a terminal session.
   `WebsiteDialogs` shares its editor with website defaults: new bookmarks copy display
   options only. UA/JS/CSS/hide/block settings apply globally at runtime; per-site UA overrides
   the global value, while scripts/styles/selectors/block rules combine with it. Keep raw

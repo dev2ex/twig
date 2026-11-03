@@ -594,7 +594,7 @@ class TerminalActivity : TwigActivity() {
         super.onActionModeStarted(mode)
         // Termux marks its selection active only after startActionMode returns.
         if (::b.isInitialized && b.terminal.hasFocus() && mode.type == android.view.ActionMode.TYPE_FLOATING) {
-            WebSearch.addSelectionAction(this, mode.menu,
+            TerminalSelectionMenu.populate(this, mode.menu,
                 { com.termux.view.TermSelection.text(b.terminal) },
                 { b.terminal.stopTextSelectionMode() })
         }
