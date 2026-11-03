@@ -68,6 +68,37 @@ class UnixPermissionsRowTest {
         }
     }
 
+    @Test fun `top-level roots hide counts and permissions when recycling ordinary directory rows`() {
+        val host = Robolectric.buildActivity(Activity::class.java).setup()
+        val ctx = ContextThemeWrapper(host.get(), R.style.Theme_Twig)
+        val previousCounts = Prefs.folderCounts(ctx)
+        val previousPermissions = Prefs.unixPermissions(ctx)
+        try {
+            Prefs.setFolderCounts(ctx, true)
+            Prefs.setUnixPermissions(ctx, true)
+            val file = XFile("file", "/storage/card", true, unixMode = "40755".toInt(8))
+            val count = DirectoryCounts.Count(3, 12)
+            val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
+            adapter.submitList(listOf(
+                PaneViewModel.FileNode(file, 1, true, false, directoryCount = count),
+                PaneViewModel.FileNode(file, 0, true, false, label = "SD Card", directoryCount = count),
+                PaneViewModel.FileNode(file.copy(scheme = "saf"), 0, true, false, directoryCount = count),
+            ))
+            val holder = adapter.createViewHolder(FrameLayout(ctx), adapter.getItemViewType(0))
+            val permissions = holder.itemView.findViewById<TextView>(R.id.permissions)
+            val counts = holder.itemView.findViewById<View>(R.id.folderCounts)
+            for (index in listOf(0, 1, 0, 2, 0)) {
+                adapter.bindViewHolder(holder, index)
+                assertEquals(if (index == 0) View.VISIBLE else View.GONE, permissions.visibility)
+                assertEquals(if (index == 0) View.VISIBLE else View.GONE, counts.visibility)
+            }
+        } finally {
+            Prefs.setFolderCounts(ctx, previousCounts)
+            Prefs.setUnixPermissions(ctx, previousPermissions)
+            host.pause().stop().destroy()
+        }
+    }
+
     @Test fun `count digits zeros and pending counts never move the permission column at any text size`() {
         val host = Robolectric.buildActivity(Activity::class.java).setup()
         val ctx = ContextThemeWrapper(host.get(), R.style.Theme_Twig)

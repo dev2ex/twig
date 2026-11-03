@@ -1197,8 +1197,7 @@ class FileAdapter(
         private fun bindDirectoryCounts(node: PaneViewModel.FileNode) {
             val ctx = b.root.context
             val file = node.file
-            val storageRoot = file.scheme == "file" && node.depth == 0 && node.label != null
-            val showCounts = !storageRoot && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
+            val showCounts = node.depth > 0 && Prefs.folderCountsFor(ctx, file.scheme) && DirectoryCounts.supports(file)
             val localDirectory = file.scheme == "file" && file.isDir
             if (DirectoryCounts.supports(file)) {
                 fun applyCount(count: DirectoryCounts.Count) {
@@ -1231,7 +1230,7 @@ class FileAdapter(
             b.name.text = node.label ?: file.name
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
             if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
-            file.unixMode?.takeIf { Prefs.unixPermissions(ctx) }?.let { mode ->
+            file.unixMode?.takeIf { node.depth > 0 && Prefs.unixPermissions(ctx) }?.let { mode ->
                 val octal = Prefs.unixPermissionsOctal(ctx)
                 b.permissions.text = if (octal) UnixPermissions.octal(mode) else UnixPermissions.symbolic(mode)
                 if (octal) bindMetadataIcon(b.permissions, R.drawable.ic_count_permissions)
