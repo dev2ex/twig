@@ -78,15 +78,18 @@ internal fun strictUtf8(bytes: ByteArray): String? = runCatching {
  * would be gone for good. The details (the zip / S3 direct path, the fallback for shares
  * that allow modifying a file but not creating one next to it) live there.
  *
+ * A known [parent] supports documents whose identifiers are opaque. Return the actual
+ * saved entry: replacing/renaming a document may change its URI.
+ *
  * ★ When the final rename fails, the temp file is the only complete copy and is kept;
  * the message names it so the user can rescue it.
  */
-internal fun Context.writeAtomically(file: XFile, bytes: ByteArray) {
+internal fun Context.writeAtomically(file: XFile, bytes: ByteArray, parent: XFile? = null): XFile {
     val fs = FsRegistry.of(file)
     val existing = file.takeIf { runCatching { fs.exists(it) }.getOrDefault(true) }
-    val parent = fs.resolve(file.parentPath)
+    val directory = parent ?: fs.resolve(file.parentPath)
     try {
-        SafeWrite.replace(fs, parent, file.name, existing) { it.write(bytes) }
+        return SafeWrite.replace(fs, directory, file.name, existing) { it.write(bytes) }
     } catch (e: SafeWrite.RenameFailed) {
         throw FsException(
             getString(R.string.err_saved_but_rename_failed, e.tmpName, e.targetName, e.cause?.message ?: ""),

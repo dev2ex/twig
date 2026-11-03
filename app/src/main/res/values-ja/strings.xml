@@ -1213,4 +1213,5 @@
     <string name="player_retry_connecting">再接続中（%1$d/5）…</string>
     <string name="sqlite_search_hint" formatted="false">すべての列を検索（LIKE：% と _ はワイルドカード）</string>
     <string name="sqlite_search_incomplete">検索は未完了です：%1$d 個のテーブルを検索できませんでした。</string>
+    <string name="save_as">名前を付けて保存…</string>
 </resources>

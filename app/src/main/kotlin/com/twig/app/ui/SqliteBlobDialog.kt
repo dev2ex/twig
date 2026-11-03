@@ -25,7 +25,7 @@ import kotlin.math.roundToInt
 /** Full BLOB inspection through the same virtual hex rows used by file viewers. */
 internal object SqliteBlobDialog {
     fun show(context: Context, title: String, size: Long, parent: CoroutineScope,
-        read: suspend (Long, Int) -> ByteArray): AlertDialog {
+        onSave: (() -> Unit)? = null, read: suspend (Long, Int) -> ByteArray): AlertDialog {
         val dp = context.resources.displayMetrics.density
         val job = SupervisorJob(parent.coroutineContext[Job])
         val scope = CoroutineScope(parent.coroutineContext + job)
@@ -54,8 +54,10 @@ internal object SqliteBlobDialog {
             addView(frame, LinearLayout.LayoutParams(-1,
                 minOf(360 * dp, context.resources.displayMetrics.heightPixels * 0.6f).toInt()))
         }
-        val dialog = AlertDialog.Builder(context).setTitle(title).setView(content)
-            .setPositiveButton(R.string.dialog_close, null).create()
+        val builder = AlertDialog.Builder(context).setTitle(title).setView(content)
+            .setPositiveButton(R.string.dialog_close, null)
+        if (onSave != null) builder.setNeutralButton(R.string.save_as, null)
+        val dialog = builder.create()
         fun maxFirstRow(): Int {
             val visible = (pane.lastVisibleRow() - pane.firstVisibleRow() + 1).coerceAtLeast(1)
             return (pane.rowCount - visible).coerceAtLeast(1)
@@ -101,6 +103,7 @@ internal object SqliteBlobDialog {
             try { awaitCancellation() } finally { dialog.dismiss() }
         }
         dialog.show()
+        if (onSave != null) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { onSave() }
         return dialog
     }
 }

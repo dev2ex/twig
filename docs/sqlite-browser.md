@@ -75,8 +75,20 @@ Filtered row offsets use the same predicate/order as the grid. A reader captures
 database/search job, so refresh, replacement or closure cannot silently retarget later
 chunks. Dismissal and screen destruction cancel pending reads. Type/length changes
 reject a range; as with other browsing reads, concurrent same-size value changes are
-not an atomic snapshot. Reopen from a stable database copy for a consistent inspection. NULL,
-empty text and BLOBs retain distinct types. SQL identifiers are quoted centrally.
+not an atomic snapshot. Reopen from a stable database copy for a consistent inspection.
+Save as uses the shared `SaveAsDialog` and the same reader to stream raw bytes to a
+filename and writable directory chosen through Twig's picker, with foreground progress
+and cancellation. It never
+exports a hex dump or just the cached preview. Existing names are rejected; cancellation
+or an incomplete read removes the new partial output. Leaving the source screen cancels
+an active export, and pending picker drafts remain in memory only.
+
+The text editor uses the same Save as controller with a complete encoded text snapshot.
+It preserves charset/BOM, requires consent for UTF-8 conversion, and adopts the new file
+only after successful writing. Later saves retain the selected parent and actual
+replacement document URI, including opaque SAF destinations.
+
+NULL, empty text and BLOBs retain distinct types. SQL identifiers are quoted centrally.
 Ordering prefers an unshadowed SQLite rowid alias, then the declared primary key.
 Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added behind
 this reader without changing tree or renderer contracts. Encrypted databases require a

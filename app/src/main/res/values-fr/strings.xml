@@ -1213,4 +1213,5 @@
     <string name="player_retry_connecting">Reconnexion (%1$d/5)…</string>
     <string name="sqlite_search_hint" formatted="false">Texte dans toutes les colonnes (LIKE : % et _ sont des jokers)</string>
     <string name="sqlite_search_incomplete">Recherche incomplète : impossible de rechercher dans %1$d table(s).</string>
+    <string name="save_as">Enregistrer sous…</string>
 </resources>

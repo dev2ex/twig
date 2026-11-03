@@ -1213,4 +1213,5 @@
     <string name="player_retry_connecting">Yeniden bağlanılıyor (%1$d/5)…</string>
     <string name="sqlite_search_hint" formatted="false">Tüm sütunlarda metin (LIKE: % ve _ joker karakterdir)</string>
     <string name="sqlite_search_incomplete">Arama tamamlanamadı: %1$d tabloda arama yapılamadı.</string>
+    <string name="save_as">Farklı kaydet…</string>
 </resources>

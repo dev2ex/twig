@@ -1212,4 +1212,5 @@
     <string name="player_retry_connecting">Đang kết nối lại (%1$d/5)…</string>
     <string name="sqlite_search_hint" formatted="false">Tìm trong mọi cột (LIKE: % và _ là ký tự đại diện)</string>
     <string name="sqlite_search_incomplete">Tìm kiếm chưa hoàn tất: không thể tìm trong %1$d bảng.</string>
+    <string name="save_as">Lưu thành…</string>
 </resources>

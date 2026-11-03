@@ -1879,6 +1879,7 @@ class PaneFragment : Fragment() {
     // ---- Long-press context menu ----
 
     private var sqliteCellJob: kotlinx.coroutines.Job? = null
+    private val saveAsDialog = SaveAsDialog(this)
 
     private fun showSqliteCell(node: SqliteDataNode, row: Int, column: Int) {
         sqliteCellJob?.cancel()
@@ -1888,7 +1889,13 @@ class PaneFragment : Fragment() {
                 val title = node.state.table.visibleColumns[column].name
                 if (value.kind == 'b') {
                     val reader = viewModel.sqliteBlobReader(node, row, column, value.length) ?: return@launch
-                    SqliteBlobDialog.show(requireContext(), title, value.length, viewLifecycleOwner.lifecycleScope, reader)
+                    SqliteBlobDialog.show(requireContext(), title, value.length, viewLifecycleOwner.lifecycleScope,
+                        onSave = {
+                            saveAsDialog.offer(title.take(60) + ".bin", value.length, reader) {
+                                viewModel.refreshOnResume()
+                                host?.siblingOf(this@PaneFragment)?.viewModel?.refreshOnResume()
+                            }
+                        }, read = reader)
                 } else SqliteCellDialog.show(requireContext(), title, value)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
@@ -2988,6 +2995,7 @@ class PaneFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        saveAsDialog.destroy()
         treeIndentation?.dispose()
         treeIndentation = null
         com.twig.app.WebsiteStore.preferences(requireContext()).unregisterOnSharedPreferenceChangeListener(websiteListener)
