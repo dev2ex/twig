@@ -88,11 +88,11 @@ class StorageVolumesTest {
     }
 
     @Test
-    fun `a custom volume label shares the internal storage icon`() {
+    fun `a custom volume label defaults to the SD card icon`() {
         addVolume(sd, "opi_root", primary = false)
         StorageVolumes.cached(app)
         assertEquals(
-            R.drawable.ic_storage,
+            R.drawable.ic_sd_card,
             com.twig.app.ui.FileIcons.storageRootIconRes(com.twig.core.XFile("file", sd.absolutePath, isDir = true)),
         )
         assertEquals(R.drawable.ic_sd_card, com.twig.app.ui.FileIcons.removableIconRes("SD card"))

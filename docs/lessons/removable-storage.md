@@ -48,9 +48,9 @@
 
 - **Source icons are not hardware detection** (2026-10-24): `StorageVolume` does not expose
   a public SD/USB transport flag. Explicit SD/USB descriptions choose the matching icon;
-  custom labels and UUIDs use the internal-storage icon. On the test device, `opi_root` is a real
-  SD card (`dumpsys mount`: `ADOPTABLE|SD`, `mmcblk1`) whose custom label uses that
-  fallback icon. Do not mistake the fallback for a USB identification, infer hardware from
+  custom labels and UUIDs default to the SD-card icon (updated 2026-11-03). On the test
+  device, `opi_root` is a real SD card (`dumpsys mount`: `ADOPTABLE|SD`, `mmcblk1`).
+  The fallback is a display choice, not hardware detection. Do not infer hardware from
   a UUID, or turn a one-device label into a global SD rule.
 
 - **Register shortcut keys before walking the tree** (2026-10-24): Root is displayed

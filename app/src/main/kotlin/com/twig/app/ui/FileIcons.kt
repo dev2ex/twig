@@ -102,16 +102,14 @@ object FileIcons {
 
     /**
      * Public volume metadata has no transport type. Recognize explicit system labels only;
-     * a custom label or UUID uses the internal-storage icon when transport is unknown.
-     * USB / OTG / SD tokens survive localized Android descriptions (e.g. "USB 驱动器").
+     * a custom label or UUID defaults to the SD-card icon without inferring transport.
+     * USB / OTG tokens survive localized Android descriptions (e.g. "USB 驱动器").
      */
     private val usbLabel = Regex("(?i)(?<![a-z0-9])(usb|otg)(?![a-z0-9])")
-    private val sdLabel = Regex("(?i)(?<![a-z0-9])(sd|sdhc|sdxc|microsd)(?![a-z0-9])")
 
     internal fun removableIconRes(label: String): Int = when {
         usbLabel.containsMatchIn(label) -> R.drawable.ic_usb_drive
-        sdLabel.containsMatchIn(label) -> R.drawable.ic_sd_card
-        else -> R.drawable.ic_storage
+        else -> R.drawable.ic_sd_card
     }
 
     /**
