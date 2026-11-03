@@ -37,6 +37,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private val foreground = ContextCompat.getColor(context, R.color.text_primary)
     private val secondary = ContextCompat.getColor(context, R.color.text_secondary)
     private val background = ContextCompat.getColor(context, R.color.surface)
+    private val alternateBackground = ColorUtils.blendARGB(background, foreground, 0.04f)
     private val matchedBackground = ContextCompat.getColor(context, R.color.selected)
     private val rowBackground = ColorUtils.blendARGB(background, matchedBackground, 0.5f)
     private val line = (secondary and 0x00ffffff) or 0x30000000
@@ -228,8 +229,8 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         for (row in start until end) {
             val cells = rowAt(row)
             val top = rowHeight + row.toFloat() * rowHeight - position.y
-            if (selectRows && row == position.selectedRow) {
-                paint.color = rowBackground
+            if (selectRows && (row == position.selectedRow || row % 2 == 1)) {
+                paint.color = if (row == position.selectedRow) rowBackground else alternateBackground
                 canvas.drawRect(0f, top, width.toFloat(), top + rowHeight, paint)
             }
             if (cells == null) {
