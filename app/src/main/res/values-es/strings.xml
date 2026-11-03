@@ -1245,4 +1245,12 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Los números se comparan numéricamente; usar comillas simples para texto. Dejar vacío para borrar.</string>
     <string name="sqlite_filter_operator" formatted="false">Operador</string>
     <string name="sqlite_filter_invalid" formatted="false">Introducir una condición como &gt;= 18, = \'abc\', LIKE \'%abc%\' o IS NULL.</string>
+    <string name="search_engine">Motor de búsqueda</string>
+    <string name="web_search">Buscar en la web</string>
+    <string name="search_engine_presets">Elegir motor de búsqueda…</string>
+    <string name="search_engine_home">Página de búsqueda</string>
+    <string name="search_engine_template">Plantilla de URL de búsqueda</string>
+    <string name="search_engine_hint">Se usa al elegir Twig para una búsqueda web del sistema. Sin texto se abre la página de inicio; el texto de búsqueda sustituye {query}. Ambas direcciones deben usar HTTP o HTTPS.</string>
+    <string name="search_engine_reset">Restaurar predeterminado</string>
+    <string name="search_engine_invalid_template">Introduce una URL HTTP(S) que contenga {query}</string>
 </resources>

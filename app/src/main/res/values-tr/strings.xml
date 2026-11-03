@@ -1245,4 +1245,12 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Sayılar sayısal karşılaştırılır; metin için tek tırnak kullanın. Temizlemek için boş bırakın.</string>
     <string name="sqlite_filter_operator" formatted="false">İşleç</string>
     <string name="sqlite_filter_invalid" formatted="false">&gt;= 18, = \'abc\', LIKE \'%abc%\' veya IS NULL gibi bir koşul girin.</string>
+    <string name="search_engine">Arama motoru</string>
+    <string name="web_search">Web’de ara</string>
+    <string name="search_engine_presets">Arama motoru seç…</string>
+    <string name="search_engine_home">Arama ana sayfası</string>
+    <string name="search_engine_template">Arama URL şablonu</string>
+    <string name="search_engine_hint">Sistem web araması için Twig seçildiğinde kullanılır. Boş sorgu ana sayfayı açar; arama metni {query} yerine geçer. Her iki adres de HTTP veya HTTPS kullanmalıdır.</string>
+    <string name="search_engine_reset">Varsayılana dön</string>
+    <string name="search_engine_invalid_template">{query} içeren bir HTTP(S) URL girin</string>
 </resources>

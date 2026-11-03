@@ -548,7 +548,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             true
         }
         s.asSearch.setOnLongClickListener {
-            startActivity(com.twig.app.ui.WebsiteActivity.browserIntent(this, "https://start.duckduckgo.com/")); true
+            com.twig.app.ui.WebSearch.home(this); true
         }
         s.asHistory.setOnLongClickListener { activePane()?.actionHistory(continueWatching = true); true }
         s.asShare.setOnLongClickListener {

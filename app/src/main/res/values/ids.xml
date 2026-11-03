@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="web_search" type="id" />
     <item name="viewer_save" type="id" />
     <item name="viewer_save_as" type="id" />
     <!-- Extra tag on the ImageView: how wide this cell allows the thumbnail to grow (px, 0 = no growth).

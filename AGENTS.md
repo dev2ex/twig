@@ -235,6 +235,16 @@ its listing size must still describe the followed stream for copy/resume checks.
   filesystem copy/compare listings must still fail.
 - Websites: `WebsiteStore` persists per-site options in `twig_websites`; `WebsiteActivity`
   opens each bookmark in its own reusable document task using the shared WebView profile.
+  `SearchEngine` stores the global search homepage and `{query}` URL template in
+  `twig_prefs` (included in configuration backups). The website heading menu opens
+  `WebSearch.configure`; text viewer/editor, PDF and terminal selection actions use
+  the system `ACTION_WEB_SEARCH` chooser through `WebSearch`. Website and preview WebViews
+  keep their native selection menus. The exported `WebSearchActivity` makes Twig an
+  optional system search handler: after the app lock gate, it uses the configured template
+  or homepage for an empty query. Only requests handled by Twig share the `twig://search` document task,
+  carrying the requested URL as an extra; reused intents load the new request only
+  after the app lock gate. Bookmarks and externally opened browser pages keep their
+  separate document identities.
   `WebsiteDialogs` shares its editor with website defaults: new bookmarks copy display
   options only. UA/JS/CSS/hide/block settings apply globally at runtime; per-site UA overrides
   the global value, while scripts/styles/selectors/block rules combine with it. Keep raw

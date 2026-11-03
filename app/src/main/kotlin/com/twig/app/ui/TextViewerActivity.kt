@@ -156,6 +156,7 @@ class TextViewerActivity : TwigActivity() {
         savedKeyListener = b.content.keyListener
         b.content.keyListener = null
         b.content.setTextIsSelectable(true)
+        WebSearch.attach(b.content)
         b.content.isCursorVisible = false
         b.content.breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
         b.content.hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE

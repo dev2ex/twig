@@ -1275,4 +1275,12 @@
     <string name="sqlite_filter_custom_hint" formatted="false">数字按数值比较，文本可用单引号包围。留空清除。</string>
     <string name="sqlite_filter_operator" formatted="false">运算符</string>
     <string name="sqlite_filter_invalid" formatted="false">请输入条件，如 &gt;= 18、= \'abc\'、LIKE \'%abc%\' 或 IS NULL。</string>
+    <string name="search_engine">搜索引擎</string>
+    <string name="web_search">网页搜索</string>
+    <string name="search_engine_presets">选择搜索引擎…</string>
+    <string name="search_engine_home">搜索首页</string>
+    <string name="search_engine_template">搜索地址模板</string>
+    <string name="search_engine_hint">在系统网页搜索中选择 Twig 时使用。没有搜索词时打开首页；搜索文字会替换 {query}。两个地址均须使用 HTTP 或 HTTPS。</string>
+    <string name="search_engine_reset">恢复默认</string>
+    <string name="search_engine_invalid_template">请输入包含 {query} 的 HTTP(S) 地址</string>
 </resources>

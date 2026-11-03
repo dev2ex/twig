@@ -71,6 +71,22 @@ class WebsiteLockTest {
         page = Robolectric.buildActivity(WebsiteActivity::class.java, WebsiteActivity.intent(app, site.id)).setup()
     }
 
+    @Test fun `system search waits for unlock and cancellation launches nothing`() {
+        Secrets.lock()
+        val request = android.content.Intent(android.content.Intent.ACTION_WEB_SEARCH)
+            .putExtra(android.app.SearchManager.QUERY, "private query")
+        val controller = Robolectric.buildActivity(WebSearchActivity::class.java, request).create().start().resume()
+        try {
+            shadowOf(Looper.getMainLooper()).idle()
+            assertNull(shadowOf(controller.get()).nextStartedActivity)
+            val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(controller.get().isFinishing)
+            assertNull(shadowOf(controller.get()).nextStartedActivity)
+        } finally { controller.pause().stop().destroy() }
+    }
+
     private fun unlock(screenshotsBlocked: Boolean = false) {
         val dialog = ShadowDialog.getLatestDialog() as AlertDialog
         fun input(view: View): EditText? {

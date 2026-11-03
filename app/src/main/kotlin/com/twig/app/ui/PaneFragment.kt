@@ -2177,6 +2177,9 @@ class PaneFragment : Fragment() {
                 showActionMenu(requireContext(), node.label, actions)
             } else if (node.id == "websites") {
                 val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.search_engine), R.drawable.ic_search) {
+                    WebSearch.configure(requireContext())
+                }
                 actions.item(getString(R.string.website_defaults), R.drawable.ic_edit) {
                     WebsiteDialogs.defaults(requireContext())
                 }

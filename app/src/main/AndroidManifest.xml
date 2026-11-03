@@ -304,6 +304,14 @@
         </activity>
 
         <!-- Standalone website tasks, shared by tree bookmarks and desktop shortcuts. -->
+        <activity android:name=".ui.WebSearchActivity" android:exported="true"
+            android:theme="@style/Theme.Twig.Translucent" android:noHistory="true">
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".ui.WebsiteActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"

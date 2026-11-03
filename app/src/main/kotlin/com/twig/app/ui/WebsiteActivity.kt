@@ -164,13 +164,18 @@ class WebsiteActivity : TwigActivity() {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
-    private fun isBrowserPage() = intent.data?.scheme?.lowercase() in setOf("http", "https")
+    private fun isSearchPage() = intent.data == SEARCH_DOCUMENT
+
+    private fun isBrowserPage() = isSearchPage() || intent.data?.scheme?.lowercase() in setOf("http", "https")
 
     private fun requestedWebsite(): Website? {
         if (isBrowserPage()) {
-            val address = WebsiteStore.normalizeUrl(intent.data.toString()) ?: return null
-            if (::localSite.isInitialized && localSite.id == "browser:$address") return localSite
-            return WebsiteStore.newSite(this).copy(id = "browser:$address",
+            val address = WebsiteStore.normalizeUrl(
+                if (isSearchPage()) intent.getStringExtra(SEARCH_ADDRESS).orEmpty() else intent.data.toString()
+            ) ?: return null
+            val id = if (isSearchPage()) "browser:search" else "browser:$address"
+            if (::localSite.isInitialized && localSite.id == id && localSite.url == address) return localSite
+            return WebsiteStore.newSite(this).copy(id = id,
                 name = Uri.parse(address).host.orEmpty(), url = address)
         }
         val id = intent.data?.takeIf { it.scheme == "twig" && it.host == "website" }?.lastPathSegment
@@ -193,7 +198,7 @@ class WebsiteActivity : TwigActivity() {
                 val address = WebsiteStore.normalizeUrl(input.text.toString())
                 if (address == null) input.error = getString(R.string.website_invalid_url)
                 else {
-                    startActivity(browserIntent(this, address))
+                    startActivity(if (isSearchPage()) searchIntent(this, address) else browserIntent(this, address))
                     dialog.dismiss()
                 }
             }
@@ -488,7 +493,7 @@ class WebsiteActivity : TwigActivity() {
             return
         }
         localSite = requireNotNull(requested)
-        if (saved == site) return
+        if (saved == site && !isSearchPage()) return
         val changedUrl = saved.url != site.url
         if (saved.fullscreen != site.fullscreen || saved.openFullscreen != site.openFullscreen ||
             saved.doubleTapToolbar != site.doubleTapToolbar) toolbarVisibleOverride = null
@@ -507,10 +512,10 @@ class WebsiteActivity : TwigActivity() {
         }
         site = saved
         requestBlocker = WebsiteRequestBlocker.parse(saved.blockedRequests) ?: WebsiteRequestBlocker.EMPTY
-        if (changedUrl || changedDesktop || changedAgent || changedHeaders || changedScript || changedAuth) hidePageFullscreen()
+        if (isSearchPage() || changedUrl || changedDesktop || changedAgent || changedHeaders || changedScript || changedAuth) hidePageFullscreen()
         applyWebsiteOptions()
         when {
-            changedUrl -> loadWebsite(site.url)
+            isSearchPage() || changedUrl -> loadWebsite(site.url)
             changedHeaders || changedAuth -> {
                 mediaPermissions.cancel()
                 locationPermissions.cancel()
@@ -925,6 +930,15 @@ class WebsiteActivity : TwigActivity() {
     }
 
     companion object {
+        private val SEARCH_DOCUMENT = Uri.parse("twig://search")
+        internal const val SEARCH_ADDRESS = "search_address"
+
+        /** A stable document identity lets Android reuse one task for all search requests. */
+        internal fun searchIntent(ctx: Context, address: String) = Intent(ctx, WebsiteActivity::class.java)
+            .setAction(Intent.ACTION_VIEW).setData(SEARCH_DOCUMENT)
+            .putExtra(SEARCH_ADDRESS, address)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
+
         /** Keep the installed engine version while asking servers for their desktop layout. */
         internal fun desktopUserAgent(mobile: String): String = mobile
             .replaceFirst(Regex("\\([^)]*\\)"), "(X11; Linux x86_64)")

@@ -1281,4 +1281,12 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Числа сравниваются численно; текст заключайте в одинарные кавычки. Пустое поле сбрасывает фильтр.</string>
     <string name="sqlite_filter_operator" formatted="false">Оператор</string>
     <string name="sqlite_filter_invalid" formatted="false">Введите условие: &gt;= 18, = \'abc\', LIKE \'%abc%\' или IS NULL.</string>
+    <string name="search_engine">Поисковая система</string>
+    <string name="web_search">Поиск в интернете</string>
+    <string name="search_engine_presets">Выбрать поисковую систему…</string>
+    <string name="search_engine_home">Стартовая страница поиска</string>
+    <string name="search_engine_template">Шаблон URL поиска</string>
+    <string name="search_engine_hint">Используется при выборе Twig для системного веб-поиска. Пустой запрос открывает стартовую страницу; текст поиска заменяет {query}. Оба адреса должны использовать HTTP или HTTPS.</string>
+    <string name="search_engine_reset">Восстановить по умолчанию</string>
+    <string name="search_engine_invalid_template">Введите HTTP(S) URL, содержащий {query}</string>
 </resources>

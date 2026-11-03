@@ -29,6 +29,28 @@ class WebsiteBrowserTest {
     private val app: Application get() = ApplicationProvider.getApplicationContext()
     @Before fun clear() { WebsiteStore.preferences(app).edit().clear().commit() }
 
+    @Test fun `search requests share one document identity and load new queries in the existing webview`() {
+        val first = WebsiteActivity.searchIntent(app, "https://example.com/?q=first")
+        val next = WebsiteActivity.searchIntent(app, "https://other.example/?q=second")
+        assertTrue(first.filterEquals(next))
+        assertFalse(first.filterEquals(WebsiteActivity.browserIntent(app, "https://example.com/?q=first")))
+        assertFalse(first.filterEquals(WebsiteActivity.intent(app, "saved")))
+        val controller = Robolectric.buildActivity(WebsiteActivity::class.java, first).setup()
+        try {
+            val activity = controller.get()
+            val web = activity.findViewById<WebView>(R.id.web)
+            assertEquals("https://example.com/?q=first", shadowOf(web).lastLoadedUrl)
+            controller.newIntent(next)
+            assertSame(web, activity.findViewById<WebView>(R.id.web))
+            assertEquals("https://other.example/?q=second", shadowOf(web).lastLoadedUrl)
+            web.loadUrl("https://other.example/article")
+            controller.newIntent(next)
+            assertSame(web, activity.findViewById<WebView>(R.id.web))
+            assertEquals("https://other.example/?q=second", shadowOf(web).lastLoadedUrl)
+            assertTrue(WebsiteStore.all(app).isEmpty())
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun `browser intent resolves to public relay and forwards only a validated web address`() {
         val address = "https://example.com/path?q=1#section"
         val incoming = Intent(Intent.ACTION_VIEW, Uri.parse(address)).addCategory(Intent.CATEGORY_BROWSABLE)

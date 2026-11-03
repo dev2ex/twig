@@ -1244,4 +1244,12 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Số được so sánh theo giá trị; dùng nháy đơn cho văn bản. Để trống để xóa.</string>
     <string name="sqlite_filter_operator" formatted="false">Toán tử</string>
     <string name="sqlite_filter_invalid" formatted="false">Nhập điều kiện như &gt;= 18, = \'abc\', LIKE \'%abc%\' hoặc IS NULL.</string>
+    <string name="search_engine">Công cụ tìm kiếm</string>
+    <string name="web_search">Tìm trên web</string>
+    <string name="search_engine_presets">Chọn công cụ tìm kiếm…</string>
+    <string name="search_engine_home">Trang chủ tìm kiếm</string>
+    <string name="search_engine_template">Mẫu URL tìm kiếm</string>
+    <string name="search_engine_hint">Dùng khi chọn Twig để tìm kiếm web qua hệ thống. Không có từ khóa sẽ mở trang chủ; văn bản tìm kiếm thay thế {query}. Cả hai địa chỉ phải dùng HTTP hoặc HTTPS.</string>
+    <string name="search_engine_reset">Khôi phục mặc định</string>
+    <string name="search_engine_invalid_template">Nhập URL HTTP(S) có chứa {query}</string>
 </resources>
