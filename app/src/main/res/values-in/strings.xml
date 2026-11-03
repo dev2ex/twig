@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Tidak ada tabel</string>
     <string name="sqlite_open_failed">Tidak dapat membuka basis data SQLite</string>
     <string name="sqlite_read_failed">Tidak dapat membaca data tabel</string>
-    <string name="sqlite_blob">BLOB (%1$d byte)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s baris, %2$d kolom</string>
     <string name="sqlite_value_truncated">Pratinjau dipotong; panjang asli: %1$d. Hanya pratinjau yang ditampilkan yang disalin.</string>
     <string name="sqlite_journal_active">Basis data ini memiliki jurnal rollback. Tutup program penulis atau ekspor salinan terlebih dahulu.</string>

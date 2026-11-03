@@ -1094,6 +1094,8 @@ class PaneFragment : Fragment() {
             .setNegativeButton(R.string.dialog_cancel, null)
             .setNeutralButton(R.string.history_title, null)
             .setPositiveButton(R.string.sqlite_sql_run, null).create()
+        val stopHighlight = SqliteHighlight.edit(input, viewLifecycleOwner.lifecycleScope)
+        dialog.setOnDismissListener { stopHighlight() }
         dialog.showNameInput(input)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val sql = input.text.toString().trim()
@@ -1108,7 +1110,7 @@ class PaneFragment : Fragment() {
             val recent = history.recent(node.file)
             if (recent.isEmpty()) toast(getString(R.string.history_empty))
             else AlertDialog.Builder(requireContext()).setTitle(R.string.sqlite_sql_query)
-                .setItems(recent.toTypedArray()) { _, index -> input.setText(recent[index]); input.setSelection(input.length()) }
+                .setItems(recent.map { SqliteHighlight.text(requireContext(), it) }.toTypedArray()) { _, index -> input.setText(recent[index]); input.setSelection(input.length()) }
                 .setNeutralButton(R.string.history_clear) { _, _ -> history.clear(node.file) }
                 .setNegativeButton(R.string.dialog_cancel, null).show()
         }

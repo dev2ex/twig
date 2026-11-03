@@ -18,6 +18,15 @@ class CodeHighlighterLangTest {
             .map { text.substring(it.start, it.end).trim() }
     }
 
+    @Test fun sqliteQuotesKeepBackslashesDoubledQuotesAndMultilineTextLiteral() {
+        val src = "wItH q AS (SELECT 'O''Reilly', 'C:\\', 'line\n-- still a string', \"a\"\"b\", `from`, [where]) " +
+            "SELECT * FROM q -- comment\nORDER BY 1 DESC"
+        assertEquals(listOf("'O''Reilly'", "'C:\\'", "'line\n-- still a string'", "\"a\"\"b\"", "`from`", "[where]"),
+            spans("query.sql", src, 1))
+        assertEquals(listOf("-- comment"), spans("query.sql", src, 2))
+        assertTrue(spans("query.sql", src, 0).containsAll(listOf("wItH", "SELECT", "FROM", "ORDER", "BY", "DESC")))
+    }
+
     @Test fun luaBlockCommentIsNotCutShortByTheLineComment() {
         val src = "--[[ one\ntwo ]]\nlocal x = 1 -- tail"
         assertEquals(listOf("--[[ one\ntwo ]]", "-- tail"), spans("a.lua", src, 2))

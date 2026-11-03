@@ -1140,7 +1140,7 @@ class FileAdapter(
             if (node.state != null) bindSqliteTable(SqliteTableNode(node.owner, node.depth, node.state))
             b.name.setText(R.string.sqlite_sql_result)
             setMeta(if (node.running) ctx.getString(R.string.sqlite_sql_running, node.elapsedSeconds)
-                else node.error ?: node.sql.replace('\n', ' '))
+                else node.error ?: SqliteHighlight.text(ctx, node.sql, singleLine = true))
             b.icon.setImageResource(R.drawable.ic_sqlite_table)
             setIndicator(if (node.running) null else node.expanded)
             b.progress.visibility = if (node.running) View.VISIBLE else View.GONE

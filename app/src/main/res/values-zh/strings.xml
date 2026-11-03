@@ -1231,7 +1231,7 @@
     <string name="sqlite_no_tables">没有表</string>
     <string name="sqlite_open_failed">无法打开 SQLite 数据库</string>
     <string name="sqlite_read_failed">无法读取表数据</string>
-    <string name="sqlite_blob">BLOB（%1$d 字节）</string>
+    <string name="sqlite_blob">BLOB（%1$s）</string>
     <string name="sqlite_grid_description">%1$s 行，%2$d 列</string>
     <string name="sqlite_value_truncated">预览已截断；原始长度：%1$d。复制仅包含显示的预览。</string>
     <string name="sqlite_journal_active">此数据库存在回滚日志。请先关闭写入它的程序，或导出数据库副本。</string>

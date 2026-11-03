@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Nessuna tabella</string>
     <string name="sqlite_open_failed">Impossibile aprire il database SQLite</string>
     <string name="sqlite_read_failed">Impossibile leggere i dati della tabella</string>
-    <string name="sqlite_blob">BLOB (%1$d byte)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s righe, %2$d colonne</string>
     <string name="sqlite_value_truncated">Anteprima troncata; lunghezza originale: %1$d. Viene copiata solo la parte visualizzata.</string>
     <string name="sqlite_journal_active">Questo database ha un journal di rollback. Chiudi il programma che lo modifica o esporta prima una copia.</string>

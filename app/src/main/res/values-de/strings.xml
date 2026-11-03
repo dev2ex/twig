@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Keine Tabellen</string>
     <string name="sqlite_open_failed">SQLite-Datenbank konnte nicht geöffnet werden</string>
     <string name="sqlite_read_failed">Tabellendaten konnten nicht gelesen werden</string>
-    <string name="sqlite_blob">BLOB (%1$d Bytes)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s Zeilen, %2$d Spalten</string>
     <string name="sqlite_value_truncated">Vorschau gekürzt; ursprüngliche Länge: %1$d. Kopiert wird nur die angezeigte Vorschau.</string>
     <string name="sqlite_journal_active">Diese Datenbank hat ein Rollback-Journal. Schreibendes Programm schließen oder zuerst eine Kopie exportieren.</string>

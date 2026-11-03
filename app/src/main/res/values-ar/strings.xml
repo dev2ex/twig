@@ -1205,7 +1205,7 @@
     <string name="sqlite_no_tables">لا توجد جداول</string>
     <string name="sqlite_open_failed">تعذر فتح قاعدة بيانات SQLite</string>
     <string name="sqlite_read_failed">تعذرت قراءة بيانات الجدول</string>
-    <string name="sqlite_blob">BLOB (%1$d بايت)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s صفوف، %2$d أعمدة</string>
     <string name="sqlite_value_truncated">المعاينة مقتطعة؛ الطول الأصلي: %1$d. يشمل النسخ المعاينة المعروضة فقط.</string>
     <string name="sqlite_journal_active">تحتوي القاعدة على سجل تراجع. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة أولاً.</string>

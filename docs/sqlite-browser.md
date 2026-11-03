@@ -107,6 +107,13 @@ Database and table menus open a multiline SQL editor. Table entries prefill a qu
 History keeps up to ten statements per database and 32 databases; statements over
 16,384 UTF-16 units are not persisted. Loading history never executes it.
 
+SQL editing, history items, completed-query summaries and DDL reuse `CodeHighlighter`
+with SQL syntax and colors selected for the app's light/dark surface; card/dialog
+backgrounds stay unchanged. Live recoloring is debounced, scans off the main thread,
+preserves the Editable/selection and defers during IME composition. Closing the editor
+removes its watcher and cancels pending work. Shared size/line limits bound static and
+live coloring; flattened summaries retain the original SQL's comment boundaries.
+
 A query adds one result heading directly under the database, followed by the shared
 data grid. Running queries show elapsed seconds; their long-press menu offers cancellation. Results support
 collapse, edit, rerun, CSV column selection/export and close. They share the normal

@@ -20,6 +20,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.customview.widget.ExploreByTouchHelper
 import com.twig.app.R
+import com.twig.app.Format
 import com.twig.app.sqlite.SqliteCell
 import com.twig.app.sqlite.SqliteSort
 import kotlin.math.abs
@@ -326,7 +327,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
 
     private fun display(cell: SqliteCell?): String = when (cell?.kind) {
         'n' -> "NULL"
-        'b' -> context.getString(R.string.sqlite_blob, cell.length)
+        'b' -> context.getString(R.string.sqlite_blob, Format.size(cell.length))
         else -> cell?.text.orEmpty().replace('\n', ' ').replace('\r', ' ').let { if (cell?.truncated == true) "$it…" else it }
     }
 

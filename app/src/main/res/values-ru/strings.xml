@@ -1237,7 +1237,7 @@
     <string name="sqlite_no_tables">Нет таблиц</string>
     <string name="sqlite_open_failed">Не удалось открыть базу SQLite</string>
     <string name="sqlite_read_failed">Не удалось прочитать данные таблицы</string>
-    <string name="sqlite_blob">BLOB (%1$d байт)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s строк, %2$d столбцов</string>
     <string name="sqlite_value_truncated">Предпросмотр обрезан; исходная длина: %1$d. Копируется только показанная часть.</string>
     <string name="sqlite_journal_active">У базы есть журнал отката. Закройте записывающую программу или сначала экспортируйте копию.</string>

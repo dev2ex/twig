@@ -8,13 +8,14 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import com.twig.app.R
+import com.twig.app.Format
 import com.twig.app.sqlite.SqliteCell
 
 internal object SqliteCellDialog {
     fun show(context: Context, title: String, cell: SqliteCell) {
         val value = when (cell.kind) {
             'n' -> "NULL"
-            'b' -> context.getString(R.string.sqlite_blob, cell.length) + "\n" + cell.text
+            'b' -> context.getString(R.string.sqlite_blob, Format.size(cell.length)) + "\n" + cell.text
             else -> cell.text
         }
         val displayed = if (cell.truncated) value + "\n\n" + context.getString(R.string.sqlite_value_truncated, cell.length) else value

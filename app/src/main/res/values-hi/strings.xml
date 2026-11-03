@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">कोई तालिका नहीं</string>
     <string name="sqlite_open_failed">SQLite डेटाबेस नहीं खुल सका</string>
     <string name="sqlite_read_failed">तालिका का डेटा नहीं पढ़ा जा सका</string>
-    <string name="sqlite_blob">BLOB (%1$d बाइट)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s पंक्तियाँ, %2$d कॉलम</string>
     <string name="sqlite_value_truncated">पूर्वावलोकन सीमित है; मूल लंबाई: %1$d। केवल दिखाया गया भाग कॉपी होगा।</string>
     <string name="sqlite_journal_active">इस डेटाबेस में रोलबैक जर्नल है। लिखने वाला प्रोग्राम बंद करें या पहले एक प्रति निर्यात करें।</string>

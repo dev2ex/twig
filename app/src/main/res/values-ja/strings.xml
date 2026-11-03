@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">テーブルがありません</string>
     <string name="sqlite_open_failed">SQLite データベースを開けませんでした</string>
     <string name="sqlite_read_failed">テーブルのデータを読み取れませんでした</string>
-    <string name="sqlite_blob">BLOB（%1$d バイト）</string>
+    <string name="sqlite_blob">BLOB（%1$s）</string>
     <string name="sqlite_grid_description">%1$s 行、%2$d 列</string>
     <string name="sqlite_value_truncated">プレビューは省略されています。元の長さ：%1$d。コピーには表示部分のみが含まれます。</string>
     <string name="sqlite_journal_active">このデータベースにはロールバックジャーナルがあります。書き込み元を閉じるか、先にコピーをエクスポートしてください。</string>

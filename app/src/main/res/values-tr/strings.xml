@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Tablo yok</string>
     <string name="sqlite_open_failed">SQLite veritabanı açılamadı</string>
     <string name="sqlite_read_failed">Tablo verileri okunamadı</string>
-    <string name="sqlite_blob">BLOB (%1$d bayt)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s satır, %2$d sütun</string>
     <string name="sqlite_value_truncated">Önizleme kısaltıldı; asıl uzunluk: %1$d. Yalnızca gösterilen önizleme kopyalanır.</string>
     <string name="sqlite_journal_active">Bu veritabanında geri alma günlüğü var. Yazan programı kapatın veya önce bir kopya dışa aktarın.</string>

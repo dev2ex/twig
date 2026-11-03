@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Sin tablas</string>
     <string name="sqlite_open_failed">No se pudo abrir la base de datos SQLite</string>
     <string name="sqlite_read_failed">No se pudieron leer los datos de la tabla</string>
-    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s filas, %2$d columnas</string>
     <string name="sqlite_value_truncated">Vista previa truncada; longitud original: %1$d. Solo se copia la vista previa mostrada.</string>
     <string name="sqlite_journal_active">Esta base de datos tiene un diario de reversión. Cierre el programa que escribe en ella o exporte una copia primero.</string>

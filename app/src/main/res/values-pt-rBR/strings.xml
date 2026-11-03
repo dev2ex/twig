@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Nenhuma tabela</string>
     <string name="sqlite_open_failed">Não foi possível abrir o banco SQLite</string>
     <string name="sqlite_read_failed">Não foi possível ler os dados da tabela</string>
-    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s linhas, %2$d colunas</string>
     <string name="sqlite_value_truncated">Prévia truncada; tamanho original: %1$d. Apenas a prévia exibida é copiada.</string>
     <string name="sqlite_journal_active">Este banco possui um diário de reversão. Feche o programa que grava nele ou exporte uma cópia primeiro.</string>

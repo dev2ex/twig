@@ -54,7 +54,7 @@ class SqliteInfoView(context: Context) : LinearLayout(context) {
                         state.table.columns[row].name, rows[row].joinToString("\n") { it.text }) })
             } else {
                 grid.release()
-                if (ddl.text.toString() != state.table.ddl) ddl.text = state.table.ddl
+                if (ddl.text.toString() != state.table.ddl) ddl.text = SqliteHighlight.text(context, state.table.ddl)
             }
         }
     }

@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">테이블 없음</string>
     <string name="sqlite_open_failed">SQLite 데이터베이스를 열 수 없습니다</string>
     <string name="sqlite_read_failed">테이블 데이터를 읽을 수 없습니다</string>
-    <string name="sqlite_blob">BLOB (%1$d바이트)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s행, %2$d열</string>
     <string name="sqlite_value_truncated">미리보기가 잘렸습니다. 원래 길이: %1$d. 표시된 부분만 복사됩니다.</string>
     <string name="sqlite_journal_active">이 데이터베이스에 롤백 저널이 있습니다. 쓰기 프로그램을 닫거나 먼저 사본을 내보내세요.</string>

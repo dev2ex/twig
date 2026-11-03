@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.twig.app.Prefs
 import com.twig.app.R
+import com.twig.app.Format
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -37,7 +38,7 @@ internal object SqliteBlobDialog {
         pane.theme = CodeHighlighter.THEMES[Prefs.codeTheme(context).coerceIn(0, CodeHighlighter.THEMES.lastIndex)]
         list.setBackgroundColor(pane.theme.bg)
         val status = TextView(context).apply {
-            text = context.getString(R.string.sqlite_blob, size)
+            text = context.getString(R.string.sqlite_blob, Format.size(size))
             textSize = 12f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding((20 * dp).toInt(), (8 * dp).toInt(), (20 * dp).toInt(), (8 * dp).toInt())

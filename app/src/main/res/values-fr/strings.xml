@@ -1201,7 +1201,7 @@
     <string name="sqlite_no_tables">Aucune table</string>
     <string name="sqlite_open_failed">Impossible d’ouvrir la base SQLite</string>
     <string name="sqlite_read_failed">Impossible de lire les données de la table</string>
-    <string name="sqlite_blob">BLOB (%1$d octets)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s lignes, %2$d colonnes</string>
     <string name="sqlite_value_truncated">Aperçu tronqué ; longueur originale : %1$d. Seul l’aperçu affiché sera copié.</string>
     <string name="sqlite_journal_active">Cette base possède un journal de restauration. Fermez le programme qui y écrit ou exportez une copie.</string>

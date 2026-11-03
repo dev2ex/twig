@@ -1200,7 +1200,7 @@
     <string name="sqlite_no_tables">Không có bảng</string>
     <string name="sqlite_open_failed">Không thể mở cơ sở dữ liệu SQLite</string>
     <string name="sqlite_read_failed">Không thể đọc dữ liệu bảng</string>
-    <string name="sqlite_blob">BLOB (%1$d byte)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s hàng, %2$d cột</string>
     <string name="sqlite_value_truncated">Bản xem trước bị cắt; độ dài gốc: %1$d. Chỉ phần đang hiển thị được sao chép.</string>
     <string name="sqlite_journal_active">Cơ sở dữ liệu có nhật ký khôi phục. Hãy đóng chương trình đang ghi hoặc xuất bản sao trước.</string>

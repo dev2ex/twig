@@ -1279,7 +1279,7 @@
     <string name="sqlite_no_tables">No tables</string>
     <string name="sqlite_open_failed">Could not open SQLite database</string>
     <string name="sqlite_read_failed">Could not read table data</string>
-    <string name="sqlite_blob">BLOB (%1$d bytes)</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
     <string name="sqlite_grid_description">%1$s rows, %2$d columns</string>
     <string name="sqlite_value_truncated">Preview limited; original length: %1$d. Copy includes only the displayed preview.</string>
     <string name="sqlite_journal_active">This database has a rollback journal. Close its writer or export a database copy first.</string>
