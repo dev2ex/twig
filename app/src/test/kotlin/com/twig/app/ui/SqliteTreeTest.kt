@@ -46,12 +46,14 @@ class SqliteTreeTest {
             advanceUntilIdle()
             data().state.viewport.x = 20f
             data().state.viewport.y = 300f
+            data().state.viewport.selectedRow = 10
             tree.page("db", "entries", 200) // Pending old-order reads must not repopulate the new cache.
             tree.sort(data(), 1)
             advanceUntilIdle()
             assertEquals(setOf(0), data().state.pages.keys)
             assertEquals(20f, data().state.viewport.x, 0f)
             assertEquals(0f, data().state.viewport.y, 0f)
+            assertEquals(-1, data().state.viewport.selectedRow)
             assertEquals("250", data().state.pages[0]!!.rows.first()[0].text)
             tree.sort(data(), 1)
             advanceUntilIdle()

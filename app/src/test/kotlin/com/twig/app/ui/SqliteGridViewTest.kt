@@ -24,6 +24,60 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class SqliteGridViewTest {
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun `data taps select entire rows while long presses open cells and retain search highlights`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val position = SqliteViewport()
+        val opened = mutableListOf<Pair<Int, Int>>()
+        fun bind(view: SqliteGridView) = view.bind("data", listOf("a", "b"), 2, position,
+            rowAt = { listOf(SqliteCell.text("match").copy(matched = true), SqliteCell.text("other")) },
+            cell = { row, col -> opened.add(row to col) }, selectRows = true)
+        bind(grid)
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val dp = activity.resources.displayMetrics.density
+        fun touch(action: Int, x: Float, y: Float, down: Long, time: Long = down) {
+            MotionEvent.obtain(down, time, action, x * dp, y * dp, 0).also { grid.onTouchEvent(it); it.recycle() }
+        }
+        val down = android.os.SystemClock.uptimeMillis()
+        touch(MotionEvent.ACTION_DOWN, 140f, 45f, down)
+        touch(MotionEvent.ACTION_UP, 140f, 45f, down, down + 20)
+        assertEquals(0, position.selectedRow)
+        assertTrue(opened.isEmpty())
+        val bitmap = Bitmap.createBitmap(320, 160, Bitmap.Config.ARGB_8888)
+        grid.draw(Canvas(bitmap))
+        assertNotEquals(bitmap.getPixel((310 * dp).toInt(), (35 * dp).toInt()),
+            bitmap.getPixel((310 * dp).toInt(), (67 * dp).toInt()))
+        assertNotEquals(bitmap.getPixel((20 * dp).toInt(), (35 * dp).toInt()),
+            bitmap.getPixel((140 * dp).toInt(), (35 * dp).toInt()))
+        bind(grid) // Paging/rebinding must not clear the selected row.
+        assertEquals(0, position.selectedRow)
+        val provider = grid.accessibilityNodeProvider!!
+        assertTrue(provider.createAccessibilityNodeInfo(1)!!.isSelected)
+        assertTrue(provider.performAction(3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(1, position.selectedRow)
+        assertTrue(opened.isEmpty())
+        val press = android.os.SystemClock.uptimeMillis() + 1000
+        touch(MotionEvent.ACTION_DOWN, 140f, 75f, press)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1000L + android.view.ViewConfiguration.getLongPressTimeout() + 20))
+        touch(MotionEvent.ACTION_UP, 140f, 75f, press, android.os.SystemClock.uptimeMillis())
+        assertEquals(listOf(1 to 1), opened)
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(1 to 1, 0 to 0), opened)
+        assertEquals(0, position.selectedRow)
+        val tail = android.os.SystemClock.uptimeMillis() + 1000
+        touch(MotionEvent.ACTION_DOWN, 300f, 75f, tail)
+        touch(MotionEvent.ACTION_UP, 300f, 75f, tail, tail + 20)
+        assertEquals(1, position.selectedRow)
+        grid.release()
+        val replacement = SqliteGridView(grid.context)
+        bind(replacement)
+        assertEquals(1, position.selectedRow)
+    }
+
     @Test fun `headers sort through taps and accessibility while property headers remain static`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))

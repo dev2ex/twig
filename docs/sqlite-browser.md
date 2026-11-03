@@ -94,6 +94,12 @@ Pagination currently uses LIMIT/OFFSET; deep-offset optimization can be added be
 this reader without changing tree or renderer contracts. Encrypted databases require a
 separate future reader; no SQLCipher library is bundled.
 
+Data-grid taps select a single whole row. Selection lives with its viewport, survives
+paging/rebinding and uses a softer tint so matched search cells stay distinct. Long
+pressing a cell opens its text/copy or BLOB dialog. Accessibility exposes selection and
+long-click actions independently. Sorting, collapsing or refreshing clears selection;
+property-grid cells retain their existing click behavior.
+
 ## Table ordering
 
 Tapping a data header sorts the complete table or current result set in ascending

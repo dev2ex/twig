@@ -11,7 +11,7 @@ import com.twig.app.sqlite.SqliteSort
 import com.twig.core.XFile
 import kotlinx.coroutines.*
 
-class SqliteViewport(var x: Float = 0f, var y: Float = 0f)
+class SqliteViewport(var x: Float = 0f, var y: Float = 0f, var selectedRow: Int = -1)
 
 data class SqliteTableState(
     val table: SqliteTable,
@@ -106,7 +106,8 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 tables.forEach { table ->
                     host.tables[table.name] = remembered[table.name]?.copy(table = table, count = null,
                         counting = true, pages = emptyMap(), pending = emptySet(), errors = emptyMap(), end = null,
-                        sort = remembered[table.name]?.sort?.takeIf { sort -> table.visibleColumns.any { it.name == sort.column } })
+                        sort = remembered[table.name]?.sort?.takeIf { sort -> table.visibleColumns.any { it.name == sort.column } },
+                        viewport = SqliteViewport(remembered.getValue(table.name).viewport.x, remembered.getValue(table.name).viewport.y))
                         ?: SqliteTableState(table)
                 }
                 host.loading = false
