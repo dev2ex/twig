@@ -807,7 +807,7 @@ add its symptom here.
   polls), filter by `isPrimary` rather than `isRemovable`, and `/mnt/media_rw` needs
   elevation.
   *Explains*: a USB drive that only appears after restarting the app, internal storage
-  listed twice.
+  listed twice, capacity reads blocking the UI during device changes.
 - **[Terminal: local shell, fonts, zoom](docs/lessons/terminal-local.md)** — only
   returning to the foreground may arm the size thaw; a terminal font is acceptable only
   at a 0.5em advance; `attachSession` forks the shell itself; the key bar shares one text

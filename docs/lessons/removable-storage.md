@@ -59,3 +59,15 @@
   before rendering rows, so nested volume rows always receive `NESTED_STORAGE_PREFIX`.
   Otherwise the two entries have the same DiffUtil key merely because their order changed.
   `StorageVolumesTest` covers the expanded-root case and the new top-level order.
+
+- **Capacity reads froze the UI during a device change (2026-11-03)**: the exit record
+  showed an input-dispatch ANR, not a Java crash. The main thread was in
+  `StatFs` / `statvfs`, called by `PaneViewModel.capacity` during tree rebuilding.
+  Filesystem capacity queries can block inside the kernel on an unhealthy or
+  disappearing mount; catching exceptions does not prevent the freeze. Render
+  cached capacity values and read each root independently on the IO dispatcher,
+  with one in-flight request per path and a ten-second refresh/failure cooldown.
+  A blocked syscall may outlive coroutine cancellation, so never wait for it on
+  the UI thread or enqueue another read of that path while it remains in flight.
+  `StorageCapacityTest` verifies deferred reads, success/failure caching and a
+  blocked mount that leaves rendering and other capacity reads available.

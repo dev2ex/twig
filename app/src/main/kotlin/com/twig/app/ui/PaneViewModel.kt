@@ -3,6 +3,7 @@ package com.twig.app.ui
 import android.app.Application
 import android.os.Environment
 import android.os.StatFs
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -3550,12 +3551,36 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
     private fun str(id: Int, vararg args: Any): String = LanguagePref.appContext(getApplication()).getString(id, *args)
 
-    private fun capacity(path: String): String? = runCatching {
+    private data class CapacitySample(val bytes: Pair<Long, Long>?, val checkedAt: Long)
+    private val capacities = HashMap<String, CapacitySample>()
+    private val capacityPending = HashSet<String>()
+
+    @androidx.annotation.VisibleForTesting
+    internal var capacityReader: (String) -> Pair<Long, Long> = { path ->
         val st = StatFs(path)
-        val total = st.blockCountLong * st.blockSizeLong
-        val avail = st.availableBlocksLong * st.blockSizeLong
-        str(R.string.capacity_format, Format.size(avail), Format.size(total))
-    }.getOrNull()
+        st.availableBytes to st.totalBytes
+    }
+
+    /** A disconnected or unhealthy mount can block statvfs indefinitely. Never read it while rendering. */
+    private fun capacity(path: String): String? {
+        val cached = capacities[path]
+        if ((cached == null || SystemClock.elapsedRealtime() - cached.checkedAt >= 10_000L) &&
+            capacityPending.add(path)) {
+            viewModelScope.launch {
+                try {
+                    val bytes = withContext(io) { runCatching { capacityReader(path) }.getOrNull() }
+                    capacities[path] = CapacitySample(bytes, SystemClock.elapsedRealtime())
+                    // Store failures too: rebuilding must not immediately retry an unreadable mount.
+                    if (bytes != cached?.bytes) rebuild()
+                } finally {
+                    capacityPending.remove(path)
+                }
+            }
+        }
+        return cached?.bytes?.let { (available, total) ->
+            str(R.string.capacity_format, Format.size(available), Format.size(total))
+        }
+    }
 
     private fun emitError(msg: String?) {
         _state.value = _state.value.copy(error = msg ?: str(R.string.err_operation_failed))
