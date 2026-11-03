@@ -309,6 +309,7 @@
 
         <!-- Standalone website tasks, shared by tree bookmarks and desktop shortcuts. -->
         <activity android:name=".ui.WebSearchActivity" android:exported="true"
+            android:taskAffinity="${applicationId}.search"
             android:theme="@style/Theme.Twig.Translucent" android:noHistory="true">
             <intent-filter>
                 <action android:name="android.intent.action.WEB_SEARCH" />

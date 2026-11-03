@@ -241,7 +241,9 @@ its listing size must still describe the followed stream for copy/resume checks.
   the system `ACTION_WEB_SEARCH` chooser through `WebSearch`. Website and preview WebViews
   keep their native selection menus. The exported `WebSearchActivity` makes Twig an
   optional system search handler: after the app lock gate, it uses the configured template
-  or homepage for an empty query. Only requests handled by Twig share the `twig://search` document task,
+  and has its own `.search` task affinity so system `NEW_TASK` requests cannot bring
+  MainActivity forward instead of returning to the calling website, viewer or external app.
+  Empty queries use the homepage. Only requests handled by Twig share the `twig://search` document task,
   carrying the requested URL as an extra; reused intents load the new request only
   after the app lock gate. Bookmarks and externally opened browser pages keep their
   separate document identities.

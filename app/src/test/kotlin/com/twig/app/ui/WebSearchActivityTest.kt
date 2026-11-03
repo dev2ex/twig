@@ -3,6 +3,7 @@ package com.twig.app.ui
 import android.app.Application
 import android.app.SearchManager
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
@@ -24,6 +25,16 @@ class WebSearchActivityTest {
     @Before fun clear() {
         Secrets.reset(app)
         app.getSharedPreferences("twig_prefs", 0).edit().clear().commit()
+    }
+
+    @Test fun `system search relay cannot reuse the main file browser task`() {
+        val pm = app.packageManager
+        val relay = pm.getActivityInfo(ComponentName(app, WebSearchActivity::class.java), 0)
+        val main = pm.getActivityInfo(ComponentName(app, com.twig.app.MainActivity::class.java), 0)
+        val shortcut = pm.getActivityInfo(ComponentName(app, OpenShortcutActivity::class.java), 0)
+        assertEquals("${app.packageName}.search", relay.taskAffinity)
+        assertNotEquals(main.taskAffinity, relay.taskAffinity)
+        assertNotEquals(shortcut.taskAffinity, relay.taskAffinity)
     }
 
     @Test fun `Twig is a system search option and handles queries with its configured provider`() {
