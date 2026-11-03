@@ -1657,7 +1657,9 @@ class TerminalActivity : TwigActivity() {
         }
         override fun onSingleTapUp(e: MotionEvent) = maybeShowIme()
         override fun shouldBackButtonBeMappedToEscape() = false
-        override fun shouldEnforceCharBasedInput() = true
+        // Match Termux's default TYPE_NULL input; forced character mode is
+        // incompatible with direct typing in Yandex Keyboard (issue #52).
+        override fun shouldEnforceCharBasedInput() = false
         override fun shouldUseCtrlSpaceWorkaround() = false
         override fun isTerminalViewSelected() = true
         override fun copyModeChanged(copyMode: Boolean) = Unit
