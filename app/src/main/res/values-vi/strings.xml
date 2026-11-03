@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Lưới · Chỉ đa phương tiện</string>
     <string name="view_mode_grid_all">Lưới · Mọi tệp</string>
     <string name="theme_system">Theo hệ thống</string>
+    <string name="theme_system_oled">Theo hệ thống (OLED)</string>
     <string name="theme_light">Sáng</string>
     <string name="theme_dark">Tối</string>
     <string name="conn_connect">Kết nối</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Hướng theo hệ thống</string>
     <string name="player_brightness">Độ sáng %1$d%%</string>
     <string name="player_volume">Âm lượng %1$d%%</string>
+    <string name="player_muted">Đã tắt tiếng</string>
+    <string name="player_unmuted">Đã bật tiếng</string>
+    <string name="player_subtitles_on">Đã bật phụ đề</string>
+    <string name="player_subtitles_off">Đã tắt phụ đề</string>
     <string name="player_subtitle">Phụ đề</string>
     <string name="player_subtitle_size">Cỡ phụ đề văn bản</string>
     <string name="player_subtitle_size_value">Cỡ phụ đề văn bản: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Trình khởi chạy này không hỗ trợ ghim lối tắt</string>
     <string name="group_fav">Yêu thích</string>
     <string name="group_internal_storage">Bộ nhớ trong</string>
+    <string name="group_removable_storage">Bộ nhớ di động (SD / USB)</string>
     <string name="group_root">Gốc</string>
     <string name="group_lan">Mạng cục bộ (SMB)</string>
     <string name="group_saf">Cây tài liệu (SAF)</string>
@@ -1185,4 +1191,58 @@
     <string name="compress_destination_missing">Chọn nơi lưu</string>
     <string name="settings_auto_tree_indent">Tự động thụt lề cây thư mục</string>
     <string name="settings_auto_tree_indent_desc">Giảm thụt lề mượt mà khi thư mục cha cuộn ra khỏi màn hình.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Mở dưới dạng SQLite</string>
+    <string name="sqlite_columns">Cột</string>
+    <string name="sqlite_copy">Sao chép</string>
+    <string name="sqlite_name">Tên</string>
+    <string name="sqlite_type">Kiểu</string>
+    <string name="sqlite_not_null">Không null</string>
+    <string name="sqlite_default">Mặc định</string>
+    <string name="sqlite_primary_key">Khóa chính</string>
+    <string name="sqlite_hidden">Ẩn / được tạo</string>
+    <string name="sqlite_loading">Đang tải…</string>
+    <string name="sqlite_no_rows">Không có hàng</string>
+    <string name="sqlite_no_tables">Không có bảng</string>
+    <string name="sqlite_open_failed">Không thể mở cơ sở dữ liệu SQLite</string>
+    <string name="sqlite_read_failed">Không thể đọc dữ liệu bảng</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s hàng, %2$d cột</string>
+    <string name="sqlite_value_truncated">Bản xem trước bị cắt; độ dài gốc: %1$d. Chỉ phần đang hiển thị được sao chép.</string>
+    <string name="sqlite_journal_active">Cơ sở dữ liệu có nhật ký khôi phục. Hãy đóng chương trình đang ghi hoặc xuất bản sao trước.</string>
+    <string name="sqlite_source_changed">Cơ sở dữ liệu đã thay đổi khi sao chép. Đóng chương trình đang ghi hoặc xuất bản sao rồi thử lại.</string>
+    <string name="sqlite_snapshot_confirm">Cần tải %1$s thành bản chụp cục bộ để duyệt. Nếu đang thay đổi, hãy xuất bản sao trước. Tiếp tục?</string>
+    <string name="player_waiting_network">Mất kết nối mạng. Đang chờ kết nối lại…</string>
+    <string name="player_retry_failed">Kết nối thất bại. Nhấn Phát để thử lại.</string>
+    <string name="player_retry_wait">Lần thử %1$d/5 sau %2$d giây…</string>
+    <string name="player_retry_connecting">Đang kết nối lại (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Tìm trong mọi cột (LIKE: % và _ là ký tự đại diện)</string>
+    <string name="sqlite_search_incomplete">Tìm kiếm chưa hoàn tất: không thể tìm trong %1$d bảng.</string>
+    <string name="save_as">Lưu thành…</string>
+    <string name="sqlite_export_csv">Xuất CSV</string>
+    <string name="sqlite_export_columns">Chọn cột</string>
+    <string name="sqlite_sort_ascending">Tăng dần</string>
+    <string name="sqlite_sort_descending">Giảm dần</string>
+    <string name="sqlite_sql_query">Truy vấn SQL</string>
+    <string name="sqlite_sql_run">Chạy</string>
+    <string name="sqlite_sql_result">Kết quả truy vấn</string>
+    <string name="sqlite_sql_running">Đang chạy · %1$d giây</string>
+    <string name="sqlite_sql_read_only">Nhập một câu lệnh chỉ đọc SELECT, WITH, VALUES, EXPLAIN hoặc PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Mỗi lần chỉ chạy một câu lệnh SQL.</string>
+    <string name="sqlite_sql_no_columns">Câu lệnh này không trả về cột.</string>
+    <string name="sqlite_sql_edit">Sửa SQL</string>
+    <string name="sqlite_sql_rerun">Chạy lại</string>
+    <string name="sqlite_filter_title">Lọc: %1$s</string>
+    <string name="sqlite_filter_clear">Xóa bộ lọc cột</string>
+    <string name="sqlite_filter_empty_text">(Văn bản trống)</string>
+    <string name="sqlite_filter_active">Đã lọc</string>
+    <string name="sqlite_filter_oversized">(Quá lớn để chọn)</string>
+    <string name="sqlite_filter_values" formatted="false">Chọn giá trị</string>
+    <string name="sqlite_filter_keyword" formatted="false">Từ khóa</string>
+    <string name="sqlite_filter_custom" formatted="false">Điều kiện tùy chỉnh</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Thêm % ở hai đầu nếu từ khóa chưa chứa %. Để trống để xóa.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Số được so sánh theo giá trị; dùng nháy đơn cho văn bản. Để trống để xóa.</string>
+    <string name="sqlite_filter_operator" formatted="false">Toán tử</string>
+    <string name="sqlite_filter_invalid" formatted="false">Nhập điều kiện như &gt;= 18, = \'abc\', LIKE \'%abc%\' hoặc IS NULL.</string>
 </resources>

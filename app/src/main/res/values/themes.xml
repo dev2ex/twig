@@ -24,6 +24,10 @@
         <item name="android:statusBarColor">?attr/twigToolbar</item>
     </style>
 
+    <!-- Resource variants use the regular light palette by day and OLED surfaces at night. -->
+    <style name="Theme.Twig.SystemOled" parent="Theme.Twig" />
+    <style name="Theme.Twig.SystemOled.Translucent" parent="Theme.Twig.Translucent" />
+
     <!-- OLED keeps large surfaces unlit; text brightness and borders retain hierarchy. -->
     <style name="Theme.Twig.Oled" parent="Theme.Twig">
         <!-- Older PhoneWindow versions require a resource reference for the window background. -->

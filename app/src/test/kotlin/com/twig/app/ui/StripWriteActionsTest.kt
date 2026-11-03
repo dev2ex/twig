@@ -53,6 +53,138 @@ class StripWriteActionsTest {
         idle()
     }
 
+    @Test fun `column menu offers filter modes and custom editor validates without dismissing`() {
+        val column = com.twig.app.sqlite.SqliteColumn("value", "TEXT", false, null, 0)
+        val table = com.twig.app.sqlite.SqliteTable("entries", "", listOf(column),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val state = SqliteTableState(table, filters = listOf(com.twig.app.sqlite.SqliteFilter("value",
+            condition = com.twig.app.sqlite.SqliteCondition.parse("= 'abc'"))))
+        fun latest() = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun menu(state: SqliteTableState): List<MenuAct> {
+            ReflectionHelpers.callInstanceMethod<Unit>(pane0(), "showSqliteFilter",
+                ReflectionHelpers.ClassParameter.from(SqliteDataNode::class.java, SqliteDataNode("db", 1, state)),
+                ReflectionHelpers.ClassParameter.from(Int::class.javaPrimitiveType!!, 0))
+            val dialog = latest()
+            return (0 until dialog.listView.adapter.count).map { dialog.listView.adapter.getItem(it) as MenuAct }
+                .also { dialog.dismiss() }
+        }
+        fun input(view: View): android.widget.EditText? = when (view) {
+            is android.widget.EditText -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { input(view.getChildAt(it)) }
+            else -> null
+        }
+        val actions = menu(state)
+        assertEquals(listOf(R.string.sqlite_filter_values, R.string.sqlite_filter_keyword,
+            R.string.sqlite_filter_custom, R.string.sqlite_filter_clear).map(activity::getString), actions.map { it.label })
+        actions[2].run()
+        idle()
+        val editor = latest()
+        val field = input(editor.window!!.decorView)!!
+        assertEquals("= 'abc'", field.text.toString())
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).performClick()
+        val operators = latest()
+        operators.listView.performItemClick(null, 2, 2)
+        assertEquals("> 'abc'", field.text.toString())
+        field.setText(">")
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertTrue(editor.isShowing)
+        assertTrue(field.error != null)
+        field.setText(">= 18")
+        editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        assertFalse(editor.isShowing)
+        menu(state.copy(filters = listOf(com.twig.app.sqlite.SqliteFilter("value",
+            condition = com.twig.app.sqlite.SqliteCondition.keyword("prefix%")))))[1].run()
+        val keyword = latest()
+        assertEquals("prefix%", input(keyword.window!!.decorView)!!.text.toString())
+        keyword.dismiss()
+        assertEquals(3, menu(state.copy(filters = emptyList())).size)
+    }
+
+    @Test fun `CSV column chooser defaults to all and disallows an empty selection`() {
+        val columns = listOf("id", "value").map { com.twig.app.sqlite.SqliteColumn(it, "TEXT", false, null, 0) }
+        val table = com.twig.app.sqlite.SqliteTable("entries", "", columns,
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val node: SqliteNode = SqliteTableNode("db", 1, SqliteTableState(table))
+        ReflectionHelpers.callInstanceMethod<Unit>(pane0(), "exportSqliteCsv",
+            ReflectionHelpers.ClassParameter.from(SqliteNode::class.java, node))
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        idle()
+        dialog.listView.measure(View.MeasureSpec.makeMeasureSpec(1080, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(1600, View.MeasureSpec.AT_MOST))
+        dialog.listView.layout(0, 0, 1080, 1600)
+        val positive = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+        val toggle = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+        assertTrue(dialog.listView.isItemChecked(0))
+        assertTrue(dialog.listView.isItemChecked(1))
+        toggle.performClick()
+        assertFalse(positive.isEnabled)
+        assertFalse(dialog.listView.isItemChecked(0))
+        dialog.listView.performItemClick(dialog.listView.getChildAt(0), 0, 0)
+        assertTrue(positive.isEnabled)
+        toggle.performClick()
+        assertTrue(dialog.listView.isItemChecked(0))
+        assertTrue(dialog.listView.isItemChecked(1))
+        dialog.dismiss()
+    }
+
+    @Test fun `SQL menus prefill quoted table names and reject writes without executing history`() {
+        val pane = pane0()
+        val database = PaneViewModel.FileNode(XFile("file", "/source/example.db", false), 1, true, false)
+        val schema = com.twig.app.sqlite.SqliteTable("quoted\" table", "", emptyList(),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        val table = SqliteTableNode(database.key, 2, SqliteTableState(schema))
+        val adapter = adapterOf(pane)
+        adapter.submitList(listOf(database, table))
+        awaitList(adapter, 2)
+        fun menu(node: PaneViewModel.Node): androidx.appcompat.app.AlertDialog {
+            ReflectionHelpers.callInstanceMethod<Unit>(pane, "onLongClick",
+                ReflectionHelpers.ClassParameter.from(PaneViewModel.Node::class.java, node))
+            return org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        }
+        val tableMenu = menu(table)
+        val sql = (0 until tableMenu.listView.adapter.count).map { tableMenu.listView.adapter.getItem(it) as MenuAct }
+            .single { it.label == activity.getString(R.string.sqlite_sql_query) }
+        tableMenu.dismiss()
+        sql.run()
+        val editor = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        val input = editor.findViewById<android.widget.EditText>(android.R.id.edit) ?: run {
+            fun find(view: View): android.widget.EditText? = when (view) {
+                is android.widget.EditText -> view
+                is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it)) }
+                else -> null
+            }
+            find(editor.window!!.decorView)!!
+        }
+        assertEquals("SELECT * FROM \"quoted\"\" table\" LIMIT 100", input.text.toString())
+        assertTrue(input.maxLines > 1)
+        for (invalid in listOf("DELETE FROM entries", "SELECT 1; SELECT 2", "")) {
+            input.setText(invalid)
+            editor.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+            assertTrue(editor.isShowing)
+            assertTrue(input.error != null)
+        }
+        assertTrue(pane.viewModel.state.value.rows.none { it is SqliteQueryNode })
+        editor.dismiss()
+        val databaseMenu = menu(database)
+        assertTrue((0 until databaseMenu.listView.adapter.count).any {
+            (databaseMenu.listView.adapter.getItem(it) as MenuAct).label == activity.getString(R.string.sqlite_sql_query)
+        })
+        databaseMenu.dismiss()
+        val history = com.twig.app.sqlite.SqliteQueryHistory(activity)
+        history.remember(database.file, "SELECT 42")
+        pane.javaClass.getDeclaredMethod("promptSqliteSql", PaneViewModel.FileNode::class.java, String::class.java, String::class.java)
+            .apply { isAccessible = true }.invoke(pane, database, null, null)
+        val recentEditor = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        fun findInput(view: View): android.widget.EditText? = when (view) {
+            is android.widget.EditText -> view
+            is android.view.ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { findInput(view.getChildAt(it)) }
+            else -> null
+        }
+        assertEquals("SELECT 42", findInput(recentEditor.window!!.decorView)!!.text.toString())
+        assertTrue(pane.viewModel.state.value.rows.none { it is SqliteQueryNode })
+        recentEditor.dismiss()
+    }
+
     private fun idle() {
         shadowOf(Looper.getMainLooper()).idle()
     }
@@ -125,6 +257,55 @@ class StripWriteActionsTest {
             Thread.sleep(10)
         }
         assertEquals("the rows never landed, so a selection over them could not be asserted", size, adapter.currentList.size)
+    }
+
+    @Test fun `search strip follows the framed database before and after collapse and opens LIKE search`() {
+        val pane = pane0()
+        val vm = pane.viewModel
+        val database = PaneViewModel.FileNode(XFile("file", "/source/example.db", false), 1, true, true)
+        val schema = com.twig.app.sqlite.SqliteTable("entries", "", emptyList(),
+            com.twig.app.sqlite.SqliteIdentity(null, emptyList()))
+        ReflectionHelpers.getField<MutableMap<String, XFile>>(vm, "keyFile")[database.key] = database.file
+        val table = SqliteTableNode(database.key, 2, SqliteTableState(schema))
+        val result = SqliteSearchNode(database.key, 2, "needle", 1, false, 0)
+        val state = ReflectionHelpers.getField<kotlinx.coroutines.flow.MutableStateFlow<PaneViewModel.State>>(vm, "_state")
+        vm.currentDir = XFile("file", "/source", true)
+        ReflectionHelpers.setField(activity, "activeIndex", 0)
+        ReflectionHelpers.setField(vm, "currentKey", database.key)
+        state.value = state.value.copy(rows = listOf(database), currentKey = database.key)
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_search, false) // A suffix alone is not evidence that SQLite can read it.
+        val tree = ReflectionHelpers.getField<Lazy<SqliteTree>>(vm, "sqliteTree\$delegate").value
+        ReflectionHelpers.getField<MutableSet<String>>(tree, "verified").add(database.key)
+        for (selected in listOf(database, database.copy(expanded = false), table, result)) {
+            val rows = if (selected is PaneViewModel.FileNode) listOf(selected) else listOf(database, selected)
+            ReflectionHelpers.setField(vm, "currentKey", selected.key)
+            state.value = state.value.copy(rows = rows, currentKey = selected.key)
+            idle()
+            activity.onClipTargetChanged()
+            assertStrip(R.id.as_search, true)
+            for (strip in listOf(R.id.strip_left, R.id.strip_mid, R.id.strip_right)) {
+                activity.findViewById<View>(strip).findViewById<View>(R.id.as_search).performClick()
+                idle()
+                val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+                val input = editInputs(dialog.window!!.decorView).single()
+                assertEquals(activity.getString(R.string.sqlite_search_hint), input.hint.toString())
+                assertEquals(if (selected == result) "needle" else "", input.text.toString())
+                dialog.dismiss()
+            }
+        }
+        // A database elsewhere in the tree must not redirect an ordinary directory search.
+        ReflectionHelpers.setField(vm, "currentKey", null)
+        state.value = state.value.copy(currentKey = null)
+        activity.onClipTargetChanged()
+        activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_search).performClick()
+        idle()
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
+        assertEquals(activity.getString(R.string.search_hint), editInputs(dialog.window!!.decorView).single().hint.toString())
+        dialog.dismiss()
+        vm.currentDir = null
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_search, false)
     }
 
     @Test

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Kisi · Hanya media</string>
     <string name="view_mode_grid_all">Kisi · Semua file</string>
     <string name="theme_system">Ikuti sistem</string>
+    <string name="theme_system_oled">Ikuti sistem (OLED)</string>
     <string name="theme_light">Terang</string>
     <string name="theme_dark">Gelap</string>
     <string name="conn_connect">Hubungkan</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Orientasi mengikuti sistem</string>
     <string name="player_brightness">Kecerahan %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Suara dibisukan</string>
+    <string name="player_unmuted">Suara diaktifkan</string>
+    <string name="player_subtitles_on">Subtitel diaktifkan</string>
+    <string name="player_subtitles_off">Subtitel dinonaktifkan</string>
     <string name="player_subtitle">Subtitel</string>
     <string name="player_subtitle_size">Ukuran subtitel teks</string>
     <string name="player_subtitle_size_value">Ukuran subtitel teks: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Peluncur ini tidak mendukung pintasan yang disematkan</string>
     <string name="group_fav">Favorit</string>
     <string name="group_internal_storage">Penyimpanan internal</string>
+    <string name="group_removable_storage">Penyimpanan lepas-pasang (SD / USB)</string>
     <string name="group_root">Akar</string>
     <string name="group_lan">Jaringan lokal (SMB)</string>
     <string name="group_saf">Pohon dokumen (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">Pilih tujuan penyimpanan</string>
     <string name="settings_auto_tree_indent">Indentasi pohon otomatis</string>
     <string name="settings_auto_tree_indent_desc">Kurangi indentasi secara halus saat folder induk bergulir keluar layar.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Buka sebagai SQLite</string>
+    <string name="sqlite_columns">Kolom</string>
+    <string name="sqlite_copy">Salin</string>
+    <string name="sqlite_name">Nama</string>
+    <string name="sqlite_type">Tipe</string>
+    <string name="sqlite_not_null">Tidak null</string>
+    <string name="sqlite_default">Bawaan</string>
+    <string name="sqlite_primary_key">Kunci utama</string>
+    <string name="sqlite_hidden">Tersembunyi / dihasilkan</string>
+    <string name="sqlite_loading">Memuat…</string>
+    <string name="sqlite_no_rows">Tidak ada baris</string>
+    <string name="sqlite_no_tables">Tidak ada tabel</string>
+    <string name="sqlite_open_failed">Tidak dapat membuka basis data SQLite</string>
+    <string name="sqlite_read_failed">Tidak dapat membaca data tabel</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s baris, %2$d kolom</string>
+    <string name="sqlite_value_truncated">Pratinjau dipotong; panjang asli: %1$d. Hanya pratinjau yang ditampilkan yang disalin.</string>
+    <string name="sqlite_journal_active">Basis data ini memiliki jurnal rollback. Tutup program penulis atau ekspor salinan terlebih dahulu.</string>
+    <string name="sqlite_source_changed">Basis data berubah saat disalin. Tutup program penulis atau ekspor salinan lalu coba lagi.</string>
+    <string name="sqlite_snapshot_confirm">%1$s harus diunduh sebagai snapshot lokal untuk dijelajahi. Jika sedang berubah, ekspor salinan terlebih dahulu. Lanjutkan?</string>
+    <string name="player_waiting_network">Jaringan terputus. Menunggu koneksi…</string>
+    <string name="player_retry_failed">Koneksi gagal. Ketuk Putar untuk mencoba lagi.</string>
+    <string name="player_retry_wait">Percobaan %1$d/5 dalam %2$d detik…</string>
+    <string name="player_retry_connecting">Menghubungkan kembali (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Teks di semua kolom (LIKE: % dan _ adalah wildcard)</string>
+    <string name="sqlite_search_incomplete">Pencarian belum lengkap: %1$d tabel tidak dapat dicari.</string>
+    <string name="save_as">Simpan sebagai…</string>
+    <string name="sqlite_export_csv">Ekspor CSV</string>
+    <string name="sqlite_export_columns">Pilih kolom</string>
+    <string name="sqlite_sort_ascending">Menaik</string>
+    <string name="sqlite_sort_descending">Menurun</string>
+    <string name="sqlite_sql_query">Kueri SQL</string>
+    <string name="sqlite_sql_run">Jalankan</string>
+    <string name="sqlite_sql_result">Hasil kueri</string>
+    <string name="sqlite_sql_running">Berjalan · %1$d dtk</string>
+    <string name="sqlite_sql_read_only">Masukkan satu pernyataan baca-saja SELECT, WITH, VALUES, EXPLAIN, atau PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Jalankan satu pernyataan SQL setiap kali.</string>
+    <string name="sqlite_sql_no_columns">Pernyataan ini tidak menghasilkan kolom.</string>
+    <string name="sqlite_sql_edit">Edit SQL</string>
+    <string name="sqlite_sql_rerun">Jalankan lagi</string>
+    <string name="sqlite_filter_title">Filter: %1$s</string>
+    <string name="sqlite_filter_clear">Hapus filter kolom</string>
+    <string name="sqlite_filter_empty_text">(Teks kosong)</string>
+    <string name="sqlite_filter_active">Difilter</string>
+    <string name="sqlite_filter_oversized">(Terlalu besar untuk dipilih)</string>
+    <string name="sqlite_filter_values" formatted="false">Pilih nilai</string>
+    <string name="sqlite_filter_keyword" formatted="false">Kata kunci</string>
+    <string name="sqlite_filter_custom" formatted="false">Kondisi khusus</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Menambahkan % di kedua ujung kecuali kata kunci sudah berisi %. Kosongkan untuk menghapus.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Angka dibandingkan secara numerik; gunakan kutip tunggal untuk teks. Kosongkan untuk menghapus.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operator</string>
+    <string name="sqlite_filter_invalid" formatted="false">Masukkan kondisi seperti &gt;= 18, = \'abc\', LIKE \'%abc%\' atau IS NULL.</string>
 </resources>

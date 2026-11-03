@@ -6,7 +6,6 @@ import com.twig.core.RandomSource
 import com.twig.core.XFile
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.io.Closeable
 
 /**
  * Byte source for the hex viewer: reads in [CHUNK]-sized chunks via [FileSystem.openRandom] seeking, with
@@ -22,13 +21,13 @@ import java.io.Closeable
  * "read whole file into memory" emergency path, capped at [MAX_MEM]; if truncation occurs, set
  * [truncated] so the UI can warn.
  */
-class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable {
+class HexSource(private val fs: FileSystem, private val file: XFile) : HexByteSource {
 
-    var size = 0L
+    override var size = 0L
         private set
 
     /** Only true in the in-memory fallback mode: the file is bigger than [MAX_MEM] and only the first portion was read. */
-    var truncated = false
+    override var truncated = false
         private set
 
     private var random: RandomSource? = null
@@ -64,7 +63,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
      * Pull [len] bytes starting at [off] from the cache. Returning null means not yet read; the caller should
      * schedule a [load]; the returned array may be shorter than [len] (reached the file end).
      */
-    fun peek(off: Long, len: Int): ByteArray? {
+    override fun peek(off: Long, len: Int): ByteArray? {
         if (len <= 0 || off < 0) return ByteArray(0)
         mem?.let { m ->
             if (off >= m.size) return ByteArray(0)
@@ -87,7 +86,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     }
 
     /** Read in chunk [ci]; returns immediately if already cached. */
-    suspend fun load(ci: Int) {
+    override suspend fun load(ci: Int) {
         if (mem != null || cache.get(ci) != null) return
         val start = ci.toLong() * CHUNK
         if (start >= size) return
@@ -168,7 +167,7 @@ class HexSource(private val fs: FileSystem, private val file: XFile) : Closeable
     }
 
     companion object {
-        const val CHUNK = 64 * 1024
+        const val CHUNK = HexByteSource.CHUNK
         private const val SCAN_BUF = 256 * 1024
 
         private fun lower(b: Byte): Byte {

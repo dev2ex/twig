@@ -56,7 +56,7 @@ internal class TreeIndentation(
             // Attached prefetch rows do not count; even one visible pixel retains its ancestry.
             if (row.bottom <= list.paddingTop || row.top >= list.height - list.paddingBottom) continue
             val node = adapter.currentList.getOrNull(list.getChildAdapterPosition(row)) ?: continue
-            val ownerDepth = if (node is PaneViewModel.InfoNode) node.depth - 1 else node.depth
+            val ownerDepth = if (node is PaneViewModel.InfoNode || node is SqliteDataNode || node is SqliteInfoNode) node.depth - 1 else node.depth
             depth = minOf(depth, ownerDepth.coerceAtLeast(0))
         }
         val next = if (isEnabled && depth != Int.MAX_VALUE) depth else 0

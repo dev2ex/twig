@@ -101,6 +101,7 @@ object CodeHighlighter {
         val typeHl: Boolean = true,      // identifiers starting with an uppercase letter are colored as types
         val xml: Boolean = false,        // use the dedicated XML scanner
         val markdown: Boolean = false,   // use the dedicated Markdown scanner
+        val sql: Boolean = false,        // SQLite quoted identifiers and literal string escaping
     )
 
     private val LANGS: Map<String, Lang> = buildMap {
@@ -353,8 +354,14 @@ object CodeHighlighter {
                     "constraint", "begin", "commit", "rollback", "transaction", "if", "else",
                     "case", "when", "then", "end", "int", "integer", "varchar", "text", "char",
                     "date", "datetime", "timestamp", "float", "double", "decimal", "boolean",
+                    "with", "recursive", "pragma", "explain", "query", "plan", "without", "rowid",
+                    "strict", "generated", "always", "virtual", "stored", "returning", "over",
+                    "partition", "rows", "range", "unbounded", "preceding", "following", "current",
+                    "row", "filter", "window", "asc", "desc", "nulls", "first", "last", "collate",
+                    "replace", "temporary", "temp", "trigger", "vacuum", "analyze", "reindex",
+                    "attach", "detach", "database", "blob", "real", "numeric", "cast", "escape",
                 ),
-                lineComments = arrayOf("--"), caseInsensitive = true, typeHl = false,
+                lineComments = arrayOf("--"), caseInsensitive = true, typeHl = false, backtick = true, sql = true,
             ),
         )
         put("json", Lang(setOf("true", "false", "null"), typeHl = false))
@@ -395,6 +402,10 @@ object CodeHighlighter {
                 var j = text.indexOf('\n', i)
                 if (j < 0) j = n
                 out.add(Token(i, j, COMMENT)); i = j; continue
+            }
+            if (lang.sql && c == '[') {
+                val end = text.indexOf(']', i + 1).let { if (it < 0) n else it + 1 }
+                out.add(Token(i, end, STRING)); i = end; continue
             }
             if (c in lang.quotes || (lang.backtick && c == '`')) {
                 i = scanString(text, i, c, lang, out); continue
@@ -437,9 +448,12 @@ object CodeHighlighter {
         var i = start + 1
         while (i < n) {
             val c = text[i]
-            if (c == '\\') { i += 2; continue }
-            if (c == q) { i++; break }
-            if (c == '\n' && q != '`') break // unclosed quote ends at end-of-line, so the rest of the text doesn't get painted as a string color
+            if (c == '\\' && !lang.sql) { i += 2; continue }
+            if (c == q) {
+                if (lang.sql && i + 1 < n && text[i + 1] == q) { i += 2; continue }
+                i++; break
+            }
+            if (c == '\n' && q != '`' && !lang.sql) break // unclosed quote ends at end-of-line, so the rest of the text doesn't get painted as a string color
             i++
         }
         i = minOf(i, n)
@@ -707,7 +721,7 @@ object CodeHighlighter {
         }
     }
 
-    private fun canHighlight(text: String): Boolean {
+    internal fun canHighlight(text: String): Boolean {
         if (text.length > MAX_HIGHLIGHT) return false
         var lineLength = 0
         for (c in text) {

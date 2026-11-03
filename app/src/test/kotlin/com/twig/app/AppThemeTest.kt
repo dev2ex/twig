@@ -1,6 +1,7 @@
 package com.twig.app
 
 import android.app.Application
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -185,6 +186,57 @@ class AppThemeTest {
         assertNotSame(previous, controller.get())
         assertEquals(Color.WHITE, controller.get().getColor(R.color.surface))
         assertEquals(Color.rgb(33, 33, 33), controller.get().getColor(R.color.text_primary))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun `default remains follow system with the ordinary dark palette`() {
+        assertEquals(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM, Prefs.themeMode(app))
+        val controller = Robolectric.buildActivity(Screen::class.java).setup()
+        assertEquals(Color.rgb(30, 30, 30), controller.get().getColor(R.color.surface))
+        controller.pause().stop().destroy()
+    }
+
+    @Test fun `system OLED switches existing dark screens to black and back`() {
+        val controller = Robolectric.buildActivity(Screen::class.java).setup()
+        var previous = controller.get()
+        Prefs.setThemeMode(app, AppTheme.MODE_SYSTEM_OLED)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM, AppCompatDelegate.getDefaultNightMode())
+        assertNotSame(previous, controller.get())
+        assertEquals(Color.BLACK, controller.get().getColor(R.color.surface))
+        assertEquals(Color.BLACK, (controller.get().window.decorView.background as ColorDrawable).color)
+        assertEquals(Color.rgb(230, 230, 230), controller.get().getColor(R.color.text_primary))
+        previous = controller.get()
+        Prefs.setThemeMode(app, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNotSame(previous, controller.get())
+        assertEquals(Color.rgb(30, 30, 30), controller.get().getColor(R.color.surface))
+        controller.pause().stop().destroy()
+    }
+
+    @Test
+    @Config(qualifiers = "notnight")
+    fun `saved system OLED choice starts light and follows system changes in both directions`() {
+        app.unregisterActivityLifecycleCallbacks(AppTheme)
+        app.getSharedPreferences("twig_prefs", 0).edit().putInt("theme_mode", AppTheme.MODE_SYSTEM_OLED).commit()
+        AppTheme.install(app)
+        val controller = Robolectric.buildActivity(Screen::class.java).setup()
+        assertEquals(Color.WHITE, controller.get().getColor(R.color.surface))
+        assertEquals(Color.rgb(33, 33, 33), controller.get().getColor(R.color.text_primary))
+        for ((night, surface, text) in listOf(
+            Triple(Configuration.UI_MODE_NIGHT_YES, Color.BLACK, Color.rgb(230, 230, 230)),
+            Triple(Configuration.UI_MODE_NIGHT_NO, Color.WHITE, Color.rgb(33, 33, 33)),
+        )) {
+            controller.configurationChange(Configuration(controller.get().resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+            })
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(surface, controller.get().getColor(R.color.surface))
+            val background = if (night == Configuration.UI_MODE_NIGHT_YES) Color.BLACK else Color.rgb(250, 250, 250)
+            assertEquals(background, (controller.get().window.decorView.background as ColorDrawable).color)
+            assertEquals(text, controller.get().getColor(R.color.text_primary))
+        }
+        assertEquals(AppTheme.MODE_SYSTEM_OLED, Prefs.themeMode(app))
         controller.pause().stop().destroy()
     }
 

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Grille · Médias seuls</string>
     <string name="view_mode_grid_all">Grille · Tous les fichiers</string>
     <string name="theme_system">Suivre le système</string>
+    <string name="theme_system_oled">Suivre le système (OLED)</string>
     <string name="theme_light">Clair</string>
     <string name="theme_dark">Sombre</string>
     <string name="conn_connect">Connecter</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Orientation du système</string>
     <string name="player_brightness">Luminosité %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Son coupé</string>
+    <string name="player_unmuted">Son rétabli</string>
+    <string name="player_subtitles_on">Sous-titres activés</string>
+    <string name="player_subtitles_off">Sous-titres désactivés</string>
     <string name="player_subtitle">Sous-titre</string>
     <string name="player_subtitle_size">Taille des sous-titres textuels</string>
     <string name="player_subtitle_size_value">Taille des sous-titres textuels: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Ce lanceur ne permet pas d’épingler des raccourcis</string>
     <string name="group_fav">Favoris</string>
     <string name="group_internal_storage">Stockage interne</string>
+    <string name="group_removable_storage">Stockage amovible (SD / USB)</string>
     <string name="group_root">Racine</string>
     <string name="group_lan">Réseau local (SMB)</string>
     <string name="group_saf">Arbre de documents (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">Choisissez une destination</string>
     <string name="settings_auto_tree_indent">Retrait automatique de l’arborescence</string>
     <string name="settings_auto_tree_indent_desc">Réduire progressivement le retrait lorsque les dossiers parents quittent l’écran.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Ouvrir comme SQLite</string>
+    <string name="sqlite_columns">Colonnes</string>
+    <string name="sqlite_copy">Copier</string>
+    <string name="sqlite_name">Nom</string>
+    <string name="sqlite_type">Type</string>
+    <string name="sqlite_not_null">Non nul</string>
+    <string name="sqlite_default">Valeur par défaut</string>
+    <string name="sqlite_primary_key">Clé primaire</string>
+    <string name="sqlite_hidden">Masquée / générée</string>
+    <string name="sqlite_loading">Chargement…</string>
+    <string name="sqlite_no_rows">Aucune ligne</string>
+    <string name="sqlite_no_tables">Aucune table</string>
+    <string name="sqlite_open_failed">Impossible d’ouvrir la base SQLite</string>
+    <string name="sqlite_read_failed">Impossible de lire les données de la table</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s lignes, %2$d colonnes</string>
+    <string name="sqlite_value_truncated">Aperçu tronqué ; longueur originale : %1$d. Seul l’aperçu affiché sera copié.</string>
+    <string name="sqlite_journal_active">Cette base possède un journal de restauration. Fermez le programme qui y écrit ou exportez une copie.</string>
+    <string name="sqlite_source_changed">La base a changé pendant la copie. Fermez le programme qui y écrit ou exportez une copie, puis réessayez.</string>
+    <string name="sqlite_snapshot_confirm">%1$s doit être téléchargée comme instantané local. Si elle est en cours de modification, exportez une copie. Continuer ?</string>
+    <string name="player_waiting_network">Réseau déconnecté. En attente de connexion…</string>
+    <string name="player_retry_failed">Échec de la connexion. Appuyez sur Lecture pour réessayer.</string>
+    <string name="player_retry_wait">Tentative %1$d/5 dans %2$d secondes…</string>
+    <string name="player_retry_connecting">Reconnexion (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Texte dans toutes les colonnes (LIKE : % et _ sont des jokers)</string>
+    <string name="sqlite_search_incomplete">Recherche incomplète : impossible de rechercher dans %1$d table(s).</string>
+    <string name="save_as">Enregistrer sous…</string>
+    <string name="sqlite_export_csv">Exporter en CSV</string>
+    <string name="sqlite_export_columns">Choisir les colonnes</string>
+    <string name="sqlite_sort_ascending">Croissant</string>
+    <string name="sqlite_sort_descending">Décroissant</string>
+    <string name="sqlite_sql_query">Requête SQL</string>
+    <string name="sqlite_sql_run">Exécuter</string>
+    <string name="sqlite_sql_result">Résultat de requête</string>
+    <string name="sqlite_sql_running">Exécution · %1$d s</string>
+    <string name="sqlite_sql_read_only">Saisissez une instruction SELECT, WITH, VALUES, EXPLAIN ou PRAGMA en lecture seule.</string>
+    <string name="sqlite_sql_single_statement">Exécutez une seule instruction SQL à la fois.</string>
+    <string name="sqlite_sql_no_columns">Cette instruction ne renvoie aucune colonne.</string>
+    <string name="sqlite_sql_edit">Modifier SQL</string>
+    <string name="sqlite_sql_rerun">Réexécuter</string>
+    <string name="sqlite_filter_title">Filtrer : %1$s</string>
+    <string name="sqlite_filter_clear">Effacer le filtre de colonne</string>
+    <string name="sqlite_filter_empty_text">(Texte vide)</string>
+    <string name="sqlite_filter_active">Filtré</string>
+    <string name="sqlite_filter_oversized">(Trop volumineux pour sélectionner)</string>
+    <string name="sqlite_filter_values" formatted="false">Choisir des valeurs</string>
+    <string name="sqlite_filter_keyword" formatted="false">Mot-clé</string>
+    <string name="sqlite_filter_custom" formatted="false">Condition personnalisée</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Ajoute % aux deux extrémités si le mot ne contient pas %. Laisser vide pour effacer.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Comparaison numérique des nombres ; entourer le texte de guillemets simples. Laisser vide pour effacer.</string>
+    <string name="sqlite_filter_operator" formatted="false">Opérateur</string>
+    <string name="sqlite_filter_invalid" formatted="false">Saisir une condition comme &gt;= 18, = \'abc\', LIKE \'%abc%\' ou IS NULL.</string>
 </resources>

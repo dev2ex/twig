@@ -182,6 +182,7 @@
     <string name="view_mode_grid_media">Grid · Media only</string>
     <string name="view_mode_grid_all">Grid · All files</string>
     <string name="theme_system">Follow system</string>
+    <string name="theme_system_oled">Follow system (OLED)</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_oled">Black (OLED)</string>
@@ -238,6 +239,10 @@
     <string name="player_orientation_auto">Orientation follows system</string>
     <string name="player_brightness">Brightness %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Muted</string>
+    <string name="player_unmuted">Unmuted</string>
+    <string name="player_subtitles_on">Subtitles on</string>
+    <string name="player_subtitles_off">Subtitles off</string>
     <string name="player_subtitle">Subtitle</string>
     <string name="player_subtitle_size">Text subtitle size</string>
     <string name="player_subtitle_size_value">Text subtitle size: %1$d sp</string>
@@ -473,6 +478,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">Favorites</string>
     <string name="group_internal_storage">Internal Storage</string>
+    <string name="group_removable_storage">Removable storage (SD / USB)</string>
     <string name="group_root">Root</string>
     <string name="group_lan">Local Network (SMB)</string>
     <string name="group_saf">Document Tree (SAF)</string>
@@ -1265,4 +1271,58 @@
     <string name="compress_destination_missing">Choose a destination</string>
     <string name="settings_auto_tree_indent">Automatic tree indentation</string>
     <string name="settings_auto_tree_indent_desc">Smoothly reduce indentation when parent folders scroll off screen.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Open as SQLite</string>
+    <string name="sqlite_columns">Columns</string>
+    <string name="sqlite_copy">Copy</string>
+    <string name="sqlite_name">Name</string>
+    <string name="sqlite_type">Type</string>
+    <string name="sqlite_not_null">Not null</string>
+    <string name="sqlite_default">Default</string>
+    <string name="sqlite_primary_key">Primary key</string>
+    <string name="sqlite_hidden">Hidden / generated</string>
+    <string name="sqlite_loading">Loading…</string>
+    <string name="sqlite_no_rows">No rows</string>
+    <string name="sqlite_no_tables">No tables</string>
+    <string name="sqlite_open_failed">Could not open SQLite database</string>
+    <string name="sqlite_read_failed">Could not read table data</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s rows, %2$d columns</string>
+    <string name="sqlite_value_truncated">Preview limited; original length: %1$d. Copy includes only the displayed preview.</string>
+    <string name="sqlite_journal_active">This database has a rollback journal. Close its writer or export a database copy first.</string>
+    <string name="sqlite_source_changed">The database changed while copying. Close its writer or export a database copy, then retry.</string>
+    <string name="sqlite_snapshot_confirm">%1$s must be downloaded as a local snapshot before browsing. For an actively changing database, export a copy first. Continue?</string>
+    <string name="player_waiting_network">Network disconnected. Waiting to reconnect…</string>
+    <string name="player_retry_failed">Connection failed. Tap Play to retry.</string>
+    <string name="player_retry_wait">Retry %1$d/5 in %2$d seconds…</string>
+    <string name="player_retry_connecting">Reconnecting (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Text in any column (LIKE: % and _ are wildcards)</string>
+    <string name="sqlite_search_incomplete">Search incomplete: %1$d table(s) could not be searched.</string>
+    <string name="save_as">Save as…</string>
+    <string name="sqlite_export_csv">Export CSV</string>
+    <string name="sqlite_export_columns">Choose columns</string>
+    <string name="sqlite_sort_ascending">Ascending</string>
+    <string name="sqlite_sort_descending">Descending</string>
+    <string name="sqlite_sql_query">SQL query</string>
+    <string name="sqlite_sql_run">Run</string>
+    <string name="sqlite_sql_result">Query result</string>
+    <string name="sqlite_sql_running">Running · %1$d s</string>
+    <string name="sqlite_sql_read_only">Enter one read-only SELECT, WITH, VALUES, EXPLAIN or PRAGMA statement.</string>
+    <string name="sqlite_sql_single_statement">Run one SQL statement at a time.</string>
+    <string name="sqlite_sql_no_columns">This statement does not return columns.</string>
+    <string name="sqlite_sql_edit">Edit SQL</string>
+    <string name="sqlite_sql_rerun">Run again</string>
+    <string name="sqlite_filter_title">Filter: %1$s</string>
+    <string name="sqlite_filter_clear">Clear column filter</string>
+    <string name="sqlite_filter_empty_text">(Empty text)</string>
+    <string name="sqlite_filter_active">Filtered</string>
+    <string name="sqlite_filter_oversized">(Too large to select)</string>
+    <string name="sqlite_filter_values" formatted="false">Choose values</string>
+    <string name="sqlite_filter_keyword" formatted="false">Keyword</string>
+    <string name="sqlite_filter_custom" formatted="false">Custom condition</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Adds % at both ends unless the keyword already contains %. Leave blank to clear.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Numbers compare numeric values; use single quotes for text. Leave blank to clear.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operator</string>
+    <string name="sqlite_filter_invalid" formatted="false">Enter a condition such as &gt;= 18, = \'abc\', LIKE \'%abc%\' or IS NULL.</string>
 </resources>

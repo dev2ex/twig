@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">ग्रिड · केवल मीडिया</string>
     <string name="view_mode_grid_all">ग्रिड · सभी फ़ाइलें</string>
     <string name="theme_system">सिस्टम के अनुसार</string>
+    <string name="theme_system_oled">सिस्टम के अनुसार (OLED)</string>
     <string name="theme_light">हल्का</string>
     <string name="theme_dark">गहरा</string>
     <string name="conn_connect">कनेक्ट करें</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">अभिविन्यास सिस्टम के अनुसार</string>
     <string name="player_brightness">चमक %1$d%%</string>
     <string name="player_volume">आवाज़ %1$d%%</string>
+    <string name="player_muted">आवाज़ बंद</string>
+    <string name="player_unmuted">आवाज़ चालू</string>
+    <string name="player_subtitles_on">उपशीर्षक चालू</string>
+    <string name="player_subtitles_off">उपशीर्षक बंद</string>
     <string name="player_subtitle">उपशीर्षक</string>
     <string name="player_subtitle_size">टेक्स्ट उपशीर्षक का आकार</string>
     <string name="player_subtitle_size_value">टेक्स्ट उपशीर्षक का आकार: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">यह लॉन्चर शॉर्टकट पिन करना समर्थित नहीं करता</string>
     <string name="group_fav">पसंदीदा</string>
     <string name="group_internal_storage">आंतरिक स्टोरेज</string>
+    <string name="group_removable_storage">हटाने योग्य स्टोरेज (SD / USB)</string>
     <string name="group_root">मूल</string>
     <string name="group_lan">स्थानीय नेटवर्क (SMB)</string>
     <string name="group_saf">दस्तावेज़ ट्री (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">सहेजने का स्थान चुनें</string>
     <string name="settings_auto_tree_indent">ट्री का स्वचालित इंडेंट</string>
     <string name="settings_auto_tree_indent_desc">मूल फ़ोल्डर स्क्रीन से बाहर स्क्रॉल होने पर इंडेंट धीरे से कम करें।</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite के रूप में खोलें</string>
+    <string name="sqlite_columns">कॉलम</string>
+    <string name="sqlite_copy">कॉपी करें</string>
+    <string name="sqlite_name">नाम</string>
+    <string name="sqlite_type">प्रकार</string>
+    <string name="sqlite_not_null">NULL नहीं</string>
+    <string name="sqlite_default">डिफ़ॉल्ट</string>
+    <string name="sqlite_primary_key">प्राथमिक कुंजी</string>
+    <string name="sqlite_hidden">छिपा / जनरेट किया गया</string>
+    <string name="sqlite_loading">लोड हो रहा है…</string>
+    <string name="sqlite_no_rows">कोई पंक्ति नहीं</string>
+    <string name="sqlite_no_tables">कोई तालिका नहीं</string>
+    <string name="sqlite_open_failed">SQLite डेटाबेस नहीं खुल सका</string>
+    <string name="sqlite_read_failed">तालिका का डेटा नहीं पढ़ा जा सका</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s पंक्तियाँ, %2$d कॉलम</string>
+    <string name="sqlite_value_truncated">पूर्वावलोकन सीमित है; मूल लंबाई: %1$d। केवल दिखाया गया भाग कॉपी होगा।</string>
+    <string name="sqlite_journal_active">इस डेटाबेस में रोलबैक जर्नल है। लिखने वाला प्रोग्राम बंद करें या पहले एक प्रति निर्यात करें।</string>
+    <string name="sqlite_source_changed">कॉपी करते समय डेटाबेस बदल गया। लिखने वाला प्रोग्राम बंद करें या प्रति निर्यात करके फिर प्रयास करें।</string>
+    <string name="sqlite_snapshot_confirm">देखने के लिए %1$s का स्थानीय स्नैपशॉट डाउनलोड करना होगा। बदलते डेटाबेस की पहले प्रति निर्यात करें। जारी रखें?</string>
+    <string name="player_waiting_network">नेटवर्क डिस्कनेक्ट है। दोबारा जुड़ने की प्रतीक्षा है…</string>
+    <string name="player_retry_failed">कनेक्शन विफल। फिर से प्रयास करने के लिए चलाएँ दबाएँ।</string>
+    <string name="player_retry_wait">%2$d सेकंड में प्रयास %1$d/5…</string>
+    <string name="player_retry_connecting">फिर से कनेक्ट हो रहा है (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">किसी भी कॉलम में पाठ (LIKE: % और _ वाइल्डकार्ड हैं)</string>
+    <string name="sqlite_search_incomplete">खोज अधूरी है: %1$d तालिकाओं में खोज नहीं हो सकी।</string>
+    <string name="save_as">इस नाम से सहेजें…</string>
+    <string name="sqlite_export_csv">CSV निर्यात करें</string>
+    <string name="sqlite_export_columns">कॉलम चुनें</string>
+    <string name="sqlite_sort_ascending">आरोही</string>
+    <string name="sqlite_sort_descending">अवरोही</string>
+    <string name="sqlite_sql_query">SQL क्वेरी</string>
+    <string name="sqlite_sql_run">चलाएँ</string>
+    <string name="sqlite_sql_result">क्वेरी परिणाम</string>
+    <string name="sqlite_sql_running">चल रहा है · %1$d सेकंड</string>
+    <string name="sqlite_sql_read_only">एक केवल-पढ़ने वाला SELECT, WITH, VALUES, EXPLAIN या PRAGMA कथन दर्ज करें।</string>
+    <string name="sqlite_sql_single_statement">एक बार में एक SQL कथन चलाएँ।</string>
+    <string name="sqlite_sql_no_columns">यह कथन कोई कॉलम नहीं लौटाता।</string>
+    <string name="sqlite_sql_edit">SQL संपादित करें</string>
+    <string name="sqlite_sql_rerun">फिर चलाएँ</string>
+    <string name="sqlite_filter_title">फ़िल्टर: %1$s</string>
+    <string name="sqlite_filter_clear">कॉलम फ़िल्टर हटाएँ</string>
+    <string name="sqlite_filter_empty_text">(खाली पाठ)</string>
+    <string name="sqlite_filter_active">फ़िल्टर किया गया</string>
+    <string name="sqlite_filter_oversized">(चुनने के लिए बहुत बड़ा)</string>
+    <string name="sqlite_filter_values" formatted="false">मान चुनें</string>
+    <string name="sqlite_filter_keyword" formatted="false">कीवर्ड</string>
+    <string name="sqlite_filter_custom" formatted="false">कस्टम शर्त</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">कीवर्ड में % न होने पर दोनों ओर % जोड़ा जाता है। हटाने के लिए खाली छोड़ें।</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">संख्याओं की तुलना संख्यात्मक है; पाठ के लिए एकल उद्धरण लगाएँ। हटाने के लिए खाली छोड़ें।</string>
+    <string name="sqlite_filter_operator" formatted="false">ऑपरेटर</string>
+    <string name="sqlite_filter_invalid" formatted="false">जैसी शर्त दर्ज करें: &gt;= 18, = \'abc\', LIKE \'%abc%\' या IS NULL।</string>
 </resources>

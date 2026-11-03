@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep data and scroll indicators clear of the pane's selection frame. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:paddingBottom="4dp">
+
+    <com.twig.app.ui.SqliteGridView
+        android:id="@+id/sqlite_grid"
+        android:layout_width="match_parent"
+        android:layout_height="280dp" />
+</FrameLayout>

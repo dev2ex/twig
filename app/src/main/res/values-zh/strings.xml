@@ -166,6 +166,7 @@
     <string name="view_mode_grid_media">网格 · 仅媒体文件</string>
     <string name="view_mode_grid_all">网格 · 全部文件</string>
     <string name="theme_system">跟随系统</string>
+    <string name="theme_system_oled">跟随系统 (OLED)</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
     <string name="theme_oled">纯黑（OLED）</string>
@@ -219,6 +220,10 @@
     <string name="player_orientation_auto">方向跟随系统</string>
     <string name="player_brightness">亮度 %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
+    <string name="player_muted">已静音</string>
+    <string name="player_unmuted">已取消静音</string>
+    <string name="player_subtitles_on">已恢复字幕</string>
+    <string name="player_subtitles_off">已关闭字幕</string>
     <string name="player_subtitle">字幕</string>
     <string name="player_subtitle_size">文本字幕大小</string>
     <string name="player_subtitle_size_value">文本字幕大小: %1$d sp</string>
@@ -454,6 +459,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">收藏</string>
     <string name="group_internal_storage">内部存储</string>
+    <string name="group_removable_storage">可移动存储（SD 卡 / USB）</string>
     <string name="group_root">根目录</string>
     <string name="group_lan">局域网 (SMB)</string>
     <string name="group_saf">文档树 (SAF)</string>
@@ -1216,4 +1222,58 @@
     <string name="compress_destination_missing">请选择保存位置</string>
     <string name="settings_auto_tree_indent">自动调整树缩进</string>
     <string name="settings_auto_tree_indent_desc">父目录滚出屏幕后，平滑收回子级缩进。</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">作为 SQLite 打开</string>
+    <string name="sqlite_columns">列信息</string>
+    <string name="sqlite_copy">复制</string>
+    <string name="sqlite_name">名称</string>
+    <string name="sqlite_type">类型</string>
+    <string name="sqlite_not_null">非空</string>
+    <string name="sqlite_default">默认值</string>
+    <string name="sqlite_primary_key">主键</string>
+    <string name="sqlite_hidden">隐藏 / 生成列</string>
+    <string name="sqlite_loading">加载中…</string>
+    <string name="sqlite_no_rows">没有数据</string>
+    <string name="sqlite_no_tables">没有表</string>
+    <string name="sqlite_open_failed">无法打开 SQLite 数据库</string>
+    <string name="sqlite_read_failed">无法读取表数据</string>
+    <string name="sqlite_blob">BLOB（%1$s）</string>
+    <string name="sqlite_grid_description">%1$s 行，%2$d 列</string>
+    <string name="sqlite_value_truncated">预览已截断；原始长度：%1$d。复制仅包含显示的预览。</string>
+    <string name="sqlite_journal_active">此数据库存在回滚日志。请先关闭写入它的程序，或导出数据库副本。</string>
+    <string name="sqlite_source_changed">复制期间数据库发生变化。请先关闭写入它的程序或导出副本，再重试。</string>
+    <string name="sqlite_snapshot_confirm">浏览 %1$s 前需要下载为本地快照。如果数据库正在变化，请先导出副本。是否继续？</string>
+    <string name="player_waiting_network">网络已断开，等待恢复…</string>
+    <string name="player_retry_failed">连接失败，点击播放重试</string>
+    <string name="player_retry_wait">%2$d 秒后重试（%1$d/5）…</string>
+    <string name="player_retry_connecting">正在重新连接（%1$d/5）…</string>
+    <string name="sqlite_search_hint" formatted="false">搜索所有列（LIKE：% 和 _ 为通配符）</string>
+    <string name="sqlite_search_incomplete">搜索未完成：有 %1$d 张表无法搜索。</string>
+    <string name="save_as">另存为…</string>
+    <string name="sqlite_export_csv">导出 CSV</string>
+    <string name="sqlite_export_columns">选择导出的列</string>
+    <string name="sqlite_sort_ascending">升序</string>
+    <string name="sqlite_sort_descending">降序</string>
+    <string name="sqlite_sql_query">SQL 查询</string>
+    <string name="sqlite_sql_run">运行</string>
+    <string name="sqlite_sql_result">查询结果</string>
+    <string name="sqlite_sql_running">执行中 · %1$d 秒</string>
+    <string name="sqlite_sql_read_only">输入一条只读的 SELECT、WITH、VALUES、EXPLAIN 或 PRAGMA 语句。</string>
+    <string name="sqlite_sql_single_statement">每次只能运行一条 SQL 语句。</string>
+    <string name="sqlite_sql_no_columns">此语句没有返回列。</string>
+    <string name="sqlite_sql_edit">修改 SQL</string>
+    <string name="sqlite_sql_rerun">重新运行</string>
+    <string name="sqlite_filter_title">筛选：%1$s</string>
+    <string name="sqlite_filter_clear">清除此列筛选</string>
+    <string name="sqlite_filter_empty_text">（空文本）</string>
+    <string name="sqlite_filter_active">已筛选</string>
+    <string name="sqlite_filter_oversized">（值过大，无法选择）</string>
+    <string name="sqlite_filter_values" formatted="false">按值选择</string>
+    <string name="sqlite_filter_keyword" formatted="false">关键字</string>
+    <string name="sqlite_filter_custom" formatted="false">自定义条件</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">默认首尾加 %；关键字已有 % 时按原样匹配。留空清除。</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">数字按数值比较，文本可用单引号包围。留空清除。</string>
+    <string name="sqlite_filter_operator" formatted="false">运算符</string>
+    <string name="sqlite_filter_invalid" formatted="false">请输入条件，如 &gt;= 18、= \'abc\'、LIKE \'%abc%\' 或 IS NULL。</string>
 </resources>

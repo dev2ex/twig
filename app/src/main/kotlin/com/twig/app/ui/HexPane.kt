@@ -16,6 +16,8 @@ import com.twig.app.R
 import com.twig.app.databinding.ItemHexRowBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,7 +52,7 @@ class HexPane(private val list: RecyclerView, private val scope: CoroutineScope)
     private val measurePaint = Paint()
     private val loadingChunks = HashSet<Int>()
 
-    var src: HexSource? = null
+    var src: HexByteSource? = null
         private set
     var size = 0L
         private set
@@ -77,6 +79,7 @@ class HexPane(private val list: RecyclerView, private val scope: CoroutineScope)
 
     /** Long-press on a row; the owner decides what to do with [rowText]. */
     var onRowLongClick: ((Int) -> Unit)? = null
+    var onReadError: ((Throwable) -> Unit)? = null
 
     init {
         list.layoutManager = lm
@@ -90,8 +93,12 @@ class HexPane(private val list: RecyclerView, private val scope: CoroutineScope)
         val s = withContext(Dispatchers.IO) {
             HexSource(FsRegistry.of(file), file).also { it.open(declaredSize) }
         }
-        src = s
-        size = s.size
+        open(s)
+    }
+
+    fun open(source: HexByteSource) {
+        src = source
+        size = source.size
     }
 
     fun close() {
@@ -323,14 +330,20 @@ class HexPane(private val list: RecyclerView, private val scope: CoroutineScope)
     private fun requestChunks(off: Long, len: Int) {
         val s = src ?: return
         if (len <= 0) return
-        val first = (off / HexSource.CHUNK).toInt()
-        val last = ((off + len - 1) / HexSource.CHUNK).toInt()
+        val first = (off / HexByteSource.CHUNK).toInt()
+        val last = ((off + len - 1) / HexByteSource.CHUNK).toInt()
         for (ci in first..last) {
             if (!loadingChunks.add(ci)) continue
             scope.launch {
-                val ok = runCatching { withContext(Dispatchers.IO) { s.load(ci) } }.isSuccess
-                loadingChunks.remove(ci)
-                if (ok) refreshVisible()
+                try {
+                    withContext(Dispatchers.IO) { s.load(ci) }
+                    if (src === s) refreshVisible()
+                } catch (e: CancellationException) {
+                    if (isActive && src === s) onReadError?.invoke(e)
+                    throw e
+                } catch (e: Exception) {
+                    if (src === s) onReadError?.invoke(e)
+                } finally { loadingChunks.remove(ci) }
             }
         }
     }

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">격자 · 미디어만</string>
     <string name="view_mode_grid_all">격자 · 모든 파일</string>
     <string name="theme_system">시스템 설정 따르기</string>
+    <string name="theme_system_oled">시스템 설정 따르기 (OLED)</string>
     <string name="theme_light">밝게</string>
     <string name="theme_dark">어둡게</string>
     <string name="conn_connect">연결</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">시스템 화면 방향 따름</string>
     <string name="player_brightness">밝기 %1$d%%</string>
     <string name="player_volume">음량 %1$d%%</string>
+    <string name="player_muted">음소거됨</string>
+    <string name="player_unmuted">음소거 해제됨</string>
+    <string name="player_subtitles_on">자막 켜짐</string>
+    <string name="player_subtitles_off">자막 꺼짐</string>
     <string name="player_subtitle">자막</string>
     <string name="player_subtitle_size">텍스트 자막 크기</string>
     <string name="player_subtitle_size_value">텍스트 자막 크기: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">이 런처는 바로가기 고정을 지원하지 않습니다</string>
     <string name="group_fav">즐겨찾기</string>
     <string name="group_internal_storage">내부 저장소</string>
+    <string name="group_removable_storage">이동식 저장소(SD / USB)</string>
     <string name="group_root">루트</string>
     <string name="group_lan">로컬 네트워크 (SMB)</string>
     <string name="group_saf">문서 트리 (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">저장 위치를 선택하세요</string>
     <string name="settings_auto_tree_indent">트리 들여쓰기 자동 조정</string>
     <string name="settings_auto_tree_indent_desc">상위 폴더가 화면 밖으로 스크롤되면 들여쓰기를 부드럽게 줄입니다.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite로 열기</string>
+    <string name="sqlite_columns">열 정보</string>
+    <string name="sqlite_copy">복사</string>
+    <string name="sqlite_name">이름</string>
+    <string name="sqlite_type">유형</string>
+    <string name="sqlite_not_null">NULL 불가</string>
+    <string name="sqlite_default">기본값</string>
+    <string name="sqlite_primary_key">기본 키</string>
+    <string name="sqlite_hidden">숨김 / 생성 열</string>
+    <string name="sqlite_loading">불러오는 중…</string>
+    <string name="sqlite_no_rows">행 없음</string>
+    <string name="sqlite_no_tables">테이블 없음</string>
+    <string name="sqlite_open_failed">SQLite 데이터베이스를 열 수 없습니다</string>
+    <string name="sqlite_read_failed">테이블 데이터를 읽을 수 없습니다</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s행, %2$d열</string>
+    <string name="sqlite_value_truncated">미리보기가 잘렸습니다. 원래 길이: %1$d. 표시된 부분만 복사됩니다.</string>
+    <string name="sqlite_journal_active">이 데이터베이스에 롤백 저널이 있습니다. 쓰기 프로그램을 닫거나 먼저 사본을 내보내세요.</string>
+    <string name="sqlite_source_changed">복사 중 데이터베이스가 변경되었습니다. 쓰기 프로그램을 닫거나 사본을 내보낸 후 다시 시도하세요.</string>
+    <string name="sqlite_snapshot_confirm">탐색하려면 %1$s의 로컬 스냅샷을 다운로드해야 합니다. 변경 중인 데이터베이스는 먼저 사본을 내보내세요. 계속할까요?</string>
+    <string name="player_waiting_network">네트워크 연결이 끊겼습니다. 연결 복구 대기 중…</string>
+    <string name="player_retry_failed">연결에 실패했습니다. 재생을 눌러 다시 시도하세요.</string>
+    <string name="player_retry_wait">%2$d초 후 재시도 (%1$d/5)…</string>
+    <string name="player_retry_connecting">다시 연결 중 (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">모든 열에서 검색 (LIKE: %와 _는 와일드카드)</string>
+    <string name="sqlite_search_incomplete">검색 미완료: %1$d개 테이블을 검색할 수 없습니다.</string>
+    <string name="save_as">다른 이름으로 저장…</string>
+    <string name="sqlite_export_csv">CSV 내보내기</string>
+    <string name="sqlite_export_columns">열 선택</string>
+    <string name="sqlite_sort_ascending">오름차순</string>
+    <string name="sqlite_sort_descending">내림차순</string>
+    <string name="sqlite_sql_query">SQL 쿼리</string>
+    <string name="sqlite_sql_run">실행</string>
+    <string name="sqlite_sql_result">쿼리 결과</string>
+    <string name="sqlite_sql_running">실행 중 · %1$d초</string>
+    <string name="sqlite_sql_read_only">읽기 전용 SELECT, WITH, VALUES, EXPLAIN 또는 PRAGMA 문 하나를 입력하세요.</string>
+    <string name="sqlite_sql_single_statement">한 번에 SQL 문 하나만 실행하세요.</string>
+    <string name="sqlite_sql_no_columns">이 문은 열을 반환하지 않습니다.</string>
+    <string name="sqlite_sql_edit">SQL 편집</string>
+    <string name="sqlite_sql_rerun">다시 실행</string>
+    <string name="sqlite_filter_title">필터: %1$s</string>
+    <string name="sqlite_filter_clear">열 필터 지우기</string>
+    <string name="sqlite_filter_empty_text">(빈 텍스트)</string>
+    <string name="sqlite_filter_active">필터 적용됨</string>
+    <string name="sqlite_filter_oversized">(값이 너무 커서 선택할 수 없음)</string>
+    <string name="sqlite_filter_values" formatted="false">값 선택</string>
+    <string name="sqlite_filter_keyword" formatted="false">키워드</string>
+    <string name="sqlite_filter_custom" formatted="false">사용자 지정 조건</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">키워드에 %가 없으면 앞뒤에 %를 추가합니다. 비워 두면 해제합니다.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">숫자는 수치로 비교합니다. 텍스트에는 작은따옴표를 사용하세요. 비워 두면 해제합니다.</string>
+    <string name="sqlite_filter_operator" formatted="false">연산자</string>
+    <string name="sqlite_filter_invalid" formatted="false">&gt;= 18, = \'abc\', LIKE \'%abc%\' 또는 IS NULL 같은 조건을 입력하세요.</string>
 </resources>

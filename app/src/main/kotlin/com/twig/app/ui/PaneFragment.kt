@@ -282,6 +282,11 @@ class PaneFragment : Fragment() {
             onInfoHash = { node -> viewModel.computeHash(node) },
             onInfo = { node -> viewModel.toggleInfo(node) },
             onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
+            onSqliteCommand = { node, command -> viewModel.sqliteCommand(node, command) },
+            onSqlitePage = { node, offset -> viewModel.sqlitePage(node, offset) },
+            onSqliteFilter = { node, column -> showSqliteFilter(node, column) },
+            onSqliteSort = { node, column -> viewModel.sqliteSort(node, column) },
+            onSqliteCell = { node, row, column -> showSqliteCell(node, row, column) },
         )
         // One GridLayoutManager handles both: ordinary rows take a full row, thumbnail grid cells take 1 column;
         // the column count follows the pane's own width (dual-pane / portrait-vs-landscape widths differ) and is
@@ -462,6 +467,8 @@ class PaneFragment : Fragment() {
         bb.tvSelectionCount.visibility = if (count > 0) View.VISIBLE else View.GONE
     }
 
+    private var pendingSqliteQueryScroll: String? = null
+
     private fun render(s: PaneViewModel.State) {
         updateSelectionCount()
         b.tvPath.text = s.currentDir?.let { pathLabel(it) } ?: ""
@@ -476,6 +483,16 @@ class PaneFragment : Fragment() {
                 pendingDestinationSelection = emptyList()
             }
             bb.list.invalidate() // The highlight frame redraws as currentKey changes.
+            pendingSqliteQueryScroll?.let { owner ->
+                val index = s.rows.indexOfFirst { it is SqliteQueryNode && it.owner == owner }
+                if (index >= 0) {
+                    (bb.list.layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(index, bb.list.height / 4)
+                    pendingSqliteQueryScroll = null
+                } else if (s.rows.none { it.key == owner } ||
+                    s.rows.any { it is PaneViewModel.ActionNode && it.id == "sqlite_error:$owner" }) {
+                    pendingSqliteQueryScroll = null
+                }
+            }
             if (pendingSelectionInfoScroll) {
                 val index = s.rows.indexOfFirst { it is PaneViewModel.InfoNode && it.selection }
                 if (index >= 0) (bb.list.layoutManager as? LinearLayoutManager)
@@ -684,7 +701,7 @@ class PaneFragment : Fragment() {
         }
     }
 
-    private fun chooseOpen(file: XFile) {
+    private fun chooseOpen(file: XFile, sourceNode: PaneViewModel.FileNode? = null) {
         val actions = ArrayList<MenuAct>()
         actions.item(getString(R.string.open_with_app), R.drawable.ic_open_with) { openExternal(file) }
         // preview = false: this entry means "show me the text", even for markdown/html,
@@ -697,6 +714,12 @@ class PaneFragment : Fragment() {
         }
         actions.item(getString(R.string.open_video), R.drawable.ic_file_video) {
             MediaPlayerActivity.start(requireContext(), file, asVideo = true)
+        }
+        val node = sourceNode ?: viewModel.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .firstOrNull { it.file.scheme == file.scheme && it.file.path == file.path }
+        if (node != null && !file.isDir && file.scheme != "trash" &&
+            !viewModel.isSqlite(file, node.key) && FileIcons.baseIconRes(file) == R.drawable.ic_file) {
+            actions.item(getString(R.string.sqlite_open_as), R.drawable.ic_sqlite_database) { viewModel.openAsSqlite(node) }
         }
         showActionMenu(requireContext(), getString(R.string.open_how), actions)
     }
@@ -1012,8 +1035,20 @@ class PaneFragment : Fragment() {
     /** Last-entered glob; pre-filled in the dialog so consecutive searches don't re-type. */
     private var lastSearchPattern = ""
 
-    /** Action bar "Search": recursive search starting at the green-highlighted directory (current directory when nothing is highlighted). */
+    /** Search the selected database/table, otherwise the highlighted or current directory. */
     fun actionSearch() {
+        viewModel.sqliteSearchTarget()?.let { database ->
+            val query = viewModel.state.value.rows.filterIsInstance<SqliteSearchNode>()
+                .firstOrNull { it.owner == database.key }?.query ?: lastSqliteQuery
+            val selected = viewModel.state.value.let { state -> state.rows.firstOrNull { it.key == state.currentKey } }
+            val table = when (selected) {
+                is SqliteNode -> selected.state.table.name.takeIf { selected.state.execution == null }
+                is SqliteSearchNode -> selected.table
+                else -> null
+            }
+            promptSqliteSearch(database, query, table)
+            return
+        }
         val t = viewModel.currentSelection() ?: viewModel.currentDir
         if (t == null || !t.isDir) {
             toast(getString(R.string.msg_pick_dir_first)); return
@@ -1040,6 +1075,101 @@ class PaneFragment : Fragment() {
                 viewModel.startSearch(dir, pattern)
             }
             .show()
+    }
+
+    private fun promptSqliteSql(node: PaneViewModel.FileNode, initial: String? = null, table: String? = null) {
+        val history = com.twig.app.sqlite.SqliteQueryHistory(requireContext())
+        val input = EditText(requireContext()).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            typeface = android.graphics.Typeface.MONOSPACE
+            minLines = 4
+            maxLines = 12
+            gravity = android.view.Gravity.TOP or android.view.Gravity.START
+            hint = getString(R.string.sqlite_sql_read_only)
+            setText(initial ?: table?.let { "SELECT * FROM ${com.twig.app.sqlite.SqliteSession.quote(it)} LIMIT 100" }
+                ?: history.recent(node.file).firstOrNull().orEmpty())
+        }
+        val dialog = AlertDialog.Builder(requireContext()).setTitle(R.string.sqlite_sql_query).setView(input)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setNeutralButton(R.string.history_title, null)
+            .setPositiveButton(R.string.sqlite_sql_run, null).create()
+        val stopHighlight = SqliteHighlight.edit(input, viewLifecycleOwner.lifecycleScope)
+        dialog.setOnDismissListener { stopHighlight() }
+        dialog.showNameInput(input)
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val sql = input.text.toString().trim()
+            try { com.twig.app.sqlite.SqliteSql.statement(requireContext(), sql) }
+            catch (e: IllegalArgumentException) { input.error = e.message; return@setOnClickListener }
+            history.remember(node.file, sql)
+            pendingSqliteQueryScroll = node.key
+            viewModel.startSqliteSql(node, sql)
+            dialog.dismiss()
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            val recent = history.recent(node.file)
+            if (recent.isEmpty()) toast(getString(R.string.history_empty))
+            else AlertDialog.Builder(requireContext()).setTitle(R.string.sqlite_sql_query)
+                .setItems(recent.map { SqliteHighlight.text(requireContext(), it) }.toTypedArray()) { _, index -> input.setText(recent[index]); input.setSelection(input.length()) }
+                .setNeutralButton(R.string.history_clear) { _, _ -> history.clear(node.file) }
+                .setNegativeButton(R.string.dialog_cancel, null).show()
+        }
+    }
+
+    private fun sqliteQueryMenu(node: SqliteQueryNode) {
+        val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.sqlite_sql_edit), R.drawable.ic_edit) { promptSqliteSql(source, node.sql) }
+        actions.item(getString(R.string.sqlite_sql_rerun), R.drawable.ic_refresh) { viewModel.startSqliteSql(source, node.sql) }
+        node.state?.let { state ->
+            actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) {
+                exportSqliteCsv(SqliteDataNode(node.owner, node.depth + 1, state))
+            }
+        }
+        actions.item(getString(if (node.running) R.string.dialog_cancel else R.string.dialog_close), R.drawable.ic_close) {
+            viewModel.closeSqliteQuery(node)
+        }
+        showActionMenu(requireContext(), getString(R.string.sqlite_sql_result), actions)
+    }
+
+    private var lastSqliteQuery = ""
+
+    private fun promptSqliteSearch(node: PaneViewModel.FileNode, initial: String = lastSqliteQuery, table: String? = null) {
+        val input = EditText(requireContext()).apply {
+            hint = getString(R.string.sqlite_search_hint)
+            setText(initial)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(listOfNotNull(getString(R.string.strip_search), table).joinToString(" · "))
+            .setView(input)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    lastSqliteQuery = query
+                    viewModel.startSqliteSearch(node, query, table)
+                }
+            }.show()
+    }
+
+    private fun sqliteSearchMenu(node: SqliteSearchNode) {
+        val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { it.key == node.owner } ?: return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(source, node.query, node.table) }
+        if (node.table != null) {
+            val table = adapter.currentList.filterIsInstance<SqliteTableNode>()
+                .firstOrNull { it.owner == node.owner && it.state.table.name == node.table }
+            if (table != null) actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) {
+                val state = adapter.currentList.filterIsInstance<SqliteDataNode>()
+                    .firstOrNull { it.owner == node.owner && it.state.query == node.query && it.state.table.name == node.table }?.state
+                    ?: table.state.copy(query = node.query, sort = null)
+                exportSqliteCsv(table.copy(state = state))
+            }
+        }
+        actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.startSqliteSearch(source, node.query, node.table) }
+        actions.item(getString(R.string.dialog_close), R.drawable.ic_close) { viewModel.closeSqliteSearch(node) }
+        showActionMenu(requireContext(), getString(R.string.search_result_title, node.matches), actions)
     }
 
     private fun editCurrentPath(): Boolean {
@@ -1247,7 +1377,7 @@ class PaneFragment : Fragment() {
             rename = modify,
             delete = modify,
             treemap = mapMode || target?.let { it.isDir || com.twig.fs.archive.Archives.isArchive(it) } == true,
-            search = target?.isDir == true,
+            search = viewModel.sqliteSearchTarget() != null || target?.isDir == true,
             info = !mapMode && transfer,
         )
     }
@@ -1770,7 +1900,9 @@ class PaneFragment : Fragment() {
         if (materializeDialogFor == key) return
         val ctx = context ?: return
         materializeDialogFor = key
-        val msg = if (file.size > 0) {
+        val msg = if (viewModel.isSqlite(file)) {
+            getString(R.string.sqlite_snapshot_confirm, file.name)
+        } else if (file.size > 0) {
             getString(R.string.archive_confirm_materialize, file.name, Format.size(file.size))
         } else {
             getString(R.string.archive_confirm_materialize_unknown, file.name)
@@ -1831,8 +1963,208 @@ class PaneFragment : Fragment() {
 
     // ---- Long-press context menu ----
 
+    private var sqliteFilterJob: kotlinx.coroutines.Job? = null
+
+    private fun showSqliteFilter(node: SqliteDataNode, column: Int) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        if (spec.type.contains("BLOB", ignoreCase = true)) return
+        val actions = ArrayList<MenuAct>()
+        actions.item(getString(R.string.sqlite_filter_values), R.drawable.ic_filter) { showSqliteFilterValues(node, column) }
+        actions.item(getString(R.string.sqlite_filter_keyword), R.drawable.ic_search) { promptSqliteFilter(node, column, keyword = true) }
+        actions.item(getString(R.string.sqlite_filter_custom), R.drawable.ic_edit) { promptSqliteFilter(node, column, keyword = false) }
+        if (node.state.filters.any { it.column == spec.name }) {
+            actions.item(getString(R.string.sqlite_filter_clear), R.drawable.ic_close) { viewModel.sqliteFilter(node, column, emptyList()) }
+        }
+        showActionMenu(requireContext(), getString(R.string.sqlite_filter_title, spec.name), actions)
+    }
+
+    private fun promptSqliteFilter(node: SqliteDataNode, column: Int, keyword: Boolean) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        val current = node.state.filters.firstOrNull { it.column == spec.name }?.condition
+        val input = EditText(requireContext()).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine()
+            hint = if (keyword) getString(R.string.sqlite_filter_keyword) else ">= 18 / LIKE '%abc%' / IS NULL"
+            setText(if (keyword) current?.keyword.orEmpty() else current?.expression.orEmpty())
+            setSelection(text.length)
+        }
+        val content = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = (24 * resources.displayMetrics.density).toInt()
+            setPadding(padding, 0, padding, 0)
+            addView(TextView(context).apply { setText(if (keyword) R.string.sqlite_filter_keyword_hint else R.string.sqlite_filter_custom_hint) })
+            addView(input)
+        }
+        val builder = AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+            .setView(content)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok, null)
+        if (!keyword) builder.setNeutralButton(R.string.sqlite_filter_operator, null)
+        val dialog = builder.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val raw = input.text.toString()
+                val condition = if (raw.isBlank()) null else if (keyword)
+                    com.twig.app.sqlite.SqliteCondition.keyword(raw) else com.twig.app.sqlite.SqliteCondition.parse(raw)
+                if (raw.isNotBlank() && condition == null) {
+                    input.error = getString(R.string.sqlite_filter_invalid)
+                } else {
+                    viewModel.sqliteFilter(node, column, emptyList(), condition)
+                    dialog.dismiss()
+                }
+            }
+            if (!keyword) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                val operators = com.twig.app.sqlite.SqliteOperator.entries
+                AlertDialog.Builder(requireContext())
+                    .setTitle(R.string.sqlite_filter_operator)
+                    .setItems(operators.map { it.sql }.toTypedArray()) { _, index ->
+                        val operator = operators[index]
+                        val parsed = com.twig.app.sqlite.SqliteCondition.parse(input.text.toString())
+                        val operand = parsed?.expression?.removePrefix(parsed.operator.sql)?.trim().orEmpty()
+                        input.setText(operator.sql + if (operator.unary) "" else " $operand")
+                        input.setSelection(input.text.length)
+                        input.error = null
+                    }.show()
+            }
+        }
+        input.requestFocus()
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        dialog.show()
+    }
+
+    private fun showSqliteFilterValues(node: SqliteDataNode, column: Int) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        if (spec.type.contains("BLOB", ignoreCase = true)) return
+        sqliteFilterJob?.cancel()
+        val loading = AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+            .setMessage(R.string.sqlite_loading)
+            .setNegativeButton(R.string.dialog_cancel, null).create()
+        loading.setOnDismissListener { sqliteFilterJob?.cancel() }
+        loading.show()
+        sqliteFilterJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val options = viewModel.sqliteFilterOptions(node, column) ?: return@launch
+                val selected = node.state.filters.firstOrNull { it.column == spec.name }?.values.orEmpty()
+                // Retain selected values that have fallen out of the top ten after another filter changed.
+                val values = (options.map { it.value } + selected).distinct()
+                val labels = values.map { value ->
+                    val text = when {
+                        value.kind == 'n' -> "NULL"
+                        value.kind == 't' && value.text.isEmpty() -> getString(R.string.sqlite_filter_empty_text)
+                        else -> value.text.replace('\n', ' ').replace('\r', ' ').take(160) +
+                            if (value.text.length > 160) "…" else ""
+                    }
+                    text + (options.firstOrNull { it.value == value }?.let { " · ${it.count}" } ?: "") +
+                        if (value.truncated) " " + getString(R.string.sqlite_filter_oversized) else ""
+                }
+                val list = android.widget.ListView(requireContext()).apply {
+                    choiceMode = android.widget.ListView.CHOICE_MODE_MULTIPLE
+                    adapter = object : ArrayAdapter<String>(context,
+                        android.R.layout.simple_list_item_multiple_choice, labels) {
+                        override fun areAllItemsEnabled() = values.none { it.truncated }
+                        override fun isEnabled(position: Int) = !values[position].truncated
+                    }
+                    values.forEachIndexed { index, value -> setItemChecked(index, value in selected) }
+                }
+                val builder = AlertDialog.Builder(requireContext())
+                    .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+                    .setNegativeButton(R.string.dialog_cancel, null)
+                    .setNeutralButton(R.string.sqlite_filter_clear) { _, _ -> viewModel.sqliteFilter(node, column, emptyList()) }
+                    .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                        viewModel.sqliteFilter(node, column, values.filterIndexed { index, _ -> list.isItemChecked(index) })
+                    }
+                if (values.isEmpty()) builder.setMessage(R.string.sqlite_no_rows) else builder.setView(list)
+                loading.setOnDismissListener(null)
+                loading.dismiss()
+                builder.show()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            finally { loading.setOnDismissListener(null); loading.dismiss() }
+        }
+    }
+
+    private var sqliteCellJob: kotlinx.coroutines.Job? = null
+    private val saveAsDialog = SaveAsDialog(this)
+
+    private fun exportSqliteCsv(node: SqliteNode) {
+        val columns = node.state.table.visibleColumns.map { it.name }
+        val selected = BooleanArray(columns.size) { true }
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.sqlite_export_columns)
+            .setMultiChoiceItems(columns.toTypedArray(), selected) { alert, _, _ ->
+                (alert as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = selected.any { it }
+            }
+            .setNeutralButton(R.string.action_select_all, null)
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.sqlite_export_csv) { _, _ ->
+                val names = columns.filterIndexed { index, _ -> selected[index] }.toSet()
+                val writer = viewModel.sqliteCsvWriter(node, names) ?: return@setPositiveButton
+                val name = if (node.state.execution == null) node.state.table.name else getString(R.string.sqlite_sql_result)
+                saveAsDialog.offerStream(name.take(100) + ".csv", write = writer) {
+                    viewModel.refreshOnResume()
+                    host?.siblingOf(this@PaneFragment)?.viewModel?.refreshOnResume()
+                }
+            }.create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = selected.any { it }
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            val checked = !selected.all { it }
+            selected.indices.forEach { index ->
+                selected[index] = checked
+                dialog.listView.setItemChecked(index, checked)
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = checked
+        }
+    }
+
+    private fun showSqliteCell(node: SqliteDataNode, row: Int, column: Int) {
+        sqliteCellJob?.cancel()
+        sqliteCellJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val value = viewModel.sqliteCell(node, row, column) ?: return@launch
+                val title = node.state.table.visibleColumns[column].name
+                if (value.kind == 'b') {
+                    val reader = viewModel.sqliteBlobReader(node, row, column, value.length) ?: return@launch
+                    SqliteBlobDialog.show(requireContext(), title, value.length, viewLifecycleOwner.lifecycleScope,
+                        onSave = {
+                            saveAsDialog.offer(title.take(60) + ".bin", value.length, reader) {
+                                viewModel.refreshOnResume()
+                                host?.siblingOf(this@PaneFragment)?.viewModel?.refreshOnResume()
+                            }
+                        }, read = reader)
+                } else SqliteCellDialog.show(requireContext(), title, value)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+        }
+    }
+
     private fun onLongClick(node: PaneViewModel.Node) {
         when (node) {
+            is SqliteQueryNode -> sqliteQueryMenu(node)
+            is SqliteSearchNode -> sqliteSearchMenu(node)
+            is SqliteTableNode -> {
+                val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.sqlite_sql_query), R.drawable.ic_terminal) {
+                    val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
+                        .firstOrNull { it.key == node.owner } ?: return@item
+                    promptSqliteSql(source, table = node.state.table.name)
+                }
+                actions.item(getString(R.string.sqlite_export_csv), R.drawable.ic_save) { exportSqliteCsv(node) }
+                actions.item(getString(R.string.strip_search), R.drawable.ic_search) {
+                    val source = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
+                        .firstOrNull { it.key == node.owner } ?: return@item
+                    promptSqliteSearch(source, node.state.query ?: lastSqliteQuery, node.state.table.name)
+                }
+                actions.item(getString(R.string.file_info), R.drawable.ic_info) {
+                    viewModel.sqliteCommand(node, SqliteCommand.PROPERTIES)
+                }
+                actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) {
+                    viewModel.sqliteCommand(node, SqliteCommand.REFRESH)
+                }
+                showActionMenu(requireContext(), node.state.table.name, actions)
+            }
             is PaneViewModel.FileNode -> longClickFile(node)
             is PaneViewModel.ServerNode -> serverMenu(node)
             is PaneViewModel.FavoriteNode -> favoriteMenu(node)
@@ -1904,6 +2236,10 @@ class PaneFragment : Fragment() {
         if (node.expandable) {
             actions.item(getString(R.string.action_refresh), R.drawable.ic_refresh) { viewModel.refreshNode(node) }
         }
+        if (viewModel.isSqlite(node.file, node.key)) {
+            actions.item(getString(R.string.sqlite_sql_query), R.drawable.ic_terminal) { promptSqliteSql(node) }
+            actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSqliteSearch(node) }
+        }
         if (!node.file.isDir && OpenFiles.isInstallable(node.file)) {
             actions.item(getString(R.string.open_as_archive), R.drawable.ic_file_archive) {
                 viewModel.openAsArchive(node)
@@ -1924,7 +2260,7 @@ class PaneFragment : Fragment() {
             actions.item(getString(R.string.strip_map), R.drawable.ic_treemap) { enterTreemap(node.file) }
             actions.item(getString(R.string.strip_search), R.drawable.ic_search) { promptSearch(node.file) }
         }
-        actions += commonFileActions(node.file)
+        actions += commonFileActions(node.file, sourceNode = node)
         showActionMenu(requireContext(), node.file.name, actions) {
             noteSourceDirs(listOf(node.file))
         }
@@ -2029,6 +2365,7 @@ class PaneFragment : Fragment() {
         includeFavorite: Boolean = true,
         includeShell: Boolean = true,
         includeCopy: Boolean = includeEdit,
+        sourceNode: PaneViewModel.FileNode? = null,
     ): ArrayList<MenuAct> {
         val actions = ArrayList<MenuAct>()
         if (file.isDir) {
@@ -2089,7 +2426,7 @@ class PaneFragment : Fragment() {
             }
         } else {
             actions.item(getString(R.string.open_with_external), R.drawable.ic_open_with) { openExternal(file) }
-            actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file) }
+            actions.item(getString(R.string.open_how), R.drawable.ic_tune) { chooseOpen(file, sourceNode) }
             actions.item(getString(R.string.action_pin_shortcut), R.drawable.ic_shortcut) { pinFileOpenShortcut(file) }
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFile(file) }
         }
@@ -2902,6 +3239,7 @@ class PaneFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        saveAsDialog.destroy()
         treeIndentation?.dispose()
         treeIndentation = null
         com.twig.app.WebsiteStore.preferences(requireContext()).unregisterOnSharedPreferenceChangeListener(websiteListener)

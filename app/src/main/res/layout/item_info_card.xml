@@ -23,7 +23,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@drawable/info_card_bg">
+        android:background="@drawable/info_card_surface"
+        android:foreground="@drawable/info_card_border">
 
         <!-- The directory recursive stats spinner sits in the bottom-right corner of the content box (right next to the two lines of numbers it describes).
              ★ It cannot go in the tab strip row: the tab strip is wrap_content with a marginStart that grows with tree depth,

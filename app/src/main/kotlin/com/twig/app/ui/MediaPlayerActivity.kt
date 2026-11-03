@@ -14,6 +14,10 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.drawable.BitmapDrawable
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -47,13 +51,10 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.FileDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.twig.app.Connections
 import com.twig.app.PlaybackMark
 import com.twig.app.EpisodeSkip
@@ -71,6 +72,9 @@ import com.twig.core.FsRegistry
 import com.twig.core.RandomSource
 import com.twig.core.PlayState
 import com.twig.core.XFile
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -92,6 +96,20 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     private var player: ExoPlayer? = null
     private var fsSrc: RandomSource? = null // share a single SMB-dedicated connection, seek that reopens DataSource costs zero
+    private var sourceJob: Job? = null
+    private var sourceGeneration = 0
+    private val retryPolicy = PlaybackRetryPolicy()
+    private var retryPending = false
+    private var playbackWanted = true
+    private var sourceReady = false
+    private var sourceFailed = false
+    private var retryPositionMs = 0L
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
+    private val reconnect = Runnable { retryPlayback() }
+    private val connectTimeout = Runnable {
+        player?.let { sourceFailure(it, java.net.SocketTimeoutException("Connection timed out")) }
+    }
     private var prepared = false
     // Two-stage fallback for runtime decode crashes: 0=system preferred, 1=already tried ffmpeg-first retry, 2=audio track turned off entirely (play video silently)
     private var fallbackStage = 0
@@ -144,6 +162,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var orientationLocked = false
     private var speedBoosted = false // long-press to speed up; release to restore original speed
     private var speedBeforeBoost = 1f
+    private var muted = false
+    private var volumeBeforeMute = 1f
     private lateinit var audio: AudioManager
 
     // Subtitles: external (self-parsed) preferred; embedded text tracks (SRT/ASS in MKV etc.) are decoded by ExoPlayer and shown via onCues
@@ -153,6 +173,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var textGroups: List<Tracks.Group> = emptyList()
     private var audioGroups: List<Tracks.Group> = emptyList()
     private var subChoice = 0 // 0=off; 1..subFiles.size=external; afterwards=embedded text track
+    private var subtitleLoadGeneration = 0
+    private var previousSubFile: XFile? = null
+    private var previousSubTrack: Tracks.Group? = null
     private var subUserChosen = false // once the user has manually picked subtitles, no longer auto-enable embedded tracks
 
     /**
@@ -203,6 +226,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     }
     private val ticker = object : Runnable {
         override fun run() {
+            retryPolicy.update(SystemClock.elapsedRealtime())
             player?.let {
                 if (prepared) {
                     if (applyEpisodeSkip()) return
@@ -243,6 +267,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         b.btnPlay.setOnClickListener { toggle() }
         b.btnSubtitle.setOnClickListener { showSubtitleDialog() }
         b.btnAudioTrack.setOnClickListener { showAudioTrackDialog() }
+        b.btnAudioTrack.setOnLongClickListener { toggleMute(); true }
+        b.btnSubtitle.setOnLongClickListener { toggleSubtitles(); true }
         b.btnScale.setOnClickListener { cycleScaleMode() }
         b.btnOrientation.setOnClickListener { toggleOrientationLock() }
         if (!isVideo) {
@@ -430,6 +456,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = p
+        p.volume = if (muted) 0f else volumeBeforeMute
         // Metadata tracks (SCTE-35 ad insertion signaling, etc.) are never consumed by this player,
         // yet have crashed in practice: SCTE-35 data in some m2ts remuxes is non-conforming, and
         // media3's SpliceInfoDecoder throws IllegalStateException directly on out-of-bounds,
@@ -445,6 +472,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 android.util.Log.d("twig", "player: onRenderedFirstFrame pos=${p.currentPosition}")
             }
             override fun onPlaybackStateChanged(state: Int) {
+                if (player !== p) return
                 android.util.Log.d(
                     "twig",
                     "player: state=$state pos=${p.currentPosition} bufferedPos=${p.bufferedPosition}",
@@ -452,6 +480,11 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 when (state) {
                     Player.STATE_BUFFERING -> b.loading.visibility = View.VISIBLE
                     Player.STATE_READY -> {
+                        handler.removeCallbacks(connectTimeout)
+                        sourceReady = true
+                        sourceFailed = false
+                        retryPending = false
+                        b.toolbar.subtitle = if (fallbackStage >= 2) getString(R.string.player_audio_disabled) else null
                         b.loading.visibility = View.GONE
                         if (!prepared) {
                             prepared = true
@@ -459,6 +492,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                             b.seek.max = dur.toInt().coerceAtLeast(0)
                             b.tvDur.text = fmt(dur.toInt())
                             syncSkipMarks()
+                            handler.removeCallbacks(ticker)
                             handler.post(ticker)
                         }
                     }
@@ -479,10 +513,17 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (player !== p) return
+                retryPolicy.onPlayingChanged(isPlaying, SystemClock.elapsedRealtime())
                 saveGate.onPlayingChanged(isPlaying, SystemClock.elapsedRealtime())
-                b.btnPlay.setImageResource(if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play)
+                val waiting = playbackWanted && (retryPending || (!sourceReady && !sourceFailed))
+                b.btnPlay.setImageResource(if (isPlaying || waiting) R.drawable.ic_pause else R.drawable.ic_play)
                 if (isPlaying || subtitleDialogShowing) wakeScreen() else scheduleDim()
                 scheduleControlsHide()
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS ||
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY)) stopRetries()
             }
             override fun onPositionDiscontinuity(
                 oldPosition: Player.PositionInfo,
@@ -499,7 +540,15 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 )
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (player !== p) return
                 android.util.Log.e("twig", "player: error ${error.errorCodeName}", error)
+                handler.removeCallbacks(connectTimeout)
+                if (isNetworkFile() && isRetryableNetworkError(error)) {
+                    sourceFailure(p, error)
+                    return
+                }
+                if (sourceReady) retryPositionMs = p.currentPosition
+                sourceFailed = true
                 // ERROR_CODE_UNSPECIFIED counts too: in practice, jellyfin's ffmpeg extension NPEs
                 // directly in the constructor for some DTS variants (not bad input feeding decode
                 // failure, but the decoder itself failing to build); ExoPlayer reports all such
@@ -523,6 +572,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     if (fallbackStage >= 2) {
                         b.toolbar.subtitle = getString(R.string.player_audio_disabled)
                     }
+                    cancelSourceLoad()
+                    PlaybackConnection.closeLater(fsSrc)
+                    fsSrc = null
                     p.release()
                     player = null
                     prepared = false
@@ -534,6 +586,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     )
                     return
                 }
+                retryPending = false
+                handler.removeCallbacks(reconnect)
                 b.loading.visibility = View.GONE
                 b.toolbar.subtitle = getString(R.string.viewer_load_failed, error.errorCodeName)
             }
@@ -567,92 +621,190 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 // A remembered subtitle choice takes precedence over both the container's
                 // default flags and the "enable the first track" rule below.
                 if (restoreSub()) return
-                if (cues.isNotEmpty()) return // external subtitles take priority
+                if (cues.isNotEmpty() || (subEnabled && subChoice in 1..subFiles.size)) return // includes pending external loads
                 autoSelectSub()
             }
         })
 
-        // Non-local sources require networking (SFTP/SMB/WebDAV/FTP handshakes are blocking socket IO),
-        // must be on a background thread — calling on the main thread triggers StrictMode's
-        // NetworkOnMainThreadException (whose message is null, which on SFTP showed up as an
-        // uninformative "SFTP connection failed: null"). lifecycleScope binds to the Activity
-        // lifecycle; on onDestroy, in-flight connection attempts are automatically abandoned
-        // and won't continue updating the UI.
-        lifecycleScope.launch {
+        loadSource(p, holder, disableAudio, resumePositionMs)
+    }
+
+    private fun cancelSourceLoad() {
+        sourceGeneration++
+        sourceJob?.cancel()
+        sourceJob = null
+        handler.removeCallbacks(connectTimeout)
+    }
+
+    private fun loadSource(p: ExoPlayer, holder: SurfaceHolder?, disableAudio: Boolean, positionMs: Long) {
+        cancelSourceLoad()
+        val generation = sourceGeneration
+        val target = file
+        sourceReady = false
+        sourceFailed = false
+        retryPositionMs = positionMs
+        b.loading.visibility = View.VISIBLE
+        if (isNetworkFile()) handler.postDelayed(connectTimeout, PlaybackRetryPolicy.CONNECT_TIMEOUT_MS)
+        sourceJob = lifecycleScope.launch {
             try {
-                if (OpenFiles.typeExt(file) == "m2ts") {
-                    prepareM2ts(p, file)
-                } else if (OpenFiles.directlyReadable(file)) {
-                    p.setMediaItem(MediaItem.fromUri(Uri.fromFile(java.io.File(file.path))))
+                if (OpenFiles.directlyReadable(target) && OpenFiles.typeExt(target) != "m2ts") {
+                    p.setMediaItem(MediaItem.fromUri(Uri.fromFile(java.io.File(target.path))))
                 } else {
-                    // The URI must carry a real extension (see [MediaSources]): DefaultExtractorsFactory
-                    // cannot recognize a URI without an extension, and the degraded sniff order would
-                    // let AVI be misidentified by Mp3Extractor. The shared helper reuses the same
-                    // construction as the music engine; here we pre-open a shared random source and
-                    // close them all together in onDestroy.
-                    val (src, shared) = withContext(Dispatchers.IO) { MediaSources.networkEager(file) }
-                    fsSrc = shared
-                    p.setMediaSource(src)
+                    val opened = PlaybackConnection.open {
+                        MediaSources.forPlayer(target) {
+                            // Connection succeeded: container probing and a long seek may legitimately
+                            // take more than ten seconds, especially with large M2TS files.
+                            handler.post {
+                                if (generation == sourceGeneration && player === p) {
+                                    handler.removeCallbacks(connectTimeout)
+                                }
+                            }
+                        }
+                    }
+                    if (generation != sourceGeneration || player !== p) {
+                        PlaybackConnection.closeLater(opened)
+                        return@launch
+                    }
+                    fsSrc = opened.random
+                    p.setMediaSource(opened.media)
                 }
                 holder?.let { p.setVideoSurfaceHolder(it) }
                 if (disableAudio) {
-                    p.trackSelectionParameters =
-                        p.trackSelectionParameters.buildUpon()
-                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
                 }
-                if (resumePositionMs > 0L) p.seekTo(resumePositionMs)
-                p.playWhenReady = true
+                if (positionMs > 0L) p.seekTo(positionMs)
+                p.playWhenReady = playbackWanted
                 p.prepare()
+            } catch (e: TimeoutCancellationException) {
+                if (generation == sourceGeneration) sourceFailure(p, java.net.SocketTimeoutException("Connection timed out"))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                b.loading.visibility = View.GONE
-                b.toolbar.subtitle = getString(R.string.viewer_load_failed, e.message ?: "")
+                if (generation == sourceGeneration) sourceFailure(p, e)
             }
         }
     }
 
-    /**
-     * True M2TS (Blu-ray BDAV container) uses one packet every 192 bytes (4-byte timestamp prefix
-     * + 188-byte standard TS packet); media3's `TsExtractor` hardcodes a 188-byte step when
-     * searching for sync bytes, and a stream that doesn't match is reported as "unrecognized
-     * container". But some tools also store ordinary 188-byte TS streams under the .m2ts
-     * extension — first detect the real packet size, then decide whether to strip prefixes;
-     * never assume from the extension alone. When stripping, also explicitly specify TsExtractor
-     * rather than relying on DefaultExtractorsFactory's sniff order (a clean 188-byte stream
-     * shouldn't be ambiguous in theory, but better safe).
-     */
-    private suspend fun prepareM2ts(p: ExoPlayer, file: XFile) {
-        val local = OpenFiles.directlyReadable(file)
-        // Detecting the packet size needs to read the file header; non-local sources also need
-        // to open a connection first (SFTP/SMB/... blocking socket IO) — move to a background
-        // thread, same reason as networkEager in preparePlayer.
-        val (shared, rawPacketSize) = withContext(Dispatchers.IO) {
-            val s = if (local) null else BufferedRandomSource(FsRegistry.of(file).openRandom(file))
-            s to detectM2tsPacketSize(file, s)
-        }
-        if (shared != null) fsSrc = shared
+    private fun isNetworkFile(): Boolean = Connections.ofScheme(file.scheme) != null
 
-        val baseFactory: DataSource.Factory = if (shared != null) {
-            DataSource.Factory { RandomSourceDataSource(shared) }
-        } else {
-            FileDataSource.Factory()
-        }
-        val mediaUri = if (local) Uri.fromFile(java.io.File(file.path)).toString() else "twig:///media.ts"
+    private fun networkAvailable(): Boolean = connectivity.allNetworks.any {
+        // LAN servers must work without Android's public-Internet validation probe succeeding.
+        connectivity.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }
 
-        val sourceFactory = if (rawPacketSize == RAW_M2TS_PACKET_SIZE) {
-            val totalRawLength = if (local) java.io.File(file.path).length() else file.size
-            val strippingFactory =
-                DataSource.Factory { M2tsStrippingDataSource(baseFactory.createDataSource(), totalRawLength) }
-            ProgressiveMediaSource.Factory(strippingFactory, newM2tsExtractorsFactory())
-        } else {
-            ProgressiveMediaSource.Factory(baseFactory, MediaSources.extractors())
+    private fun watchNetwork() {
+        if (networkCallback != null) return
+        var wasAvailable = networkAvailable()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = changed()
+            override fun onLost(network: Network) = changed()
+            private fun changed() {
+                handler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    val available = networkAvailable()
+                    val recovered = !wasAvailable && available
+                    wasAvailable = available
+                    if (!retryPending || !playbackWanted) return@post
+                    if (!available) {
+                        handler.removeCallbacks(reconnect)
+                        showWaitingForNetwork()
+                    } else if (recovered) retryPlayback()
+                }
+            }
         }
-        p.setMediaSource(sourceFactory.createMediaSource(MediaItem.fromUri(mediaUri)))
+        networkCallback = callback
+        connectivity.registerNetworkCallback(NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), callback)
+    }
+
+    private fun sourceFailure(p: ExoPlayer, error: Exception) {
+        if (player !== p) return
+        // A failed preparation can still report position 0: keep the requested resume position.
+        if (sourceReady && !sourceFailed) retryPositionMs = p.currentPosition
+        sourceFailed = true
+        retryPolicy.onPlayingChanged(false, SystemClock.elapsedRealtime())
+        cancelSourceLoad()
+        p.stop()
+        PlaybackConnection.closeLater(fsSrc)
+        fsSrc = null
+        b.loading.visibility = View.GONE
+        val retryable = if (error is PlaybackException) isRetryableNetworkError(error)
+            else isRetryableConnectionError(error)
+        if (!isNetworkFile() || !retryable || !playbackWanted) {
+            retryPending = false
+            b.toolbar.subtitle = getString(R.string.viewer_load_failed, error.message ?: "")
+            return
+        }
+        retryPending = true
+        watchNetwork()
+        scheduleRetry()
+    }
+
+    private fun showWaitingForNetwork() {
+        b.loading.visibility = View.GONE
+        b.toolbar.subtitle = getString(R.string.player_waiting_network)
+        b.btnPlay.setImageResource(R.drawable.ic_pause)
+    }
+
+    private fun scheduleRetry() {
+        handler.removeCallbacks(reconnect)
+        val delay = retryPolicy.nextDelayMs
+        if (delay == null) {
+            retryPending = false
+            b.btnPlay.setImageResource(R.drawable.ic_play)
+            b.toolbar.subtitle = getString(R.string.player_retry_failed)
+        } else if (!networkAvailable()) showWaitingForNetwork()
+        else {
+            b.btnPlay.setImageResource(R.drawable.ic_pause)
+            b.toolbar.subtitle = getString(R.string.player_retry_wait, retryPolicy.attempts + 1, delay / 1000)
+            handler.postDelayed(reconnect, delay)
+        }
+    }
+
+    private fun retryPlayback() {
+        if (!retryPending || !playbackWanted || isFinishing || isDestroyed) return
+        handler.removeCallbacks(reconnect)
+        if (!networkAvailable()) { showWaitingForNetwork(); return }
+        if (!retryPolicy.beginAttempt()) { scheduleRetry(); return }
+        retryPending = false
+        val p = player ?: return
+        b.toolbar.subtitle = getString(R.string.player_retry_connecting, retryPolicy.attempts)
+        loadSource(p, if (isVideo) b.surface.holder else null, fallbackStage >= 2, retryPositionMs)
+    }
+
+    private fun stopRetries() {
+        playbackWanted = false
+        retryPending = false
+        handler.removeCallbacks(reconnect)
+        cancelSourceLoad()
+        player?.pause()
+        retryPolicy.onPlayingChanged(false, SystemClock.elapsedRealtime())
+        b.btnPlay.setImageResource(R.drawable.ic_play)
     }
 
     private fun toggle() {
         val p = player ?: return
-        if (!prepared) return
-        if (p.isPlaying) p.pause() else p.play()
+        if (retryPending || (sourceJob?.isActive == true && playbackWanted)) {
+            stopRetries()
+            sourceFailed = true
+            b.loading.visibility = View.GONE
+            b.toolbar.subtitle = null
+        } else if (sourceFailed || p.playerError != null) {
+            retryPolicy.reset()
+            playbackWanted = true
+            p.stop()
+            PlaybackConnection.closeLater(fsSrc)
+            fsSrc = null
+            loadSource(p, if (isVideo) b.surface.holder else null, fallbackStage >= 2, retryPositionMs)
+        } else if (p.playWhenReady) {
+            stopRetries()
+        } else {
+            playbackWanted = true
+            if (p.playbackState == Player.STATE_IDLE) {
+                loadSource(p, if (isVideo) b.surface.holder else null, fallbackStage >= 2, p.currentPosition)
+            } else p.play()
+        }
     }
 
     // ---- Gestures ----
@@ -830,23 +982,24 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     /** Background scan the same directory for .srt/.ass/.ssa (same-name ones first); same-name files auto-load. */
     private fun scanSubtitles() {
+        val target = file
         Thread {
             runCatching {
-                val fs = FsRegistry.of(file)
+                val fs = FsRegistry.of(target)
                 // External subtitles from the source itself (media servers expose them as subtitle
                 // streams, with nothing in the same directory to scan); they come back as ordinary
                 // XFile, and the read/parse/select path below is the same
                 val remote = runCatching {
-                    (fs as? com.twig.core.MediaInfoSource)?.subtitlesOf(file).orEmpty()
+                    (fs as? com.twig.core.MediaInfoSource)?.subtitlesOf(target).orEmpty()
                 }.getOrDefault(emptyList())
-                val base = file.name.substringBeforeLast('.').lowercase()
+                val base = target.name.substringBeforeLast('.').lowercase()
                 // Don't list the parent directory again when the source already provided some:
                 // those sources don't have subtitle files in their directories, just a wasted
                 // network round-trip
                 val sidecars = if (remote.isNotEmpty()) {
                     emptyList()
                 } else {
-                    val parent = XFile(file.scheme, file.parentPath, isDir = true)
+                    val parent = XFile(target.scheme, target.parentPath, isDir = true)
                     fs.list(parent)
                         .filter {
                             !it.isDir &&
@@ -860,13 +1013,17 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                 val fallback = remote.firstOrNull()
                     ?: sidecars.firstOrNull { it.name.substringBeforeLast('.').lowercase() == base }
                 runOnUiThread {
+                    if (file != target || isFinishing || isDestroyed) return@runOnUiThread
+                    // Embedded dialog indices move when the sidecar list arrives.
+                    if (subChoice > subFiles.size) subChoice += subs.size - subFiles.size
                     subFiles = subs
+                    extScanned = true
+                    if (subUserChosen) return@runOnUiThread
                     // A remembered sidecar wins; when this episode doesn't have its counterpart we
                     // fall back to the usual pick, and with neither, hand back to the embedded-track
                     // rule — which by now has already run and been held off by [restoreSub].
                     val remembered = rememberedExternalSub(subs)
                     if (remembered != null) subMemoApplied = true
-                    extScanned = true
                     // Without a memory the old default applies; a remembered sidecar that this
                     // episode lacks still prefers a subtitle *file* over jumping to an embedded
                     // track. An OFF or embedded memory must never have a sidecar attached on top.
@@ -880,11 +1037,20 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     /** Background read and parse an external subtitle file (reads bytes via openInput from any source). */
     private fun loadSubtitleFile(f: XFile) {
+        val generation = ++subtitleLoadGeneration
+        val target = file
+        subChoice = subFiles.indexOf(f) + 1
+        subEnabled = true
+        player?.let { p ->
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+        }
         Thread {
             runCatching {
                 if (f.size > 4L shl 20) return@runCatching // >4MB doesn't look like subtitles
-                val parsed = SubtitleParser.parse(FsRegistry.of(file).openInput(f).use { OpenFiles.readAllBytes(it) })
+                val parsed = SubtitleParser.parse(FsRegistry.of(f).openInput(f).use { OpenFiles.readAllBytes(it) })
                 if (parsed.isNotEmpty()) runOnUiThread {
+                    if (generation != subtitleLoadGeneration || file != target || isFinishing || isDestroyed) return@runOnUiThread
                     cues = parsed
                     subChoice = subFiles.indexOf(f) + 1
                     subEnabled = true
@@ -990,6 +1156,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         seriesKey = seriesKeyFor(file)
         memo = MediaPrefStore.memoFor(this, MediaPrefStore.fileKey(file), seriesKey?.let { MediaPrefStore.seriesKey(it) })
         audioRestored = false
+        subtitleLoadGeneration++
+        previousSubFile = null
+        previousSubTrack = null
         subMemoApplied = false
         extScanned = false
         audioUserChosen = false
@@ -1169,7 +1338,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         memo = fresh
         if (isVideo) fresh.scale?.let { scaleMode = it.coerceIn(0, 2); resizeSurface() }
         if (!audioUserChosen) { audioRestored = false; restoreAudio() }
-        if (memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
+        if (!subUserChosen && memo.sub?.kind == SubMemo.EXTERNAL && extScanned) {
             rememberedExternalSub(subFiles)?.let { subMemoApplied = true; loadSubtitleFile(it) }
         } else {
             restoreSub()
@@ -1235,7 +1404,44 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         )
     }
 
+    private fun toggleMute() {
+        val p = player ?: return
+        if (!muted) volumeBeforeMute = p.volume
+        muted = !muted
+        p.volume = if (muted) 0f else volumeBeforeMute
+        b.btnAudioTrack.alpha = if (muted) 0.45f else 1f
+        showGestureHint(getString(if (muted) R.string.player_muted else R.string.player_unmuted), autoHide = true)
+    }
+
+    private fun toggleSubtitles() {
+        if (player == null) return
+        if (subEnabled && subChoice > 0) {
+            applySubChoice(0)
+        } else {
+            val external = previousSubFile?.let { subFiles.indexOf(it) } ?: -1
+            val embedded = previousSubTrack?.let { previous ->
+                textGroups.indexOfFirst { it.mediaTrackGroup == previous.mediaTrackGroup }
+            } ?: -1
+            val which = when {
+                external >= 0 -> external + 1
+                embedded >= 0 -> subFiles.size + 1 + embedded
+                else -> return // Nothing has been turned off in this file yet.
+            }
+            applySubChoice(which)
+        }
+        showGestureHint(getString(if (subEnabled) R.string.player_subtitles_on else R.string.player_subtitles_off), autoHide = true)
+    }
+
+    private fun rememberSubChoice(which: Int) {
+        if (which <= 0) return
+        previousSubFile = subFiles.getOrNull(which - 1)
+        previousSubTrack = if (previousSubFile == null) textGroups.getOrNull(which - subFiles.size - 1) else null
+    }
+
     private fun applySubChoice(which: Int) {
+        // Keep the actual source, since asynchronous discovery can change dialog indices.
+        rememberSubChoice(if (which == 0) subChoice else which)
+        subtitleLoadGeneration++
         subUserChosen = true
         saveSubMemo(which)
         subChoice = which
@@ -1671,6 +1877,10 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
      */
     private fun playAt(index: Int) {
         val next = queue.getOrNull(index) ?: return
+        stopRetries()
+        retryPolicy.reset()
+        playbackWanted = true
+        sourceFailed = false
         saveProgress(PlayState.STOP)
         remote?.shutdown()
         remote = null
@@ -1794,7 +2004,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     override fun onPause() {
         super.onPause()
         saveProgress()
-        player?.takeIf { prepared && it.isPlaying }?.pause()
+        val loading = sourceJob?.isActive == true || retryPending
+        stopRetries()
+        if (loading) sourceFailed = true
         // In the background the window isn't visible, so the timers mean nothing; onResume decides again
         handler.removeCallbacks(dimRunnable)
         handler.removeCallbacks(screenOffRunnable)
@@ -1835,6 +2047,9 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        stopRetries()
+        networkCallback?.let { connectivity.unregisterNetworkCallback(it) }
+        networkCallback = null
         super.onDestroy()
         // Report STOP on this exit: the server uses this to end the "now playing" session,
         // otherwise the session hangs
@@ -1861,6 +2076,30 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     }
 
     companion object {
+        internal fun isRetryableConnectionError(error: Throwable): Boolean {
+            val chain = generateSequence(error) { it.cause }.take(20).toList()
+            if (chain.any { it is java.io.FileNotFoundException || it is SecurityException ||
+                    it is androidx.media3.common.ParserException || it is IllegalArgumentException ||
+                    it is IllegalStateException }) return false
+            val root = chain.last()
+            if (root is RuntimeException && root !is com.twig.core.FsException) return false
+            if (chain.any { it is com.twig.core.FsException }) {
+                val message = chain.joinToString(" ") { it.message.orEmpty() }.lowercase(java.util.Locale.ROOT)
+                if (listOf("denied", "not found", "not_found", "no such file", "authentication", "unauthorized", "forbidden",
+                        "http 401", "http 403", "http 404", "http 410", "http 416")
+                        .any { it in message }) return false
+                return true
+            }
+            return chain.any { it is java.io.IOException }
+        }
+
+        internal fun isRetryableNetworkError(error: PlaybackException): Boolean = when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> true
+            PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> isRetryableConnectionError(error)
+            else -> false
+        }
+
         const val SCALE_BEST_FIT = 0 // original aspect ratio, shown in full
         const val SCALE_CROP = 1     // preserve aspect, crop to fill
         const val SCALE_FILL = 2     // stretch to fill

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Griglia · Solo media</string>
     <string name="view_mode_grid_all">Griglia · Tutti i file</string>
     <string name="theme_system">Segui il sistema</string>
+    <string name="theme_system_oled">Segui il sistema (OLED)</string>
     <string name="theme_light">Chiaro</string>
     <string name="theme_dark">Scuro</string>
     <string name="conn_connect">Connetti</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Orientamento di sistema</string>
     <string name="player_brightness">Luminosità %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Audio disattivato</string>
+    <string name="player_unmuted">Audio riattivato</string>
+    <string name="player_subtitles_on">Sottotitoli attivati</string>
+    <string name="player_subtitles_off">Sottotitoli disattivati</string>
     <string name="player_subtitle">Sottotitolo</string>
     <string name="player_subtitle_size">Dimensione dei sottotitoli di testo</string>
     <string name="player_subtitle_size_value">Dimensione dei sottotitoli di testo: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Questo launcher non supporta scorciatoie fissate</string>
     <string name="group_fav">Preferiti</string>
     <string name="group_internal_storage">Memoria interna</string>
+    <string name="group_removable_storage">Memoria rimovibile (SD / USB)</string>
     <string name="group_root">Radice</string>
     <string name="group_lan">Rete locale (SMB)</string>
     <string name="group_saf">Albero documenti (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">Scegli una destinazione</string>
     <string name="settings_auto_tree_indent">Rientro automatico ad albero</string>
     <string name="settings_auto_tree_indent_desc">Riduce gradualmente il rientro quando le cartelle superiori escono dallo schermo.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Apri come SQLite</string>
+    <string name="sqlite_columns">Colonne</string>
+    <string name="sqlite_copy">Copia</string>
+    <string name="sqlite_name">Nome</string>
+    <string name="sqlite_type">Tipo</string>
+    <string name="sqlite_not_null">Non nullo</string>
+    <string name="sqlite_default">Predefinito</string>
+    <string name="sqlite_primary_key">Chiave primaria</string>
+    <string name="sqlite_hidden">Nascosta / generata</string>
+    <string name="sqlite_loading">Caricamento…</string>
+    <string name="sqlite_no_rows">Nessuna riga</string>
+    <string name="sqlite_no_tables">Nessuna tabella</string>
+    <string name="sqlite_open_failed">Impossibile aprire il database SQLite</string>
+    <string name="sqlite_read_failed">Impossibile leggere i dati della tabella</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s righe, %2$d colonne</string>
+    <string name="sqlite_value_truncated">Anteprima troncata; lunghezza originale: %1$d. Viene copiata solo la parte visualizzata.</string>
+    <string name="sqlite_journal_active">Questo database ha un journal di rollback. Chiudi il programma che lo modifica o esporta prima una copia.</string>
+    <string name="sqlite_source_changed">Il database è cambiato durante la copia. Chiudi il programma che lo modifica o esporta una copia e riprova.</string>
+    <string name="sqlite_snapshot_confirm">Per esplorare %1$s occorre scaricare una copia locale. Se viene modificato, esporta prima una copia. Continuare?</string>
+    <string name="player_waiting_network">Rete disconnessa. In attesa della connessione…</string>
+    <string name="player_retry_failed">Connessione non riuscita. Tocca Riproduci per riprovare.</string>
+    <string name="player_retry_wait">Tentativo %1$d/5 tra %2$d secondi…</string>
+    <string name="player_retry_connecting">Riconnessione (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Testo in tutte le colonne (LIKE: % e _ sono caratteri jolly)</string>
+    <string name="sqlite_search_incomplete">Ricerca incompleta: impossibile cercare in %1$d tabelle.</string>
+    <string name="save_as">Salva con nome…</string>
+    <string name="sqlite_export_csv">Esporta CSV</string>
+    <string name="sqlite_export_columns">Scegli colonne</string>
+    <string name="sqlite_sort_ascending">Crescente</string>
+    <string name="sqlite_sort_descending">Decrescente</string>
+    <string name="sqlite_sql_query">Query SQL</string>
+    <string name="sqlite_sql_run">Esegui</string>
+    <string name="sqlite_sql_result">Risultato query</string>
+    <string name="sqlite_sql_running">In esecuzione · %1$d s</string>
+    <string name="sqlite_sql_read_only">Inserisci una sola istruzione SELECT, WITH, VALUES, EXPLAIN o PRAGMA di sola lettura.</string>
+    <string name="sqlite_sql_single_statement">Esegui una sola istruzione SQL alla volta.</string>
+    <string name="sqlite_sql_no_columns">Questa istruzione non restituisce colonne.</string>
+    <string name="sqlite_sql_edit">Modifica SQL</string>
+    <string name="sqlite_sql_rerun">Esegui di nuovo</string>
+    <string name="sqlite_filter_title">Filtra: %1$s</string>
+    <string name="sqlite_filter_clear">Rimuovi filtro colonna</string>
+    <string name="sqlite_filter_empty_text">(Testo vuoto)</string>
+    <string name="sqlite_filter_active">Filtrato</string>
+    <string name="sqlite_filter_oversized">(Troppo grande da selezionare)</string>
+    <string name="sqlite_filter_values" formatted="false">Scegli valori</string>
+    <string name="sqlite_filter_keyword" formatted="false">Parola chiave</string>
+    <string name="sqlite_filter_custom" formatted="false">Condizione personalizzata</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Aggiunge % a entrambe le estremità se la parola non contiene %. Lascia vuoto per cancellare.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">I numeri sono confrontati numericamente; usa apici singoli per il testo. Lascia vuoto per cancellare.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operatore</string>
+    <string name="sqlite_filter_invalid" formatted="false">Inserisci una condizione come &gt;= 18, = \'abc\', LIKE \'%abc%\' o IS NULL.</string>
 </resources>

@@ -48,9 +48,9 @@
 
 - **Source icons are not hardware detection** (2026-10-24): `StorageVolume` does not expose
   a public SD/USB transport flag. Explicit SD/USB descriptions choose the matching icon;
-  custom labels and UUIDs use the internal-storage icon. On the test device, `opi_root` is a real
-  SD card (`dumpsys mount`: `ADOPTABLE|SD`, `mmcblk1`) whose custom label uses that
-  fallback icon. Do not mistake the fallback for a USB identification, infer hardware from
+  custom labels and UUIDs default to the SD-card icon (updated 2026-11-03). On the test
+  device, `opi_root` is a real SD card (`dumpsys mount`: `ADOPTABLE|SD`, `mmcblk1`).
+  The fallback is a display choice, not hardware detection. Do not infer hardware from
   a UUID, or turn a one-device label into a global SD rule.
 
 - **Register shortcut keys before walking the tree** (2026-10-24): Root is displayed
@@ -59,3 +59,15 @@
   before rendering rows, so nested volume rows always receive `NESTED_STORAGE_PREFIX`.
   Otherwise the two entries have the same DiffUtil key merely because their order changed.
   `StorageVolumesTest` covers the expanded-root case and the new top-level order.
+
+- **Capacity reads froze the UI during a device change (2026-11-03)**: the exit record
+  showed an input-dispatch ANR, not a Java crash. The main thread was in
+  `StatFs` / `statvfs`, called by `PaneViewModel.capacity` during tree rebuilding.
+  Filesystem capacity queries can block inside the kernel on an unhealthy or
+  disappearing mount; catching exceptions does not prevent the freeze. Render
+  cached capacity values and read each root independently on the IO dispatcher,
+  with one in-flight request per path and a ten-second refresh/failure cooldown.
+  A blocked syscall may outlive coroutine cancellation, so never wait for it on
+  the UI thread or enqueue another read of that path while it remains in flight.
+  `StorageCapacityTest` verifies deferred reads, success/failure caching and a
+  blocked mount that leaves rendering and other capacity reads available.

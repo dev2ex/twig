@@ -4,6 +4,22 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **A network interruption left video permanently idle (2026-11-02)**: the error
+  listener displayed `ERROR_CODE_IO_UNSPECIFIED` but only decoder failures had a recovery
+  path; the Play button called `play()` without preparing a new source. Network recovery
+  now opens a fresh dedicated random reader at the saved position. Automatic reconnects
+  are capped at five, delayed by 1/2/4/8/15 seconds; offline waiting does not spend attempts,
+  and recovery triggers an immediate attempt. Only 30 seconds of uninterrupted playback
+  resets the budget. Pause, focus loss, leaving and episode changes cancel pending work;
+  manual Play after failure starts a fresh budget. Connection setup/first data has a
+  10-second timeout, which ends after a successful read rather than timing out a legitimate
+  long container probe or M2TS seek. Bounded workers close late results after cancellation.
+  The video source disables media3's additional loader retries, and an unexpected early EOF
+  raises an IO error instead of reporting a successfully completed video. Permanent IO
+  failures and parser/decoder failures do not enter the network retry loop.
+  `PlaybackRetryPolicyTest`, `PlaybackConnectionTest` and `PlayerNetworkRetryTest` cover
+  exhaustion, network transitions, manual retry, cancellation, timeout and source ownership.
+
 - **Playlist actions silently failed before background metadata reached their row**
   (2026-10-29). After importing many songs, Track info and Share returned immediately
   when the activity's resolved-file cache had no entry; Locate was omitted altogether.

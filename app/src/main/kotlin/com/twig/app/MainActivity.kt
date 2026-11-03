@@ -1368,12 +1368,14 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             AppCompatDelegate.MODE_NIGHT_NO,
             AppCompatDelegate.MODE_NIGHT_YES,
             AppTheme.MODE_OLED,
+            AppTheme.MODE_SYSTEM_OLED,
         )
         val labels = arrayOf(
             getString(R.string.theme_system),
             getString(R.string.theme_light),
             getString(R.string.theme_dark),
             getString(R.string.theme_oled),
+            getString(R.string.theme_system_oled),
         )
         val current = modes.indexOf(Prefs.themeMode(this)).coerceAtLeast(0)
         AlertDialog.Builder(this)

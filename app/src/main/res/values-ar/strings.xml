@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">شبكة · الوسائط فقط</string>
     <string name="view_mode_grid_all">شبكة · كل الملفات</string>
     <string name="theme_system">حسب النظام</string>
+    <string name="theme_system_oled">حسب النظام (OLED)</string>
     <string name="theme_light">فاتح</string>
     <string name="theme_dark">داكن</string>
     <string name="conn_connect">اتصال</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">اتجاه الشاشة حسب النظام</string>
     <string name="player_brightness">السطوع %1$d%%</string>
     <string name="player_volume">مستوى الصوت %1$d%%</string>
+    <string name="player_muted">تم كتم الصوت</string>
+    <string name="player_unmuted">تم إلغاء كتم الصوت</string>
+    <string name="player_subtitles_on">تم تفعيل الترجمة</string>
+    <string name="player_subtitles_off">تم إيقاف الترجمة</string>
     <string name="player_subtitle">الترجمة</string>
     <string name="player_subtitle_size">حجم الترجمة النصية</string>
     <string name="player_subtitle_size_value">حجم الترجمة النصية: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">المشغل الحالي لا يدعم تثبيت الاختصارات</string>
     <string name="group_fav">المفضلة</string>
     <string name="group_internal_storage">التخزين الداخلي</string>
+    <string name="group_removable_storage">وحدة تخزين قابلة للإزالة (SD / USB)</string>
     <string name="group_root">الجذر</string>
     <string name="group_lan">الشبكة المحلية (SMB)</string>
     <string name="group_saf">شجرة المستندات (SAF)</string>
@@ -1190,4 +1196,58 @@
     <string name="compress_destination_missing">اختر وجهة الحفظ</string>
     <string name="settings_auto_tree_indent">مسافة بادئة تلقائية للشجرة</string>
     <string name="settings_auto_tree_indent_desc">تقليل المسافة البادئة بسلاسة عندما تخرج المجلدات الأصلية من الشاشة بالتمرير.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">فتح كقاعدة SQLite</string>
+    <string name="sqlite_columns">الأعمدة</string>
+    <string name="sqlite_copy">نسخ</string>
+    <string name="sqlite_name">الاسم</string>
+    <string name="sqlite_type">النوع</string>
+    <string name="sqlite_not_null">غير فارغ</string>
+    <string name="sqlite_default">الافتراضي</string>
+    <string name="sqlite_primary_key">المفتاح الأساسي</string>
+    <string name="sqlite_hidden">مخفي / مولّد</string>
+    <string name="sqlite_loading">جارٍ التحميل…</string>
+    <string name="sqlite_no_rows">لا توجد صفوف</string>
+    <string name="sqlite_no_tables">لا توجد جداول</string>
+    <string name="sqlite_open_failed">تعذر فتح قاعدة بيانات SQLite</string>
+    <string name="sqlite_read_failed">تعذرت قراءة بيانات الجدول</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s صفوف، %2$d أعمدة</string>
+    <string name="sqlite_value_truncated">المعاينة مقتطعة؛ الطول الأصلي: %1$d. يشمل النسخ المعاينة المعروضة فقط.</string>
+    <string name="sqlite_journal_active">تحتوي القاعدة على سجل تراجع. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة أولاً.</string>
+    <string name="sqlite_source_changed">تغيرت القاعدة أثناء النسخ. أغلق البرنامج الذي يكتب فيها أو صدّر نسخة ثم أعد المحاولة.</string>
+    <string name="sqlite_snapshot_confirm">يجب تنزيل %1$s كلقطة محلية لتصفحها. إذا كانت قيد التغيير، صدّر نسخة أولاً. هل تريد المتابعة؟</string>
+    <string name="player_waiting_network">انقطع اتصال الشبكة. في انتظار عودة الاتصال…</string>
+    <string name="player_retry_failed">فشل الاتصال. اضغط تشغيل لإعادة المحاولة.</string>
+    <string name="player_retry_wait">المحاولة %1$d/5 بعد %2$d ثانية…</string>
+    <string name="player_retry_connecting">جارٍ إعادة الاتصال (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">نص في أي عمود (LIKE: % و _ أحرف بدل)</string>
+    <string name="sqlite_search_incomplete">البحث غير مكتمل: تعذر البحث في %1$d جدول.</string>
+    <string name="save_as">حفظ باسم…</string>
+    <string name="sqlite_export_csv">تصدير CSV</string>
+    <string name="sqlite_export_columns">اختيار الأعمدة</string>
+    <string name="sqlite_sort_ascending">تصاعدي</string>
+    <string name="sqlite_sort_descending">تنازلي</string>
+    <string name="sqlite_sql_query">استعلام SQL</string>
+    <string name="sqlite_sql_run">تشغيل</string>
+    <string name="sqlite_sql_result">نتيجة الاستعلام</string>
+    <string name="sqlite_sql_running">جارٍ التشغيل · %1$d ث</string>
+    <string name="sqlite_sql_read_only">أدخل عبارة SELECT أو WITH أو VALUES أو EXPLAIN أو PRAGMA واحدة للقراءة فقط.</string>
+    <string name="sqlite_sql_single_statement">شغّل عبارة SQL واحدة في كل مرة.</string>
+    <string name="sqlite_sql_no_columns">لا تُرجع هذه العبارة أعمدة.</string>
+    <string name="sqlite_sql_edit">تعديل SQL</string>
+    <string name="sqlite_sql_rerun">تشغيل مجددًا</string>
+    <string name="sqlite_filter_title">تصفية: %1$s</string>
+    <string name="sqlite_filter_clear">مسح تصفية العمود</string>
+    <string name="sqlite_filter_empty_text">(نص فارغ)</string>
+    <string name="sqlite_filter_active">تمت التصفية</string>
+    <string name="sqlite_filter_oversized">(كبير جدًا للاختيار)</string>
+    <string name="sqlite_filter_values" formatted="false">اختيار القيم</string>
+    <string name="sqlite_filter_keyword" formatted="false">كلمة مفتاحية</string>
+    <string name="sqlite_filter_custom" formatted="false">شرط مخصص</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">تضاف % في الطرفين ما لم تتضمن الكلمة %. اتركه فارغًا للمسح.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">تقارن الأرقام كقيم عددية. ضع النص بين علامتي اقتباس مفردتين. اتركه فارغًا للمسح.</string>
+    <string name="sqlite_filter_operator" formatted="false">عامل المقارنة</string>
+    <string name="sqlite_filter_invalid" formatted="false">أدخل شرطًا مثل &gt;= 18 أو = \'abc\' أو LIKE \'%abc%\' أو IS NULL.</string>
 </resources>

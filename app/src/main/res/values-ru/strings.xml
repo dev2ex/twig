@@ -166,6 +166,7 @@
     <string name="view_mode_grid_media">Сетка · Только медиа</string>
     <string name="view_mode_grid_all">Сетка · Все файлы</string>
     <string name="theme_system">Как в системе</string>
+    <string name="theme_system_oled">Как в системе (OLED)</string>
     <string name="theme_light">Светлая</string>
     <string name="theme_dark">Тёмная</string>
     <string name="conn_connect">Подключиться</string>
@@ -221,6 +222,10 @@
     <string name="player_orientation_auto">Поворот как в системе</string>
     <string name="player_brightness">Яркость %1$d%%</string>
     <string name="player_volume">Громкость %1$d%%</string>
+    <string name="player_muted">Звук выключен</string>
+    <string name="player_unmuted">Звук включён</string>
+    <string name="player_subtitles_on">Субтитры включены</string>
+    <string name="player_subtitles_off">Субтитры выключены</string>
     <string name="player_subtitle">Субтитры</string>
     <string name="player_subtitle_size">Размер текстовых субтитров</string>
     <string name="player_subtitle_size_value">Размер текстовых субтитров: %1$d sp</string>
@@ -456,6 +461,7 @@
     <!-- Tree / root nodes (PaneViewModel) -->
     <string name="group_fav">Избранное</string>
     <string name="group_internal_storage">Внутренний накопитель</string>
+    <string name="group_removable_storage">Съёмный накопитель (SD / USB)</string>
     <string name="group_root">Корневой каталог</string>
     <string name="group_lan">Локальная сеть (SMB)</string>
     <string name="group_saf">Дерево документов (SAF)</string>
@@ -1222,4 +1228,58 @@
     <string name="compress_destination_missing">Выберите место сохранения</string>
     <string name="settings_auto_tree_indent">Автоматический отступ дерева</string>
     <string name="settings_auto_tree_indent_desc">Плавно уменьшать отступ, когда родительские папки уходят за пределы экрана.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Открыть как SQLite</string>
+    <string name="sqlite_columns">Столбцы</string>
+    <string name="sqlite_copy">Копировать</string>
+    <string name="sqlite_name">Имя</string>
+    <string name="sqlite_type">Тип</string>
+    <string name="sqlite_not_null">Не NULL</string>
+    <string name="sqlite_default">По умолчанию</string>
+    <string name="sqlite_primary_key">Первичный ключ</string>
+    <string name="sqlite_hidden">Скрытый / вычисляемый</string>
+    <string name="sqlite_loading">Загрузка…</string>
+    <string name="sqlite_no_rows">Нет строк</string>
+    <string name="sqlite_no_tables">Нет таблиц</string>
+    <string name="sqlite_open_failed">Не удалось открыть базу SQLite</string>
+    <string name="sqlite_read_failed">Не удалось прочитать данные таблицы</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s строк, %2$d столбцов</string>
+    <string name="sqlite_value_truncated">Предпросмотр обрезан; исходная длина: %1$d. Копируется только показанная часть.</string>
+    <string name="sqlite_journal_active">У базы есть журнал отката. Закройте записывающую программу или сначала экспортируйте копию.</string>
+    <string name="sqlite_source_changed">База изменилась при копировании. Закройте записывающую программу или экспортируйте копию и повторите.</string>
+    <string name="sqlite_snapshot_confirm">Для просмотра %1$s нужно загрузить локальный снимок. Если база изменяется, сначала экспортируйте копию. Продолжить?</string>
+    <string name="player_waiting_network">Сеть отключена. Ожидание подключения…</string>
+    <string name="player_retry_failed">Ошибка подключения. Нажмите «Воспроизвести», чтобы повторить.</string>
+    <string name="player_retry_wait">Попытка %1$d/5 через %2$d сек.…</string>
+    <string name="player_retry_connecting">Повторное подключение (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Текст во всех столбцах (LIKE: % и _ — шаблоны)</string>
+    <string name="sqlite_search_incomplete">Поиск неполный: не удалось выполнить поиск в %1$d таблицах.</string>
+    <string name="save_as">Сохранить как…</string>
+    <string name="sqlite_export_csv">Экспорт CSV</string>
+    <string name="sqlite_export_columns">Выбор столбцов</string>
+    <string name="sqlite_sort_ascending">По возрастанию</string>
+    <string name="sqlite_sort_descending">По убыванию</string>
+    <string name="sqlite_sql_query">SQL-запрос</string>
+    <string name="sqlite_sql_run">Выполнить</string>
+    <string name="sqlite_sql_result">Результат запроса</string>
+    <string name="sqlite_sql_running">Выполнение · %1$d с</string>
+    <string name="sqlite_sql_read_only">Введите одну инструкцию только для чтения: SELECT, WITH, VALUES, EXPLAIN или PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Выполняйте по одной инструкции SQL.</string>
+    <string name="sqlite_sql_no_columns">Эта инструкция не возвращает столбцов.</string>
+    <string name="sqlite_sql_edit">Изменить SQL</string>
+    <string name="sqlite_sql_rerun">Выполнить снова</string>
+    <string name="sqlite_filter_title">Фильтр: %1$s</string>
+    <string name="sqlite_filter_clear">Сбросить фильтр столбца</string>
+    <string name="sqlite_filter_empty_text">(Пустой текст)</string>
+    <string name="sqlite_filter_active">Отфильтровано</string>
+    <string name="sqlite_filter_oversized">(Значение слишком большое для выбора)</string>
+    <string name="sqlite_filter_values" formatted="false">Выбрать значения</string>
+    <string name="sqlite_filter_keyword" formatted="false">Ключевое слово</string>
+    <string name="sqlite_filter_custom" formatted="false">Своё условие</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Добавляет % с обеих сторон, если слово не содержит %. Пустое поле сбрасывает фильтр.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Числа сравниваются численно; текст заключайте в одинарные кавычки. Пустое поле сбрасывает фильтр.</string>
+    <string name="sqlite_filter_operator" formatted="false">Оператор</string>
+    <string name="sqlite_filter_invalid" formatted="false">Введите условие: &gt;= 18, = \'abc\', LIKE \'%abc%\' или IS NULL.</string>
 </resources>

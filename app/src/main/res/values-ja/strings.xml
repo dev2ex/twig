@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">グリッド · メディアのみ</string>
     <string name="view_mode_grid_all">グリッド · すべてのファイル</string>
     <string name="theme_system">システムに従う</string>
+    <string name="theme_system_oled">システムに従う (OLED)</string>
     <string name="theme_light">ライト</string>
     <string name="theme_dark">ダーク</string>
     <string name="conn_connect">接続</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">画面の向きはシステムに従います</string>
     <string name="player_brightness">明るさ %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
+    <string name="player_muted">ミュートしました</string>
+    <string name="player_unmuted">ミュートを解除しました</string>
+    <string name="player_subtitles_on">字幕をオンにしました</string>
+    <string name="player_subtitles_off">字幕をオフにしました</string>
     <string name="player_subtitle">字幕</string>
     <string name="player_subtitle_size">テキスト字幕のサイズ</string>
     <string name="player_subtitle_size_value">テキスト字幕のサイズ: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">このランチャーはショートカットの追加に対応していません</string>
     <string name="group_fav">お気に入り</string>
     <string name="group_internal_storage">内部ストレージ</string>
+    <string name="group_removable_storage">外部ストレージ（SD / USB）</string>
     <string name="group_root">ルート</string>
     <string name="group_lan">ローカルネットワーク（SMB）</string>
     <string name="group_saf">ドキュメントツリー（SAF）</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">保存先を選択してください</string>
     <string name="settings_auto_tree_indent">ツリーの字下げを自動調整</string>
     <string name="settings_auto_tree_indent_desc">親フォルダが画面外にスクロールすると、字下げを滑らかに縮めます。</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite として開く</string>
+    <string name="sqlite_columns">列情報</string>
+    <string name="sqlite_copy">コピー</string>
+    <string name="sqlite_name">名前</string>
+    <string name="sqlite_type">型</string>
+    <string name="sqlite_not_null">非 NULL</string>
+    <string name="sqlite_default">既定値</string>
+    <string name="sqlite_primary_key">主キー</string>
+    <string name="sqlite_hidden">非表示 / 生成列</string>
+    <string name="sqlite_loading">読み込み中…</string>
+    <string name="sqlite_no_rows">行がありません</string>
+    <string name="sqlite_no_tables">テーブルがありません</string>
+    <string name="sqlite_open_failed">SQLite データベースを開けませんでした</string>
+    <string name="sqlite_read_failed">テーブルのデータを読み取れませんでした</string>
+    <string name="sqlite_blob">BLOB（%1$s）</string>
+    <string name="sqlite_grid_description">%1$s 行、%2$d 列</string>
+    <string name="sqlite_value_truncated">プレビューは省略されています。元の長さ：%1$d。コピーには表示部分のみが含まれます。</string>
+    <string name="sqlite_journal_active">このデータベースにはロールバックジャーナルがあります。書き込み元を閉じるか、先にコピーをエクスポートしてください。</string>
+    <string name="sqlite_source_changed">コピー中にデータベースが変更されました。書き込み元を閉じるか、コピーをエクスポートして再試行してください。</string>
+    <string name="sqlite_snapshot_confirm">閲覧するには %1$s をローカルスナップショットとしてダウンロードします。更新中の場合は先にコピーをエクスポートしてください。続行しますか？</string>
+    <string name="player_waiting_network">ネットワークが切断されました。接続の回復を待っています…</string>
+    <string name="player_retry_failed">接続に失敗しました。再生をタップして再試行してください。</string>
+    <string name="player_retry_wait">%2$d 秒後に再試行（%1$d/5）…</string>
+    <string name="player_retry_connecting">再接続中（%1$d/5）…</string>
+    <string name="sqlite_search_hint" formatted="false">すべての列を検索（LIKE：% と _ はワイルドカード）</string>
+    <string name="sqlite_search_incomplete">検索は未完了です：%1$d 個のテーブルを検索できませんでした。</string>
+    <string name="save_as">名前を付けて保存…</string>
+    <string name="sqlite_export_csv">CSV をエクスポート</string>
+    <string name="sqlite_export_columns">列を選択</string>
+    <string name="sqlite_sort_ascending">昇順</string>
+    <string name="sqlite_sort_descending">降順</string>
+    <string name="sqlite_sql_query">SQL クエリ</string>
+    <string name="sqlite_sql_run">実行</string>
+    <string name="sqlite_sql_result">クエリ結果</string>
+    <string name="sqlite_sql_running">実行中 · %1$d 秒</string>
+    <string name="sqlite_sql_read_only">読み取り専用の SELECT、WITH、VALUES、EXPLAIN または PRAGMA 文を 1 つ入力してください。</string>
+    <string name="sqlite_sql_single_statement">一度に実行できる SQL 文は 1 つです。</string>
+    <string name="sqlite_sql_no_columns">この文は列を返しません。</string>
+    <string name="sqlite_sql_edit">SQL を編集</string>
+    <string name="sqlite_sql_rerun">再実行</string>
+    <string name="sqlite_filter_title">絞り込み：%1$s</string>
+    <string name="sqlite_filter_clear">この列の絞り込みを解除</string>
+    <string name="sqlite_filter_empty_text">（空のテキスト）</string>
+    <string name="sqlite_filter_active">絞り込み中</string>
+    <string name="sqlite_filter_oversized">（値が大きすぎるため選択不可）</string>
+    <string name="sqlite_filter_values" formatted="false">値を選択</string>
+    <string name="sqlite_filter_keyword" formatted="false">キーワード</string>
+    <string name="sqlite_filter_custom" formatted="false">カスタム条件</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">キーワードに % がなければ前後に % を追加します。空欄で解除します。</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">数値は数値として比較します。テキストは単一引用符で囲めます。空欄で解除します。</string>
+    <string name="sqlite_filter_operator" formatted="false">演算子</string>
+    <string name="sqlite_filter_invalid" formatted="false">&gt;= 18、= \'abc\'、LIKE \'%abc%\'、IS NULL などの条件を入力してください。</string>
 </resources>

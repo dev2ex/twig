@@ -77,6 +77,8 @@ class TextViewerActivity : TwigActivity() {
     private var isCode = false
     private var isMarkdown = false
     private lateinit var currentFile: XFile
+    private var saveParent: XFile? = null
+    private val saveAsDialog = SaveAsDialog(this)
     private var fileName: String = ""
     private var lang: CodeHighlighter.Lang? = null
     private var isHtml = false
@@ -113,6 +115,7 @@ class TextViewerActivity : TwigActivity() {
     private var hlGen = 0 // invalidation marker for in-flight re-highlighting
     private var editMenuItem: MenuItem? = null
     private var saveMenuItem: MenuItem? = null
+    private var saveAsMenuItem: MenuItem? = null
     private var wrapMenuItem: MenuItem? = null
     private var lineNumbersMenuItem: MenuItem? = null
     private var themeMenuItem: MenuItem? = null
@@ -140,6 +143,7 @@ class TextViewerActivity : TwigActivity() {
         val name = intent.getStringExtra(EXTRA_NAME) ?: path
 
         fileName = name
+        saveParent = intent.getStringExtra(EXTRA_SAVE_PARENT)?.let { XFile(scheme, it, true) }
         b.toolbar.title = name
         b.toolbar.setNavigationOnClickListener { handleBack() }
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(name))
@@ -187,6 +191,11 @@ class TextViewerActivity : TwigActivity() {
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
             isVisible = false
             setOnMenuItemClickListener { save(); true }
+        }
+        saveAsMenuItem = b.toolbar.menu.add(0, R.id.viewer_save_as, 0, R.string.save_as).apply {
+            isVisible = false
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            setOnMenuItemClickListener { saveAs(); true }
         }
         externalResourcesMenuItem = b.toolbar.menu.add(R.string.viewer_load_external_resources).apply {
             isVisible = false
@@ -241,6 +250,7 @@ class TextViewerActivity : TwigActivity() {
     override fun onBackPressed() = handleBack()
 
     override fun onDestroy() {
+        saveAsDialog.destroy()
         b.content.removeCallbacks(relightTask)
         super.onDestroy()
     }
@@ -248,7 +258,7 @@ class TextViewerActivity : TwigActivity() {
     /** Back during editing: first exit edit state, prompt on unsaved changes; only really exit if neither applies. */
     private fun handleBack() {
         when {
-            saving -> return // write in progress, don't let the Activity run away
+            saving || saveAsDialog.isSaving -> return // write in progress, don't let the Activity run away
             editMode && dirty -> confirmDiscard()
             editMode -> exitEdit()
             else -> finish()
@@ -576,6 +586,7 @@ class TextViewerActivity : TwigActivity() {
         // the Preview toggle is gone (see [enterEdit]).
         editMenuItem?.isVisible = canEdit && !editMode
         saveMenuItem?.isVisible = editMode
+        saveAsMenuItem?.isVisible = editMode
         if (editMode) {
             ToolbarLongPress.bind(b.toolbar, actions = mapOf(R.id.viewer_save to { save(exitAfter = true) }))
         }
@@ -586,7 +597,7 @@ class TextViewerActivity : TwigActivity() {
         // WebView has none of those, so they are noise while a markdown/HTML preview is showing.
         wrapMenuItem?.isVisible = !previewMode
         lineNumbersMenuItem?.isVisible = !previewMode
-        themeMenuItem?.isVisible = !previewMode
+        themeMenuItem?.isVisible = !previewMode && isCode
     }
 
     private fun updateTitle() {
@@ -617,12 +628,17 @@ class TextViewerActivity : TwigActivity() {
      * [TextCodec.encode] returns null, surface the stuck characters and let the user pick "save as UTF-8" or go back.
      */
     private fun save(exitAfter: Boolean = false) {
-        if (saving) return
+        if (saving || saveAsDialog.isSaving) return
         val text = b.content.text.toString()
         val cs = fileCharset ?: Charsets.UTF_8 // fallback: if we got into edit state, decoding must have succeeded once
         val bytes = TextCodec.encode(text, cs, fileBom)
         if (bytes == null) {
-            askConvertUtf8(cs, text, exitAfter)
+            askConvertUtf8(cs, text) {
+                fileCharset = Charsets.UTF_8
+                fileBom = null
+                updateEncodingLabel()
+                save(exitAfter)
+            }
             return
         }
         saving = true
@@ -630,13 +646,17 @@ class TextViewerActivity : TwigActivity() {
         lifecycleScope.launch {
             val r = runCatching {
                 withContext(Dispatchers.IO) {
-                    writeAtomically(currentFile, bytes)
+                    writeAtomically(currentFile, bytes, saveParent)
                 }
             }
             saving = false
             b.loadingBox.visibility = View.GONE
             r.fold(
-                onSuccess = {
+                onSuccess = { saved ->
+                    currentFile = saved.copy(size = bytes.size.toLong())
+                    fileName = currentFile.name
+                    intent.putExtra(EXTRA_SCHEME, currentFile.scheme).putExtra(EXTRA_PATH, currentFile.path)
+                        .putExtra(EXTRA_NAME, fileName)
                     raw = text
                     rawLower = text.lowercase()
                     dirty = false
@@ -650,18 +670,58 @@ class TextViewerActivity : TwigActivity() {
         }
     }
 
-    /** The original encoding can't hold the new content: surface the stuck characters and let the user decide whether to convert to UTF-8 for save. */
-    private fun askConvertUtf8(cs: Charset, text: String, exitAfter: Boolean) {
+    /** Save a snapshot of the edited text; choosing or cancelling a destination never changes the original. */
+    private fun saveAs(cs: Charset = fileCharset ?: Charsets.UTF_8, bom: ByteArray? = fileBom) {
+        if (!editMode || saving || saveAsDialog.isSaving) return
+        val text = b.content.text.toString()
+        val bytes = TextCodec.encode(text, cs, bom)
+        if (bytes == null) {
+            askConvertUtf8(cs, text) { saveAs(Charsets.UTF_8, null) }
+            return
+        }
+        saveAsDialog.offerBytes(fileName, bytes) { saved ->
+            currentFile = saved.file.copy(size = bytes.size.toLong())
+            saveParent = saved.directory
+            fileName = currentFile.name
+            fileCharset = cs
+            fileBom = bom
+            raw = text
+            rawLower = text.lowercase()
+            dirty = b.content.text.toString() != text
+            intent.putExtra(EXTRA_SCHEME, currentFile.scheme).putExtra(EXTRA_PATH, currentFile.path)
+                .putExtra(EXTRA_NAME, fileName).putExtra(EXTRA_SAVE_PARENT, saved.directory.path).putExtra(EXTRA_EDIT, true)
+            @Suppress("DEPRECATION")
+            setTaskDescription(ActivityManager.TaskDescription(fileName))
+            lang = CodeHighlighter.langFor(fileName)
+            isCode = lang != null
+            isMarkdown = lang?.markdown == true
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            isHtml = ext == "html" || ext == "htm"
+            isPreviewable = isHtml || isMarkdown
+            previewHome = previewHome && isPreviewable
+            liveHighlight = isCode && text.length <= CodeHighlighter.MAX_LIVE_HIGHLIGHT
+            ++hlGen
+            tokens = emptyList()
+            b.content.typeface = if (isMarkdown) Typeface.DEFAULT else Typeface.MONOSPACE
+            b.content.text?.let { CodeHighlighter.applyTo(it, emptyList(), currentTheme()) }
+            if (isCode) {
+                if (themeMenuItem == null) themeMenuItem = b.toolbar.menu.add(R.string.viewer_theme)
+                    .setOnMenuItemClickListener { pickTheme(); true }
+                relight()
+            }
+            updateTitle()
+            updateEncodingLabel()
+            syncEditMenu()
+        }
+    }
+
+    /** Both save paths require explicit consent when the current encoding cannot represent the edits. */
+    private fun askConvertUtf8(cs: Charset, text: String, converted: () -> Unit) {
         val chars = TextCodec.unmappable(text, cs).joinToString(" ")
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.viewer_charset_failed_title, cs.name()))
             .setMessage(getString(R.string.viewer_charset_failed, cs.name(), chars))
-            .setPositiveButton(R.string.viewer_save_as_utf8) { _, _ ->
-                fileCharset = Charsets.UTF_8
-                fileBom = null // the original BOM was for the old encoding, becomes invalid after conversion
-                updateEncodingLabel()
-                save(exitAfter)
-            }
+            .setPositiveButton(R.string.viewer_save_as_utf8) { _, _ -> converted() }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
@@ -875,6 +935,7 @@ class TextViewerActivity : TwigActivity() {
         private const val EXTRA_NAME = "name"
         private const val EXTRA_PREVIEW = "preview"
         private const val EXTRA_EDIT = "edit"
+        private const val EXTRA_SAVE_PARENT = "save_parent"
         private const val MAX_BYTES = 1L * 1024 * 1024 // 1 MB cap, to avoid OOM
         private const val MAX_MATCHES = 2000
         private const val RELIGHT_DELAY = 300L // how long to wait after typing stops before re-highlighting

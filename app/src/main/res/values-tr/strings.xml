@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Izgara · Yalnızca medya</string>
     <string name="view_mode_grid_all">Izgara · Tüm dosyalar</string>
     <string name="theme_system">Sistemi izle</string>
+    <string name="theme_system_oled">Sistemi izle (OLED)</string>
     <string name="theme_light">Açık</string>
     <string name="theme_dark">Koyu</string>
     <string name="conn_connect">Bağlan</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Ekran yönü sistemi izler</string>
     <string name="player_brightness">Parlaklık %1$d%%</string>
     <string name="player_volume">Ses %1$d%%</string>
+    <string name="player_muted">Ses kapatıldı</string>
+    <string name="player_unmuted">Ses açıldı</string>
+    <string name="player_subtitles_on">Altyazılar açıldı</string>
+    <string name="player_subtitles_off">Altyazılar kapatıldı</string>
     <string name="player_subtitle">Altyazı</string>
     <string name="player_subtitle_size">Metin altyazı boyutu</string>
     <string name="player_subtitle_size_value">Metin altyazı boyutu: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Bu başlatıcı kısayol sabitlemeyi desteklemiyor</string>
     <string name="group_fav">Sık kullanılanlar</string>
     <string name="group_internal_storage">Dahili depolama</string>
+    <string name="group_removable_storage">Çıkarılabilir depolama (SD / USB)</string>
     <string name="group_root">Kök</string>
     <string name="group_lan">Yerel ağ (SMB)</string>
     <string name="group_saf">Belge ağacı (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">Kayıt konumunu seçin</string>
     <string name="settings_auto_tree_indent">Otomatik ağaç girintisi</string>
     <string name="settings_auto_tree_indent_desc">Üst klasörler ekran dışına kaydırıldığında girintiyi yumuşakça azaltır.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">SQLite olarak aç</string>
+    <string name="sqlite_columns">Sütunlar</string>
+    <string name="sqlite_copy">Kopyala</string>
+    <string name="sqlite_name">Ad</string>
+    <string name="sqlite_type">Tür</string>
+    <string name="sqlite_not_null">NULL olamaz</string>
+    <string name="sqlite_default">Varsayılan</string>
+    <string name="sqlite_primary_key">Birincil anahtar</string>
+    <string name="sqlite_hidden">Gizli / oluşturulan</string>
+    <string name="sqlite_loading">Yükleniyor…</string>
+    <string name="sqlite_no_rows">Satır yok</string>
+    <string name="sqlite_no_tables">Tablo yok</string>
+    <string name="sqlite_open_failed">SQLite veritabanı açılamadı</string>
+    <string name="sqlite_read_failed">Tablo verileri okunamadı</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s satır, %2$d sütun</string>
+    <string name="sqlite_value_truncated">Önizleme kısaltıldı; asıl uzunluk: %1$d. Yalnızca gösterilen önizleme kopyalanır.</string>
+    <string name="sqlite_journal_active">Bu veritabanında geri alma günlüğü var. Yazan programı kapatın veya önce bir kopya dışa aktarın.</string>
+    <string name="sqlite_source_changed">Veritabanı kopyalama sırasında değişti. Yazan programı kapatın veya bir kopya dışa aktarıp yeniden deneyin.</string>
+    <string name="sqlite_snapshot_confirm">Göz atmak için %1$s yerel bir anlık görüntü olarak indirilmelidir. Değiştiriliyorsa önce bir kopya dışa aktarın. Devam edilsin mi?</string>
+    <string name="player_waiting_network">Ağ bağlantısı kesildi. Bağlantı bekleniyor…</string>
+    <string name="player_retry_failed">Bağlantı başarısız. Yeniden denemek için Oynat düğmesine dokunun.</string>
+    <string name="player_retry_wait">%2$d saniye sonra %1$d/5. deneme…</string>
+    <string name="player_retry_connecting">Yeniden bağlanılıyor (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Tüm sütunlarda metin (LIKE: % ve _ joker karakterdir)</string>
+    <string name="sqlite_search_incomplete">Arama tamamlanamadı: %1$d tabloda arama yapılamadı.</string>
+    <string name="save_as">Farklı kaydet…</string>
+    <string name="sqlite_export_csv">CSV olarak dışa aktar</string>
+    <string name="sqlite_export_columns">Sütunları seç</string>
+    <string name="sqlite_sort_ascending">Artan</string>
+    <string name="sqlite_sort_descending">Azalan</string>
+    <string name="sqlite_sql_query">SQL sorgusu</string>
+    <string name="sqlite_sql_run">Çalıştır</string>
+    <string name="sqlite_sql_result">Sorgu sonucu</string>
+    <string name="sqlite_sql_running">Çalışıyor · %1$d sn</string>
+    <string name="sqlite_sql_read_only">Salt okunur bir SELECT, WITH, VALUES, EXPLAIN veya PRAGMA ifadesi girin.</string>
+    <string name="sqlite_sql_single_statement">Her seferinde tek bir SQL ifadesi çalıştırın.</string>
+    <string name="sqlite_sql_no_columns">Bu ifade sütun döndürmüyor.</string>
+    <string name="sqlite_sql_edit">SQL düzenle</string>
+    <string name="sqlite_sql_rerun">Yeniden çalıştır</string>
+    <string name="sqlite_filter_title">Filtre: %1$s</string>
+    <string name="sqlite_filter_clear">Sütun filtresini temizle</string>
+    <string name="sqlite_filter_empty_text">(Boş metin)</string>
+    <string name="sqlite_filter_active">Filtrelendi</string>
+    <string name="sqlite_filter_oversized">(Seçmek için çok büyük)</string>
+    <string name="sqlite_filter_values" formatted="false">Değer seç</string>
+    <string name="sqlite_filter_keyword" formatted="false">Anahtar kelime</string>
+    <string name="sqlite_filter_custom" formatted="false">Özel koşul</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Anahtar kelimede % yoksa iki uca % ekler. Temizlemek için boş bırakın.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Sayılar sayısal karşılaştırılır; metin için tek tırnak kullanın. Temizlemek için boş bırakın.</string>
+    <string name="sqlite_filter_operator" formatted="false">İşleç</string>
+    <string name="sqlite_filter_invalid" formatted="false">&gt;= 18, = \'abc\', LIKE \'%abc%\' veya IS NULL gibi bir koşul girin.</string>
 </resources>

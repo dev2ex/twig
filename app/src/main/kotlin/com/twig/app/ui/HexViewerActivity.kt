@@ -292,7 +292,7 @@ class HexViewerActivity : TwigActivity() {
         matches = emptyList()
         cur = -1
         patLen = pat.size
-        val s = pane.src
+        val s = pane.src as? HexSource
         if (pat.isEmpty() || s == null) {
             b.searchCount.text = ""
             pane.refreshVisible()

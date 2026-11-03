@@ -13,10 +13,15 @@ import java.util.WeakHashMap
 object AppTheme : Application.ActivityLifecycleCallbacks {
     // Separate from AppCompat's mode constants; persisted in the existing theme preference.
     const val MODE_OLED = 3
+    const val MODE_SYSTEM_OLED = 4
     private val activities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
 
     private fun nightMode(choice: Int): Int =
-        if (choice == MODE_OLED) AppCompatDelegate.MODE_NIGHT_YES else choice
+        when (choice) {
+            MODE_OLED -> AppCompatDelegate.MODE_NIGHT_YES
+            MODE_SYSTEM_OLED -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+            else -> choice
+        }
 
     fun install(app: Application) {
         AppCompatDelegate.setDefaultNightMode(nightMode(Prefs.themeMode(app)))
@@ -25,16 +30,28 @@ object AppTheme : Application.ActivityLifecycleCallbacks {
     }
 
     private fun applyApplicationTheme(context: Context) {
-        context.setTheme(if (Prefs.themeMode(context) == MODE_OLED) R.style.Theme_Twig_Oled else R.style.Theme_Twig)
+        context.setTheme(when (Prefs.themeMode(context)) {
+            MODE_OLED -> R.style.Theme_Twig_Oled
+            MODE_SYSTEM_OLED -> R.style.Theme_Twig_SystemOled
+            else -> R.style.Theme_Twig
+        })
     }
 
     /** Select a complete theme before AppCompat initializes its Window and decor. */
     fun apply(activity: Activity) {
-        if (Prefs.themeMode(activity) != MODE_OLED) return
+        val choice = Prefs.themeMode(activity)
+        if (!usesOledPalette(choice)) return
         val translucent = android.util.TypedValue()
         activity.theme.resolveAttribute(android.R.attr.windowIsTranslucent, translucent, true)
-        activity.setTheme(if (translucent.data != 0) R.style.Theme_Twig_Oled_Translucent else R.style.Theme_Twig_Oled)
+        activity.setTheme(when {
+            choice == MODE_SYSTEM_OLED && translucent.data != 0 -> R.style.Theme_Twig_SystemOled_Translucent
+            choice == MODE_SYSTEM_OLED -> R.style.Theme_Twig_SystemOled
+            translucent.data != 0 -> R.style.Theme_Twig_Oled_Translucent
+            else -> R.style.Theme_Twig_Oled
+        })
     }
+
+    private fun usesOledPalette(choice: Int) = choice == MODE_OLED || choice == MODE_SYSTEM_OLED
 
     fun change(context: Context, previous: Int, choice: Int) {
         // Reset application-context colors as well, for views built outside an Activity.
@@ -44,7 +61,7 @@ object AppTheme : Application.ActivityLifecycleCallbacks {
             AppCompatDelegate.MODE_NIGHT_NO -> Configuration.UI_MODE_NIGHT_NO
             else -> context.applicationContext.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         }
-        val paletteOnly = if (previous == MODE_OLED || choice == MODE_OLED) {
+        val paletteOnly = if (usesOledPalette(previous) || usesOledPalette(choice)) {
             activities.toList().filter {
                 !it.isFinishing && !it.isDestroyed &&
                     (it.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == targetNight

@@ -164,6 +164,7 @@
     <string name="view_mode_grid_media">Grade · Só mídia</string>
     <string name="view_mode_grid_all">Grade · Todos os arquivos</string>
     <string name="theme_system">Seguir o sistema</string>
+    <string name="theme_system_oled">Seguir o sistema (OLED)</string>
     <string name="theme_light">Claro</string>
     <string name="theme_dark">Escuro</string>
     <string name="conn_connect">Conectar</string>
@@ -216,6 +217,10 @@
     <string name="player_orientation_auto">Orientação do sistema</string>
     <string name="player_brightness">Brilho %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
+    <string name="player_muted">Som desativado</string>
+    <string name="player_unmuted">Som ativado</string>
+    <string name="player_subtitles_on">Legendas ativadas</string>
+    <string name="player_subtitles_off">Legendas desativadas</string>
     <string name="player_subtitle">Legenda</string>
     <string name="player_subtitle_size">Tamanho das legendas de texto</string>
     <string name="player_subtitle_size_value">Tamanho das legendas de texto: %1$d sp</string>
@@ -445,6 +450,7 @@
     <string name="music_pin_shortcut_unsupported">Este launcher não permite fixar atalhos</string>
     <string name="group_fav">Favoritos</string>
     <string name="group_internal_storage">Armazenamento interno</string>
+    <string name="group_removable_storage">Armazenamento removível (SD / USB)</string>
     <string name="group_root">Raiz</string>
     <string name="group_lan">Rede local (SMB)</string>
     <string name="group_saf">Árvore de documentos (SAF)</string>
@@ -1186,4 +1192,58 @@
     <string name="compress_destination_missing">Escolha um destino</string>
     <string name="settings_auto_tree_indent">Recuo automático da árvore</string>
     <string name="settings_auto_tree_indent_desc">Reduz suavemente o recuo quando as pastas superiores saem da tela.</string>
+
+    <!-- SQLite browsing -->
+    <string name="sqlite_open_as">Abrir como SQLite</string>
+    <string name="sqlite_columns">Colunas</string>
+    <string name="sqlite_copy">Copiar</string>
+    <string name="sqlite_name">Nome</string>
+    <string name="sqlite_type">Tipo</string>
+    <string name="sqlite_not_null">Não nulo</string>
+    <string name="sqlite_default">Padrão</string>
+    <string name="sqlite_primary_key">Chave primária</string>
+    <string name="sqlite_hidden">Oculta / gerada</string>
+    <string name="sqlite_loading">Carregando…</string>
+    <string name="sqlite_no_rows">Nenhuma linha</string>
+    <string name="sqlite_no_tables">Nenhuma tabela</string>
+    <string name="sqlite_open_failed">Não foi possível abrir o banco SQLite</string>
+    <string name="sqlite_read_failed">Não foi possível ler os dados da tabela</string>
+    <string name="sqlite_blob">BLOB (%1$s)</string>
+    <string name="sqlite_grid_description">%1$s linhas, %2$d colunas</string>
+    <string name="sqlite_value_truncated">Prévia truncada; tamanho original: %1$d. Apenas a prévia exibida é copiada.</string>
+    <string name="sqlite_journal_active">Este banco possui um diário de reversão. Feche o programa que grava nele ou exporte uma cópia primeiro.</string>
+    <string name="sqlite_source_changed">O banco mudou durante a cópia. Feche o programa que grava nele ou exporte uma cópia e tente novamente.</string>
+    <string name="sqlite_snapshot_confirm">É preciso baixar %1$s como cópia local para navegar. Se estiver sendo alterado, exporte uma cópia primeiro. Continuar?</string>
+    <string name="player_waiting_network">Rede desconectada. Aguardando conexão…</string>
+    <string name="player_retry_failed">Falha na conexão. Toque em Reproduzir para tentar novamente.</string>
+    <string name="player_retry_wait">Tentativa %1$d/5 em %2$d segundos…</string>
+    <string name="player_retry_connecting">Reconectando (%1$d/5)…</string>
+    <string name="sqlite_search_hint" formatted="false">Texto em todas as colunas (LIKE: % e _ são curingas)</string>
+    <string name="sqlite_search_incomplete">Busca incompleta: não foi possível pesquisar em %1$d tabela(s).</string>
+    <string name="save_as">Salvar como…</string>
+    <string name="sqlite_export_csv">Exportar CSV</string>
+    <string name="sqlite_export_columns">Selecionar colunas</string>
+    <string name="sqlite_sort_ascending">Crescente</string>
+    <string name="sqlite_sort_descending">Decrescente</string>
+    <string name="sqlite_sql_query">Consulta SQL</string>
+    <string name="sqlite_sql_run">Executar</string>
+    <string name="sqlite_sql_result">Resultado da consulta</string>
+    <string name="sqlite_sql_running">Executando · %1$d s</string>
+    <string name="sqlite_sql_read_only">Insira uma instrução somente leitura SELECT, WITH, VALUES, EXPLAIN ou PRAGMA.</string>
+    <string name="sqlite_sql_single_statement">Execute uma instrução SQL por vez.</string>
+    <string name="sqlite_sql_no_columns">Esta instrução não retorna colunas.</string>
+    <string name="sqlite_sql_edit">Editar SQL</string>
+    <string name="sqlite_sql_rerun">Executar novamente</string>
+    <string name="sqlite_filter_title">Filtrar: %1$s</string>
+    <string name="sqlite_filter_clear">Limpar filtro da coluna</string>
+    <string name="sqlite_filter_empty_text">(Texto vazio)</string>
+    <string name="sqlite_filter_active">Filtrado</string>
+    <string name="sqlite_filter_oversized">(Grande demais para selecionar)</string>
+    <string name="sqlite_filter_values" formatted="false">Escolher valores</string>
+    <string name="sqlite_filter_keyword" formatted="false">Palavra-chave</string>
+    <string name="sqlite_filter_custom" formatted="false">Condição personalizada</string>
+    <string name="sqlite_filter_keyword_hint" formatted="false">Adiciona % nas duas pontas se a palavra não contiver %. Deixe vazio para limpar.</string>
+    <string name="sqlite_filter_custom_hint" formatted="false">Números são comparados numericamente; use aspas simples para texto. Deixe vazio para limpar.</string>
+    <string name="sqlite_filter_operator" formatted="false">Operador</string>
+    <string name="sqlite_filter_invalid" formatted="false">Digite uma condição como &gt;= 18, = \'abc\', LIKE \'%abc%\' ou IS NULL.</string>
 </resources>

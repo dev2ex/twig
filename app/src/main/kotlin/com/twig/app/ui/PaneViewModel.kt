@@ -3,6 +3,7 @@ package com.twig.app.ui
 import android.app.Application
 import android.os.Environment
 import android.os.StatFs
+import android.os.SystemClock
 import android.provider.DocumentsContract
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -426,6 +427,102 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val abandoned: MutableSet<String> = ConcurrentHashMap.newKeySet()
     /** Apk default: a tap installs it directly, not expand it as an archive; once the user picks "Open as archive" we record it here and only from that node onward is browsing the archive contents allowed. */
     private val forcedArchive = HashSet<String>()
+    private val forcedSqlite = HashSet<String>()
+    private val pendingSqliteSql = HashMap<String, String>()
+    private val pendingSqliteSearch = HashMap<String, Pair<String, String?>>()
+    private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+
+    fun isSqlite(file: XFile, key: String = fileKey(file)): Boolean =
+        com.twig.app.sqlite.SqliteSession.recognizes(file) || key in forcedSqlite
+
+    fun sqliteCommand(node: SqliteNode, command: SqliteCommand) {
+        currentKey = node.tableKey
+        sqliteTree.command(node, command)
+    }
+
+    fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query, node.state.execution)
+    suspend fun sqliteFilterOptions(node: SqliteDataNode, column: Int) = sqliteTree.filterOptions(node, column)
+    fun sqliteFilter(node: SqliteDataNode, column: Int, values: List<com.twig.app.sqlite.SqliteCell>,
+        condition: com.twig.app.sqlite.SqliteCondition? = null) = sqliteTree.filter(node, column, values, condition)
+    fun sqliteSort(node: SqliteDataNode, column: Int) = sqliteTree.sort(node, column)
+    suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
+    fun sqliteBlobReader(node: SqliteDataNode, row: Int, column: Int, size: Long) =
+        sqliteTree.blobReader(node, row, column, size)
+
+    fun sqliteCsvWriter(node: SqliteNode, columns: Set<String>) = sqliteTree.csvWriter(node, columns)
+
+    /** Resolve virtual table/result selections without exposing them to filesystem actions. */
+    fun sqliteSearchTarget(): FileNode? {
+        val rows = state.value.rows
+        val key = when (val selected = rows.firstOrNull { it.key == currentKey }) {
+            is SqliteNode -> selected.owner
+            is SqliteSearchNode -> selected.owner
+            is SqliteQueryNode -> selected.owner
+            is FileNode -> selected.key.takeIf { isSqlite(selected.file, it) }
+            else -> null
+        } ?: return null
+        return rows.filterIsInstance<FileNode>().firstOrNull { it.key == key && sqliteTree.canSearch(key) }
+    }
+
+    fun startSqliteSql(node: FileNode, sql: String) {
+        if (sql.isBlank()) return
+        pendingSqliteSearch.remove(node.key)
+        if (node.key !in expanded) {
+            pendingSqliteSql[node.key] = sql
+            toggleSqlite(node)
+        } else sqliteTree.execute(node.key, sql)
+        if (node.key in expanded) currentKey = "${node.key}/sqlite-query"
+        rebuild()
+    }
+
+    fun closeSqliteQuery(node: SqliteQueryNode) {
+        sqliteTree.closeQuery(node.owner, node.id)
+        if (currentKey == node.key || currentKey?.startsWith("${node.owner}/query:") == true) currentKey = node.owner
+        rebuild()
+    }
+
+    fun startSqliteSearch(node: FileNode, query: String, table: String? = null) {
+        if (query.isEmpty()) return
+        pendingSqliteSql.remove(node.key)
+        if (node.key !in expanded) {
+            pendingSqliteSearch[node.key] = query to table
+            toggleSqlite(node)
+        } else sqliteTree.search(node.key, query, table)
+        if (node.key in expanded) currentKey = "${node.key}/sqlite-search"
+        rebuild()
+    }
+
+    fun closeSqliteSearch(node: SqliteSearchNode) {
+        sqliteTree.closeSearch(node.owner)
+        if (currentKey == node.key || currentKey?.startsWith("${node.owner}/search:") == true) currentKey = node.owner
+        rebuild()
+    }
+
+    fun openAsSqlite(node: FileNode) {
+        forcedSqlite.add(node.key)
+        if (node.key in expanded) expanded.remove(node.key)
+        toggleFile(node.copy(expandable = true))
+    }
+
+    private fun toggleSqlite(node: FileNode) {
+        val key = node.key
+        currentKey = key
+        claimExpand(key)
+        if (expanded.remove(key)) {
+            sqliteTree.close(key)
+        } else {
+            if (key !in confirmedMaterialize && node.file.scheme != "file" &&
+                (node.file.size <= 0 || node.file.size >= materializeConfirmBytes)) {
+                _state.value = _state.value.copy(confirmMaterialize = node.file)
+                return
+            }
+            accordionExpand(key)
+            sqliteTree.open(key, node.file, parentRow(node.file)?.let { mountRoots[it.first] ?: it.second })
+            pendingSqliteSearch.remove(key)?.let { (query, table) -> sqliteTree.search(key, query, table) }
+            pendingSqliteSql.remove(key)?.let { sqliteTree.execute(key, it) }
+        }
+        rebuild()
+    }
     /** Row keys the user already said "yes, download it" to (see [State.confirmMaterialize]) — don't ask again for the same row this session. */
     private val confirmedMaterialize = HashSet<String>()
     /** File key (fileKey) for which the properties card is open; the card content is cached and dropped when closed/folded. */
@@ -618,7 +715,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         // in other modes an archive is a normal row and doesn't deserve its own group.
         val archivesFirst = grid == 2
         return SortRules.sorted(list, cmp) { f ->
-            SortRules.groupOf(f.isDir, expandableArchive(f), Thumbs.canThumb(f), archivesFirst)
+            SortRules.groupOf(f.isDir, expandableArchive(f) || isSqlite(f), Thumbs.canThumb(f), archivesFirst)
         }
     }
 
@@ -855,6 +952,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Descriptors of saved-last positions (local / apps / network / group / server / favorite; restic repository nodes themselves, and SAF, are skipped). */
     fun expandedDescriptors(): List<String> = expandedSnapshot().mapNotNull { key ->
+        // Browsing sessions are temporary; restoring a database as a directory would misread its path.
+        if (keyFile[key]?.let { isSqlite(it, key) } == true) return@mapNotNull null
         TreeKeys.descriptorOf(key) { scheme -> schemeToConn[scheme]?.label() }
     }
 
@@ -992,6 +1091,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
+            is SqliteQueryNode -> { currentKey = node.key; sqliteTree.toggleQuery(node); rebuild() }
+            is SqliteSearchNode -> closeSqliteSearch(node)
+            is SqliteNode -> sqliteCommand(node, if (node is SqliteInfoNode) SqliteCommand.CLOSE else SqliteCommand.TOGGLE)
             is GroupNode -> {
                 currentKey = node.key
                 currentDir = null // Group heading (LAN/FTP/...) isn't a real directory; clear it so copy/new don't pick up the previously-selected directory.
@@ -1590,6 +1692,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Collapse every branch and abandon pending expansions without discarding cached listings. */
     fun collapseAll() {
+        pendingSqliteSearch.clear()
+        pendingSqliteSql.clear()
         abandoned.addAll(loadingKeys)
         abandoned.addAll(connecting)
         pendingExpand = null
@@ -1853,10 +1957,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun refresh() {
         refreshTrashRoot()
         val targets = expandedSnapshot().mapNotNull { k -> keyFile[k]?.let { k to it } }
+        val (databases, directories) = targets.partition { (key, file) -> isSqlite(file, key) }
+        databases.forEach { (key, file) -> sqliteTree.refresh(key, file) }
         viewModelScope.launch {
             val fresh = HashMap<String, Listing>()
             withContext(io) {
-                for ((k, f) in targets) runCatching { fresh[k] = listChildren(f) }
+                for ((k, f) in directories) runCatching { fresh[k] = listChildren(f) }
             }
             for ((k, l) in fresh) putListing(k, l)
             rebuild()
@@ -2202,6 +2308,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refreshNode(n: FileNode) {
         if (!n.expandable) return
+        if (isSqlite(n.file, n.key)) {
+            if (n.key in expanded) sqliteTree.refresh(n.key, n.file) else sqliteTree.close(n.key)
+            rebuild()
+            return
+        }
         val key = n.key
         children.remove(key)
         // Even while collapsed, drop the git cache: a manual refresh is the only
@@ -2232,6 +2343,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun toggleFile(n: FileNode) {
         if (!n.expandable) return
+        if (isSqlite(n.file, n.key)) { toggleSqlite(n); return }
         if (n.file.isDir) currentDir = n.file
         val key = n.key
         currentKey = key
@@ -2987,7 +3099,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun answerMaterializeConfirm(file: XFile, proceed: Boolean) {
         _state.value = _state.value.copy(confirmMaterialize = null)
-        if (!proceed) return
+        if (!proceed) {
+            pendingSqliteSearch.remove(fileKey(file))
+            pendingSqliteSql.remove(fileKey(file))
+            return
+        }
         confirmedMaterialize.add(fileKey(file))
         expandFileNode(file)
     }
@@ -3082,9 +3198,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val volumes = StorageVolumes.cached(getApplication())
             // Register all shortcut identities before rendering any expanded subtree:
             // Their paths may also appear below another root, regardless of root order.
-            storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
+            if (rootVisible("internal")) storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
             if (rootVisible("root")) storageShortcutKeys.add(fileKey(XFile("file", "/", isDir = true)))
-            volumes.forEach { storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true))) }
+            if (rootVisible("removable")) volumes.forEach {
+                storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true)))
+            }
             val privateDir = XFile("file", PrivateSpace.directory(getApplication()).path, isDir = true)
             if (rootVisible("private")) storageShortcutKeys.add(fileKey(privateDir))
             // Externally opened archives go at the top — they don't belong to any storage tree, so wedged in the middle they'd be hard to find.
@@ -3096,6 +3214,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 val item = orderedRoots.next()
                 if (!rootVisible(item.id)) return
                 when (item.id) {
+                    "internal" -> addFile(rows, XFile("file", ext, isDir = true), 0,
+                        str(R.string.group_internal_storage), capacity(ext))
+                    "removable" -> volumes.forEach { v ->
+                        addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
+                    }
                     "root" -> addFile(rows, XFile("file", "/", isDir = true), 0,
                         str(R.string.group_root), capacity("/"))
                     "private" -> addFile(rows, privateDir, 0, str(R.string.private_space))
@@ -3108,12 +3231,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (CompareStore.all(getApplication()).isNotEmpty()) {
                 addGroup(rows, "cmp", str(R.string.compare_saved))
             }
-            addFile(rows, XFile("file", ext, isDir = true), 0, str(R.string.group_internal_storage), capacity(ext))
-            addNextRoot()
-            for (v in volumes) {
-                addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
-            }
-            addNextRoot()
+            repeat(4) { addNextRoot() }
             if (trashEnabled && (!trashPresenceLoaded ||
                     children[fileKey(XFile("trash", "/", isDir = true))]?.isNotEmpty() != false || trashNotices.isNotEmpty())) {
                 addFile(rows, XFile("trash", "/", isDir = true, canWrite = false), 0, str(R.string.trash_title))
@@ -3151,6 +3269,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows.filterIsInstance<FileNode>().firstOrNull {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
+        val databases = rows.filterIsInstance<FileNode>().filter { isSqlite(it.file, it.key) }
+        sqliteTree.retain(databases.filter { it.expanded }.mapTo(HashSet()) { it.key }, databases.mapTo(HashSet()) { it.key })
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
             restoring || revealLoadingKey != null, revealLoadingKey ?: scrollKey)
     }
@@ -3175,20 +3295,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val rowPrefix = if (keyPrefix.isEmpty() && depth > 0 && fileKey in storageShortcutKeys)
             TreeKeys.NESTED_STORAGE_PREFIX else keyPrefix
         val key = rowPrefix + fileKey
-        val expandable = file.isDir || expandableArchive(file, key)
+        val expandable = file.isDir || expandableArchive(file, key) || isSqlite(file, key)
         if (expandable) keyFile[key] = file
         val exp = expandable && expanded.contains(key)
         // A directory with a search result hangs shows the chevron as "expanded" (even if not actually expanded) — visually echoing the search-result virtual directory below; this only affects the icon, the actual children list is still only fetched/rendered when exp is true, so a collapsed directory that starts a search won't also show its original files/dirs below.
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
-            label, capacity, busy(key), rowPrefix,
+            label, capacity, busy(key) || sqliteTree.loading(key), rowPrefix,
             DirectoryCounts.known(file, showHidden),
             gridMode,
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )
         addAttachments(rows, file, depth)
-        if (exp) {
+        if (exp && isSqlite(file, key)) {
+            rows.addAll(sqliteTree.rows(key, depth + 1))
+        } else if (exp) {
             // Put the git virtual root first, no need to dig through a pile of real files.
             // Don't use the display name frozen at registration in gitInfo (after switching branches it'd keep showing the old one); read GitFileSystem.displayName instead — it follows the latest branch in statusCache.
             gitInfo[fileKey(file)]?.let { (s, gl) ->
@@ -3432,12 +3554,36 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
     private fun str(id: Int, vararg args: Any): String = LanguagePref.appContext(getApplication()).getString(id, *args)
 
-    private fun capacity(path: String): String? = runCatching {
+    private data class CapacitySample(val bytes: Pair<Long, Long>?, val checkedAt: Long)
+    private val capacities = HashMap<String, CapacitySample>()
+    private val capacityPending = HashSet<String>()
+
+    @androidx.annotation.VisibleForTesting
+    internal var capacityReader: (String) -> Pair<Long, Long> = { path ->
         val st = StatFs(path)
-        val total = st.blockCountLong * st.blockSizeLong
-        val avail = st.availableBlocksLong * st.blockSizeLong
-        str(R.string.capacity_format, Format.size(avail), Format.size(total))
-    }.getOrNull()
+        st.availableBytes to st.totalBytes
+    }
+
+    /** A disconnected or unhealthy mount can block statvfs indefinitely. Never read it while rendering. */
+    private fun capacity(path: String): String? {
+        val cached = capacities[path]
+        if ((cached == null || SystemClock.elapsedRealtime() - cached.checkedAt >= 10_000L) &&
+            capacityPending.add(path)) {
+            viewModelScope.launch {
+                try {
+                    val bytes = withContext(io) { runCatching { capacityReader(path) }.getOrNull() }
+                    capacities[path] = CapacitySample(bytes, SystemClock.elapsedRealtime())
+                    // Store failures too: rebuilding must not immediately retry an unreadable mount.
+                    if (bytes != cached?.bytes) rebuild()
+                } finally {
+                    capacityPending.remove(path)
+                }
+            }
+        }
+        return cached?.bytes?.let { (available, total) ->
+            str(R.string.capacity_format, Format.size(available), Format.size(total))
+        }
+    }
 
     private fun emitError(msg: String?) {
         _state.value = _state.value.copy(error = msg ?: str(R.string.err_operation_failed))

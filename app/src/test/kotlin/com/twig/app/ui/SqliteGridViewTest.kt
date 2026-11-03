@@ -1,0 +1,345 @@
+package com.twig.app.ui
+
+import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Looper
+import android.view.ContextThemeWrapper
+import android.view.MotionEvent
+import android.view.View
+import android.widget.FrameLayout
+import com.twig.app.R
+import com.twig.app.sqlite.SqliteCell
+import com.twig.app.sqlite.SqliteColumn
+import com.twig.app.sqlite.SqliteIdentity
+import com.twig.app.sqlite.SqliteTable
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class SqliteGridViewTest {
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun `data taps select entire rows while long presses open cells and retain search highlights`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val position = SqliteViewport()
+        val opened = mutableListOf<Pair<Int, Int>>()
+        fun bind(view: SqliteGridView) = view.bind("data", listOf("a", "b"), 2, position,
+            rowAt = { listOf(SqliteCell.text("match").copy(matched = true), SqliteCell.text("other")) },
+            cell = { row, col -> opened.add(row to col) }, selectRows = true)
+        bind(grid)
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val dp = activity.resources.displayMetrics.density
+        fun touch(action: Int, x: Float, y: Float, down: Long, time: Long = down) {
+            MotionEvent.obtain(down, time, action, x * dp, y * dp, 0).also { grid.onTouchEvent(it); it.recycle() }
+        }
+        val down = android.os.SystemClock.uptimeMillis()
+        touch(MotionEvent.ACTION_DOWN, 140f, 45f, down)
+        touch(MotionEvent.ACTION_UP, 140f, 45f, down, down + 20)
+        assertEquals(0, position.selectedRow)
+        assertTrue(opened.isEmpty())
+        val bitmap = Bitmap.createBitmap(320, 160, Bitmap.Config.ARGB_8888)
+        grid.draw(Canvas(bitmap))
+        assertNotEquals(bitmap.getPixel((310 * dp).toInt(), (35 * dp).toInt()),
+            bitmap.getPixel((310 * dp).toInt(), (67 * dp).toInt()))
+        assertNotEquals(bitmap.getPixel((20 * dp).toInt(), (35 * dp).toInt()),
+            bitmap.getPixel((140 * dp).toInt(), (35 * dp).toInt()))
+        bind(grid) // Paging/rebinding must not clear the selected row.
+        assertEquals(0, position.selectedRow)
+        val provider = grid.accessibilityNodeProvider!!
+        assertTrue(provider.createAccessibilityNodeInfo(1)!!.isSelected)
+        assertTrue(provider.performAction(3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(1, position.selectedRow)
+        assertTrue(opened.isEmpty())
+        val press = android.os.SystemClock.uptimeMillis() + 1000
+        touch(MotionEvent.ACTION_DOWN, 140f, 75f, press)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(1000L + android.view.ViewConfiguration.getLongPressTimeout() + 20))
+        touch(MotionEvent.ACTION_UP, 140f, 75f, press, android.os.SystemClock.uptimeMillis())
+        assertEquals(listOf(1 to 1), opened)
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(1 to 1, 0 to 0), opened)
+        assertEquals(0, position.selectedRow)
+        val tail = android.os.SystemClock.uptimeMillis() + 1000
+        touch(MotionEvent.ACTION_DOWN, 300f, 75f, tail)
+        touch(MotionEvent.ACTION_UP, 300f, 75f, tail, tail + 20)
+        assertEquals(1, position.selectedRow)
+        grid.release()
+        val replacement = SqliteGridView(grid.context)
+        bind(replacement)
+        assertEquals(1, position.selectedRow)
+    }
+
+    @Test fun `header long press filters without sorting and excludes blob columns`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val table = SqliteTable("entries", "", listOf(SqliteColumn("value", "TEXT", false, null, 0),
+            SqliteColumn("payload", "BLOB", false, null, 0)), SqliteIdentity("rowid", emptyList()))
+        val filters = mutableListOf<Int>()
+        var sorts = 0
+        var cells = 0
+        val state = SqliteTableState(table, count = 0, filters = listOf(
+            com.twig.app.sqlite.SqliteFilter("value", listOf(SqliteCell.text("a")))))
+        grid.bind(SqliteDataNode("db", 2, state), {}, { _, _ -> cells++ }, { sorts++ }, filters::add)
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val provider = grid.accessibilityNodeProvider!!
+        assertTrue(provider.createAccessibilityNodeInfo(-2)!!.isLongClickable)
+        assertFalse(provider.createAccessibilityNodeInfo(-3)!!.isLongClickable)
+        assertTrue(provider.createAccessibilityNodeInfo(-2)!!.contentDescription.toString().contains(activity.getString(R.string.sqlite_filter_active)))
+        val down = android.os.SystemClock.uptimeMillis()
+        MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, 20f, 10f, 0).also { grid.onTouchEvent(it); it.recycle() }
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(android.view.ViewConfiguration.getLongPressTimeout() + 20L))
+        MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, 20f, 10f, 0).also { grid.onTouchEvent(it); it.recycle() }
+        assertEquals(listOf(0), filters)
+        assertTrue(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(0, 0), filters)
+        assertFalse(provider.performAction(-3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(0, sorts)
+        assertEquals(0, cells)
+        grid.bind(SqliteDataNode("db", 2, state.copy(execution = "query")), {}, { _, _ -> }, { sorts++ }, filters::add)
+        assertTrue(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(0, 0, 0), filters)
+        grid.release()
+        grid.bind("properties", listOf("value"), 0, SqliteViewport(), rowAt = { null })
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isLongClickable)
+    }
+
+    @Test fun `SQL result headers leave ordering to SQL and retain row selection`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val table = SqliteTable("query_result", "", listOf(SqliteColumn("value", "", false, null, 0)), SqliteIdentity("rowid", emptyList()))
+        val state = SqliteTableState(table, execution = "execution", count = 1, counting = false,
+            pages = mapOf(0 to com.twig.app.sqlite.SqlitePage(0, listOf(listOf(SqliteCell.text("result"))))))
+        var sorts = 0
+        var cells = 0
+        grid.bind(SqliteDataNode("db", 2, state), {}, { _, _ -> cells++ }, { sorts++ })
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val provider = grid.accessibilityNodeProvider!!
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isClickable)
+        assertFalse(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(0, state.viewport.selectedRow)
+        assertEquals(0, sorts)
+        assertEquals(0, cells)
+        assertTrue(provider.performAction(0, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(1, cells)
+    }
+
+    @Test fun `headers sort through taps and accessibility while property headers remain static`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val headers = mutableListOf<Int>()
+        var cells = 0
+        grid.bind("data", listOf("id", "value", "extra"), 1, SqliteViewport(x = 100f),
+            rowAt = { List(3) { SqliteCell.text("data") } }, cell = { _, _ -> cells++ },
+            header = headers::add, sort = com.twig.app.sqlite.SqliteSort("value", true))
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(200, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 200, 160)
+        fun touch(action: Int, x: Float, y: Float, time: Long) {
+            MotionEvent.obtain(0, time, action, x, y, 0).also { grid.onTouchEvent(it); it.recycle() }
+        }
+        touch(MotionEvent.ACTION_DOWN, 30f, 10f, 0)
+        touch(MotionEvent.ACTION_UP, 30f, 10f, 20)
+        assertEquals(listOf(1), headers)
+        assertEquals(0, cells)
+        val provider = grid.accessibilityNodeProvider!!
+        val header = provider.createAccessibilityNodeInfo(-3)!!
+        assertTrue(header.isClickable)
+        assertEquals(activity.getString(R.string.sqlite_sort_descending), header.stateDescription.toString())
+        assertTrue(provider.performAction(-3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(listOf(1, 1), headers)
+        touch(MotionEvent.ACTION_DOWN, 100f, 10f, 1000)
+        touch(MotionEvent.ACTION_MOVE, 20f, 10f, 1050)
+        touch(MotionEvent.ACTION_UP, 20f, 10f, 1070)
+        assertEquals(2, headers.size)
+        grid.bind("columns", listOf("name"), 0, SqliteViewport(), rowAt = { null })
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isClickable)
+        assertFalse(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+    }
+
+    @Test fun `accessibility can scroll both axes independently in a wide tall table`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val position = SqliteViewport()
+        grid.bind("data", List(6) { "column$it" }, 100, position,
+            rowAt = { List(6) { SqliteCell.text("value") } })
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(280, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 280)
+        val right = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_RIGHT
+        val left = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_LEFT
+        val down = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_DOWN
+        val up = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_UP
+        val info = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.obtain()
+        androidx.core.view.ViewCompat.getAccessibilityDelegate(grid)!!.onInitializeAccessibilityNodeInfo(grid, info)
+        val actions = info.actionList.map { it.id }
+        assertTrue(right.id in actions)
+        assertTrue(down.id in actions)
+        assertFalse(left.id in actions)
+        assertFalse(androidx.core.view.ViewCompat.performAccessibilityAction(grid, left.id, null))
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid, right.id, null))
+        val x = position.x
+        assertTrue(x > 0)
+        assertEquals(0f, position.y, 0f)
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid, down.id, null))
+        val y = position.y
+        assertTrue(y > 0)
+        assertEquals(x, position.x, 0f)
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid, left.id, null))
+        assertEquals(0f, position.x, 0f)
+        assertEquals(y, position.y, 0f)
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid, up.id, null))
+        assertEquals(0f, position.y, 0f)
+    }
+
+    @Test fun `drags at either table boundary never release the outer tree`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val context = ContextThemeWrapper(activity, R.style.Theme_Twig)
+        for ((count, start, dy) in listOf(Triple(20, 0f, 80f), Triple(20, Float.MAX_VALUE, -80f))) {
+            val interception = mutableListOf<Boolean>()
+            val parent = object : FrameLayout(context) {
+                override fun requestDisallowInterceptTouchEvent(disallow: Boolean) {
+                    interception.add(disallow)
+                    super.requestDisallowInterceptTouchEvent(disallow)
+                }
+            }
+            val grid = SqliteGridView(context)
+            val position = SqliteViewport(y = start)
+            grid.bind("data", listOf("value"), count, position,
+                rowAt = { listOf(SqliteCell.text("value")) })
+            parent.addView(grid, FrameLayout.LayoutParams(320, 280))
+            activity.setContentView(parent)
+            parent.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(280, View.MeasureSpec.EXACTLY))
+            parent.layout(0, 0, 320, 280)
+            val original = position.y
+            fun touch(action: Int, y: Float, time: Long) {
+                MotionEvent.obtain(0, time, action, 100f, y, 0).also { grid.onTouchEvent(it); it.recycle() }
+            }
+            touch(MotionEvent.ACTION_DOWN, 100f, 0)
+            touch(MotionEvent.ACTION_MOVE, 100f + dy, 50)
+            touch(MotionEvent.ACTION_MOVE, 100f + dy * 1.5f, 70)
+            assertTrue(interception.isNotEmpty())
+            assertTrue(interception.all { it })
+            assertEquals(original, position.y, 0.1f)
+            touch(MotionEvent.ACTION_UP, 100f + dy * 1.5f, 80)
+            assertFalse(interception.last())
+        }
+    }
+
+    @Test fun `short tables release vertical drags but retain horizontal scrolling`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val context = ContextThemeWrapper(activity, R.style.Theme_Twig)
+        for (count in listOf(0, 2)) {
+            var disallowed = false
+            val parent = object : FrameLayout(context) {
+                override fun requestDisallowInterceptTouchEvent(disallow: Boolean) {
+                    disallowed = disallow
+                    super.requestDisallowInterceptTouchEvent(disallow)
+                }
+            }
+            val grid = SqliteGridView(context)
+            val position = SqliteViewport()
+            var clicks = 0
+            grid.bind("data", List(6) { "column$it" }, count, position,
+                rowAt = { List(6) { SqliteCell.text("value") } }, cell = { _, _ -> clicks++ })
+            parent.addView(grid, FrameLayout.LayoutParams(320, 280))
+            activity.setContentView(parent)
+            parent.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(280, View.MeasureSpec.EXACTLY))
+            parent.layout(0, 0, 320, 280)
+            fun touch(action: Int, x: Float, y: Float, time: Long) {
+                MotionEvent.obtain(0, time, action, x, y, 0).also { grid.onTouchEvent(it); it.recycle() }
+            }
+            touch(MotionEvent.ACTION_DOWN, 200f, 100f, 0)
+            touch(MotionEvent.ACTION_MOVE, 200f, 160f, 50)
+            assertFalse(disallowed)
+            touch(MotionEvent.ACTION_UP, 200f, 160f, 60)
+            assertEquals(0, clicks)
+            touch(MotionEvent.ACTION_DOWN, 200f, 100f, 100)
+            touch(MotionEvent.ACTION_MOVE, 100f, 104f, 150)
+            assertTrue(disallowed)
+            assertTrue(position.x > 0f)
+            assertEquals(0f, position.y, 0f)
+            touch(MotionEvent.ACTION_UP, 100f, 104f, 160)
+        }
+    }
+
+    @Test fun `each drag locks one axis and only visible rows are rendered`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val position = SqliteViewport(y = 64f)
+        val reads = mutableSetOf<Int>()
+        grid.bind("data", List(6) { "column$it" }, 1000000, position,
+            rowAt = { row -> reads.add(row); List(6) { SqliteCell.text("row$row") } })
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(280, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 280)
+        fun event(action: Int, x: Float, y: Float, time: Long) {
+            MotionEvent.obtain(0, time, action, x, y, 0).also { grid.onTouchEvent(it); it.recycle() }
+        }
+        event(MotionEvent.ACTION_DOWN, 200f, 100f, 0)
+        event(MotionEvent.ACTION_MOVE, 100f, 104f, 50)
+        assertEquals(100f, position.x, 0.1f)
+        assertEquals(64f, position.y, 0.1f)
+        event(MotionEvent.ACTION_UP, 100f, 104f, 60)
+        event(MotionEvent.ACTION_DOWN, 100f, 150f, 100)
+        event(MotionEvent.ACTION_MOVE, 104f, 50f, 150)
+        assertEquals(100f, position.x, 0.1f)
+        assertEquals(164f, position.y, 0.1f)
+        event(MotionEvent.ACTION_UP, 104f, 50f, 160)
+        grid.draw(Canvas(Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)))
+        assertTrue(reads.size in 1..12)
+        assertTrue(reads.max() < 20)
+    }
+
+    @Test fun `table count slots remain visible when an ordinary row holder is reused`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val parent = FrameLayout(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val table = SqliteTable("entries", "CREATE TABLE entries(value TEXT)",
+            listOf(SqliteColumn("value", "TEXT", false, null, 0)), SqliteIdentity("rowid", emptyList()))
+        val node = SqliteTableNode("db", 3, SqliteTableState(table, count = 1280, counting = false))
+        val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
+        adapter.submitList(listOf(node))
+        shadowOf(Looper.getMainLooper()).idle()
+        val holder = adapter.createViewHolder(parent, adapter.getItemViewType(0))
+        adapter.bindViewHolder(holder, 0)
+        assertEquals(View.VISIBLE, holder.itemView.findViewById<View>(R.id.metaRow).visibility)
+        assertEquals(View.VISIBLE, holder.itemView.findViewById<View>(R.id.folderCounts).visibility)
+        assertEquals("1280", holder.itemView.findViewById<android.widget.TextView>(R.id.directoryCount).text.toString())
+        assertEquals("1", holder.itemView.findViewById<android.widget.TextView>(R.id.fileCount).text.toString())
+        assertEquals(View.GONE, holder.itemView.findViewById<View>(R.id.check).visibility)
+
+        val dataAdapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {})
+        dataAdapter.submitList(listOf(SqliteDataNode("db", 4, node.state.copy(expanded = true))))
+        val dataHolder = dataAdapter.createViewHolder(parent, dataAdapter.getItemViewType(0))
+        dataAdapter.bindViewHolder(dataHolder, 0)
+        val row = dataHolder.itemView
+        row.measure(View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        row.layout(0, 0, 600, row.measuredHeight)
+        val grid = row.findViewById<SqliteGridView>(R.id.sqlite_grid)
+        val stroke = row.resources.getDimension(R.dimen.highlight_stroke_width)
+        assertTrue(grid.left > stroke)
+        assertTrue(row.width - grid.right > stroke)
+        assertTrue(row.height - grid.bottom > stroke)
+    }
+}
