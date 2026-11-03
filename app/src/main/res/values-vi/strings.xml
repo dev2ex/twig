@@ -1226,4 +1226,9 @@
     <string name="sqlite_sql_no_columns">Câu lệnh này không trả về cột.</string>
     <string name="sqlite_sql_edit">Sửa SQL</string>
     <string name="sqlite_sql_rerun">Chạy lại</string>
+    <string name="sqlite_filter_title">Lọc: %1$s</string>
+    <string name="sqlite_filter_clear">Xóa bộ lọc cột</string>
+    <string name="sqlite_filter_empty_text">(Văn bản trống)</string>
+    <string name="sqlite_filter_active">Đã lọc</string>
+    <string name="sqlite_filter_oversized">(Quá lớn để chọn)</string>
 </resources>

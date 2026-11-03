@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">यह कथन कोई कॉलम नहीं लौटाता।</string>
     <string name="sqlite_sql_edit">SQL संपादित करें</string>
     <string name="sqlite_sql_rerun">फिर चलाएँ</string>
+    <string name="sqlite_filter_title">फ़िल्टर: %1$s</string>
+    <string name="sqlite_filter_clear">कॉलम फ़िल्टर हटाएँ</string>
+    <string name="sqlite_filter_empty_text">(खाली पाठ)</string>
+    <string name="sqlite_filter_active">फ़िल्टर किया गया</string>
+    <string name="sqlite_filter_oversized">(चुनने के लिए बहुत बड़ा)</string>
 </resources>

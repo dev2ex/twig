@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">Cette instruction ne renvoie aucune colonne.</string>
     <string name="sqlite_sql_edit">Modifier SQL</string>
     <string name="sqlite_sql_rerun">Réexécuter</string>
+    <string name="sqlite_filter_title">Filtrer : %1$s</string>
+    <string name="sqlite_filter_clear">Effacer le filtre de colonne</string>
+    <string name="sqlite_filter_empty_text">(Texte vide)</string>
+    <string name="sqlite_filter_active">Filtré</string>
+    <string name="sqlite_filter_oversized">(Trop volumineux pour sélectionner)</string>
 </resources>

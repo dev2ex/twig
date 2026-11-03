@@ -150,6 +150,23 @@ SQLite value order; tapping it again reverses direction. Another column starts i
 ascending order. The active header shows an arrow and exposes its direction and click
 action to accessibility. Property-grid headers remain static.
 
+Long-pressing a data column header opens a cancellable background aggregation:
+`GROUP BY` that column, ordered by `COUNT(*) DESC`, limited to ten candidates.
+The existing LIKE search and other column filters apply; this column's own filter
+is excluded so it can be changed. Checked values outside the current top ten remain
+available without inventing counts. NULL and empty text are distinct; BLOB columns
+and runtime BLOB values do not offer candidates. Candidate text is bounded to
+256 KiB per value; larger winners remain visible but disabled rather than filtering
+on a truncated prefix. The scan can still be expensive on large tables.
+
+Selections within one column use OR; columns combine with AND. Bound, typed predicates
+preserve numeric versus text values, NULL, and the column's collation. Apply resets
+selection, vertical position, and cached pages, and starts a new cancellable count.
+Filtered headers show a dot and background. Clearing a column restores its values.
+Paging, details, BLOB reads, sorting and CSV all share these predicates. Normal tables,
+LIKE results and cached SQL results share the same implementation; filtering a SQL
+result never reruns its SQL or changes its ordering. Source tables remain live reads.
+
 `SqliteSort` is part of table state. Sorting cancels pending page reads, clears the
 page cache and resets vertical scrolling while preserving horizontal position. SQL
 quotes the selected column and appends rowid/primary-key tie breakers. Pages, cell

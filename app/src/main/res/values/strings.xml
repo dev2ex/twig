@@ -1305,4 +1305,9 @@
     <string name="sqlite_sql_no_columns">This statement does not return columns.</string>
     <string name="sqlite_sql_edit">Edit SQL</string>
     <string name="sqlite_sql_rerun">Run again</string>
+    <string name="sqlite_filter_title">Filter: %1$s</string>
+    <string name="sqlite_filter_clear">Clear column filter</string>
+    <string name="sqlite_filter_empty_text">(Empty text)</string>
+    <string name="sqlite_filter_active">Filtered</string>
+    <string name="sqlite_filter_oversized">(Too large to select)</string>
 </resources>

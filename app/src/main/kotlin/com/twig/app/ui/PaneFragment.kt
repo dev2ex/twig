@@ -284,6 +284,7 @@ class PaneFragment : Fragment() {
             onInfoLongClick = { node -> viewModel.showInfo(node.file, 1) },
             onSqliteCommand = { node, command -> viewModel.sqliteCommand(node, command) },
             onSqlitePage = { node, offset -> viewModel.sqlitePage(node, offset) },
+            onSqliteFilter = { node, column -> showSqliteFilter(node, column) },
             onSqliteSort = { node, column -> viewModel.sqliteSort(node, column) },
             onSqliteCell = { node, row, column -> showSqliteCell(node, row, column) },
         )
@@ -1959,6 +1960,61 @@ class PaneFragment : Fragment() {
     }
 
     // ---- Long-press context menu ----
+
+    private var sqliteFilterJob: kotlinx.coroutines.Job? = null
+
+    private fun showSqliteFilter(node: SqliteDataNode, column: Int) {
+        val spec = node.state.table.visibleColumns.getOrNull(column) ?: return
+        if (spec.type.contains("BLOB", ignoreCase = true)) return
+        sqliteFilterJob?.cancel()
+        val loading = AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+            .setMessage(R.string.sqlite_loading)
+            .setNegativeButton(R.string.dialog_cancel, null).create()
+        loading.setOnDismissListener { sqliteFilterJob?.cancel() }
+        loading.show()
+        sqliteFilterJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val options = viewModel.sqliteFilterOptions(node, column) ?: return@launch
+                val selected = node.state.filters.firstOrNull { it.column == spec.name }?.values.orEmpty()
+                // Retain selected values that have fallen out of the top ten after another filter changed.
+                val values = (options.map { it.value } + selected).distinct()
+                val labels = values.map { value ->
+                    val text = when {
+                        value.kind == 'n' -> "NULL"
+                        value.kind == 't' && value.text.isEmpty() -> getString(R.string.sqlite_filter_empty_text)
+                        else -> value.text.replace('\n', ' ').replace('\r', ' ').take(160) +
+                            if (value.text.length > 160) "…" else ""
+                    }
+                    val label = if (value.kind == 't' && value.text.isNotEmpty()) "\"$text\"" else text
+                    label + (options.firstOrNull { it.value == value }?.let { " · ${it.count}" } ?: "") +
+                        if (value.truncated) " " + getString(R.string.sqlite_filter_oversized) else ""
+                }
+                val list = android.widget.ListView(requireContext()).apply {
+                    choiceMode = android.widget.ListView.CHOICE_MODE_MULTIPLE
+                    adapter = object : ArrayAdapter<String>(context,
+                        android.R.layout.simple_list_item_multiple_choice, labels) {
+                        override fun areAllItemsEnabled() = values.none { it.truncated }
+                        override fun isEnabled(position: Int) = !values[position].truncated
+                    }
+                    values.forEachIndexed { index, value -> setItemChecked(index, value in selected) }
+                }
+                val builder = AlertDialog.Builder(requireContext())
+                    .setTitle(getString(R.string.sqlite_filter_title, spec.name))
+                    .setNegativeButton(R.string.dialog_cancel, null)
+                    .setNeutralButton(R.string.sqlite_filter_clear) { _, _ -> viewModel.sqliteFilter(node, column, emptyList()) }
+                    .setPositiveButton(R.string.dialog_ok) { _, _ ->
+                        viewModel.sqliteFilter(node, column, values.filterIndexed { index, _ -> list.isItemChecked(index) })
+                    }
+                if (values.isEmpty()) builder.setMessage(R.string.sqlite_no_rows) else builder.setView(list)
+                loading.setOnDismissListener(null)
+                loading.dismiss()
+                builder.show()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            finally { loading.setOnDismissListener(null); loading.dismiss() }
+        }
+    }
 
     private var sqliteCellJob: kotlinx.coroutines.Job? = null
     private val saveAsDialog = SaveAsDialog(this)

@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">Diese Anweisung gibt keine Spalten zurück.</string>
     <string name="sqlite_sql_edit">SQL bearbeiten</string>
     <string name="sqlite_sql_rerun">Erneut ausführen</string>
+    <string name="sqlite_filter_title">Filtern: %1$s</string>
+    <string name="sqlite_filter_clear">Spaltenfilter löschen</string>
+    <string name="sqlite_filter_empty_text">(Leerer Text)</string>
+    <string name="sqlite_filter_active">Gefiltert</string>
+    <string name="sqlite_filter_oversized">(Zu groß zur Auswahl)</string>
 </resources>

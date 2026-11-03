@@ -49,6 +49,9 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private var requestRow: (Int) -> Unit = {}
     private var onCell: (Int, Int) -> Unit = { _, _ -> }
     private var onHeader: ((Int) -> Unit)? = null
+    private var onHeaderLongClick: ((Int) -> Unit)? = null
+    private var filterable = emptySet<Int>()
+    private var filtered = emptySet<Int>()
     private var selectRows = false
     private var sort: SqliteSort? = null
     private var position = SqliteViewport()
@@ -102,8 +105,11 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
                 if (cell.row >= 0 || onHeader != null) {
                     info.isClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
                 }
-                if (cell.row >= 0 && selectRows) {
+                if (cell.row >= 0 && selectRows || cell.row < 0 && cell.column in filterable) {
                     info.isLongClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
+                }
+                if (cell.row < 0 && cell.column in filtered) {
+                    info.contentDescription = "${headers[cell.column]}, ${context.getString(R.string.sqlite_filter_active)}"
                 }
                 if (cell.row < 0 && sort?.column == headers[cell.column]) {
                     info.stateDescription = context.getString(if (sort?.descending == true)
@@ -117,8 +123,13 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
                 AccessibilityNodeInfoCompat.ACTION_CLICK ->
                     if (cell.row < 0) (onHeader ?: return false)(cell.column) else activate(cell.row, cell.column, false)
                 AccessibilityNodeInfoCompat.ACTION_LONG_CLICK -> {
-                    if (cell.row < 0 || !selectRows) return false
-                    activate(cell.row, cell.column, true)
+                    if (cell.row < 0) {
+                        if (cell.column !in filterable) return false
+                        filterHeader(cell.column)
+                    } else {
+                        if (!selectRows) return false
+                        activate(cell.row, cell.column, true)
+                    }
                 }
                 else -> return false
             }
@@ -143,7 +154,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapUp(e: MotionEvent): Boolean { click(e); performClick(); return true }
-        override fun onLongPress(e: MotionEvent) { if (e.y >= rowHeight) click(e, longPress = true) }
+        override fun onLongPress(e: MotionEvent) { click(e, longPress = true) }
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
             flingX = 0; flingY = 0
             scroller.fling(0, 0, if (axis == SwipeGesture.HORIZONTAL) -velocityX.toInt() else 0,
@@ -162,7 +173,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         minimumHeight = (rowHeight * 3).toInt()
     }
 
-    fun bind(node: SqliteDataNode, load: (Int) -> Unit, cell: (Int, Int) -> Unit, header: (Int) -> Unit = {}) {
+    fun bind(node: SqliteDataNode, load: (Int) -> Unit, cell: (Int, Int) -> Unit, header: (Int) -> Unit = {}, filter: (Int) -> Unit = {}) {
         val state = node.state
         bind(node.key, state.table.visibleColumns.map { it.name }, state.rowCount, state.viewport,
             rowAt = { row -> state.pages[row / state.pageSize * state.pageSize]
@@ -171,14 +182,21 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             request = { row ->
                 val offset = row / state.pageSize * state.pageSize
                 if (offset !in state.pending) load(offset)
-            }, cell = cell, header = header.takeIf { state.execution == null }, sort = state.sort, selectRows = true)
+            }, cell = cell, header = header.takeIf { state.execution == null }, sort = state.sort, selectRows = true,
+            headerLongClick = filter, filterableColumns = state.table.visibleColumns.mapIndexedNotNull { i, col ->
+                i.takeUnless { col.type.contains("BLOB", ignoreCase = true) }
+            }.toSet(), filteredColumns = state.table.visibleColumns.mapIndexedNotNull { i, col ->
+                i.takeIf { state.filters.any { it.column == col.name } }
+            }.toSet())
     }
 
     fun bind(key: String, headings: List<String>, count: Int, viewport: SqliteViewport,
         rowAt: (Int) -> List<SqliteCell>?, errorAt: (Int) -> String? = { null },
         request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> },
-        header: ((Int) -> Unit)? = null, sort: SqliteSort? = null, selectRows: Boolean = false) {
-        if (owner != key || this.sort != sort) scroller.abortAnimation()
+        header: ((Int) -> Unit)? = null, sort: SqliteSort? = null, selectRows: Boolean = false,
+        headerLongClick: ((Int) -> Unit)? = null, filterableColumns: Set<Int> = emptySet(),
+        filteredColumns: Set<Int> = emptySet()) {
+        if (owner != key || this.sort != sort || position !== viewport) scroller.abortAnimation()
         owner = key
         position = viewport
         headers = headings
@@ -188,6 +206,9 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         requestRow = request
         onCell = cell
         onHeader = header
+        onHeaderLongClick = headerLongClick
+        filterable = filterableColumns
+        filtered = filteredColumns
         this.selectRows = selectRows
         if (position.selectedRow !in 0 until rows) position.selectedRow = -1
         this.sort = sort
@@ -205,7 +226,8 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         owner = null
         headers = emptyList(); widths = emptyList(); rows = 0
         rowAt = { null }; errorAt = { null }; requestRow = {}; onCell = { _, _ -> }
-        onHeader = null; sort = null; selectRows = false
+        onHeader = null; onHeaderLongClick = null; filterable = emptySet(); filtered = emptySet()
+        sort = null; selectRows = false
         position = SqliteViewport()
     }
     private val maxX get() = max(0f, contentWidth - width)
@@ -268,7 +290,11 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             val sorted = sort?.column == text
             val arrow = if (sort?.descending == true) "↓" else "↑"
             val arrowWidth = if (sorted) paint.measureText(arrow) + 16 * dp else 0f
-            drawCell(canvas, text, x, 0f, widths[index] - arrowWidth, foreground)
+            if (index in filtered) {
+                paint.color = rowBackground
+                canvas.drawRect(x, 0f, x + widths[index], rowHeight, paint)
+            }
+            drawCell(canvas, if (index in filtered) "• $text" else text, x, 0f, widths[index] - arrowWidth, foreground)
             if (sorted) drawCell(canvas, arrow, x + widths[index] - arrowWidth, 0f, arrowWidth, foreground)
             x += widths[index]
         }
@@ -329,6 +355,12 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         if (longPress || !selectRows) onCell(row, column)
     }
 
+    private fun filterHeader(column: Int) {
+        if (column !in filterable) return
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        onHeaderLongClick?.invoke(column)
+    }
+
     private fun click(event: MotionEvent, longPress: Boolean = false) {
         if (event.x < 0 || event.y < 0) return
         val header = event.y < rowHeight
@@ -338,7 +370,9 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         var x = event.x + position.x
         widths.forEachIndexed { column, w ->
             if (x < w) {
-                if (header) onHeader?.invoke(column) else activate(row, column, longPress)
+                if (header) {
+                    if (longPress) filterHeader(column) else onHeader?.invoke(column)
+                } else activate(row, column, longPress)
                 return
             }
             x -= w

@@ -7,6 +7,8 @@ import com.twig.app.sqlite.SqliteCell
 import com.twig.app.sqlite.SqlitePage
 import com.twig.app.sqlite.SqliteSession
 import com.twig.app.sqlite.SqliteTable
+import com.twig.app.sqlite.SqliteFilter
+import com.twig.app.sqlite.SqliteFilterOption
 import com.twig.app.sqlite.SqliteSort
 import com.twig.app.sqlite.SqliteQueryResult
 import android.os.SystemClock
@@ -20,6 +22,7 @@ data class SqliteTableState(
     val query: String? = null,
     val execution: String? = null,
     val sort: SqliteSort? = null,
+    val filters: List<SqliteFilter> = emptyList(),
     val expanded: Boolean = false,
     val properties: Boolean = false,
     val tab: Int = 0,
@@ -129,6 +132,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 tables.forEach { table ->
                     host.tables[table.name] = remembered[table.name]?.copy(table = table, count = null,
                         counting = true, pages = emptyMap(), pending = emptySet(), errors = emptyMap(), end = null,
+                        filters = remembered.getValue(table.name).filters.filter { filter -> table.visibleColumns.any { it.name == filter.column } },
                         sort = remembered[table.name]?.sort?.takeIf { sort -> table.visibleColumns.any { it.name == sort.column } },
                         viewport = SqliteViewport(remembered.getValue(table.name).viewport.x, remembered.getValue(table.name).viewport.y))
                         ?: SqliteTableState(table)
@@ -140,11 +144,12 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
                 // One count at a time; slow counts time out and never become a false zero.
                 launch {
                     for (table in tables) {
+                        val filters = host.tables[table.name]?.filters.orEmpty()
                         val count = try {
-                            withTimeoutOrNull(3000) { cancellable { opened.count(table, it) } }
+                            withTimeoutOrNull(3000) { cancellable { opened.count(table, it, filters = filters) } }
                         } catch (e: CancellationException) { throw e }
                         catch (_: Exception) { null }
-                        host.tables[table.name]?.let { host.tables[table.name] = it.copy(count = count, counting = false) }
+                        host.tables[table.name]?.takeIf { it.filters == filters }?.let { host.tables[table.name] = it.copy(count = count, counting = false) }
                         changed()
                     }
                 }
@@ -394,8 +399,55 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         changed()
     }
 
+    suspend fun filterOptions(node: SqliteDataNode, column: Int): List<SqliteFilterOption>? {
+        val host = hosts[node.owner] ?: return null
+        val state = host.tables(node.state.query, node.state.execution)?.get(node.state.table.name) ?: return null
+        if (state.filters != node.state.filters || state.table != node.state.table) return null
+        val name = state.table.visibleColumns.getOrNull(column)?.name ?: return null
+        val session = host.session(state.execution) ?: return null
+        val operation = scope.async(host.ownerJob(state.query, state.execution) ?: return null) {
+            runCatching { cancellable { session.filterOptions(state.table, name, it, state.query, state.filters) } }
+        }
+        return try { operation.await().getOrThrow() } finally { operation.cancel() }
+    }
+
+    fun filter(node: SqliteDataNode, column: Int, values: List<SqliteCell>) {
+        val host = hosts[node.owner] ?: return
+        val tables = host.tables(node.state.query, node.state.execution) ?: return
+        val state = tables[node.state.table.name] ?: return
+        if (state.table != node.state.table || state.filters != node.state.filters) return
+        val spec = state.table.visibleColumns.getOrNull(column) ?: return
+        if (spec.type.contains("BLOB", ignoreCase = true)) return
+        require(values.all { !it.truncated && it.kind in "ntir" })
+        val filters = state.filters.filterNot { it.column == spec.name } +
+            if (values.isEmpty()) emptyList() else listOf(SqliteFilter(spec.name, values.distinct()))
+        if (filters == state.filters) return
+        cancelPages(host, state.table.name, state.query, state.execution)
+        val updated = state.copy(filters = filters, count = null, counting = true, pages = emptyMap(),
+            pending = emptySet(), errors = emptyMap(), end = null, loadedThrough = 0,
+            viewport = SqliteViewport(state.viewport.x, 0f))
+        tables[state.table.name] = updated
+        val key = PageKey(state.table.name, state.query, state.execution, -1)
+        host.pages.remove(key)?.cancel()
+        val job = scope.launch(host.ownerJob(state.query, state.execution) ?: return, start = CoroutineStart.LAZY) {
+            val count = try {
+                cancellable { checkNotNull(host.session(state.execution)).count(state.table, it, state.query, filters) }
+            } catch (e: CancellationException) { throw e }
+            catch (_: Exception) { null }
+            tables[state.table.name]?.takeIf { it.filters == filters }?.let {
+                tables[state.table.name] = it.copy(count = count, counting = false)
+            }
+            host.pages.remove(key)
+            changed()
+        }
+        host.pages[key] = job
+        job.start()
+        page(node.owner, state.table.name, 0, state.query, state.execution)
+        changed()
+    }
+
     private fun cancelPages(host: Host, name: String, query: String?, execution: String? = null) {
-        host.pages.keys.filter { it.name == name && it.query == query && it.execution == execution }.forEach { host.pages.remove(it)?.cancel() }
+        host.pages.keys.filter { it.name == name && it.query == query && it.execution == execution && it.offset >= 0 }.forEach { host.pages.remove(it)?.cancel() }
     }
 
     fun page(owner: String, name: String, offset: Int, query: String? = null, execution: String? = null) {
@@ -407,7 +459,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         tables[name] = state.copy(pending = state.pending + offset, errors = state.errors - offset)
         val job = scope.launch(start = CoroutineStart.LAZY, context = host.ownerJob(query, execution) ?: return) {
             try {
-                val page = cancellable { session.page(state.table, offset, it, query, state.sort) }
+                val page = cancellable { session.page(state.table, offset, it, query, state.sort, state.filters) }
                 val live = tables[name] ?: return@launch
                 val pages = LinkedHashMap(live.pages).apply {
                     put(offset, page)
@@ -435,7 +487,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val query = node.state.query
         if (host.tables(query, node.state.execution)?.get(node.state.table.name)?.table != node.state.table) return null
         // Both leaving the screen and closing/refreshing the database cancel a detail read.
-        val operation = scope.async(host.ownerJob(query, node.state.execution) ?: return null) { cancellable { session.cell(node.state.table, row, column, it, query, node.state.sort) } }
+        val operation = scope.async(host.ownerJob(query, node.state.execution) ?: return null) { cancellable { session.cell(node.state.table, row, column, it, query, node.state.sort, node.state.filters) } }
         return try { operation.await() } finally { operation.cancel() }
     }
 
@@ -448,7 +500,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val owner = host.ownerJob(query, node.state.execution) ?: return null
         return { offset, length ->
             val operation = scope.async(owner) {
-                cancellable { session.blob(node.state.table, row, column, offset, length, size, it, query, node.state.sort) }
+                cancellable { session.blob(node.state.table, row, column, offset, length, size, it, query, node.state.sort, node.state.filters) }
             }
             try { operation.await() } finally { operation.cancel() }
         }
@@ -471,7 +523,7 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         val owner = host.ownerJob(query, node.state.execution) ?: return null
         return { output, progress ->
             val operation = scope.async(owner) {
-                runCatching { cancellable { session.exportCsv(node.state.table, columns, it, output, query, progress, node.state.sort) } }
+                runCatching { cancellable { session.exportCsv(node.state.table, columns, it, output, query, progress, node.state.sort, node.state.filters) } }
             }
             try { operation.await().getOrThrow() } finally { withContext(NonCancellable) { operation.cancelAndJoin() } }
         }

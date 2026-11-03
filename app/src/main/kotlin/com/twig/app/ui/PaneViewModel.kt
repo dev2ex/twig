@@ -440,6 +440,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sqlitePage(node: SqliteDataNode, offset: Int) = sqliteTree.page(node.owner, node.state.table.name, offset, node.state.query, node.state.execution)
+    suspend fun sqliteFilterOptions(node: SqliteDataNode, column: Int) = sqliteTree.filterOptions(node, column)
+    fun sqliteFilter(node: SqliteDataNode, column: Int, values: List<com.twig.app.sqlite.SqliteCell>) = sqliteTree.filter(node, column, values)
     fun sqliteSort(node: SqliteDataNode, column: Int) = sqliteTree.sort(node, column)
     suspend fun sqliteCell(node: SqliteDataNode, row: Int, column: Int) = sqliteTree.cell(node, row, column)
     fun sqliteBlobReader(node: SqliteDataNode, row: Int, column: Int, size: Long) =

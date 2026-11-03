@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">この文は列を返しません。</string>
     <string name="sqlite_sql_edit">SQL を編集</string>
     <string name="sqlite_sql_rerun">再実行</string>
+    <string name="sqlite_filter_title">絞り込み：%1$s</string>
+    <string name="sqlite_filter_clear">この列の絞り込みを解除</string>
+    <string name="sqlite_filter_empty_text">（空のテキスト）</string>
+    <string name="sqlite_filter_active">絞り込み中</string>
+    <string name="sqlite_filter_oversized">（値が大きすぎるため選択不可）</string>
 </resources>

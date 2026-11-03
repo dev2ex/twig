@@ -1263,4 +1263,9 @@
     <string name="sqlite_sql_no_columns">Эта инструкция не возвращает столбцов.</string>
     <string name="sqlite_sql_edit">Изменить SQL</string>
     <string name="sqlite_sql_rerun">Выполнить снова</string>
+    <string name="sqlite_filter_title">Фильтр: %1$s</string>
+    <string name="sqlite_filter_clear">Сбросить фильтр столбца</string>
+    <string name="sqlite_filter_empty_text">(Пустой текст)</string>
+    <string name="sqlite_filter_active">Отфильтровано</string>
+    <string name="sqlite_filter_oversized">(Значение слишком большое для выбора)</string>
 </resources>

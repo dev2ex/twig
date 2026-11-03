@@ -1231,4 +1231,9 @@
     <string name="sqlite_sql_no_columns">لا تُرجع هذه العبارة أعمدة.</string>
     <string name="sqlite_sql_edit">تعديل SQL</string>
     <string name="sqlite_sql_rerun">تشغيل مجددًا</string>
+    <string name="sqlite_filter_title">تصفية: %1$s</string>
+    <string name="sqlite_filter_clear">مسح تصفية العمود</string>
+    <string name="sqlite_filter_empty_text">(نص فارغ)</string>
+    <string name="sqlite_filter_active">تمت التصفية</string>
+    <string name="sqlite_filter_oversized">(كبير جدًا للاختيار)</string>
 </resources>

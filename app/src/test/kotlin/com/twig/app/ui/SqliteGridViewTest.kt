@@ -78,6 +78,43 @@ class SqliteGridViewTest {
         assertEquals(1, position.selectedRow)
     }
 
+    @Test fun `header long press filters without sorting and excludes blob columns`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
+        val table = SqliteTable("entries", "", listOf(SqliteColumn("value", "TEXT", false, null, 0),
+            SqliteColumn("payload", "BLOB", false, null, 0)), SqliteIdentity("rowid", emptyList()))
+        val filters = mutableListOf<Int>()
+        var sorts = 0
+        var cells = 0
+        val state = SqliteTableState(table, count = 0, filters = listOf(
+            com.twig.app.sqlite.SqliteFilter("value", listOf(SqliteCell.text("a")))))
+        grid.bind(SqliteDataNode("db", 2, state), {}, { _, _ -> cells++ }, { sorts++ }, filters::add)
+        activity.setContentView(grid)
+        grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(160, View.MeasureSpec.EXACTLY))
+        grid.layout(0, 0, 320, 160)
+        val provider = grid.accessibilityNodeProvider!!
+        assertTrue(provider.createAccessibilityNodeInfo(-2)!!.isLongClickable)
+        assertFalse(provider.createAccessibilityNodeInfo(-3)!!.isLongClickable)
+        assertTrue(provider.createAccessibilityNodeInfo(-2)!!.contentDescription.toString().contains(activity.getString(R.string.sqlite_filter_active)))
+        val down = android.os.SystemClock.uptimeMillis()
+        MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, 20f, 10f, 0).also { grid.onTouchEvent(it); it.recycle() }
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(android.view.ViewConfiguration.getLongPressTimeout() + 20L))
+        MotionEvent.obtain(down, android.os.SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, 20f, 10f, 0).also { grid.onTouchEvent(it); it.recycle() }
+        assertEquals(listOf(0), filters)
+        assertTrue(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(0, 0), filters)
+        assertFalse(provider.performAction(-3, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(0, sorts)
+        assertEquals(0, cells)
+        grid.bind(SqliteDataNode("db", 2, state.copy(execution = "query")), {}, { _, _ -> }, { sorts++ }, filters::add)
+        assertTrue(provider.performAction(-2, androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_LONG_CLICK, null))
+        assertEquals(listOf(0, 0, 0), filters)
+        grid.release()
+        grid.bind("properties", listOf("value"), 0, SqliteViewport(), rowAt = { null })
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isLongClickable)
+    }
+
     @Test fun `SQL result headers leave ordering to SQL and retain row selection`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))

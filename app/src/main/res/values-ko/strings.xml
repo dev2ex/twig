@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">이 문은 열을 반환하지 않습니다.</string>
     <string name="sqlite_sql_edit">SQL 편집</string>
     <string name="sqlite_sql_rerun">다시 실행</string>
+    <string name="sqlite_filter_title">필터: %1$s</string>
+    <string name="sqlite_filter_clear">열 필터 지우기</string>
+    <string name="sqlite_filter_empty_text">(빈 텍스트)</string>
+    <string name="sqlite_filter_active">필터 적용됨</string>
+    <string name="sqlite_filter_oversized">(값이 너무 커서 선택할 수 없음)</string>
 </resources>

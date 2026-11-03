@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">Pernyataan ini tidak menghasilkan kolom.</string>
     <string name="sqlite_sql_edit">Edit SQL</string>
     <string name="sqlite_sql_rerun">Jalankan lagi</string>
+    <string name="sqlite_filter_title">Filter: %1$s</string>
+    <string name="sqlite_filter_clear">Hapus filter kolom</string>
+    <string name="sqlite_filter_empty_text">(Teks kosong)</string>
+    <string name="sqlite_filter_active">Difilter</string>
+    <string name="sqlite_filter_oversized">(Terlalu besar untuk dipilih)</string>
 </resources>

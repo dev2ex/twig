@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">Esta sentencia no devuelve columnas.</string>
     <string name="sqlite_sql_edit">Editar SQL</string>
     <string name="sqlite_sql_rerun">Volver a ejecutar</string>
+    <string name="sqlite_filter_title">Filtrar: %1$s</string>
+    <string name="sqlite_filter_clear">Borrar filtro de columna</string>
+    <string name="sqlite_filter_empty_text">(Texto vacío)</string>
+    <string name="sqlite_filter_active">Filtrado</string>
+    <string name="sqlite_filter_oversized">(Demasiado grande para seleccionar)</string>
 </resources>

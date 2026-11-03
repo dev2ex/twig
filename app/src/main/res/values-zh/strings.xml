@@ -1257,4 +1257,9 @@
     <string name="sqlite_sql_no_columns">此语句没有返回列。</string>
     <string name="sqlite_sql_edit">修改 SQL</string>
     <string name="sqlite_sql_rerun">重新运行</string>
+    <string name="sqlite_filter_title">筛选：%1$s</string>
+    <string name="sqlite_filter_clear">清除此列筛选</string>
+    <string name="sqlite_filter_empty_text">（空文本）</string>
+    <string name="sqlite_filter_active">已筛选</string>
+    <string name="sqlite_filter_oversized">（值过大，无法选择）</string>
 </resources>

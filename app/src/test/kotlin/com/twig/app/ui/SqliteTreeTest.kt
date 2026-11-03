@@ -20,6 +20,70 @@ import java.util.UUID
 @Config(sdk = [34])
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 class SqliteTreeTest {
+    @Test fun `column filters recount clear cached pages and apply to table search and SQL results`() = runTest {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val file = File(context.cacheDir, "filter-tree-${UUID.randomUUID()}.db")
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val tree = SqliteTree(context, scope, { dispatcher }, {})
+        fun table() = tree.rows("db", 1).filterIsInstance<SqliteTableNode>().single { it.state.table.name == "entries" && it.state.query == null }
+        fun data() = tree.rows("db", 1).filterIsInstance<SqliteDataNode>().single()
+        try {
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                db.execSQL("CREATE TABLE entries(id INTEGER PRIMARY KEY, category TEXT, tag TEXT)")
+                repeat(240) { db.execSQL("INSERT INTO entries VALUES (?,?,?)", arrayOf(it, "g${it % 3}", "keep")) }
+            }
+            tree.open("db", XFile("file", file.path, false))
+            advanceUntilIdle()
+            tree.command(table(), SqliteCommand.TOGGLE)
+            advanceUntilIdle()
+            val original = data()
+            tree.filter(original, 1, listOf(com.twig.app.sqlite.SqliteCell.text("g1")))
+            assertNull(data().state.count)
+            assertTrue(data().state.pages.isEmpty())
+            advanceUntilIdle()
+            assertEquals(80L, data().state.count)
+            assertEquals("1", tree.cell(data(), 0, 0)!!.text)
+            assertEquals(3, tree.filterOptions(data(), 1)!!.size) // Own filter is ignored.
+            assertEquals(80L, tree.filterOptions(data(), 2)!!.single().count)
+            tree.sort(data(), 0)
+            advanceUntilIdle()
+            tree.sort(data(), 0)
+            advanceUntilIdle()
+            assertEquals("238", tree.cell(data(), 0, 0)!!.text)
+            val output = java.io.ByteArrayOutputStream()
+            tree.csvWriter(data(), setOf("id"))!!.invoke(output, {})
+            assertEquals("238", output.toString("UTF-8").lines()[1])
+            val stale = data()
+            tree.filter(data(), 1, emptyList())
+            advanceUntilIdle()
+            assertEquals(240L, data().state.count)
+            tree.filter(stale, 1, listOf(com.twig.app.sqlite.SqliteCell.text("g2")))
+            assertTrue(data().state.filters.isEmpty()) // An old popup cannot replace a newer filter.
+            tree.search("db", "keep", "entries")
+            advanceUntilIdle()
+            assertEquals("keep", data().state.query)
+            tree.filter(data(), 1, listOf(com.twig.app.sqlite.SqliteCell.text("g0")))
+            advanceUntilIdle()
+            assertEquals(80L, data().state.count)
+            tree.execute("db", "SELECT * FROM entries ORDER BY id DESC")
+            advanceUntilIdle()
+            assertNotNull(data().state.execution)
+            tree.filter(data(), 1, listOf(com.twig.app.sqlite.SqliteCell.text("g2")))
+            advanceUntilIdle()
+            assertEquals(80L, data().state.count)
+            assertEquals("239", tree.cell(data(), 0, 0)!!.text)
+            tree.filter(data(), 1, emptyList())
+            advanceUntilIdle()
+            assertEquals(240L, data().state.count)
+            SQLiteDatabase.openOrCreateDatabase(file, null).use { it.execSQL("DROP TABLE entries") }
+            val staleSource = SqliteDataNode("db", 2, table().state)
+            assertTrue(runCatching { tree.filterOptions(staleSource, 1) }.isFailure)
+            advanceUntilIdle()
+            assertEquals("239", tree.cell(data(), 0, 0)!!.text) // A failed aggregation must not close other leases.
+        } finally { tree.close("db"); scope.cancel(); advanceUntilIdle(); file.delete() }
+    }
+
     @Test fun `SQL results share the accordion and use a stable cancellable execution lease`() = runTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         com.twig.core.FsRegistry.register(com.twig.fs.local.LocalFileSystem())

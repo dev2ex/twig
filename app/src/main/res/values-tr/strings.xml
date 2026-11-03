@@ -1227,4 +1227,9 @@
     <string name="sqlite_sql_no_columns">Bu ifade sütun döndürmüyor.</string>
     <string name="sqlite_sql_edit">SQL düzenle</string>
     <string name="sqlite_sql_rerun">Yeniden çalıştır</string>
+    <string name="sqlite_filter_title">Filtre: %1$s</string>
+    <string name="sqlite_filter_clear">Sütun filtresini temizle</string>
+    <string name="sqlite_filter_empty_text">(Boş metin)</string>
+    <string name="sqlite_filter_active">Filtrelendi</string>
+    <string name="sqlite_filter_oversized">(Seçmek için çok büyük)</string>
 </resources>

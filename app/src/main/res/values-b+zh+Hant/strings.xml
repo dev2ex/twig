@@ -1226,4 +1226,9 @@
     <string name="sqlite_sql_no_columns">此陳述式未傳回欄位。</string>
     <string name="sqlite_sql_edit">修改 SQL</string>
     <string name="sqlite_sql_rerun">重新執行</string>
+    <string name="sqlite_filter_title">篩選：%1$s</string>
+    <string name="sqlite_filter_clear">清除此欄篩選</string>
+    <string name="sqlite_filter_empty_text">（空文字）</string>
+    <string name="sqlite_filter_active">已篩選</string>
+    <string name="sqlite_filter_oversized">（值過大，無法選取）</string>
 </resources>
