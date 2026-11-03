@@ -27,7 +27,6 @@ data class SqliteTableState(
     val loadedThrough: Int = 0,
     val viewport: SqliteViewport = SqliteViewport(),
     val columnsViewport: SqliteViewport = SqliteViewport(),
-    val ddlViewport: SqliteViewport = SqliteViewport(),
 ) {
     val pageSize get() = SqliteSession.pageSize(table)
     val rowCount: Int get() = listOfNotNull(count?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt(), end).minOrNull()

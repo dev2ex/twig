@@ -148,8 +148,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
 
     fun bind(key: String, headings: List<String>, count: Int, viewport: SqliteViewport,
         rowAt: (Int) -> List<SqliteCell>?, errorAt: (Int) -> String? = { null },
-        request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> },
-        contentLines: List<String>? = null) {
+        request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> }) {
         if (owner != key) scroller.abortAnimation()
         owner = key
         position = viewport
@@ -161,9 +160,6 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         onCell = cell
         // Stable widths: incoming pages cannot shift columns underneath a finger.
         widths = headings.map { max(112 * dp, min(240 * dp, paint.measureText(it) + 24 * dp)) }
-        if (widths.size == 1 && contentLines != null) {
-            widths = listOf(max(widths[0], (contentLines.maxOfOrNull { paint.measureText(it) } ?: 0f) + 24 * dp))
-        }
         contentDescription = context.getString(R.string.sqlite_grid_description, count, headings.size)
         clamp()
         accessibility.invalidateRoot()

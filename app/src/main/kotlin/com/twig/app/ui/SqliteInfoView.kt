@@ -1,6 +1,8 @@
 package com.twig.app.ui
 
 import android.content.Context
+import android.graphics.Typeface
+import android.view.View
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.LinearLayout
@@ -12,6 +14,11 @@ import com.twig.app.sqlite.SqliteCell
 class SqliteInfoView(context: Context) : LinearLayout(context) {
     private val card = ItemInfoCardBinding.inflate(LayoutInflater.from(context), this, true)
     private val grid = SqliteGridView(context)
+    private val ddl = card.infoBody.apply {
+        (parent as ViewGroup).removeView(this)
+        typeface = Typeface.MONOSPACE
+        setTextIsSelectable(true)
+    }
     private val dp = resources.displayMetrics.density
 
     init {
@@ -20,6 +27,7 @@ class SqliteInfoView(context: Context) : LinearLayout(context) {
         // than using the ordinary text card's swipe-to-change-page behavior.
         card.root.swipeEnabled = false
         card.infoContent.removeAllViews()
+        card.infoContent.addView(ddl)
         card.infoContent.addView(grid, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (224 * dp).toInt()).apply {
             setMargins(dp.toInt(), dp.toInt(), dp.toInt(), dp.toInt())
         })
@@ -38,21 +46,22 @@ class SqliteInfoView(context: Context) : LinearLayout(context) {
             onTab = { command(if (it == 0) SqliteCommand.COLUMNS else SqliteCommand.DDL) },
             onClose = { command(SqliteCommand.CLOSE) })
         card.root.showPage(node.key, state.tab.toString(), state.tab, card.infoContent) {
+            grid.visibility = if (state.tab == 0) View.VISIBLE else View.GONE
+            ddl.visibility = if (state.tab == 0) View.GONE else View.VISIBLE
             if (state.tab == 0) {
                 grid.bind(node.key + "/columns", headings, rows.size, state.columnsViewport,
                     rowAt = { rows.getOrNull(it) }, cell = { row, _ -> SqliteCellDialog.show(context,
                         state.table.columns[row].name, rows[row].joinToString("\n") { it.text }) })
             } else {
-                val lines = state.table.ddl.lines()
-                grid.bind(node.key + "/ddl", listOf("DDL"), lines.size, state.ddlViewport,
-                    rowAt = { index -> lines.getOrNull(index)?.let { listOf(SqliteCell.text(it)) } },
-                    cell = { _, _ -> SqliteCellDialog.show(context, state.table.name, state.table.ddl) }, contentLines = lines)
+                grid.release()
+                if (ddl.text.toString() != state.table.ddl) ddl.text = state.table.ddl
             }
         }
     }
 
     fun release() {
         grid.release()
+        ddl.text = ""
         card.root.resetPage()
         card.tabBar.removeAllViews()
     }

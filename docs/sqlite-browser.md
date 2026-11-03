@@ -24,7 +24,8 @@ as directory paths after process death.
   boundary. When all rows fit, vertical drags return to the outer tree; horizontal
   drags still belong to the grid. Virtual accessibility nodes expose visible cells.
 - `ui/SqliteInfoView.kt` provides Columns and DDL content inside the common
-  `item_info_card` shell. `InfoCardTabs` renders both ordinary and SQLite property tabs,
+  `item_info_card` shell. Columns use the grid; DDL uses the common selectable text
+  body with wrapping, without a grid header or cell borders. `InfoCardTabs` renders both ordinary and SQLite property tabs,
   including their typography, close action and tree indentation. SQLite content keeps
   horizontal drags for grid scrolling; tab clicks use the common page transition.
   `FileAdapter` and `PaneFragment` connect these views to the tree and menus.
