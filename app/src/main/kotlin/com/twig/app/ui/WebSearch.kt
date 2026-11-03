@@ -22,7 +22,8 @@ object WebSearch {
         launch(ctx, Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query))
     }
 
-    fun home(ctx: Context) = launch(ctx, Intent(Intent.ACTION_WEB_SEARCH))
+    fun home(ctx: Context) = ctx.startActivity(Intent(ctx, WebSearchActivity::class.java)
+        .setAction(Intent.ACTION_WEB_SEARCH))
 
     private fun launch(ctx: Context, request: Intent) {
         ctx.startActivity(Intent.createChooser(request, ctx.getString(R.string.web_search)))

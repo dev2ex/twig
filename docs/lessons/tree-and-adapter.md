@@ -405,6 +405,11 @@
     changing directory or ticking items updates it) plus `setActiveIndex` — ★ the latter must come
     **after** `activeIndex` is updated, otherwise it reads the previous pane. All three action bars
     must be refreshed, same as `syncShareIcon`.
+    Search has an independent web-search long press (2026-11-04): keep its file-search
+    `isEnabled`/alpha gate, while `SearchStripItem.dispatchTouchEvent` recognizes only
+    the disabled-state long press. A short tap still does nothing; movement or a parent
+    scroll's cancellation clears the gesture. `SearchStripItemTest` sends real touch
+    events on API 24/34 rather than calling `performLongClick` directly.
 - **"Go to path" descends by name; it does not join a path** (2026-08-27,
   `PaneViewModel.revealUnder`): a root row (server / internal storage / root directory /
   removable volume / favorite) carries a menu item that takes a typed path and expands its way

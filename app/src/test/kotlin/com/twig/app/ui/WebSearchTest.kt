@@ -102,6 +102,17 @@ class WebSearchTest {
         } finally { controller.pause().stop().destroy() }
     }
 
+    @Test fun `search button homepage opens Twig directly through its gated search entry`() {
+        val controller = Robolectric.buildActivity(Activity::class.java).setup()
+        try {
+            WebSearch.home(controller.get())
+            val request = shadowOf(controller.get()).nextStartedActivity
+            assertEquals(Intent.ACTION_WEB_SEARCH, request.action)
+            assertEquals(WebSearchActivity::class.java.name, request.component!!.className)
+            assertFalse(request.hasExtra(SearchManager.QUERY))
+        } finally { controller.pause().stop().destroy() }
+    }
+
     @Test fun `configuration validates before saving and reset stays local until confirmed`() {
         val controller = Robolectric.buildActivity(Activity::class.java).setup()
         try {

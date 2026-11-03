@@ -240,8 +240,12 @@ its listing size must still describe the followed stream for copy/resume checks.
   `WebSearch.configure`; text viewer/editor, PDF and terminal selection actions use
   the system `ACTION_WEB_SEARCH` chooser through `WebSearch`. Website and preview WebViews
   keep their native selection menus. The exported `WebSearchActivity` makes Twig an
-  optional system search handler: after the app lock gate, it uses the configured template
-  and has its own `.search` task affinity so system `NEW_TASK` requests cannot bring
+  optional system search handler. Long-pressing the action strip's Search opens this
+  entry explicitly, using Twig's configured homepage without a chooser, in Main and
+  both pickers. `SearchStripItem` retains that gesture while file search is disabled;
+  ordinary taps stay disabled and scrolling cancels the pending long press.
+  After the app lock gate, `WebSearchActivity` uses the configured template
+  and its own `.search` task affinity so system `NEW_TASK` requests cannot bring
   MainActivity forward instead of returning to the calling website, viewer or external app.
   Empty queries use the homepage. Only requests handled by Twig share the `twig://search` document task,
   carrying the requested URL as an extra; reused intents load the new request only

@@ -143,11 +143,11 @@
             <TextView style="@style/StripLabel" android:text="@string/strip_map" />
         </LinearLayout>
 
-        <LinearLayout android:id="@+id/as_search" style="@style/StripItem">
+        <com.twig.app.ui.SearchStripItem android:id="@+id/as_search" style="@style/StripItem">
             <ImageView style="@style/StripIcon" android:src="@drawable/ic_search"
                 android:contentDescription="@null" />
             <TextView style="@style/StripLabel" android:text="@string/strip_search" />
-        </LinearLayout>
+        </com.twig.app.ui.SearchStripItem>
 
         <LinearLayout android:id="@+id/as_history" style="@style/StripItem">
             <ImageView style="@style/StripIcon" android:src="@drawable/ic_history"
