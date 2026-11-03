@@ -3,6 +3,8 @@ package com.twig.app.ui
 import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -265,6 +267,32 @@ class WebsiteActivity : TwigActivity() {
             true
         }
         b.toolbar.menu.add(R.string.action_refresh).setOnMenuItemClickListener { b.web.reload(); true }
+        b.toolbar.menu.add(R.string.website_copy_link).setOnMenuItemClickListener {
+            getSystemService(ClipboardManager::class.java).setPrimaryClip(
+                ClipData.newPlainText("URL", b.web.url ?: site.url))
+            if (Build.VERSION.SDK_INT < 33) Toast.makeText(this, R.string.info_copied, Toast.LENGTH_SHORT).show()
+            true
+        }
+        b.toolbar.menu.add(R.string.website_share_link).setOnMenuItemClickListener {
+            val share = Intent(Intent.ACTION_SEND).setType("text/plain")
+                .putExtra(Intent.EXTRA_TEXT, b.web.url ?: site.url)
+            try {
+                startActivity(Intent.createChooser(share, getString(R.string.website_share_link)))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(this, R.string.website_no_app, Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
+        b.toolbar.menu.add(R.string.website_open_browser).setOnMenuItemClickListener {
+            val browser = WebsiteLinks.browserIntent(this, b.web.url ?: site.url)
+            try {
+                if (browser == null) throw ActivityNotFoundException()
+                startActivity(browser)
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(this, R.string.website_no_app, Toast.LENGTH_SHORT).show()
+            }
+            true
+        }
         if (isBrowserPage()) {
             b.toolbar.menu.add(R.string.website_open_url).setOnMenuItemClickListener { openAddress(); true }
             b.toolbar.menu.add(R.string.website_add).setOnMenuItemClickListener {

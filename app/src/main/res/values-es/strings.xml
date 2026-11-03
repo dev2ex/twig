@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">Se usa al elegir Twig para una búsqueda web del sistema. Sin texto se abre la página de inicio; el texto de búsqueda sustituye {query}. Ambas direcciones deben usar HTTP o HTTPS.</string>
     <string name="search_engine_reset">Restaurar predeterminado</string>
     <string name="search_engine_invalid_template">Introduce una URL HTTP(S) que contenga {query}</string>
+    <string name="website_copy_link">Copiar enlace</string>
+    <string name="website_share_link">Compartir enlace</string>
+    <string name="website_open_browser">Abrir en el navegador predeterminado</string>
 </resources>

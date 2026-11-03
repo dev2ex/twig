@@ -1257,4 +1257,7 @@
     <string name="search_engine_hint">يُستخدم عند اختيار Twig لبحث الويب في النظام. يفتح الاستعلام الفارغ الصفحة الرئيسية؛ ويحل نص البحث محل {query}. يجب أن يستخدم العنوانان HTTP أو HTTPS.</string>
     <string name="search_engine_reset">استعادة الافتراضي</string>
     <string name="search_engine_invalid_template">أدخل رابط HTTP(S) يحتوي على {query}</string>
+    <string name="website_copy_link">نسخ الرابط</string>
+    <string name="website_share_link">مشاركة الرابط</string>
+    <string name="website_open_browser">فتح في المتصفح الافتراضي</string>
 </resources>

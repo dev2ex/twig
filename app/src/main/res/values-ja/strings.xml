@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">システムのウェブ検索でTwigを選んだ場合に使用します。検索語がない場合はホームページを開き、検索文字列は {query} を置き換えます。両方のURLにHTTPまたはHTTPSが必要です。</string>
     <string name="search_engine_reset">既定値に戻す</string>
     <string name="search_engine_invalid_template">{query} を含むHTTP(S) URLを入力してください</string>
+    <string name="website_copy_link">リンクをコピー</string>
+    <string name="website_share_link">リンクを共有</string>
+    <string name="website_open_browser">既定のブラウザで開く</string>
 </resources>

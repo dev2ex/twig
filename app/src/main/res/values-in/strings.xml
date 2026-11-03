@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">Digunakan saat Twig dipilih untuk pencarian web sistem. Kueri kosong membuka beranda; teks pencarian menggantikan {query}. Kedua alamat harus menggunakan HTTP atau HTTPS.</string>
     <string name="search_engine_reset">Pulihkan default</string>
     <string name="search_engine_invalid_template">Masukkan URL HTTP(S) yang berisi {query}</string>
+    <string name="website_copy_link">Salin tautan</string>
+    <string name="website_share_link">Bagikan tautan</string>
+    <string name="website_open_browser">Buka di browser default</string>
 </resources>

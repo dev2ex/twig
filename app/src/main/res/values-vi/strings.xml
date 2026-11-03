@@ -1252,4 +1252,7 @@
     <string name="search_engine_hint">Dùng khi chọn Twig để tìm kiếm web qua hệ thống. Không có từ khóa sẽ mở trang chủ; văn bản tìm kiếm thay thế {query}. Cả hai địa chỉ phải dùng HTTP hoặc HTTPS.</string>
     <string name="search_engine_reset">Khôi phục mặc định</string>
     <string name="search_engine_invalid_template">Nhập URL HTTP(S) có chứa {query}</string>
+    <string name="website_copy_link">Sao chép liên kết</string>
+    <string name="website_share_link">Chia sẻ liên kết</string>
+    <string name="website_open_browser">Mở trong trình duyệt mặc định</string>
 </resources>

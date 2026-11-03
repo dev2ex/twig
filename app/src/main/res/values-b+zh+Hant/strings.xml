@@ -1252,4 +1252,7 @@
     <string name="search_engine_hint">在系統網頁搜尋中選擇 Twig 時使用。沒有搜尋詞時開啟首頁；搜尋文字會取代 {query}。兩個網址均須使用 HTTP 或 HTTPS。</string>
     <string name="search_engine_reset">恢復預設</string>
     <string name="search_engine_invalid_template">請輸入包含 {query} 的 HTTP(S) 網址</string>
+    <string name="website_copy_link">複製連結</string>
+    <string name="website_share_link">分享連結</string>
+    <string name="website_open_browser">在預設瀏覽器中開啟</string>
 </resources>

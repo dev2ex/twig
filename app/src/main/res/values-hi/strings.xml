@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">सिस्टम वेब खोज के लिए Twig चुने जाने पर उपयोग होता है। खाली खोज से मुखपृष्ठ खुलता है; खोज पाठ {query} की जगह लेता है। दोनों पते HTTP या HTTPS के होने चाहिए।</string>
     <string name="search_engine_reset">डिफ़ॉल्ट बहाल करें</string>
     <string name="search_engine_invalid_template">{query} वाला HTTP(S) URL दर्ज करें</string>
+    <string name="website_copy_link">लिंक कॉपी करें</string>
+    <string name="website_share_link">लिंक साझा करें</string>
+    <string name="website_open_browser">डिफ़ॉल्ट ब्राउज़र में खोलें</string>
 </resources>

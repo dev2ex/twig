@@ -211,3 +211,13 @@
   with recorded output even when their previous timestamp was unknown, so short-read
   checks use the current size before deleting anything. `CopyEngineTest` covers
   same-size edits and a growing source whose retry read ends early.
+
+- **Package-visibility query intents accept at most one data scheme**
+  (2026-11-04, website link actions). Putting both HTTP and HTTPS in one
+  `<queries><intent>` passed Kotlin compilation, unit tests, Release assembly,
+  `aapt dump badging` and signature verification, but Android 16 rejected installation
+  with `INSTALL_PARSE_FAILED_MANIFEST_MALFORMED: intent tag may have at most one data scheme`.
+  The query declaration was treated like an Activity intent filter, whose multiple
+  schemes are valid. Declare separate HTTP and HTTPS query intents instead.
+  APK build success does not establish installability after manifest changes;
+  verify installation on the target device as well.

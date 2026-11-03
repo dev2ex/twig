@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">시스템 웹 검색에서 Twig를 선택하면 사용됩니다. 검색어가 없으면 홈페이지를 열고, 검색어는 {query}를 대체합니다. 두 주소 모두 HTTP 또는 HTTPS를 사용해야 합니다.</string>
     <string name="search_engine_reset">기본값 복원</string>
     <string name="search_engine_invalid_template">{query}가 포함된 HTTP(S) URL을 입력하세요</string>
+    <string name="website_copy_link">링크 복사</string>
+    <string name="website_share_link">링크 공유</string>
+    <string name="website_open_browser">기본 브라우저에서 열기</string>
 </resources>

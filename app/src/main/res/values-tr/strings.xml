@@ -1253,4 +1253,7 @@
     <string name="search_engine_hint">Sistem web araması için Twig seçildiğinde kullanılır. Boş sorgu ana sayfayı açar; arama metni {query} yerine geçer. Her iki adres de HTTP veya HTTPS kullanmalıdır.</string>
     <string name="search_engine_reset">Varsayılana dön</string>
     <string name="search_engine_invalid_template">{query} içeren bir HTTP(S) URL girin</string>
+    <string name="website_copy_link">Bağlantıyı kopyala</string>
+    <string name="website_share_link">Bağlantıyı paylaş</string>
+    <string name="website_open_browser">Varsayılan tarayıcıda aç</string>
 </resources>
