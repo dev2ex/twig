@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">画面の向きはシステムに従います</string>
     <string name="player_brightness">明るさ %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
-    <string name="player_muted">ミュートしました</string>
-    <string name="player_unmuted">ミュートを解除しました</string>
+    <string name="player_audio_off">音声トラックをオフにしました</string>
+    <string name="player_audio_on">音声トラックをオンにしました</string>
     <string name="player_subtitles_on">字幕をオンにしました</string>
     <string name="player_subtitles_off">字幕をオフにしました</string>
     <string name="player_subtitle">字幕</string>
@@ -1246,4 +1246,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">数値は数値として比較します。テキストは単一引用符で囲めます。空欄で解除します。</string>
     <string name="sqlite_filter_operator" formatted="false">演算子</string>
     <string name="sqlite_filter_invalid" formatted="false">&gt;= 18、= \'abc\'、LIKE \'%abc%\'、IS NULL などの条件を入力してください。</string>
+    <string name="search_engine">検索エンジン</string>
+    <string name="web_search">ウェブ検索</string>
+    <string name="search_engine_presets">検索エンジンを選択…</string>
+    <string name="search_engine_home">検索ホームページ</string>
+    <string name="search_engine_template">検索URLテンプレート</string>
+    <string name="search_engine_hint">システムのウェブ検索でTwigを選んだ場合に使用します。検索語がない場合はホームページを開き、検索文字列は {query} を置き換えます。両方のURLにHTTPまたはHTTPSが必要です。</string>
+    <string name="search_engine_reset">既定値に戻す</string>
+    <string name="search_engine_invalid_template">{query} を含むHTTP(S) URLを入力してください</string>
+    <string name="website_copy_link">リンクをコピー</string>
+    <string name="website_share_link">リンクを共有</string>
+    <string name="website_open_browser">既定のブラウザで開く</string>
+    <string name="website_apply_to_domain">同じドメインのページに適用</string>
+    <string name="restic_location_details">パスの詳細</string>
+    <string name="restic_location_repository">リポジトリ</string>
+    <string name="restic_location_snapshot">スナップショット</string>
 </resources>

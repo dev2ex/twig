@@ -16,6 +16,10 @@ import org.apache.sshd.sftp.server.SftpEventListener
 import org.apache.sshd.sftp.server.DirectoryHandle
 import org.apache.sshd.sftp.SftpModuleProperties
 import org.apache.sshd.sftp.server.SftpSubsystemFactory
+import org.apache.sshd.sftp.server.SftpErrorStatusDataHandler
+import org.apache.sshd.sftp.server.SftpSubsystemEnvironment
+import net.schmizz.sshj.sftp.Response
+import net.schmizz.sshj.sftp.SFTPException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,6 +41,7 @@ class SftpFileSystemTest {
     private lateinit var fs: SftpFileSystem
 
     @Volatile private var dropAfterCreate = false
+    @Volatile private var blankServerErrors = false
     private val sessions = AtomicInteger()
     private val directoryReads = AtomicInteger()
 
@@ -52,6 +57,15 @@ class SftpFileSystemTest {
             passwordAuthenticator = PasswordAuthenticator { u, p, _ -> u == "u" && p == "p" }
             subsystemFactories = listOf(
                 SftpSubsystemFactory().apply {
+                    errorStatusDataHandler = object : SftpErrorStatusDataHandler {
+                        override fun resolveErrorMessage(
+                            environment: SftpSubsystemEnvironment, id: Int, thrown: Throwable,
+                            subStatus: Int, command: Int, vararg args: Any?,
+                        ): String = if (blankServerErrors) "" else
+                            SftpErrorStatusDataHandler.DEFAULT.resolveErrorMessage(
+                                environment, id, thrown, subStatus, command, *args,
+                            )
+                    }
                     addSftpEventListener(object : SftpEventListener {
                         override fun readingEntries(session: ServerSession, remoteHandle: String, handle: DirectoryHandle) {
                             directoryReads.incrementAndGet()
@@ -331,6 +345,36 @@ class SftpFileSystemTest {
         val before = sessions.get()
         assertThrows(Exception::class.java) { fs.delete(XFile("sftp", "/missing.txt", false)) }
         assertEquals("no new session was opened", before, sessions.get())
+    }
+
+    @Test
+    fun blankServerErrorsRetainTheirStatusWithoutReconnecting() {
+        fs.list(fs.root())
+        blankServerErrors = true
+        val before = sessions.get()
+        val missing = XFile("sftp", "/missing.txt", false)
+        for (operation in listOf<() -> Unit>(
+            { fs.openInput(missing).close() },
+            { fs.rename(missing, "renamed.txt") },
+            { fs.mkdir(XFile("sftp", "/missing-parent", true), "child") },
+        )) {
+            val failure = assertThrows(SFTPException::class.java, operation)
+            assertEquals(Response.StatusCode.NO_SUCH_FILE, failure.statusCode)
+            assertTrue(failure.message!!.contains("NO_SUCH_FILE"))
+            assertEquals("", failure.cause!!.message)
+        }
+        assertEquals(before, sessions.get())
+    }
+
+    @Test
+    fun reconnectFailureRetainsTheOriginalWriteFailure() {
+        fs.list(fs.root())
+        server.passwordAuthenticator = PasswordAuthenticator { _, _, _ -> false }
+        dropAfterCreate = true
+        val failure = assertThrows(Exception::class.java) { fs.mkdir(fs.root(), "made") }
+        assertTrue("the first attempt landed", File(home, "made").isDirectory)
+        assertEquals(1, failure.suppressed.size)
+        assertTrue(failure.suppressed.single() is SFTPException)
     }
 
     /**

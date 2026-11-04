@@ -45,11 +45,14 @@ object MediaSources {
      * Wrapped in [AviRepairExtractorsFactory] for the two things media3 gets wrong about AVI:
      * its MP3 audio is a byte stream that has to be cut back into frames, and its MPEG-4 video
      * carries no display timestamps, so B-frames need reordering. Every other container is
-     * untouched.
+     * untouched. [DolbyVisionFallbackExtractorsFactory] also allows verified HDR10-compatible
+     * Profile 7 tracks to use HEVC when no native Dolby Vision decoder supports the format.
      */
     fun extractors(): ExtractorsFactory =
-        AviRepairExtractorsFactory(
-            DefaultExtractorsFactory().setSubtitleParserFactory(TwigSubtitleParserFactory()),
+        DolbyVisionFallbackExtractorsFactory(
+            AviRepairExtractorsFactory(
+                DefaultExtractorsFactory().setSubtitleParserFactory(TwigSubtitleParserFactory()),
+            ),
         )
 
     /** Pre-open shared random source (for the video player). Returns (source, RandomSource to close). */

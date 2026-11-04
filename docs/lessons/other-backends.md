@@ -96,6 +96,22 @@
   crash (hit while reading thumbnails concurrently).
 - **zstd/aircompressor**: uses `Unsafe`, which is nominally risky on newer devices; keep an eye on
   restic/zstd when changing test hardware.
+- **SMB rename failures must publish the compound's first NT status** (2026-11-04).
+  Renaming a physical restic repository directory over SMB failed with an empty toast.
+  The vendored libsmb2 rename callbacks accumulated a failure status but never called
+  `smb2_set_nterror`, so Kotlin could throw `FsException("")`; the UI's null-only
+  fallback then displayed nothing. Publish the first failing CREATE / SET_INFO / CLOSE
+  status when the compound completes, preserving it over later invalid-handle replies.
+  Mutation errors also need an operation/code fallback, and reconnect failure must not
+  replace the original error. Listings and file opens share the same retry handling.
+  Do not reconnect for recognized permission/sharing denials. Create/delete compounds
+  must likewise retain the CREATE failure over the following CLOSE status; previously
+  the error text and returned errno could describe different failures, while a CLOSE-only
+  failure supplied no text. UI fallbacks must handle blank as well as null messages.
+  `python3 tools/test_smb_rename.py` exercises the real native callbacks, including
+  rename/create/delete failures, name collisions and successful requests. `SmbRequestTest`
+  covers retries, denials and missing error text. This fixes diagnosis; the original server's
+  reason for rejecting the directory rename still requires reproduction.
 - **Do not SSH into servers to read logs**: automatic mode blocks "remote shell reads against
   unauthorized hosts". If a remote diagnosis is needed, ask the user to run it.
 
@@ -237,3 +253,13 @@
   with recorded output even when their previous timestamp was unknown, so short-read
   checks use the current size before deleting anything. `CopyEngineTest` covers
   same-size edits and a growing source whose retry read ends early.
+
+- **Package-visibility query intents accept at most one data scheme**
+  (2026-11-04, website link actions). Putting both HTTP and HTTPS in one
+  `<queries><intent>` passed Kotlin compilation, unit tests, Release assembly,
+  `aapt dump badging` and signature verification, but Android 16 rejected installation
+  with `INSTALL_PARSE_FAILED_MANIFEST_MALFORMED: intent tag may have at most one data scheme`.
+  The query declaration was treated like an Activity intent filter, whose multiple
+  schemes are valid. Declare separate HTTP and HTTPS query intents instead.
+  APK build success does not establish installability after manifest changes;
+  verify installation on the target device as well.

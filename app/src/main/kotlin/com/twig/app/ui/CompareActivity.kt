@@ -669,7 +669,7 @@ class CompareActivity : TwigActivity() {
                                 Format.pathLabel(destRoot), FileIcons.sourceIconRes(destRoot.scheme), null,
                             ),
                         )
-                    }.getOrElse { toast(it.message ?: getString(R.string.err_failed)); return@launch }
+                    }.getOrElse { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)); return@launch }
                     if (!started) return@launch toast(getString(R.string.transfer_busy))
                     showTransferBox()
                 }

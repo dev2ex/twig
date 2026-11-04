@@ -201,6 +201,13 @@ its listing size must still describe the followed stream for copy/resume checks.
   ordinary listings even with counts disabled; extra nonlocal probes remain opt-in.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
+  Recent locations also record directories used inside restic snapshots, storing the repository
+  connection/path, snapshot selector and internal path rather than a session scheme. Fixed
+  snapshot metadata is frozen for display; `latest` remains a dynamic alias. Restoring reconnects
+  and unlocks as needed, expands the repository chain, then matches snapshot rows by path ID
+  (their display names are dates). Favorites and Recent share the repository unlock resolver;
+  a live unlocked repository needs no password prompt. Missing snapshots/listings report errors
+  without changing the selected directory. Newer navigation or Collapse abandons pending restores.
   Favorites and websites keep their stored order. Long-pressing either heading offers
   inline reordering with drag handles; favorite children are temporarily hidden, websites
   temporarily use list rows even in grid mode, and drops
@@ -238,12 +245,42 @@ its listing size must still describe the followed stream for copy/resume checks.
   filesystem copy/compare listings must still fail.
 - Websites: `WebsiteStore` persists per-site options in `twig_websites`; `WebsiteActivity`
   opens each bookmark in its own reusable document task using the shared WebView profile.
+  `SearchEngine` stores the global search homepage and `{query}` URL template in
+  `twig_prefs` (included in configuration backups). The website heading menu opens
+  `WebSearch.configure`; text viewer/editor, PDF and terminal selection actions use
+  the system `ACTION_WEB_SEARCH` chooser through `WebSearch`. Website and preview WebViews
+  keep their native selection menus. The exported `WebSearchActivity` makes Twig an
+  optional system search handler. Long-pressing the action strip's Search opens this
+  entry explicitly, using Twig's configured homepage without a chooser, in Main and
+  both pickers. `SearchStripItem` retains that gesture while file search is disabled;
+  ordinary taps stay disabled and scrolling cancels the pending long press.
+  After the app lock gate, `WebSearchActivity` uses the configured template
+  and its own `.search` task affinity so system `NEW_TASK` requests cannot bring
+  MainActivity forward instead of returning to the calling website, viewer or external app.
+  Empty queries use the homepage. Only requests handled by Twig share the `twig://search` document task,
+  carrying the requested URL as an extra; reused intents load the new request only
+  after the app lock gate. Bookmarks and externally opened browser pages keep their
+  separate document identities.
+  `TerminalSelectionMenu` replaces Termux's unused More entry with sharing and
+  installed `ACTION_PROCESS_TEXT` handlers. It reads the live selection at click time,
+  passes text as read-only and ignores results; external processing must never write
+  returned text to a terminal session.
   `WebsiteDialogs` shares its editor with website defaults: new bookmarks copy display
   options only. UA/JS/CSS/hide/block settings apply globally at runtime; per-site UA overrides
   the global value, while scripts/styles/selectors/block rules combine with it. Keep raw
   per-site fields separate from effective settings, including debug edits and browser saves,
   so global values never become permanent site additions. Open pages observe global changes;
   locked pages defer applying them until unlock.
+  Each bookmark can opt into `applyToDomain`: external links, system searches and navigation
+  borrow its raw configuration on the exact same hostname, then merge global additions once.
+  Enabling a second bookmark for that host disables the earlier choice; directly opened saved
+  bookmarks retain their own configuration on their saved origin. Resolve again for top-level
+  navigation and history, never for subresources. Keep the document's identity separate from
+  its current page configuration. Domain sharing does not inherit capture/location grants or
+  background execution; headers and Basic credentials retain their original scheme/host/port
+  scope. Temporary and borrowed-page debug edits stay in memory, without rewriting the source
+  bookmark. Prepare changed UAs before intercepted GET loads; history/POST loads that bypass
+  interception finish before changing UA, since changing it mid-load restarts the request.
   `WebsiteMediaPermissions` handles HTTPS microphone/camera requests with explicit
   origin-specific consent followed by Android runtime permissions. Grant only selected,
   recognized capture resources, after the WebView resumes. Saved bookmarks have independent
@@ -856,7 +893,8 @@ add its symptom here.
   host keys / tokens are written back the moment a server is expanded.
   ★ A `ContentProvider` must use `requireNotNull(context)` — `requireContext()` is API 30
   and nothing warns you below it.
-  *Explains*: a white, invisible shortcut icon, an empty long-press menu, an SMB crash
+  *Explains*: a built APK rejected at install with “intent tag may have at most one data scheme”,
+  a white, invisible shortcut icon, an empty long-press menu, an SMB crash
   while thumbnails load, a server that jumps to the bottom of its group the first time you
   expand it after importing a backup, "track info closes the music page" on Android 9,
   an SMB1 cold connection that waits on WORKGROUP but is fast on subsequent access.

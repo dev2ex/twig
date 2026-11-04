@@ -396,6 +396,20 @@ class StripWriteActionsTest {
         assertStrip(R.id.as_move, true)
     }
 
+    @Test fun `all search strips retain Twig web search when file search is disabled`() {
+        pane0().viewModel.toggle(PaneViewModel.GroupNode("fav", "Favorites", expanded = false))
+        idle()
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_search, false)
+        for (id in listOf(R.id.strip_left, R.id.strip_mid, R.id.strip_right)) {
+            val search = activity.findViewById<View>(id).findViewById<View>(R.id.as_search)
+            assertTrue(search.performLongClick())
+            val intent = shadowOf(activity).nextStartedActivity
+            assertEquals(WebSearchActivity::class.java.name, intent.component!!.className)
+            assertEquals(android.content.Intent.ACTION_WEB_SEARCH, intent.action)
+        }
+    }
+
     @Test
     fun `favorite and storage roots can be read without enabling mutation`() {
         val pane = pane0()

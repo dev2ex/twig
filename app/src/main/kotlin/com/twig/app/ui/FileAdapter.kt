@@ -880,6 +880,19 @@ class FileAdapter(
     inner class VH(private val b: ItemFileBinding) : RecyclerView.ViewHolder(b.root) {
         private var countNode: PaneViewModel.FileNode? = null
         private var countPosition = RecyclerView.NO_POSITION
+        private var resticSubtitle: com.twig.app.ResticLocation? = null
+
+        init {
+            b.meta.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+                if (right - left != oldRight - oldLeft) fitResticSubtitle()
+            }
+        }
+
+        private fun fitResticSubtitle() {
+            val location = resticSubtitle ?: return
+            b.meta.text = location.fitted(b.root.context.getString(R.string.restic_latest), b.meta.paint,
+                (b.meta.width - b.meta.compoundPaddingLeft - b.meta.compoundPaddingRight).toFloat())
+        }
 
         fun refreshDirectoryCounts() { countNode?.let(::bindDirectoryCounts) }
 
@@ -889,6 +902,8 @@ class FileAdapter(
         }
 
         fun bind(node: PaneViewModel.Node, position: Int = RecyclerView.NO_POSITION) {
+            resticSubtitle = null
+            b.meta.contentDescription = null
             countNode = node as? PaneViewModel.FileNode
             countPosition = position
             val ctx = b.root.context
@@ -947,6 +962,7 @@ class FileAdapter(
             b.infoToggle.visibility = if (node is PaneViewModel.FileNode) View.VISIBLE else View.INVISIBLE
             b.infoToggle.setOnClickListener(null)
             b.infoToggle.setOnLongClickListener(null)
+            b.meta.ellipsize = android.text.TextUtils.TruncateAt.END
             b.root.setOnTouchListener(null)
             b.indicator.setOnTouchListener(null)
             b.indicator.setOnClickListener(null)
@@ -1018,8 +1034,14 @@ class FileAdapter(
                     displayName = fav.pathName.takeIf { it.isNotEmpty() })
                 else -> null
             }
-            b.name.text = favoriteDisplayName(fav, node.conn)
-            setMeta(if (node.connecting) ctx.getString(R.string.ftp_connecting) else favoriteFullPath(fav, node.conn))
+            if (fav.kind == "restic") b.meta.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            b.name.text = favoriteDisplayName(fav, node.conn, ctx.getString(R.string.restic_latest))
+            setMeta(if (node.connecting) ctx.getString(R.string.ftp_connecting) else favoriteFullPath(fav, node.conn, ctx.getString(R.string.restic_latest)))
+            if (fav.kind == "restic" && !node.connecting) {
+                resticSubtitle = com.twig.app.resticLocation(fav, node.conn)
+                b.meta.contentDescription = resticSubtitle!!.compact(ctx.getString(R.string.restic_latest))
+                fitResticSubtitle()
+            }
             b.icon.setImageResource(
                 when (fav.kind) {
                     "restic" -> R.drawable.ic_restic

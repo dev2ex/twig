@@ -191,6 +191,8 @@ class PdfViewerActivity : TwigActivity() {
         val callback = object : ActionMode.Callback2() {
             override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
                 menu.add(0, MENU_COPY, 0, android.R.string.copy)
+                WebSearch.addSelectionAction(this@PdfViewerActivity, menu,
+                    { b.strip.selectedText() }, { mode.finish() })
                 return true
             }
 

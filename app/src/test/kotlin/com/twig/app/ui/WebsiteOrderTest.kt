@@ -91,6 +91,7 @@ class WebsiteOrderTest {
             val menu = dialog.listView
             val labels = (0 until menu.adapter.count).map { menu.adapter.getItem(it).toString() }
             assertTrue(labels.contains(activity.getString(R.string.website_defaults)))
+            assertTrue(labels.contains(activity.getString(R.string.search_engine)))
             val sortIndex = labels.indexOf(activity.getString(R.string.action_sort_websites))
             assertTrue(sortIndex >= 0)
             menu.performItemClick(menu.adapter.getView(sortIndex, null, menu), sortIndex, sortIndex.toLong())

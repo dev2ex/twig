@@ -51,6 +51,7 @@ internal class PickerBrowser(
                 }
             }
             strip.asSearch.setOnClickListener { pane?.actionSearch() }
+            strip.asSearch.setOnLongClickListener { WebSearch.home(activity); true }
             strip.asHistory.setOnClickListener { pane?.actionHistory() }
         }
         PaneSwitch.add(toolbar.menu, toolbar, MENU_SWITCH, activeIndex,

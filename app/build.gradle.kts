@@ -271,6 +271,8 @@ dependencies {
 
     // XAPK packing, tree-key codec, sort rules etc. — pure JVM unit tests
     testImplementation("junit:junit:4.13.2")
+    // Real restic fixtures in JVM UI tests use this decoder instead of Android JNI.
+    testImplementation("io.airlift:aircompressor:0.25")
 
     // Unit tests for Android-bound classes like PaneViewModel (see PaneViewModelRestoreTest):
     // - robolectric provides a **real** Android framework implementation inside

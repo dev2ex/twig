@@ -4,6 +4,23 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **A UHD MKV played sound with no picture (2026-11-04)**: the reported remux's
+  video track was `video/dolby-vision`, `dvhe.07.06`, `supported=false`, while both
+  TrueHD and AC-3 audio were supported. Media3 1.9 deliberately excludes Profile 7
+  from its automatic HEVC fallback. `DolbyVisionFallbackExtractorsFactory` checks
+  the format before track selection: only unencrypted Profile 7 with BT.2020/PQ
+  metadata (from the container or base-layer SPS), a readable base-layer SPS, no supporting native Dolby Vision decoder,
+  and a supporting HEVC decoder is relabelled as HEVC. Derive the HEVC codec string
+  from that SPS; Dolby Vision's profile/level numbers cannot be reused. Preserve
+  initialization data, HDR metadata, samples, timestamps, audio and subtitles.
+  MatroskaExtractor does not copy HEVC SPS colour information into its Format;
+  the reported file has no container Colour element, so fill missing colour and
+  bit-depth fields from the SPS rather than requiring container metadata.
+  Never apply this to Profile 5, which has no HDR10-compatible base layer.
+  `DolbyVisionFallbackTest` includes the reported remux's container header (no
+  media samples) and covers native playback, unsupported HEVC, malformed/missing
+  initialization data, both extractor factory entry points and sample/seek forwarding.
+
 - **A network interruption left video permanently idle (2026-11-02)**: the error
   listener displayed `ERROR_CODE_IO_UNSPECIFIED` but only decoder failures had a recovery
   path; the Play button called `play()` without preparing a new source. Network recovery

@@ -16,7 +16,17 @@ import java.io.OutputStream
 class ResticFileSystem(
     private val repo: ResticRepo,
     override val scheme: String,
+    val repository: XFile? = null,
 ) : FileSystem {
+
+    @Volatile private var listedSnapshots: List<ResticRepo.Snapshot> = emptyList()
+
+    /** Display metadata only: never load snapshots or trees from a UI binding. */
+    fun listedSnapshot(path: String): ResticRepo.Snapshot? {
+        val id = path.trim('/').substringBefore('/')
+        return if (id == "latest") listedSnapshots.firstOrNull()
+        else listedSnapshots.firstOrNull { it.shortId == id }
+    }
 
     override val displayName: String = "restic backup"
     override fun writable(): Boolean = false
@@ -44,7 +54,9 @@ class ResticFileSystem(
     override fun list(dir: XFile): List<XFile> {
         val segs = dir.path.trim('/').split('/').filter { it.isNotEmpty() }
         if (segs.isEmpty()) {
-            val list = repo.snapshots.map { s ->
+            val snapshots = repo.snapshots
+            listedSnapshots = snapshots
+            val list = snapshots.map { s ->
                 XFile(
                     scheme = scheme,
                     path = "/${s.shortId}",

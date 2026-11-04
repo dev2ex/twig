@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">Orientação do sistema</string>
     <string name="player_brightness">Brilho %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
-    <string name="player_muted">Som desativado</string>
-    <string name="player_unmuted">Som ativado</string>
+    <string name="player_audio_off">Faixa de áudio desativada</string>
+    <string name="player_audio_on">Faixa de áudio ativada</string>
     <string name="player_subtitles_on">Legendas ativadas</string>
     <string name="player_subtitles_off">Legendas desativadas</string>
     <string name="player_subtitle">Legenda</string>
@@ -1246,4 +1246,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Números são comparados numericamente; use aspas simples para texto. Deixe vazio para limpar.</string>
     <string name="sqlite_filter_operator" formatted="false">Operador</string>
     <string name="sqlite_filter_invalid" formatted="false">Digite uma condição como &gt;= 18, = \'abc\', LIKE \'%abc%\' ou IS NULL.</string>
+    <string name="search_engine">Mecanismo de pesquisa</string>
+    <string name="web_search">Pesquisar na web</string>
+    <string name="search_engine_presets">Escolher mecanismo de pesquisa…</string>
+    <string name="search_engine_home">Página de pesquisa</string>
+    <string name="search_engine_template">Modelo de URL de pesquisa</string>
+    <string name="search_engine_hint">Usado ao escolher Twig para uma pesquisa web do sistema. Sem texto, abre a página inicial; o texto da pesquisa substitui {query}. Ambos os endereços devem usar HTTP ou HTTPS.</string>
+    <string name="search_engine_reset">Restaurar padrão</string>
+    <string name="search_engine_invalid_template">Insira uma URL HTTP(S) contendo {query}</string>
+    <string name="website_copy_link">Copiar link</string>
+    <string name="website_share_link">Compartilhar link</string>
+    <string name="website_open_browser">Abrir no navegador padrão</string>
+    <string name="website_apply_to_domain">Aplicar a páginas do mesmo domínio</string>
+    <string name="restic_location_details">Detalhes do caminho</string>
+    <string name="restic_location_repository">Repositório</string>
+    <string name="restic_location_snapshot">Instantâneo</string>
 </resources>

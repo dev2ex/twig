@@ -341,6 +341,9 @@ class PaneFragment : Fragment() {
             check.setBounds(0, 0, size, size)
             b.tvSelectionCount.setCompoundDrawablesRelative(null, null, check, null)
         }
+        b.tvPath.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft && !mapMode) setPathText(viewModel.state.value.currentDir)
+        }
         b.pathBar.setOnLongClickListener { editCurrentPath() }
         val pathGestures = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -471,7 +474,7 @@ class PaneFragment : Fragment() {
 
     private fun render(s: PaneViewModel.State) {
         updateSelectionCount()
-        b.tvPath.text = s.currentDir?.let { pathLabel(it) } ?: ""
+        setPathText(s.currentDir)
         b.ivPathIcon.setImageResource(
             s.currentDir?.let { pathIcon(it) } ?: R.drawable.ic_folder,
         )
@@ -568,7 +571,17 @@ class PaneFragment : Fragment() {
 
     /** Match history and directory settings, retaining this pane's server lookup. */
     private fun pathLabel(f: XFile): String =
-        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme))
+        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme), getString(R.string.restic_latest))
+
+    private fun setPathText(file: XFile?) {
+        val full = file?.let(::pathLabel).orEmpty()
+        val location = file?.let { com.twig.app.resticLocation(it) }
+        b.tvPath.contentDescription = full
+        b.tvPath.text = location?.fitted(
+            getString(R.string.restic_latest), b.tvPath.paint,
+            (b.tvPath.width - b.tvPath.compoundPaddingLeft - b.tvPath.compoundPaddingRight).toFloat(),
+        ) ?: full
+    }
 
     /** For the host (share-target page) to display a path in the same format. */
     fun displayPath(f: XFile): String = pathLabel(f)
@@ -835,9 +848,27 @@ class PaneFragment : Fragment() {
 
     private fun jumpToHistory(e: HistoryEntry) {
         if (mapMode) exitTreemap()
+        if (e.kind == "restic" && viewModel.resticHistoryNeedsPassword(e)) {
+            promptResticPassword(e.repoPath) { password, result ->
+                pendingScrollToCurrent = true
+                if (!viewModel.revealHistory(e, password) { ok, err ->
+                    if (!ok) pendingScrollToCurrent = false
+                    result(ok, err)
+                }) {
+                    pendingScrollToCurrent = false
+                    result(false, getString(R.string.history_conn_missing))
+                }
+            }
+            return
+        }
         pendingScrollToCurrent = true
-        if (!viewModel.revealHistory(e)) {
-            pendingScrollToCurrent = false // Didn't jump — don't leave the pending-scroll state messing up subsequent actions.
+        if (!viewModel.revealHistory(e) { ok, err ->
+            if (!ok) {
+                pendingScrollToCurrent = false
+                toast(err?.takeIf { it.isNotBlank() } ?: getString(R.string.err_operation_failed))
+            }
+        }) {
+            pendingScrollToCurrent = false
             toast(getString(R.string.history_conn_missing))
         }
     }
@@ -871,7 +902,7 @@ class PaneFragment : Fragment() {
         b.map.visibility = View.VISIBLE
         b.mapStatus.visibility = View.VISIBLE
         b.map.clear()
-        b.tvPath.text = pathLabel(target)
+        setPathText(target)
         b.map.onTapTile = { e ->
             if (e.isDir) {
                 if (!e.children.isNullOrEmpty()) { mapStack.add(e); renderMap() }
@@ -1173,6 +1204,11 @@ class PaneFragment : Fragment() {
     }
 
     private fun editCurrentPath(): Boolean {
+        viewModel.state.value.currentDir?.let { com.twig.app.resticLocation(it) }?.let {
+            host?.onPaneTouched(this)
+            showResticLocation(it)
+            return true
+        }
         val target = viewModel.pathEditTarget() ?: return false
         host?.onPaneTouched(this)
         promptGoto(target.key, target.root, target.path)
@@ -1402,7 +1438,7 @@ class PaneFragment : Fragment() {
                 else DuplicateConfirmDialog.show(context, viewLifecycleOwner, pairs, names) { chosen ->
                     startDuplicate(pairs, chosen)
                 }
-            }.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            }.onFailure { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)) }
         }
     }
 
@@ -1434,7 +1470,7 @@ class PaneFragment : Fragment() {
             if (changed) {
                 adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
             }
-            result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            result.onFailure { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)) }
         }
     }
 
@@ -1703,7 +1739,7 @@ class PaneFragment : Fragment() {
     /** Start the session + pop the progress dialog; if a transfer is already running, don't steal the session (it's a singleton, see [Transfers.start]). */
     private fun launchSession(session: Transfers.Session) {
         val started = runCatching { Transfers.start(requireContext().applicationContext, session) }
-            .getOrElse { toast(it.message ?: getString(R.string.err_failed)); return }
+            .getOrElse { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)); return }
         if (!started) { toast(getString(R.string.transfer_busy)); return }
         // The session owns its source list now; dismiss the clipboard bar immediately.
         if ((session.work as? Transfers.Work.Copy)?.fromClipboard == true) FileClipboard.clear()
@@ -1823,7 +1859,7 @@ class PaneFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val destFs = FsRegistry.of(dest)
             val target = runCatching { withContext(Dispatchers.IO) { destFs.createFile(dest, name) } }
-                .getOrElse { toast(it.message ?: getString(R.string.err_failed)); return@launch }
+                .getOrElse { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)); return@launch }
             val exists = withContext(Dispatchers.IO) {
                 runCatching { destFs.exists(target) }.getOrDefault(false)
             }
@@ -2080,7 +2116,7 @@ class PaneFragment : Fragment() {
                 loading.dismiss()
                 builder.show()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            catch (e: Exception) { toast(e.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.sqlite_read_failed)) }
             finally { loading.setOnDismissListener(null); loading.dismiss() }
         }
     }
@@ -2136,7 +2172,7 @@ class PaneFragment : Fragment() {
                         }, read = reader)
                 } else SqliteCellDialog.show(requireContext(), title, value)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            catch (e: Exception) { toast(e.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.sqlite_read_failed)) }
         }
     }
 
@@ -2177,6 +2213,9 @@ class PaneFragment : Fragment() {
                 showActionMenu(requireContext(), node.label, actions)
             } else if (node.id == "websites") {
                 val actions = ArrayList<MenuAct>()
+                actions.item(getString(R.string.search_engine), R.drawable.ic_search) {
+                    WebSearch.configure(requireContext())
+                }
                 actions.item(getString(R.string.website_defaults), R.drawable.ic_edit) {
                     WebsiteDialogs.defaults(requireContext())
                 }
@@ -2784,14 +2823,28 @@ class PaneFragment : Fragment() {
                 includeFavorite = false,
             )
         }
-        val label = favoriteDisplayName(node.fav, node.conn)
+        if (node.fav.kind == "restic") {
+            actions.item(getString(R.string.restic_location_details), R.drawable.ic_info) {
+                showResticLocation(com.twig.app.resticLocation(node.fav, node.conn))
+            }
+        }
+        val label = favoriteDisplayName(node.fav, node.conn, getString(R.string.restic_latest))
         actions.item(getString(R.string.action_rename_favorite), R.drawable.ic_rename) {
             promptRenameFavorite(node.fav, label)
         }
         actions.item(getString(R.string.action_remove_favorite), R.drawable.ic_star, DANGER) {
             confirmRemoveFavorite(node.fav, label)
         }
-        showActionMenu(requireContext(), target?.name?.ifEmpty { null } ?: label, actions)
+        showActionMenu(requireContext(), if (node.fav.kind == "restic") label else target?.name?.ifEmpty { null } ?: label, actions)
+    }
+
+    private fun showResticLocation(location: com.twig.app.ResticLocation) {
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.restic_location_details)
+            .setMessage(location.details(requireContext()))
+            .setPositiveButton(R.string.dialog_ok, null)
+            .show()
+        dialog.findViewById<android.widget.TextView>(android.R.id.message)?.setTextIsSelectable(true)
     }
 
     private fun confirmRemoveFavorite(fav: com.twig.app.Favorite, label: String) {
@@ -2893,6 +2946,15 @@ class PaneFragment : Fragment() {
     }
 
     private fun promptFavoriteRestic(node: PaneViewModel.FavoriteNode) {
+        promptResticPassword(node.fav.repoPath) { password, result ->
+            viewModel.toggleFavorite(node, password, result)
+        }
+    }
+
+    private fun promptResticPassword(
+        repoPath: String,
+        unlock: (String, (Boolean, String?) -> Unit) -> Unit,
+    ) {
         val ctx = requireContext()
         val pw = EditText(ctx).apply {
             hint = getString(R.string.restic_password)
@@ -2912,9 +2974,9 @@ class PaneFragment : Fragment() {
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 val text = pw.text.toString()
                 if (text.isEmpty()) return@setPositiveButton
-                viewModel.toggleFavorite(node, text) { ok, err ->
+                unlock(text) { ok, err ->
                     if (ok) {
-                        if (save.isChecked) Prefs.setResticPassword(ctx, node.fav.repoPath, text)
+                        if (save.isChecked) Prefs.setResticPassword(ctx, repoPath, text)
                     } else {
                         toast(getString(R.string.restic_wrong_pw, err ?: ""))
                     }
@@ -3216,12 +3278,14 @@ class PaneFragment : Fragment() {
     private fun runIo(block: () -> Unit, onOk: () -> Unit) {
         viewLifecycleOwner.lifecycleScope.launch {
             val r = runCatching { withContext(Dispatchers.IO) { block() } }
-            r.fold(onSuccess = { onOk() }, onFailure = { toast(it.message ?: getString(R.string.err_failed)) })
+            r.fold(onSuccess = { onOk() }, onFailure = {
+                toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed))
+            })
         }
     }
 
     private fun toast(msg: String) =
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), msg.ifBlank { getString(R.string.err_failed) }, Toast.LENGTH_SHORT).show()
 
     override fun onPause() {
         super.onPause()

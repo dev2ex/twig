@@ -31,7 +31,7 @@ class TrashDialogs(private val ctx: Context, private val owner: LifecycleOwner, 
         setOnDismissListener { owner.lifecycle.removeObserver(observer) }
         return this
     }
-    private fun error(e: Throwable) = Toast.makeText(ctx, e.message ?: ctx.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+    private fun error(e: Throwable) = Toast.makeText(ctx, e.message?.takeIf { message -> message.isNotBlank() } ?: ctx.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
     fun show(file: XFile, extraActions: List<MenuAct> = emptyList()) {
         if (file.path == "/") {
             val actions = ArrayList<MenuAct>()

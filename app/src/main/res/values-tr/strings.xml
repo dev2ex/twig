@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">Ekran yönü sistemi izler</string>
     <string name="player_brightness">Parlaklık %1$d%%</string>
     <string name="player_volume">Ses %1$d%%</string>
-    <string name="player_muted">Ses kapatıldı</string>
-    <string name="player_unmuted">Ses açıldı</string>
+    <string name="player_audio_off">Ses parçası kapatıldı</string>
+    <string name="player_audio_on">Ses parçası açıldı</string>
     <string name="player_subtitles_on">Altyazılar açıldı</string>
     <string name="player_subtitles_off">Altyazılar kapatıldı</string>
     <string name="player_subtitle">Altyazı</string>
@@ -1246,4 +1246,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Sayılar sayısal karşılaştırılır; metin için tek tırnak kullanın. Temizlemek için boş bırakın.</string>
     <string name="sqlite_filter_operator" formatted="false">İşleç</string>
     <string name="sqlite_filter_invalid" formatted="false">&gt;= 18, = \'abc\', LIKE \'%abc%\' veya IS NULL gibi bir koşul girin.</string>
+    <string name="search_engine">Arama motoru</string>
+    <string name="web_search">Web’de ara</string>
+    <string name="search_engine_presets">Arama motoru seç…</string>
+    <string name="search_engine_home">Arama ana sayfası</string>
+    <string name="search_engine_template">Arama URL şablonu</string>
+    <string name="search_engine_hint">Sistem web araması için Twig seçildiğinde kullanılır. Boş sorgu ana sayfayı açar; arama metni {query} yerine geçer. Her iki adres de HTTP veya HTTPS kullanmalıdır.</string>
+    <string name="search_engine_reset">Varsayılana dön</string>
+    <string name="search_engine_invalid_template">{query} içeren bir HTTP(S) URL girin</string>
+    <string name="website_copy_link">Bağlantıyı kopyala</string>
+    <string name="website_share_link">Bağlantıyı paylaş</string>
+    <string name="website_open_browser">Varsayılan tarayıcıda aç</string>
+    <string name="website_apply_to_domain">Aynı alan adındaki sayfalara uygula</string>
+    <string name="restic_location_details">Yol ayrıntıları</string>
+    <string name="restic_location_repository">Depo</string>
+    <string name="restic_location_snapshot">Anlık görüntü</string>
 </resources>

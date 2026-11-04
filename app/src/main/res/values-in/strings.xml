@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">Orientasi mengikuti sistem</string>
     <string name="player_brightness">Kecerahan %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
-    <string name="player_muted">Suara dibisukan</string>
-    <string name="player_unmuted">Suara diaktifkan</string>
+    <string name="player_audio_off">Trek audio dinonaktifkan</string>
+    <string name="player_audio_on">Trek audio diaktifkan</string>
     <string name="player_subtitles_on">Subtitel diaktifkan</string>
     <string name="player_subtitles_off">Subtitel dinonaktifkan</string>
     <string name="player_subtitle">Subtitel</string>
@@ -1246,4 +1246,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Angka dibandingkan secara numerik; gunakan kutip tunggal untuk teks. Kosongkan untuk menghapus.</string>
     <string name="sqlite_filter_operator" formatted="false">Operator</string>
     <string name="sqlite_filter_invalid" formatted="false">Masukkan kondisi seperti &gt;= 18, = \'abc\', LIKE \'%abc%\' atau IS NULL.</string>
+    <string name="search_engine">Mesin pencari</string>
+    <string name="web_search">Cari di web</string>
+    <string name="search_engine_presets">Pilih mesin pencari…</string>
+    <string name="search_engine_home">Beranda pencarian</string>
+    <string name="search_engine_template">Templat URL pencarian</string>
+    <string name="search_engine_hint">Digunakan saat Twig dipilih untuk pencarian web sistem. Kueri kosong membuka beranda; teks pencarian menggantikan {query}. Kedua alamat harus menggunakan HTTP atau HTTPS.</string>
+    <string name="search_engine_reset">Pulihkan default</string>
+    <string name="search_engine_invalid_template">Masukkan URL HTTP(S) yang berisi {query}</string>
+    <string name="website_copy_link">Salin tautan</string>
+    <string name="website_share_link">Bagikan tautan</string>
+    <string name="website_open_browser">Buka di browser default</string>
+    <string name="website_apply_to_domain">Terapkan ke halaman di domain yang sama</string>
+    <string name="restic_location_details">Detail jalur</string>
+    <string name="restic_location_repository">Repositori</string>
+    <string name="restic_location_snapshot">Snapshot</string>
 </resources>

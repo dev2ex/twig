@@ -111,7 +111,7 @@ internal class WebsiteDownloads(private val activity: AppCompatActivity) {
             R.string.share_web_download, current.destination.path, FileIcons.sourceIconRes(current.destination.scheme),
             CopyEngine.Plan(current.size.coerceAtLeast(0), 1, 0))
         val started = runCatching { Transfers.start(activity.applicationContext, session) }.getOrElse {
-            Toast.makeText(activity, it.message ?: activity.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, it.message?.takeIf { message -> message.isNotBlank() } ?: activity.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
             return false
         }
         if (!started) {

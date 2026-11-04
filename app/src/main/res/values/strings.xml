@@ -239,8 +239,8 @@
     <string name="player_orientation_auto">Orientation follows system</string>
     <string name="player_brightness">Brightness %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
-    <string name="player_muted">Muted</string>
-    <string name="player_unmuted">Unmuted</string>
+    <string name="player_audio_off">Audio track off</string>
+    <string name="player_audio_on">Audio track on</string>
     <string name="player_subtitles_on">Subtitles on</string>
     <string name="player_subtitles_off">Subtitles off</string>
     <string name="player_subtitle">Subtitle</string>
@@ -1325,4 +1325,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">Numbers compare numeric values; use single quotes for text. Leave blank to clear.</string>
     <string name="sqlite_filter_operator" formatted="false">Operator</string>
     <string name="sqlite_filter_invalid" formatted="false">Enter a condition such as &gt;= 18, = \'abc\', LIKE \'%abc%\' or IS NULL.</string>
+    <string name="search_engine">Search engine</string>
+    <string name="web_search">Web search</string>
+    <string name="search_engine_presets">Choose a search engine…</string>
+    <string name="search_engine_home">Search homepage</string>
+    <string name="search_engine_template">Search URL template</string>
+    <string name="search_engine_hint">Used when Twig is selected for a system web search. An empty query opens the homepage; search text replaces {query}. Both addresses must use HTTP or HTTPS.</string>
+    <string name="search_engine_reset">Restore default</string>
+    <string name="search_engine_invalid_template">Enter an HTTP(S) URL containing {query}</string>
+    <string name="website_copy_link">Copy link</string>
+    <string name="website_share_link">Share link</string>
+    <string name="website_open_browser">Open in default browser</string>
+    <string name="website_apply_to_domain">Apply to pages on the same domain</string>
+    <string name="restic_location_details">Path details</string>
+    <string name="restic_location_repository">Repository</string>
+    <string name="restic_location_snapshot">Snapshot</string>
 </resources>

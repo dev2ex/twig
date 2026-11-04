@@ -590,6 +590,16 @@ class TerminalActivity : TwigActivity() {
         SecurityUi.gate(this) { handleIntent(intent) }
     }
 
+    override fun onActionModeStarted(mode: android.view.ActionMode) {
+        super.onActionModeStarted(mode)
+        // Termux marks its selection active only after startActionMode returns.
+        if (::b.isInitialized && b.terminal.hasFocus() && mode.type == android.view.ActionMode.TYPE_FLOATING) {
+            TerminalSelectionMenu.populate(this, mode.menu,
+                { com.termux.view.TermSelection.text(b.terminal) },
+                { b.terminal.stopTextSelectionMode() })
+        }
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         resetScreenDim(schedule = hasFocus)
@@ -1295,9 +1305,10 @@ class TerminalActivity : TwigActivity() {
         b.terminal.attachSession(t.session)
         b.terminal.post { maybeShowIme() }
         scheduleSizeSync() // attach will change this session's local emulator size to the current view size
+        // Recents uses this opaque color as the transparent terminal glyph's icon background.
         @Suppress("DEPRECATION")
         setTaskDescription(ActivityManager.TaskDescription("${getString(R.string.terminal_menu)} · ${t.title}",
-            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap))
+            ShortcutIcons.of(this, R.drawable.ic_shortcut_terminal).bitmap, Color.BLACK))
         refreshSessions()
     }
 

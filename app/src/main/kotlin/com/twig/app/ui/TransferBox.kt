@@ -2,6 +2,7 @@ package com.twig.app.ui
 
 import android.content.Context
 import android.view.LayoutInflater
+import android.view.View
 import androidx.appcompat.app.AlertDialog
 import com.twig.app.Format
 import com.twig.app.R
@@ -12,8 +13,8 @@ import com.twig.core.CopyEngine
 import com.twig.core.XFile
 
 /**
- * Progress dialog shared by copy/move/compress: current file + two progress bars +
- * remaining directories/files count + speed/ETA.
+ * Progress dialog shared by transfers: current file + progress + speed/ETA.
+ * Batches also show overall progress and remaining directories/files counts.
  *
  * **Just an observer of a [Transfers] session**, not the owner of the job: closing it
  * ("Run in background" / the screen is destroyed) only removes the observer, the
@@ -42,6 +43,8 @@ class TransferBox(
 ) : Transfers.Ui {
 
     private val pb = DialogCopyProgressBinding.inflate(inflater)
+    private val singleFile = !session.isDelete &&
+        (session.work is Transfers.Work.Download || session.work.items.singleOrNull()?.isDir == false)
     // Custom title: "Run in background" needs to sit at the right end of this title row.
     private val tb = DialogProgressTitleBinding.inflate(inflater)
     private val dialog = AlertDialog.Builder(ctx)
@@ -52,6 +55,11 @@ class TransferBox(
         .create()
 
     init {
+        if (singleFile) {
+            pb.barTotal.visibility = View.GONE
+            pb.counts.visibility = View.GONE
+            pb.barFile.isIndeterminate = session.fileSize <= 0
+        }
         if (session.isDelete) {
             pb.barFile.isIndeterminate = true
             pb.tvTotalSize.visibility = android.view.View.GONE
@@ -81,8 +89,10 @@ class TransferBox(
         if (!alive()) return
         pb.tvFile.text =
             if (s.pendingConflict != null) ctx.getString(R.string.transfer_waiting) else s.fileName
-        if (s.isShare) {
+        if (s.isShare || singleFile) {
             pb.barFile.isIndeterminate = s.fileSize <= 0
+        }
+        if (s.isShare) {
             pb.barTotal.isIndeterminate = s.plan == null || s.plan?.bytes == 0L
         }
         pb.barFile.progress = s.fileProgress

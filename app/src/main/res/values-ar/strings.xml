@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">اتجاه الشاشة حسب النظام</string>
     <string name="player_brightness">السطوع %1$d%%</string>
     <string name="player_volume">مستوى الصوت %1$d%%</string>
-    <string name="player_muted">تم كتم الصوت</string>
-    <string name="player_unmuted">تم إلغاء كتم الصوت</string>
+    <string name="player_audio_off">تم إيقاف المسار الصوتي</string>
+    <string name="player_audio_on">تم تفعيل المسار الصوتي</string>
     <string name="player_subtitles_on">تم تفعيل الترجمة</string>
     <string name="player_subtitles_off">تم إيقاف الترجمة</string>
     <string name="player_subtitle">الترجمة</string>
@@ -1250,4 +1250,19 @@
     <string name="sqlite_filter_custom_hint" formatted="false">تقارن الأرقام كقيم عددية. ضع النص بين علامتي اقتباس مفردتين. اتركه فارغًا للمسح.</string>
     <string name="sqlite_filter_operator" formatted="false">عامل المقارنة</string>
     <string name="sqlite_filter_invalid" formatted="false">أدخل شرطًا مثل &gt;= 18 أو = \'abc\' أو LIKE \'%abc%\' أو IS NULL.</string>
+    <string name="search_engine">محرك البحث</string>
+    <string name="web_search">بحث الويب</string>
+    <string name="search_engine_presets">اختيار محرك بحث…</string>
+    <string name="search_engine_home">صفحة البحث الرئيسية</string>
+    <string name="search_engine_template">قالب رابط البحث</string>
+    <string name="search_engine_hint">يُستخدم عند اختيار Twig لبحث الويب في النظام. يفتح الاستعلام الفارغ الصفحة الرئيسية؛ ويحل نص البحث محل {query}. يجب أن يستخدم العنوانان HTTP أو HTTPS.</string>
+    <string name="search_engine_reset">استعادة الافتراضي</string>
+    <string name="search_engine_invalid_template">أدخل رابط HTTP(S) يحتوي على {query}</string>
+    <string name="website_copy_link">نسخ الرابط</string>
+    <string name="website_share_link">مشاركة الرابط</string>
+    <string name="website_open_browser">فتح في المتصفح الافتراضي</string>
+    <string name="website_apply_to_domain">تطبيق على صفحات النطاق نفسه</string>
+    <string name="restic_location_details">تفاصيل المسار</string>
+    <string name="restic_location_repository">المستودع</string>
+    <string name="restic_location_snapshot">اللقطة</string>
 </resources>

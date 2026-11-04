@@ -29,11 +29,10 @@ fun formatRawLocationPath(connLabel: String, path: String, conn: SavedConnection
 }
 
 /**
- * Favourite row's "name" — the same old format as before the rename feature existed
- * (connection alias:entry name). [conn] is the favourite's connection's current saved
- * config, so we use the live alias rather than the name frozen at creation time.
+ * Favourite names follow live connection aliases for ordinary network sources. Restic
+ * prefixes the target directory or snapshot with its repository name; the subtitle adds context.
  */
-fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?): String {
+fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String {
     // ★ Slicing the last segment of path only works for sources whose path is "just a path";
     // SAF's path is an entire document URI, so slicing yields something like
     // `primary%3ADCIM%2FPhotos`, which is why the name is stored alongside when favouriting.
@@ -42,22 +41,18 @@ fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?): String {
     }
     return when (fav.kind) {
         "conn" -> "${conn?.displayLabel() ?: fav.connLabel}:$itemName"
-        "restic" -> if (fav.repoConnLabel.isEmpty()) {
-            "restic:$itemName"
-        } else {
-            "${conn?.displayLabel() ?: fav.repoConnLabel}:restic:$itemName"
-        }
+        "restic" -> resticLocation(fav, conn).favoriteName(latest)
         else -> itemName
     }
 }
 
 /** The name actually shown on a favourite row: the custom name if any, otherwise [defaultFavoriteName]. */
-fun favoriteDisplayName(fav: Favorite, conn: SavedConnection?): String =
-    fav.customLabel.ifEmpty { defaultFavoriteName(fav, conn) }
+fun favoriteDisplayName(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String =
+    fav.customLabel.ifEmpty { defaultFavoriteName(fav, conn, latest) }
 
-/** Full path shown under a favourite row (no alias; local / network both give the directly locatable full address). */
-fun favoriteFullPath(fav: Favorite, conn: SavedConnection?): String = when (fav.kind) {
-    "restic" -> "restic:" + formatRawLocationPath(fav.repoConnLabel, fav.path, conn)
+/** Favourite subtitle: full address for ordinary sources, repository/snapshot context for restic. */
+fun favoriteFullPath(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String = when (fav.kind) {
+    "restic" -> resticLocation(fav, conn).compact(latest)
     "saf" -> "saf:" + safReadablePath(fav.path)
     else -> formatRawLocationPath(fav.connLabel, fav.path, conn)
 }

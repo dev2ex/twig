@@ -1548,7 +1548,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     /** IO: descend from [root] segment by segment, producing the plan; touches no VM state. */
-    private fun planDescend(rootKey: String, root: XFile?, segs: List<String>): DescendPlan {
+    private fun planDescend(rootKey: String, root: XFile?, segs: List<String>, matchPaths: Boolean = false): DescendPlan {
         val keyPrefix = if (rootKey.startsWith(EXTERNAL_KEY_PREFIX)) EXTERNAL_KEY_PREFIX else ""
         val expand = ArrayList<Pair<String, XFile>>()
         val fetched = ArrayList<Restored>()
@@ -1574,8 +1574,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
         var focus: XFile? = null
         for ((i, s) in segs.withIndex()) {
-            val hit = kids.firstOrNull { it.name == s }
-                ?: kids.firstOrNull { it.name.equals(s, ignoreCase = true) }
+            val hit = (if (matchPaths) kids.firstOrNull { it.path.trimEnd('/').substringAfterLast('/') == s }
+                else kids.firstOrNull { it.name == s } ?: kids.firstOrNull { it.name.equals(s, ignoreCase = true) })
                 ?: throw FsException(str(R.string.err_goto_missing, s))
             if (!hit.isDir) {
                 // A file is only allowed as the last segment: stop on its directory and
@@ -1621,7 +1621,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             dir.scheme == "file" -> HistoryEntry(kind, dir.path)
             schemeToConn.containsKey(dir.scheme) ->
                 HistoryEntry(kind, dir.path, schemeToConn[dir.scheme]!!.label())
-            else -> return // Sources like archive contents / restic / SAF can't be recorded as "how to reach here" — skip.
+            schemeToRestic.containsKey(dir.scheme) && kind == "dir" -> {
+                val fav = favoriteFrom(dir) ?: return
+                HistoryEntry("restic", fav.path, repoPath = fav.repoPath,
+                    repoConnLabel = fav.repoConnLabel, snapshotLabel = fav.snapshotLabel)
+            }
+            else -> return // Other session-only sources have no persisted locator.
         }
         HistoryStore.add(getApplication(), e)
     }
@@ -1630,10 +1635,20 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * Jump to a recent location. The connection might not have been opened this session
      * yet — look up the saved connection by label, derive the deterministic scheme via
      * [Connections.schemeOf], and hand it to [revealPath], which connects on demand
-     * (it handles that itself). Returns false when the connection has been deleted,
+     * (it handles that itself). Restic restores its repository chain and then descends by
+     * snapshot/path identity; unlock/listing errors go to [onResult]. Returns false when the connection has been deleted,
      * so the UI can show a hint.
      */
-    fun revealHistory(e: HistoryEntry): Boolean {
+    fun revealHistory(
+        e: HistoryEntry,
+        password: String? = null,
+        onResult: (Boolean, String?) -> Unit = { _, _ -> },
+    ): Boolean {
+        if (e.kind == "restic") {
+            if (e.repoConnLabel.isNotEmpty() && connFor(e.repoConnLabel) == null) return false
+            revealResticHistory(e, password, onResult)
+            return true
+        }
         val scheme = if (e.connLabel.isEmpty()) {
             "file"
         } else {
@@ -1643,6 +1658,56 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
         revealPath(XFile(scheme, e.path, isDir = true), openGit = e.kind == "git")
         return true
+    }
+
+    /** Whether a recent repository needs an unlock prompt before starting any network IO. */
+    fun resticHistoryNeedsPassword(e: HistoryEntry): Boolean {
+        val repoScheme = if (e.repoConnLabel.isEmpty()) "file" else
+            connFor(e.repoConnLabel)?.let { Connections.schemeOf(it) } ?: return false
+        return !resticScheme.containsKey("restic:${fileKey(XFile(repoScheme, e.repoPath, true))}") &&
+            Prefs.resticPassword(getApplication(), e.repoPath) == null
+    }
+
+    private fun revealResticHistory(e: HistoryEntry, password: String?, onResult: (Boolean, String?) -> Unit) {
+        val request = ++revealSequence
+        val repoScheme = if (e.repoConnLabel.isEmpty()) "file" else Connections.schemeOf(connFor(e.repoConnLabel)!!)
+        val repoDir = XFile(repoScheme, e.repoPath, true)
+        val nodeKey = "restic:${fileKey(repoDir)}"
+        revealLoadingKey = if (_state.value.rows.any { it.key == nodeKey }) nodeKey else
+            if (e.repoConnLabel.isNotEmpty()) "s:${e.repoConnLabel}" else fileKey(repoDir)
+        if (e.repoConnLabel.isNotEmpty()) connFor(e.repoConnLabel)?.let { expanded.add("g:${groupIdFor(it)}") }
+        val loadingKey = revealLoadingKey!!
+        claimExpand(loadingKey)
+        rebuild()
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(io) {
+                    val repositoryPlan = planReveal(repoDir, false)
+                    val (_, scheme) = resticLocationScheme(e.resticFavorite(), password)
+                    val root = XFile(scheme, "/", true)
+                    val descend = planDescend(nodeKey, root, e.path.trim('/').split('/').filter { it.isNotEmpty() }, matchPaths = true)
+                    repositoryPlan to descend
+                }
+            }
+            if (request != revealSequence) return@launch
+            revealLoadingKey = null
+            if (!landExpand(loadingKey)) { rebuild(); return@launch }
+            result.fold(
+                { (repositoryPlan, descend) ->
+                    applyReveal(repositoryPlan)
+                    applyDescend(repositoryPlan.keep + nodeKey, descend)
+                    currentDir = descend.target
+                    currentKey = descend.targetKey
+                    scrollKey = descend.targetKey
+                    rebuild()
+                    if (_state.value.rows.none { it.key == descend.targetKey }) {
+                        mountPinnedDirectory(descend.target, Format.pathLabel(descend.target, latest = str(R.string.restic_latest)))
+                    }
+                    onResult(true, null)
+                },
+                { rebuild(); onResult(false, it.message) },
+            )
+        }
     }
 
     /**
@@ -2550,7 +2615,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             com.twig.app.ResticCache.of(getApplication()),
         )
         val s = "restic" + Integer.toHexString(nodeKey.hashCode())
-        FsRegistry.register(ResticFileSystem(repo, s))
+        FsRegistry.register(ResticFileSystem(repo, s, repoDir))
         resticScheme[nodeKey] = s
         schemeToRestic[s] = repoDir
         return s
@@ -2662,6 +2727,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     path = file.path,
                     repoPath = repoDir.path,
                     repoConnLabel = repoConn,
+                    snapshotLabel = if (file.path.trim('/').substringBefore('/') == "latest") "" else
+                        (FsRegistry.of(file) as? ResticFileSystem)?.listedSnapshot(file.path)
+                            ?.let { com.twig.app.resticSnapshotLabel(it) }.orEmpty(),
                 )
             }
             else -> null
@@ -2824,6 +2892,19 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Shared persisted repository locator for favorites and Recent; an open session needs no password. */
+    private fun resticLocationScheme(fav: Favorite, password: String?): Pair<XFile, String> {
+        val repoScheme = if (fav.repoConnLabel.isEmpty()) "file" else {
+            val conn = connFor(fav.repoConnLabel) ?: throw FsException(str(R.string.err_repo_conn_deleted))
+            schemeForConn(conn)
+        }
+        val repoDir = XFile(repoScheme, fav.repoPath, true)
+        val nodeKey = "restic:${fileKey(repoDir)}"
+        val pw = password ?: Prefs.resticPassword(getApplication(), fav.repoPath)
+            ?: if (resticScheme.containsKey(nodeKey)) "" else throw FsException(str(R.string.err_need_restic_password))
+        return repoDir to schemeForRestic(repoDir, pw)
+    }
+
     private fun resolveFavorite(fav: Favorite, password: String?): Restored {
         var extra: Pair<String, List<XFile>>? = null
         val scheme = when (fav.kind) {
@@ -2834,18 +2915,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 schemeForConn(conn)
             }
             "restic" -> {
-                // First, make sure the repo's underlying source is reachable (local or some network connection).
-                val repoScheme = if (fav.repoConnLabel.isEmpty()) {
-                    "file"
-                } else {
-                    val conn = ConnectionStore.all(getApplication()).firstOrNull { it.label() == fav.repoConnLabel }
-                        ?: throw com.twig.core.FsException(str(R.string.err_repo_conn_deleted))
-                    schemeForConn(conn)
-                }
-                val repoDir = XFile(repoScheme, fav.repoPath, isDir = true)
-                val pw = password ?: Prefs.resticPassword(getApplication(), fav.repoPath)
-                    ?: throw com.twig.core.FsException(str(R.string.err_need_restic_password))
-                val s = schemeForRestic(repoDir, pw)
+                val (repoDir, s) = resticLocationScheme(fav, password)
                 // Favorites take this independent unlock path — they don't go through
                 // unlockRestic() in the tree's normal restic-node expansion, so the
                 // snapshot-list cache (nodeKey) doesn't get filled in as a side effect.

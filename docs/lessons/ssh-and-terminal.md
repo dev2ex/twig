@@ -70,3 +70,15 @@
   the status code (`isServerAnswer`). Writes go through `mutate`, which after reconnecting
   first checks whether the end state is already there. The test drops the session from a
   MINA `SftpEventListener.created` callback — the only reliable way to lose exactly the reply.
+
+- **SFTP error descriptions may be empty even when the status is meaningful**
+  (2026-11-04, error-reporting audit). SSHJ 0.38 uses the server's SFTP v3 description
+  verbatim in `SFTPException.message`; it does not add `statusCode`. A blank reply
+  therefore lost the useful error in the UI. `retry` / `mutate` now fill blank
+  descriptions with the status while preserving the exception type and original cause.
+  Keep status-based retry classification and missing-entry handling intact; replacing
+  these exceptions with a generic `FsException` would break those callers. If reconnect
+  or the second attempt fails, retain the first exception as suppressed diagnostic
+  context. The embedded MINA tests send empty descriptions for read/open, rename and
+  mkdir failures and verify that server errors never reconnect; another test rejects
+  reauthentication after a dropped write reply and checks the retained first failure.
