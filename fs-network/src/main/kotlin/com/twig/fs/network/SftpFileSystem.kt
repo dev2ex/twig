@@ -253,15 +253,20 @@ class SftpFileSystem(
      * the persistent connection). For reads only — see [mutate] for writes.
      *
      * ★ A server's answer ([SFTPException]: no such file, permission denied, …) is final and
-     * is rethrown as is. Treating it like a dropped connection tore the session down and
+     * is reported without retrying, using its status when its description is blank.
+     * Treating it like a dropped connection tore the session down and
      * asked again, doubling the latency of every failure for the same answer.
      */
     private fun <T> retry(op: (SFTPClient) -> T): T = try {
         op(cli())
     } catch (e: Exception) {
-        if (e.isServerAnswer()) throw e
+        if (e.isServerAnswer()) throw e.reportSftpFailure()
         disconnect()
-        op(cli())
+        try {
+            op(cli())
+        } catch (retry: Exception) {
+            throw retry.reportSftpFailure(e)
+        }
     }
 
     /**
@@ -271,6 +276,17 @@ class SftpFileSystem(
      */
     private fun Exception.isServerAnswer(): Boolean =
         this is SFTPException && statusCode !in CONNECTION_STATUSES
+
+    private fun Exception.reportSftpFailure(previous: Exception? = null): Exception {
+        // SSHJ uses the server's description verbatim, even when only a status was sent.
+        val reported = if (this is SFTPException && message.isNullOrBlank()) {
+            SFTPException(statusCode, "SFTP operation failed: $statusCode").apply {
+                initCause(this@reportSftpFailure)
+            }
+        } else this
+        if (previous != null && previous !== reported) reported.addSuppressed(previous)
+        return reported
+    }
 
     /**
      * A write (mkdir / rm / rename) with the same reconnect as [retry], plus one question
@@ -283,11 +299,15 @@ class SftpFileSystem(
         try {
             op(cli())
         } catch (e: Exception) {
-            if (e.isServerAnswer()) throw e
+            if (e.isServerAnswer()) throw e.reportSftpFailure()
             disconnect()
-            val c = cli()
-            if (runCatching { landed(c) }.getOrDefault(false)) return
-            op(c)
+            try {
+                val c = cli()
+                if (runCatching { landed(c) }.getOrDefault(false)) return
+                op(c)
+            } catch (retry: Exception) {
+                throw retry.reportSftpFailure(e)
+            }
         }
     }
 
