@@ -46,7 +46,7 @@ object DeleteUi {
             val store = TrashStore(app)
             val planned = withContext(Dispatchers.IO) { runCatching { store.plan(files) } }
             val plan = planned.getOrElse {
-                Toast.makeText(context, it.message ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(context, it.message?.takeIf { message -> message.isNotBlank() } ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
                 return@launch
             }
             if (plan.isEmpty()) return@launch
@@ -95,7 +95,7 @@ object DeleteUi {
             CopyEngine.Plan(0, work.items.count { !it.isDir }, work.items.count { it.isDir }),
         )
         val started = runCatching { Transfers.start(app, session) }.getOrElse {
-            Toast.makeText(context, it.message ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+            Toast.makeText(context, it.message?.takeIf { message -> message.isNotBlank() } ?: context.getString(R.string.err_failed), Toast.LENGTH_LONG).show()
             return
         }
         if (!started) {

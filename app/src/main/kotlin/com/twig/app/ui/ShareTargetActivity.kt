@@ -211,7 +211,7 @@ class ShareTargetActivity : TwigActivity(), PaneFragment.Host {
         )
         val started = runCatching { Transfers.start(applicationContext, session) }
             .getOrElse {
-                Toast.makeText(this, it.message ?: getString(R.string.err_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed), Toast.LENGTH_LONG).show()
                 return
             }
         if (!started) {

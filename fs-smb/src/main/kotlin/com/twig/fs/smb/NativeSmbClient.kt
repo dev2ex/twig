@@ -164,9 +164,9 @@ class NativeSmbClient : AutoCloseable {
 
     fun list(path: String): List<Entry> = exec {
         ensureConnected()
-        var raw = nativeListDirectory(handle, path)
-        if (raw == null && reconnect()) raw = nativeListDirectory(handle, path)
-        val lines = raw ?: throw FsException("List failed: ${errText()}")
+        val lines = request("SMB list ($path)", { it == null }) {
+            nativeListDirectory(handle, path)
+        }!!
         lines.map { line ->
             val p = line.split('\t')
             Entry(
@@ -188,9 +188,9 @@ class NativeSmbClient : AutoCloseable {
      */
     fun listShares(): List<Share> = exec {
         ensureConnected()
-        var raw = nativeListShares(handle)
-        if (raw == null && reconnect()) raw = nativeListShares(handle)
-        val lines = raw ?: throw FsException("Share enumeration failed: ${errText()}")
+        val lines = request("SMB share enumeration", { it == null }) {
+            nativeListShares(handle)
+        }!!
         lines.mapNotNull { line ->
             val p = line.split('\t')
             val name = p.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
@@ -237,13 +237,9 @@ class NativeSmbClient : AutoCloseable {
     fun openOutput(path: String, append: Boolean = false): OutputStream {
         val fh = exec {
             ensureConnected()
-            var f = nativeOpenWrite(handle, path, append)
-            // Reconnecting won't help when the server explicitly rejects us (e.g.
-            // insufficient permissions); it would just disconnect once for nothing and
-            // force every subsequent operation to redo the handshake. Only a suspected
-            // drop is worth a reconnect-and-retry.
-            if (f == 0L && !deniedByServer() && reconnect()) f = nativeOpenWrite(handle, path, append)
-            f
+            request("SMB open for write ($path)", { it == 0L }) {
+                nativeOpenWrite(handle, path, append)
+            }
         }
         if (fh == 0L) throw FsException("Open for write failed ($path): ${errText()}")
         val owner = handle // Same as openInput: prevent using an old fh with the new context across a reconnect
@@ -271,9 +267,7 @@ class NativeSmbClient : AutoCloseable {
     // Positioned read (for media-player random seek):
     fun openReadHandle(path: String): Long = exec {
         ensureConnected()
-        var fh = nativeOpenFile(handle, path)
-        if (fh == 0L && reconnect()) fh = nativeOpenFile(handle, path)
-        fh
+        request("SMB open ($path)", { it == 0L }) { nativeOpenFile(handle, path) }
     }
 
     /**
@@ -303,16 +297,17 @@ class NativeSmbClient : AutoCloseable {
 
     fun closeHandle(fh: Long) = exec { if (fh != 0L && handle != 0L) nativeCloseFile(handle, fh) }
 
-    fun mkdir(path: String) = call { nativeMkdir(handle, path) }
-    fun delete(path: String, isDir: Boolean) = call { nativeDelete(handle, path, isDir) }
-    fun rename(from: String, to: String) = call { nativeRename(handle, from, to) }
+    fun mkdir(path: String) = call("SMB mkdir ($path)") { nativeMkdir(handle, path) }
+    fun delete(path: String, isDir: Boolean) = call("SMB delete ($path)") { nativeDelete(handle, path, isDir) }
+    fun rename(from: String, to: String) = call("SMB rename ($from -> $to)") { nativeRename(handle, from, to) }
 
-    private inline fun call(crossinline op: () -> Int) = exec {
+    private fun call(operation: String, op: () -> Int) = exec {
         ensureConnected()
-        if (op() < 0) {
-            if (!reconnect() || op() < 0) throw FsException(errText())
-        }
+        request(operation, { it < 0 }, op)
     }
+
+    private fun <T> request(operation: String, failed: (T) -> Boolean, op: () -> T): T =
+        smbRequest(operation, failed, ::errText, ::deniedByServer, ::reconnect, op)
 
     // ── JNI ──
     private external fun nativeConnect(host: String, share: String, user: String, password: String, domain: String): Long

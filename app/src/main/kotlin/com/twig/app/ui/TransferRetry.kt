@@ -48,7 +48,7 @@ internal fun showTransferRetry(
                         dialog.dismiss()
                         onStarted()
                     } else Toast.makeText(ctx, R.string.transfer_busy, Toast.LENGTH_SHORT).show()
-                }.onFailure { Toast.makeText(ctx, it.message, Toast.LENGTH_LONG).show() }
+                }.onFailure { Toast.makeText(ctx, it.message?.takeIf { message -> message.isNotBlank() } ?: ctx.getString(R.string.err_failed), Toast.LENGTH_LONG).show() }
         }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { continueTransfer(false) }
         if (failed != null) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { continueTransfer(true) }

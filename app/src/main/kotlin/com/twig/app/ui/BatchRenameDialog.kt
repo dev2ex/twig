@@ -351,7 +351,7 @@ internal object BatchRenameDialog {
                     if (completed > 0) onChanged()
                     val message = result.fold(
                         onSuccess = { context.getString(R.string.batch_done, completed) },
-                        onFailure = { context.getString(R.string.batch_failed, completed, it.message ?: context.getString(R.string.err_failed)) },
+                        onFailure = { context.getString(R.string.batch_failed, completed, it.message?.takeIf { message -> message.isNotBlank() } ?: context.getString(R.string.err_failed)) },
                     )
                     if (result.isFailure && completed == 0) {
                         busy = false

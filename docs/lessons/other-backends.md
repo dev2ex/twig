@@ -81,6 +81,22 @@
   crash (hit while reading thumbnails concurrently).
 - **zstd/aircompressor**: uses `Unsafe`, which is nominally risky on newer devices; keep an eye on
   restic/zstd when changing test hardware.
+- **SMB rename failures must publish the compound's first NT status** (2026-11-04).
+  Renaming a physical restic repository directory over SMB failed with an empty toast.
+  The vendored libsmb2 rename callbacks accumulated a failure status but never called
+  `smb2_set_nterror`, so Kotlin could throw `FsException("")`; the UI's null-only
+  fallback then displayed nothing. Publish the first failing CREATE / SET_INFO / CLOSE
+  status when the compound completes, preserving it over later invalid-handle replies.
+  Mutation errors also need an operation/code fallback, and reconnect failure must not
+  replace the original error. Listings and file opens share the same retry handling.
+  Do not reconnect for recognized permission/sharing denials. Create/delete compounds
+  must likewise retain the CREATE failure over the following CLOSE status; previously
+  the error text and returned errno could describe different failures, while a CLOSE-only
+  failure supplied no text. UI fallbacks must handle blank as well as null messages.
+  `python3 tools/test_smb_rename.py` exercises the real native callbacks, including
+  rename/create/delete failures, name collisions and successful requests. `SmbRequestTest`
+  covers retries, denials and missing error text. This fixes diagnosis; the original server's
+  reason for rejecting the directory rename still requires reproduction.
 - **Do not SSH into servers to read logs**: automatic mode blocks "remote shell reads against
   unauthorized hosts". If a remote diagnosis is needed, ask the user to run it.
 

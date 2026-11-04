@@ -1402,7 +1402,7 @@ class PaneFragment : Fragment() {
                 else DuplicateConfirmDialog.show(context, viewLifecycleOwner, pairs, names) { chosen ->
                     startDuplicate(pairs, chosen)
                 }
-            }.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            }.onFailure { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)) }
         }
     }
 
@@ -1434,7 +1434,7 @@ class PaneFragment : Fragment() {
             if (changed) {
                 adapter.clearSelection(); clearMapSelection(); viewModel.refresh(); host?.refreshTrees()
             }
-            result.onFailure { toast(it.message ?: getString(R.string.err_failed)) }
+            result.onFailure { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)) }
         }
     }
 
@@ -1703,7 +1703,7 @@ class PaneFragment : Fragment() {
     /** Start the session + pop the progress dialog; if a transfer is already running, don't steal the session (it's a singleton, see [Transfers.start]). */
     private fun launchSession(session: Transfers.Session) {
         val started = runCatching { Transfers.start(requireContext().applicationContext, session) }
-            .getOrElse { toast(it.message ?: getString(R.string.err_failed)); return }
+            .getOrElse { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)); return }
         if (!started) { toast(getString(R.string.transfer_busy)); return }
         // The session owns its source list now; dismiss the clipboard bar immediately.
         if ((session.work as? Transfers.Work.Copy)?.fromClipboard == true) FileClipboard.clear()
@@ -1823,7 +1823,7 @@ class PaneFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             val destFs = FsRegistry.of(dest)
             val target = runCatching { withContext(Dispatchers.IO) { destFs.createFile(dest, name) } }
-                .getOrElse { toast(it.message ?: getString(R.string.err_failed)); return@launch }
+                .getOrElse { toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed)); return@launch }
             val exists = withContext(Dispatchers.IO) {
                 runCatching { destFs.exists(target) }.getOrDefault(false)
             }
@@ -2080,7 +2080,7 @@ class PaneFragment : Fragment() {
                 loading.dismiss()
                 builder.show()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            catch (e: Exception) { toast(e.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.sqlite_read_failed)) }
             finally { loading.setOnDismissListener(null); loading.dismiss() }
         }
     }
@@ -2136,7 +2136,7 @@ class PaneFragment : Fragment() {
                         }, read = reader)
                 } else SqliteCellDialog.show(requireContext(), title, value)
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
-            catch (e: Exception) { toast(e.message ?: getString(R.string.sqlite_read_failed)) }
+            catch (e: Exception) { toast(e.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.sqlite_read_failed)) }
         }
     }
 
@@ -3219,12 +3219,14 @@ class PaneFragment : Fragment() {
     private fun runIo(block: () -> Unit, onOk: () -> Unit) {
         viewLifecycleOwner.lifecycleScope.launch {
             val r = runCatching { withContext(Dispatchers.IO) { block() } }
-            r.fold(onSuccess = { onOk() }, onFailure = { toast(it.message ?: getString(R.string.err_failed)) })
+            r.fold(onSuccess = { onOk() }, onFailure = {
+                toast(it.message?.takeIf { message -> message.isNotBlank() } ?: getString(R.string.err_failed))
+            })
         }
     }
 
     private fun toast(msg: String) =
-        Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), msg.ifBlank { getString(R.string.err_failed) }, Toast.LENGTH_SHORT).show()
 
     override fun onPause() {
         super.onPause()

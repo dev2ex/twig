@@ -123,7 +123,7 @@ internal class SaveAsDialog private constructor(caller: ActivityResultCaller,
                 if (isActive) Toast.makeText(context, R.string.transfer_failed, Toast.LENGTH_LONG).show()
                 throw e
             } catch (e: Exception) {
-                Toast.makeText(context, e.message ?: context.getString(R.string.transfer_failed), Toast.LENGTH_LONG).show()
+                Toast.makeText(context, e.message?.takeIf { message -> message.isNotBlank() } ?: context.getString(R.string.transfer_failed), Toast.LENGTH_LONG).show()
             } finally {
                 dialog.dismiss()
                 if (progress === dialog) progress = null

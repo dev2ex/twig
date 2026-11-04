@@ -1723,6 +1723,7 @@ smb2_lseek(struct smb2_context *smb2, struct smb2fh *fh,
 struct create_cb_data {
         smb2_command_cb cb;
         void *cb_data;
+        uint32_t status;
 };
 
 static void
@@ -1731,11 +1732,16 @@ create_cb_2(struct smb2_context *smb2, int status,
 {
         struct create_cb_data *create_data = private_data;
 
-        if (status != SMB2_STATUS_SUCCESS) {
-                status = -nterror_to_errno(status);
+        if (create_data->status == SMB2_STATUS_SUCCESS) {
+                create_data->status = status;
+        }
+        if (create_data->status != SMB2_STATUS_SUCCESS) {
+                smb2_set_nterror(smb2, create_data->status,
+                                 "Create/delete failed with (0x%08x) %s.",
+                                 create_data->status, nterror_to_str(create_data->status));
         }
 
-        create_data->cb(smb2, status, NULL, create_data->cb_data);
+        create_data->cb(smb2, -nterror_to_errno(create_data->status), NULL, create_data->cb_data);
         free(create_data);
 }
 
@@ -1743,10 +1749,8 @@ static void
 create_cb_1(struct smb2_context *smb2, int status,
             void *command_data, void *private_data)
 {
-        if (status != SMB2_STATUS_SUCCESS) {
-                smb2_set_error(smb2, "Create failed with status %s.", nterror_to_str(status));
-                return;
-        }
+        struct create_cb_data *create_data = private_data;
+        create_data->status = status;
 }
 
 static int
@@ -2321,6 +2325,14 @@ rename_cb_3(struct smb2_context *smb2, int status,
 
         if (rename_data->status == SMB2_STATUS_SUCCESS) {
                 rename_data->status = status;
+        }
+
+        /* The compound's later replies must not hide its first failure. */
+        if (rename_data->status != SMB2_STATUS_SUCCESS) {
+                smb2_set_nterror(smb2, rename_data->status,
+                                 "Rename failed with (0x%08x) %s.",
+                                 rename_data->status,
+                                 nterror_to_str(rename_data->status));
         }
 
         rename_data->cb(smb2, -nterror_to_errno(rename_data->status),
