@@ -61,6 +61,19 @@ class ResticRepoTest {
     }
 
     @Test
+    fun displayMetadataUsesOnlyPreviouslyListedSnapshots() {
+        val rfs = ResticFileSystem(open("test123"), "restic", repoDir)
+        assertEquals(repoDir, rfs.repository)
+        assertNull(rfs.listedSnapshot("/latest/tmp"))
+        val snapshot = rfs.list(rfs.root()).first { it.path != "/latest" }
+        val metadata = rfs.listedSnapshot(snapshot.path + "/tmp")!!
+        assertEquals("testhost", metadata.hostname)
+        assertEquals(metadata, rfs.listedSnapshot("/latest/tmp"))
+        assertNull(rfs.listedSnapshot("/unknown/tmp"))
+        assertNull(rfs.listedSnapshot("/"))
+    }
+
+    @Test
     fun walksTreeViaFileSystem() {
         val repo = open("test123")
         val rfs = ResticFileSystem(repo, "restic")

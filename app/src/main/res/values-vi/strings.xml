@@ -1256,4 +1256,7 @@
     <string name="website_share_link">Chia sẻ liên kết</string>
     <string name="website_open_browser">Mở trong trình duyệt mặc định</string>
     <string name="website_apply_to_domain">Áp dụng cho trang cùng tên miền</string>
+    <string name="restic_location_details">Chi tiết đường dẫn</string>
+    <string name="restic_location_repository">Kho lưu trữ</string>
+    <string name="restic_location_snapshot">Bản chụp</string>
 </resources>

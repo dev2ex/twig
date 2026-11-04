@@ -1257,4 +1257,7 @@
     <string name="website_share_link">링크 공유</string>
     <string name="website_open_browser">기본 브라우저에서 열기</string>
     <string name="website_apply_to_domain">같은 도메인의 페이지에 적용</string>
+    <string name="restic_location_details">경로 상세 정보</string>
+    <string name="restic_location_repository">저장소</string>
+    <string name="restic_location_snapshot">스냅샷</string>
 </resources>

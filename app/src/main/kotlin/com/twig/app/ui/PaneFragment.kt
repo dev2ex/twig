@@ -341,6 +341,9 @@ class PaneFragment : Fragment() {
             check.setBounds(0, 0, size, size)
             b.tvSelectionCount.setCompoundDrawablesRelative(null, null, check, null)
         }
+        b.tvPath.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft && !mapMode) setPathText(viewModel.state.value.currentDir)
+        }
         b.pathBar.setOnLongClickListener { editCurrentPath() }
         val pathGestures = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
@@ -471,7 +474,7 @@ class PaneFragment : Fragment() {
 
     private fun render(s: PaneViewModel.State) {
         updateSelectionCount()
-        b.tvPath.text = s.currentDir?.let { pathLabel(it) } ?: ""
+        setPathText(s.currentDir)
         b.ivPathIcon.setImageResource(
             s.currentDir?.let { pathIcon(it) } ?: R.drawable.ic_folder,
         )
@@ -568,7 +571,17 @@ class PaneFragment : Fragment() {
 
     /** Match history and directory settings, retaining this pane's server lookup. */
     private fun pathLabel(f: XFile): String =
-        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme))
+        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme), getString(R.string.restic_latest))
+
+    private fun setPathText(file: XFile?) {
+        val full = file?.let(::pathLabel).orEmpty()
+        val location = file?.let { com.twig.app.resticLocation(it) }
+        b.tvPath.contentDescription = full
+        b.tvPath.text = location?.fitted(
+            getString(R.string.restic_latest), b.tvPath.paint,
+            (b.tvPath.width - b.tvPath.compoundPaddingLeft - b.tvPath.compoundPaddingRight).toFloat(),
+        ) ?: full
+    }
 
     /** For the host (share-target page) to display a path in the same format. */
     fun displayPath(f: XFile): String = pathLabel(f)
@@ -871,7 +884,7 @@ class PaneFragment : Fragment() {
         b.map.visibility = View.VISIBLE
         b.mapStatus.visibility = View.VISIBLE
         b.map.clear()
-        b.tvPath.text = pathLabel(target)
+        setPathText(target)
         b.map.onTapTile = { e ->
             if (e.isDir) {
                 if (!e.children.isNullOrEmpty()) { mapStack.add(e); renderMap() }
@@ -1173,6 +1186,11 @@ class PaneFragment : Fragment() {
     }
 
     private fun editCurrentPath(): Boolean {
+        viewModel.state.value.currentDir?.let { com.twig.app.resticLocation(it) }?.let {
+            host?.onPaneTouched(this)
+            showResticLocation(it)
+            return true
+        }
         val target = viewModel.pathEditTarget() ?: return false
         host?.onPaneTouched(this)
         promptGoto(target.key, target.root, target.path)
@@ -2787,14 +2805,28 @@ class PaneFragment : Fragment() {
                 includeFavorite = false,
             )
         }
-        val label = favoriteDisplayName(node.fav, node.conn)
+        if (node.fav.kind == "restic") {
+            actions.item(getString(R.string.restic_location_details), R.drawable.ic_info) {
+                showResticLocation(com.twig.app.resticLocation(node.fav, node.conn))
+            }
+        }
+        val label = favoriteDisplayName(node.fav, node.conn, getString(R.string.restic_latest))
         actions.item(getString(R.string.action_rename_favorite), R.drawable.ic_rename) {
             promptRenameFavorite(node.fav, label)
         }
         actions.item(getString(R.string.action_remove_favorite), R.drawable.ic_star, DANGER) {
             confirmRemoveFavorite(node.fav, label)
         }
-        showActionMenu(requireContext(), target?.name?.ifEmpty { null } ?: label, actions)
+        showActionMenu(requireContext(), if (node.fav.kind == "restic") label else target?.name?.ifEmpty { null } ?: label, actions)
+    }
+
+    private fun showResticLocation(location: com.twig.app.ResticLocation) {
+        val dialog = AlertDialog.Builder(requireContext())
+            .setTitle(R.string.restic_location_details)
+            .setMessage(location.details(requireContext()))
+            .setPositiveButton(R.string.dialog_ok, null)
+            .show()
+        dialog.findViewById<android.widget.TextView>(android.R.id.message)?.setTextIsSelectable(true)
     }
 
     private fun confirmRemoveFavorite(fav: com.twig.app.Favorite, label: String) {

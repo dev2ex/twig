@@ -1257,4 +1257,7 @@
     <string name="website_share_link">リンクを共有</string>
     <string name="website_open_browser">既定のブラウザで開く</string>
     <string name="website_apply_to_domain">同じドメインのページに適用</string>
+    <string name="restic_location_details">パスの詳細</string>
+    <string name="restic_location_repository">リポジトリ</string>
+    <string name="restic_location_snapshot">スナップショット</string>
 </resources>

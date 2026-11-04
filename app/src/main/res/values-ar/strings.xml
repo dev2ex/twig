@@ -1261,4 +1261,7 @@
     <string name="website_share_link">مشاركة الرابط</string>
     <string name="website_open_browser">فتح في المتصفح الافتراضي</string>
     <string name="website_apply_to_domain">تطبيق على صفحات النطاق نفسه</string>
+    <string name="restic_location_details">تفاصيل المسار</string>
+    <string name="restic_location_repository">المستودع</string>
+    <string name="restic_location_snapshot">اللقطة</string>
 </resources>

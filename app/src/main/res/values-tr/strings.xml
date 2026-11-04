@@ -1257,4 +1257,7 @@
     <string name="website_share_link">Bağlantıyı paylaş</string>
     <string name="website_open_browser">Varsayılan tarayıcıda aç</string>
     <string name="website_apply_to_domain">Aynı alan adındaki sayfalara uygula</string>
+    <string name="restic_location_details">Yol ayrıntıları</string>
+    <string name="restic_location_repository">Depo</string>
+    <string name="restic_location_snapshot">Anlık görüntü</string>
 </resources>

@@ -1287,4 +1287,7 @@
     <string name="website_share_link">分享链接</string>
     <string name="website_open_browser">在默认浏览器中打开</string>
     <string name="website_apply_to_domain">应用到同域名页面</string>
+    <string name="restic_location_details">路径详情</string>
+    <string name="restic_location_repository">仓库</string>
+    <string name="restic_location_snapshot">快照</string>
 </resources>

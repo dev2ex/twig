@@ -1335,4 +1335,7 @@
     <string name="website_share_link">Share link</string>
     <string name="website_open_browser">Open in default browser</string>
     <string name="website_apply_to_domain">Apply to pages on the same domain</string>
+    <string name="restic_location_details">Path details</string>
+    <string name="restic_location_repository">Repository</string>
+    <string name="restic_location_snapshot">Snapshot</string>
 </resources>

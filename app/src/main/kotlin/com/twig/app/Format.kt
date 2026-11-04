@@ -99,14 +99,18 @@ object Format {
     fun pathLabel(
         f: com.twig.core.XFile,
         conn: SavedConnection? = Connections.ofScheme(f.scheme),
-    ): String = when {
-        f.scheme == "file" -> f.path
-        f.scheme == "saf" -> f.name
-        conn != null -> formatLocationPath(conn.label(), f.path, conn)
-        else -> {
-            // Virtual sources have a path but no server authority.
-            val path = if (f.path.startsWith("/")) f.path else "/${f.path}"
-            "${schemeLabel(f.scheme)}:$path"
+        latest: String = "latest",
+    ): String {
+        resticLocation(f)?.let { return it.compact(latest) }
+        return when {
+            f.scheme == "file" -> f.path
+            f.scheme == "saf" -> f.name
+            conn != null -> formatLocationPath(conn.label(), f.path, conn)
+            else -> {
+                // Virtual sources have a path but no server authority.
+                val path = if (f.path.startsWith("/")) f.path else "/${f.path}"
+                "${schemeLabel(f.scheme)}:$path"
+            }
         }
     }
 }

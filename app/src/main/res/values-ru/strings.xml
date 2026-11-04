@@ -1293,4 +1293,7 @@
     <string name="website_share_link">Поделиться ссылкой</string>
     <string name="website_open_browser">Открыть в браузере по умолчанию</string>
     <string name="website_apply_to_domain">Применять к страницам того же домена</string>
+    <string name="restic_location_details">Сведения о пути</string>
+    <string name="restic_location_repository">Репозиторий</string>
+    <string name="restic_location_snapshot">Снимок</string>
 </resources>

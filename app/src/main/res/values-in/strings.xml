@@ -1257,4 +1257,7 @@
     <string name="website_share_link">Bagikan tautan</string>
     <string name="website_open_browser">Buka di browser default</string>
     <string name="website_apply_to_domain">Terapkan ke halaman di domain yang sama</string>
+    <string name="restic_location_details">Detail jalur</string>
+    <string name="restic_location_repository">Repositori</string>
+    <string name="restic_location_snapshot">Snapshot</string>
 </resources>

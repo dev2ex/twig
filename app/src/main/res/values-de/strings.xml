@@ -1257,4 +1257,7 @@
     <string name="website_share_link">Link teilen</string>
     <string name="website_open_browser">Im Standardbrowser öffnen</string>
     <string name="website_apply_to_domain">Auf Seiten derselben Domain anwenden</string>
+    <string name="restic_location_details">Pfaddetails</string>
+    <string name="restic_location_repository">Repository</string>
+    <string name="restic_location_snapshot">Schnappschuss</string>
 </resources>

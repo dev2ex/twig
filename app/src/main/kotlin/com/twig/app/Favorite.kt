@@ -37,6 +37,8 @@ data class Favorite(
      * very meaning of "rename": the user has taken ownership of the name.
      */
     val customLabel: String = "",
+    /** Frozen display metadata for a fixed restic snapshot; latest stays a dynamic alias. */
+    val snapshotLabel: String = "",
 ) {
     /** Stable unique id. */
     val id: String get() = "$kind|$connLabel|$repoConnLabel|$repoPath|$path"
@@ -46,6 +48,7 @@ data class Favorite(
         put("connLabel", connLabel); put("repoPath", repoPath)
         put("repoConnLabel", repoConnLabel); put("customLabel", customLabel)
         put("pathName", pathName)
+        put("snapshotLabel", snapshotLabel)
     }
 
     companion object {
@@ -58,6 +61,7 @@ data class Favorite(
             repoConnLabel = o.optString("repoConnLabel", ""),
             customLabel = o.optString("customLabel", ""),
             pathName = o.optString("pathName", ""),
+            snapshotLabel = o.optString("snapshotLabel", ""),
         )
     }
 }

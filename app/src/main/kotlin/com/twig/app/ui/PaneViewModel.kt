@@ -2548,7 +2548,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             com.twig.app.ResticCache.of(getApplication()),
         )
         val s = "restic" + Integer.toHexString(nodeKey.hashCode())
-        FsRegistry.register(ResticFileSystem(repo, s))
+        FsRegistry.register(ResticFileSystem(repo, s, repoDir))
         resticScheme[nodeKey] = s
         schemeToRestic[s] = repoDir
         return s
@@ -2660,6 +2660,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     path = file.path,
                     repoPath = repoDir.path,
                     repoConnLabel = repoConn,
+                    snapshotLabel = if (file.path.trim('/').substringBefore('/') == "latest") "" else
+                        (FsRegistry.of(file) as? ResticFileSystem)?.listedSnapshot(file.path)
+                            ?.let { com.twig.app.resticSnapshotLabel(it) }.orEmpty(),
                 )
             }
             else -> null

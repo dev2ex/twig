@@ -1257,4 +1257,7 @@
     <string name="website_share_link">Condividi link</string>
     <string name="website_open_browser">Apri nel browser predefinito</string>
     <string name="website_apply_to_domain">Applica alle pagine dello stesso dominio</string>
+    <string name="restic_location_details">Dettagli del percorso</string>
+    <string name="restic_location_repository">Repository</string>
+    <string name="restic_location_snapshot">Istantanea</string>
 </resources>
