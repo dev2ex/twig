@@ -58,6 +58,22 @@ class HistoryDialogTest {
         } finally { dialog.dismiss(); host.pause().stop().destroy() }
     }
 
+    @Test fun `restic recent location shows repository snapshot and internal path and returns its locator`() {
+        val recent = HistoryEntry("restic", "/latest/home/Documents", repoPath = "/backups/laptop")
+        HistoryStore.add(app, recent)
+        val host = Robolectric.buildActivity(Host::class.java).setup()
+        var selected: HistoryEntry? = null
+        val dialog = HistoryDialog.show(host.get(), { selected = it }, { _, _ -> fail("Wrong tab") })
+        try {
+            val list = dialog.findViewById<ListView>(R.id.locations_list)!!
+            val row = list.adapter.getView(0, null, list)
+            assertEquals("restic · laptop › ${host.get().getString(R.string.restic_latest)} › /home/Documents",
+                row.findViewById<android.widget.TextView>(R.id.name).text.toString())
+            list.performItemClick(row, 0, 0)
+            assertEquals(recent, selected)
+        } finally { dialog.dismiss(); host.pause().stop().destroy() }
+    }
+
     @Test fun `many unfinished videos cannot push recent locations out of the default page`() {
         repeat(80) { PlaybackStore.save(app, video.copy(path = "/movies/$it.mp4"), 30000L, 180000L) }
         val host = Robolectric.buildActivity(Host::class.java).setup()

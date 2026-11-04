@@ -14,16 +14,29 @@ import org.json.JSONObject
  * sessions and reconnects.
  * - kind = "dir": jump to that directory itself
  * - kind = "git": jump to that directory and expand its Git virtual node
+ * - kind = "restic": reconnect/unlock a repository and locate a snapshot directory
  */
 data class HistoryEntry(
-    val kind: String,           // "dir" | "git"
+    val kind: String,           // "dir" | "git" | "restic"
     val path: String,
-    val connLabel: String = "", // empty = local
+    val connLabel: String = "", // empty = local for dir/git
+    val repoPath: String = "",
+    val repoConnLabel: String = "",
+    val snapshotLabel: String = "",
 ) {
-    val id: String get() = "$kind|$connLabel|$path"
+    val id: String get() = if (kind == "restic") "$kind|$repoConnLabel|$repoPath|$path"
+        else "$kind|$connLabel|$path"
+
+    fun resticFavorite(): Favorite = Favorite(
+        label = "", kind = "restic", path = path, repoPath = repoPath,
+        repoConnLabel = repoConnLabel, snapshotLabel = snapshotLabel,
+    )
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("kind", kind); put("path", path); put("connLabel", connLabel)
+        if (kind == "restic") {
+            put("repoPath", repoPath); put("repoConnLabel", repoConnLabel); put("snapshotLabel", snapshotLabel)
+        }
     }
 
     companion object {
@@ -31,6 +44,9 @@ data class HistoryEntry(
             kind = o.getString("kind"),
             path = o.getString("path"),
             connLabel = o.optString("connLabel", ""),
+            repoPath = o.optString("repoPath", ""),
+            repoConnLabel = o.optString("repoConnLabel", ""),
+            snapshotLabel = o.optString("snapshotLabel", ""),
         )
     }
 }

@@ -40,9 +40,7 @@ import java.io.File
  * returns it, never `new`-ing a real FtpFileSystem, so these cases touch no network and run
  * fast.
  *
- * **Not covered**: the favorite's restic branch. That one needs a real encrypted repository
- * (scrypt derivation + decrypted config) to exercise, which costs far more than it's worth;
- * `ResticRepo` itself already has tests in `:fs-restic`.
+ * Restic repository restoration is covered with real encrypted fixtures in [ResticHistoryTest].
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)

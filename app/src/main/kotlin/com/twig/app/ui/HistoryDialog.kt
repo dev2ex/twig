@@ -45,10 +45,13 @@ internal object HistoryDialog {
                 val row = convertView?.let(ItemHistoryBinding::bind)
                     ?: ItemHistoryBinding.inflate(inflater, parent, false)
                 val entry = locations[position]
-                val conn = conns[entry.connLabel]
-                val path = formatLocationPath(entry.connLabel, entry.path, conn)
+                val conn = conns[if (entry.kind == "restic") entry.repoConnLabel else entry.connLabel]
+                val path = if (entry.kind == "restic") com.twig.app.resticLocation(entry.resticFavorite(), conn)
+                    .compact(ctx.getString(R.string.restic_latest))
+                    else formatLocationPath(entry.connLabel, entry.path, conn)
                 row.name.text = if (entry.kind == "git") ctx.getString(R.string.history_git_prefix, path) else path
                 row.icon.setImageResource(when {
+                    entry.kind == "restic" -> R.drawable.ic_restic
                     entry.kind == "git" -> R.drawable.ic_git
                     entry.connLabel.isEmpty() -> FileIcons.sourceIconOfType("file")
                     else -> FileIcons.sourceIconOfType(conn?.type ?: entry.connLabel.substringBefore("://"))

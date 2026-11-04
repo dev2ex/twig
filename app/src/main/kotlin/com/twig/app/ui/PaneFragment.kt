@@ -848,9 +848,27 @@ class PaneFragment : Fragment() {
 
     private fun jumpToHistory(e: HistoryEntry) {
         if (mapMode) exitTreemap()
+        if (e.kind == "restic" && viewModel.resticHistoryNeedsPassword(e)) {
+            promptResticPassword(e.repoPath) { password, result ->
+                pendingScrollToCurrent = true
+                if (!viewModel.revealHistory(e, password) { ok, err ->
+                    if (!ok) pendingScrollToCurrent = false
+                    result(ok, err)
+                }) {
+                    pendingScrollToCurrent = false
+                    result(false, getString(R.string.history_conn_missing))
+                }
+            }
+            return
+        }
         pendingScrollToCurrent = true
-        if (!viewModel.revealHistory(e)) {
-            pendingScrollToCurrent = false // Didn't jump — don't leave the pending-scroll state messing up subsequent actions.
+        if (!viewModel.revealHistory(e) { ok, err ->
+            if (!ok) {
+                pendingScrollToCurrent = false
+                toast(err?.takeIf { it.isNotBlank() } ?: getString(R.string.err_operation_failed))
+            }
+        }) {
+            pendingScrollToCurrent = false
             toast(getString(R.string.history_conn_missing))
         }
     }
@@ -2928,6 +2946,15 @@ class PaneFragment : Fragment() {
     }
 
     private fun promptFavoriteRestic(node: PaneViewModel.FavoriteNode) {
+        promptResticPassword(node.fav.repoPath) { password, result ->
+            viewModel.toggleFavorite(node, password, result)
+        }
+    }
+
+    private fun promptResticPassword(
+        repoPath: String,
+        unlock: (String, (Boolean, String?) -> Unit) -> Unit,
+    ) {
         val ctx = requireContext()
         val pw = EditText(ctx).apply {
             hint = getString(R.string.restic_password)
@@ -2947,9 +2974,9 @@ class PaneFragment : Fragment() {
             .setPositiveButton(R.string.dialog_ok) { _, _ ->
                 val text = pw.text.toString()
                 if (text.isEmpty()) return@setPositiveButton
-                viewModel.toggleFavorite(node, text) { ok, err ->
+                unlock(text) { ok, err ->
                     if (ok) {
-                        if (save.isChecked) Prefs.setResticPassword(ctx, node.fav.repoPath, text)
+                        if (save.isChecked) Prefs.setResticPassword(ctx, repoPath, text)
                     } else {
                         toast(getString(R.string.restic_wrong_pw, err ?: ""))
                     }

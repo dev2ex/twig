@@ -198,6 +198,13 @@ its listing size must still describe the followed stream for copy/resume checks.
   ordinary listings even with counts disabled; extra nonlocal probes remain opt-in.
 - Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
   preferences in `Prefs` — all SharedPreferences.
+  Recent locations also record directories used inside restic snapshots, storing the repository
+  connection/path, snapshot selector and internal path rather than a session scheme. Fixed
+  snapshot metadata is frozen for display; `latest` remains a dynamic alias. Restoring reconnects
+  and unlocks as needed, expands the repository chain, then matches snapshot rows by path ID
+  (their display names are dates). Favorites and Recent share the repository unlock resolver;
+  a live unlocked repository needs no password prompt. Missing snapshots/listings report errors
+  without changing the selected directory. Newer navigation or Collapse abandons pending restores.
   Favorites and websites keep their stored order. Long-pressing either heading offers
   inline reordering with drag handles; favorite children are temporarily hidden, websites
   temporarily use list rows even in grid mode, and drops
