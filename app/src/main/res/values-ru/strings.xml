@@ -222,8 +222,8 @@
     <string name="player_orientation_auto">Поворот как в системе</string>
     <string name="player_brightness">Яркость %1$d%%</string>
     <string name="player_volume">Громкость %1$d%%</string>
-    <string name="player_muted">Звук выключен</string>
-    <string name="player_unmuted">Звук включён</string>
+    <string name="player_audio_off">Аудиодорожка выключена</string>
+    <string name="player_audio_on">Аудиодорожка включена</string>
     <string name="player_subtitles_on">Субтитры включены</string>
     <string name="player_subtitles_off">Субтитры выключены</string>
     <string name="player_subtitle">Субтитры</string>

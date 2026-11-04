@@ -218,8 +218,8 @@
     <string name="player_orientation_auto">方向跟隨系統</string>
     <string name="player_brightness">亮度 %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
-    <string name="player_muted">已靜音</string>
-    <string name="player_unmuted">已取消靜音</string>
+    <string name="player_audio_off">已關閉音軌</string>
+    <string name="player_audio_on">已恢復音軌</string>
     <string name="player_subtitles_on">已恢復字幕</string>
     <string name="player_subtitles_off">已關閉字幕</string>
     <string name="player_subtitle">字幕</string>

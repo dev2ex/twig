@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">Orientation du système</string>
     <string name="player_brightness">Luminosité %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
-    <string name="player_muted">Son coupé</string>
-    <string name="player_unmuted">Son rétabli</string>
+    <string name="player_audio_off">Piste audio désactivée</string>
+    <string name="player_audio_on">Piste audio activée</string>
     <string name="player_subtitles_on">Sous-titres activés</string>
     <string name="player_subtitles_off">Sous-titres désactivés</string>
     <string name="player_subtitle">Sous-titre</string>

@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">시스템 화면 방향 따름</string>
     <string name="player_brightness">밝기 %1$d%%</string>
     <string name="player_volume">음량 %1$d%%</string>
-    <string name="player_muted">음소거됨</string>
-    <string name="player_unmuted">음소거 해제됨</string>
+    <string name="player_audio_off">오디오 트랙 꺼짐</string>
+    <string name="player_audio_on">오디오 트랙 켜짐</string>
     <string name="player_subtitles_on">자막 켜짐</string>
     <string name="player_subtitles_off">자막 꺼짐</string>
     <string name="player_subtitle">자막</string>

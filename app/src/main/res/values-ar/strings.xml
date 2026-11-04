@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">اتجاه الشاشة حسب النظام</string>
     <string name="player_brightness">السطوع %1$d%%</string>
     <string name="player_volume">مستوى الصوت %1$d%%</string>
-    <string name="player_muted">تم كتم الصوت</string>
-    <string name="player_unmuted">تم إلغاء كتم الصوت</string>
+    <string name="player_audio_off">تم إيقاف المسار الصوتي</string>
+    <string name="player_audio_on">تم تفعيل المسار الصوتي</string>
     <string name="player_subtitles_on">تم تفعيل الترجمة</string>
     <string name="player_subtitles_off">تم إيقاف الترجمة</string>
     <string name="player_subtitle">الترجمة</string>

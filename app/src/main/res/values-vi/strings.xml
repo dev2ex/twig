@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">Hướng theo hệ thống</string>
     <string name="player_brightness">Độ sáng %1$d%%</string>
     <string name="player_volume">Âm lượng %1$d%%</string>
-    <string name="player_muted">Đã tắt tiếng</string>
-    <string name="player_unmuted">Đã bật tiếng</string>
+    <string name="player_audio_off">Đã tắt bản âm thanh</string>
+    <string name="player_audio_on">Đã bật bản âm thanh</string>
     <string name="player_subtitles_on">Đã bật phụ đề</string>
     <string name="player_subtitles_off">Đã tắt phụ đề</string>
     <string name="player_subtitle">Phụ đề</string>

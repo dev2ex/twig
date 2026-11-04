@@ -162,8 +162,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var orientationLocked = false
     private var speedBoosted = false // long-press to speed up; release to restore original speed
     private var speedBeforeBoost = 1f
-    private var muted = false
-    private var volumeBeforeMute = 1f
+    private var audioDisabled = false
+    private var previousAudioTrack: Tracks.Group? = null
     private lateinit var audio: AudioManager
 
     // Subtitles: external (self-parsed) preferred; embedded text tracks (SRT/ASS in MKV etc.) are decoded by ExoPlayer and shown via onCues
@@ -456,7 +456,6 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             .setHandleAudioBecomingNoisy(true)
             .build()
         player = p
-        p.volume = if (muted) 0f else volumeBeforeMute
         // Metadata tracks (SCTE-35 ad insertion signaling, etc.) are never consumed by this player,
         // yet have crashed in practice: SCTE-35 data in some m2ts remuxes is non-conforming, and
         // media3's SpliceInfoDecoder throws IllegalStateException directly on out-of-bounds,
@@ -669,7 +668,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     p.setMediaSource(opened.media)
                 }
                 holder?.let { p.setVideoSurfaceHolder(it) }
-                if (disableAudio) {
+                if (disableAudio || audioDisabled) {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
                 }
@@ -1162,6 +1161,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         subMemoApplied = false
         extScanned = false
         audioUserChosen = false
+        previousAudioTrack = null
         // ★ A new episode starts with a clean slate **only when the memory can take over**: the
         // manual choice has been recorded, so "subtitles off" carries over as a memory instead of
         // as a leftover flag. With the feature switched off, a manual choice keeps sticking for
@@ -1214,7 +1214,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
      * counterpart to the remembered one — in which case the player's own choice stands.
      */
     private fun restoreAudio() {
-        if (audioRestored || audioUserChosen) return
+        if (audioDisabled || audioRestored || audioUserChosen) return
         val want = memo.audio ?: return
         if (audioGroups.size < 2) return
         audioRestored = true
@@ -1406,11 +1406,48 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     private fun toggleMute() {
         val p = player ?: return
-        if (!muted) volumeBeforeMute = p.volume
-        muted = !muted
-        p.volume = if (muted) 0f else volumeBeforeMute
-        b.btnAudioTrack.alpha = if (muted) 0.45f else 1f
-        showGestureHint(getString(if (muted) R.string.player_muted else R.string.player_unmuted), autoHide = true)
+        val disabled = C.TRACK_TYPE_AUDIO in p.trackSelectionParameters.disabledTrackTypes
+        val which = if (disabled) {
+            val previous = previousAudioTrack?.let { saved ->
+                audioGroups.indexOfFirst { it.mediaTrackGroup == saved.mediaTrackGroup }
+            } ?: -1
+            val index = if (previous >= 0) previous else audioGroups.indexOfFirst { it.isTrackSupported(0) }
+            if (index < 0) return
+            index + 1
+        } else 0
+        if (applyAudioChoice(which)) {
+            showGestureHint(getString(if (which == 0) R.string.player_audio_off else R.string.player_audio_on), autoHide = true)
+        }
+    }
+
+    private fun activeAudioTrack(): Tracks.Group? =
+        audioGroups.firstOrNull { it.mediaTrackGroup in player?.trackSelectionParameters?.overrides.orEmpty() }
+            ?: audioGroups.firstOrNull { it.isSelected }
+
+    /** The dialog and long press share one path: zero is off, followed by audio tracks. */
+    private fun applyAudioChoice(which: Int): Boolean {
+        val p = player ?: return false
+        val builder = p.trackSelectionParameters.buildUpon()
+        if (which == 0) {
+            if (!audioDisabled) previousAudioTrack = activeAudioTrack()
+            audioDisabled = true
+            audioUserChosen = true
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
+        } else {
+            val index = which - 1
+            val group = audioGroups.getOrNull(index) ?: return false
+            if (!group.isTrackSupported(0)) {
+                showGestureHint(getString(R.string.player_track_unsupported_hint), autoHide = true)
+                return false
+            }
+            audioDisabled = false
+            previousAudioTrack = group
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, 0))
+            saveAudioMemo(index)
+        }
+        p.trackSelectionParameters = builder.build()
+        return true
     }
 
     private fun toggleSubtitles() {
@@ -1483,22 +1520,14 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             showGestureHint(getString(R.string.player_no_tracks), autoHide = true)
             return
         }
-        val names = audioGroups.mapIndexed { i, g -> trackName(g, i, getString(R.string.player_audio_track)) }
-        val cur = audioGroups.indexOfFirst { it.isSelected }
+        val names = listOf(getString(R.string.player_subtitle_close)) +
+            audioGroups.mapIndexed { i, g -> trackName(g, i, getString(R.string.player_audio_track)) }
+        val cur = if (C.TRACK_TYPE_AUDIO in p.trackSelectionParameters.disabledTrackTypes) 0
+            else audioGroups.indexOf(activeAudioTrack()).let { if (it < 0) -1 else it + 1 }
         AlertDialog.Builder(this)
             .setTitle(R.string.player_audio_track)
             .setSingleChoiceItems(names.toTypedArray(), cur) { d, which ->
-                audioGroups.getOrNull(which)?.let { g ->
-                    if (!g.isTrackSupported(0)) {
-                        showGestureHint(getString(R.string.player_track_unsupported_hint), autoHide = true)
-                        return@setSingleChoiceItems
-                    }
-                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, 0))
-                        .build()
-                    saveAudioMemo(which)
-                }
-                d.dismiss()
+                if (applyAudioChoice(which)) d.dismiss()
             }
             .show()
     }

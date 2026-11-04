@@ -217,8 +217,8 @@
     <string name="player_orientation_auto">画面の向きはシステムに従います</string>
     <string name="player_brightness">明るさ %1$d%%</string>
     <string name="player_volume">音量 %1$d%%</string>
-    <string name="player_muted">ミュートしました</string>
-    <string name="player_unmuted">ミュートを解除しました</string>
+    <string name="player_audio_off">音声トラックをオフにしました</string>
+    <string name="player_audio_on">音声トラックをオンにしました</string>
     <string name="player_subtitles_on">字幕をオンにしました</string>
     <string name="player_subtitles_off">字幕をオフにしました</string>
     <string name="player_subtitle">字幕</string>

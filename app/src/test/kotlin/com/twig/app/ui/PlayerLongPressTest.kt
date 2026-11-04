@@ -1,6 +1,8 @@
 package com.twig.app.ui
 
 import android.app.Application
+import androidx.appcompat.app.AlertDialog
+import org.robolectric.shadows.ShadowDialog
 import android.content.Intent
 import android.os.Looper
 import android.view.View
@@ -98,12 +100,50 @@ class PlayerLongPressTest {
         fail("Timed out waiting for subtitle work")
     }
 
-    @Test fun `note long press mutes and restores original volume without opening dialog`() {
+    private fun audioTracks(): List<Tracks.Group> = listOf("en", "ja").mapIndexed { i, language ->
+        Tracks.Group(TrackGroup(Format.Builder().setSampleMimeType("audio/aac").setLanguage(language).build()),
+            false, intArrayOf(C.FORMAT_HANDLED), booleanArrayOf(i == 1))
+    }.also { ReflectionHelpers.setField(activity, "audioGroups", it) }
+
+    private fun audioDialog(): AlertDialog {
+        ReflectionHelpers.setField(activity, "prepared", true)
+        activity.findViewById<View>(R.id.btn_audio_track).performClick()
+        return ShadowDialog.getLatestDialog() as AlertDialog
+    }
+
+    @Test fun `note long press selects off and restores the same track with full icon opacity`() {
+        val groups = audioTracks()
         press(R.id.btn_audio_track)
-        assertEquals(0f, volume, 0f)
-        press(R.id.btn_audio_track)
+        assertTrue(C.TRACK_TYPE_AUDIO in params.disabledTrackTypes)
         assertEquals(0.7f, volume, 0f)
-        assertTrue(params.disabledTrackTypes.isEmpty())
+        assertEquals(1f, activity.findViewById<View>(R.id.btn_audio_track).alpha, 0f)
+        audioDialog().let {
+            assertEquals(activity.getString(R.string.player_subtitle_close), it.listView.adapter.getItem(0))
+            assertEquals(0, it.listView.checkedItemPosition)
+            it.dismiss()
+        }
+        press(R.id.btn_audio_track)
+        assertFalse(C.TRACK_TYPE_AUDIO in params.disabledTrackTypes)
+        assertTrue(params.overrides.containsKey(groups[1].mediaTrackGroup))
+        assertEquals(0.7f, volume, 0f)
+    }
+
+    @Test fun `audio dialog off and track rows share long press state and offset indices`() {
+        val groups = audioTracks()
+        audioDialog().let {
+            assertEquals(2, it.listView.checkedItemPosition)
+            it.listView.performItemClick(null, 0, 0)
+        }
+        assertTrue(C.TRACK_TYPE_AUDIO in params.disabledTrackTypes)
+        press(R.id.btn_audio_track)
+        assertTrue(params.overrides.containsKey(groups[1].mediaTrackGroup))
+        audioDialog().listView.performItemClick(null, 1, 1)
+        assertFalse(C.TRACK_TYPE_AUDIO in params.disabledTrackTypes)
+        assertTrue(params.overrides.containsKey(groups[0].mediaTrackGroup))
+        // Track callbacks can arrive later; the explicit override is already the active choice.
+        press(R.id.btn_audio_track)
+        press(R.id.btn_audio_track)
+        assertTrue(params.overrides.containsKey(groups[0].mediaTrackGroup))
     }
 
     @Test fun `subtitle long press restores same embedded track after sidecar discovery shifts indices`() {

@@ -239,8 +239,8 @@
     <string name="player_orientation_auto">Orientation follows system</string>
     <string name="player_brightness">Brightness %1$d%%</string>
     <string name="player_volume">Volume %1$d%%</string>
-    <string name="player_muted">Muted</string>
-    <string name="player_unmuted">Unmuted</string>
+    <string name="player_audio_off">Audio track off</string>
+    <string name="player_audio_on">Audio track on</string>
     <string name="player_subtitles_on">Subtitles on</string>
     <string name="player_subtitles_off">Subtitles off</string>
     <string name="player_subtitle">Subtitle</string>
