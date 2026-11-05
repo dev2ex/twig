@@ -49,7 +49,7 @@ class TwigApp : Application() {
             LocalFileSystem.unixMetadataReader = UnixFiles::stat
             LocalFileSystem.selinuxContextReader = UnixFiles::context
             FsRegistry.register(LocalFileSystem())
-            FsRegistry.register(ZipFileSystem())
+            FsRegistry.register(ZipFileSystem { TextCodec.preferred })
             FsRegistry.register(SevenZFileSystem())
             FsRegistry.register(TarFileSystem())
             // Single-file compression: one scheme per format, one shared implementation
