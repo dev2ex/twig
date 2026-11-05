@@ -436,6 +436,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         com.twig.app.sqlite.SqliteSession.recognizes(file) || key in forcedSqlite
 
     fun sqliteCommand(node: SqliteNode, command: SqliteCommand) {
+        if (command == SqliteCommand.TOGGLE) closeAllInfo()
         currentKey = node.tableKey
         sqliteTree.command(node, command)
     }
@@ -505,6 +506,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun toggleSqlite(node: FileNode) {
+        closeAllInfo()
         val key = node.key
         currentKey = key
         claimExpand(key)
@@ -1091,10 +1093,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggle(node: Node) {
         when (node) {
             is FileNode -> toggleFile(node)
-            is SqliteQueryNode -> { currentKey = node.key; sqliteTree.toggleQuery(node); rebuild() }
+            is SqliteQueryNode -> { closeAllInfo(); currentKey = node.key; sqliteTree.toggleQuery(node); rebuild() }
             is SqliteSearchNode -> closeSqliteSearch(node)
             is SqliteNode -> sqliteCommand(node, if (node is SqliteInfoNode) SqliteCommand.CLOSE else SqliteCommand.TOGGLE)
             is GroupNode -> {
+                closeAllInfo()
                 currentKey = node.key
                 currentDir = null // Group heading (LAN/FTP/...) isn't a real directory; clear it so copy/new don't pick up the previously-selected directory.
                 if (!expanded.remove(node.key)) accordionExpand(node.key)
@@ -1122,6 +1125,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun expandGroup(id: String) {
+        closeAllInfo()
         expanded.add("g:$id")
         rebuild()
     }
@@ -1768,8 +1772,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         expanded.clear()
         searchState.values.forEach { it.job?.cancel() }
         searchState.clear()
-        infoOpen.clear()
-        closeSelectionInfo()
+        closeAllInfo()
         currentKey = null
         currentDir = null
         rebuild()
@@ -1818,6 +1821,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+        closeAllInfo()
         rebuild()
     }
 
@@ -2135,6 +2139,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         selectionInfo = null
     }
 
+    /** The next rebuild discards card caches and cancels their loading and directory scans. */
+    private fun closeAllInfo() {
+        infoOpen.clear()
+        closeSelectionInfo()
+    }
+
     /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */
     fun toggleInfo(file: XFile) = toggleInfo(file, 0)
 
@@ -2406,6 +2416,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun toggleFile(n: FileNode) {
         if (!n.expandable) return
+        closeAllInfo()
         if (isSqlite(n.file, n.key)) { toggleSqlite(n); return }
         if (n.file.isDir) currentDir = n.file
         val key = n.key
@@ -2529,6 +2540,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun toggleServer(n: ServerNode) {
+        closeAllInfo()
         val key = n.key
         currentKey = key
         claimExpand(key) // Connecting a server is the slowest expansion — the "later tap wins" rule applies (see pendingExpand).
@@ -2631,6 +2643,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * ending in "never opens".
      */
     fun unlockRestic(repoDir: XFile, password: String, onResult: (Boolean, String?) -> Unit) {
+        closeAllInfo()
         val nodeKey = "restic:${fileKey(repoDir)}"
         claimExpand(nodeKey) // Before the dedup: tapping back on a just-abandoned repo should reclaim it and reinstate the spinner.
         if (!connecting.add(nodeKey)) { rebuild(); return } // Already unlocking; this tap is not stacked on top.
@@ -2679,6 +2692,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Collapse / expand an already-unlocked restic node. */
     fun toggleRestic(node: ResticNode) {
+        closeAllInfo()
         currentKey = node.key
         claimExpand(node.key)
         if (expanded.remove(node.key)) {
@@ -2848,6 +2862,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun toggleFavorite(node: FavoriteNode, password: String?, onResult: (Boolean, String?) -> Unit) {
         if (sortingFavorites) return
+        closeAllInfo()
         val key = node.key
         currentKey = key
         claimExpand(key)
