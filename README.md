@@ -632,7 +632,13 @@ Use JDK 21 and the Android SDK/NDK versions pinned in `app/build.gradle.kts`.
 ./gradlew :app:assembleLibreRelease    # F-Droid variant (no RAR, 100% FLOSS)
 ./gradlew :app:bundleLibreRelease     # libre AAB for store upload
 ./gradlew :app:assembleFullRelease -PabiSplit=true  # three single-ABI APKs
+./gradlew :app:assembleFullRelease -Planguages=zh   # Chinese translations + default English
 ```
+
+`-Planguages` filters packaged translations for either flavor and build type. Use a
+comma-separated list of Android resource qualifiers, such as `en`, `zh`, `ja`,
+`pt-rBR` or `b+zh+Hant`. Omit it to keep all languages. Default English resources
+always remain as a fallback; this option does not force the app's display language.
 
 By default, release builds are signed only if a `keystore.properties` file exists at the repo
 root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). Without it the

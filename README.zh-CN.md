@@ -503,7 +503,13 @@ UDP 探测让另一台 Twig 扫一下就能把它存成连接。
 ./gradlew :app:assembleLibreRelease    # F-Droid 版(无 RAR,100% 自由软件)
 ./gradlew :app:bundleLibreRelease     # libre 版上架用 AAB
 ./gradlew :app:assembleFullRelease -PabiSplit=true  # 三个单 ABI APK
+./gradlew :app:assembleFullRelease -Planguages=zh   # 中文翻译 + 默认英文
 ```
+
+`-Planguages` 限制打包的翻译资源，适用于 full/libre 和 debug/release。
+多个语言用逗号分隔，例如 `-Planguages=zh,en`；使用 Android 资源限定符，
+如 `en`、`zh`、`ja`、`pt-rBR`、`b+zh+Hant`。不传则保留全部语言。
+默认英文资源始终保留，用于缺失翻译时回退；此参数不强制切换界面语言。
 
 默认情况下，release 只有在仓库根存在 `keystore.properties` 时才签名(内含 `storeFile` /
 `storePassword` / `keyAlias` / `keyPassword`)。没有它时产出的是**无签名包**

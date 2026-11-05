@@ -46,6 +46,17 @@ val debugSign = (
 // see splits { abi {} } below.
 val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
 
+// Optional translation filter, e.g. -Planguages=zh or -Planguages=en,ja.
+// Use Android resource qualifiers (pt-rBR, b+zh+Hant); unqualified resources
+// (including the default English strings) always remain as the fallback.
+val languages = providers.gradleProperty("languages").orNull?.let { value ->
+    value.split(',').map { it.trim() }.also { locales ->
+        require(locales.all { it.matches(Regex("[a-z]{2,3}(-r([A-Z]{2}|[0-9]{3}))?|b\\+[a-z]{2,3}(\\+[A-Za-z0-9]{2,8})*")) }) {
+            "Invalid -Planguages: use comma-separated Android locale qualifiers, e.g. en,zh,pt-rBR,b+zh+Hant"
+        }
+    }
+}
+
 android {
     namespace = "com.twig.app"
     compileSdk = 36
@@ -59,6 +70,7 @@ android {
         versionCode = 318
         versionName = "1.17.0"
         vectorDrawables.useSupportLibrary = true
+        languages?.let { resourceConfigurations += it }
         // AGP rejects having both `ndk.abiFilters` and `splits.abi` set at once, so
         // this only applies for the normal (non-split) build; -PabiSplit=true picks its
         // ABIs from `splits { abi {} }` below instead.
