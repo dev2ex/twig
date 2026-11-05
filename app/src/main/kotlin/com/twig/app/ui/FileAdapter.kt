@@ -326,6 +326,9 @@ class FileAdapter(
         return when (viewType) {
             TYPE_SQLITE_DATA -> SqliteDataVH(ItemSqliteDataBinding.inflate(inflater, parent, false).apply {
                 sqliteGrid.layoutParams.height = sqliteViewportHeight(parent, 280)
+                sqliteGrid.setBackgroundResource(R.drawable.info_card_bg)
+                sqliteGrid.foreground = ContextCompat.getDrawable(parent.context, R.drawable.sqlite_grid_border)
+                sqliteGrid.clipToOutline = true
             })
             TYPE_SQLITE_INFO -> SqliteInfoVH(SqliteInfoView(parent.context).apply {
                 setGridHeight(sqliteViewportHeight(parent, 224))
