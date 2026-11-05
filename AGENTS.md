@@ -772,7 +772,8 @@ add its symptom here.
   visible and openable — the **copy** is what refuses it (zip slip).
   *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
   asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
-  install with "only DEFLATED entries can have EXT descriptor", a PDF inside an archive
+  install with "only DEFLATED entries can have EXT descriptor", ZIPs with invalid filename
+  bytes failing with "Error reading Zip content from FileChannelImpl" (#53), a PDF inside an archive
   that no app (built-in or third-party) can open, followed by the whole tree freezing up
   and a copy failing with ENOENT until retried.
 - **[WiFi sharing](docs/lessons/wifi-sharing.md)** — read-only by default through one
