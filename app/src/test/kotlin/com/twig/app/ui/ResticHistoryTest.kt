@@ -110,6 +110,39 @@ class ResticHistoryTest {
         }
     }
 
+    @Test fun `first repository unlock selects its row before and after loading snapshots`() = runTest(dispatcher) {
+        vm.revealPath(XFile("file", repository.path, true))
+        advanceUntilIdle()
+        val node = vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single()
+        assertFalse(node.unlocked)
+        assertNotEquals(node.key, vm.state.value.currentKey)
+
+        vm.unlockRestic(node.repoDir, "test123") { ok, error -> assertTrue(error, ok) }
+        assertEquals(node.key, vm.state.value.currentKey)
+        advanceUntilIdle()
+        assertEquals(node.key, vm.state.value.currentKey)
+        val unlocked = vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single()
+        assertTrue(unlocked.unlocked)
+        assertTrue(unlocked.expanded)
+        vm.toggleRestic(unlocked)
+        assertEquals(node.key, vm.state.value.currentKey)
+        vm.toggleRestic(vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single())
+        assertEquals(node.key, vm.state.value.currentKey)
+    }
+
+    @Test fun `repository unlock completion preserves a later selection`() = runTest(dispatcher) {
+        vm.revealPath(XFile("file", repository.path, true))
+        advanceUntilIdle()
+        val node = vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single()
+        val parent = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            .single { it.file.path == repository.path }
+        vm.unlockRestic(node.repoDir, "test123") { ok, error -> assertTrue(error, ok) }
+        vm.toggle(parent)
+        assertEquals(parent.key, vm.state.value.currentKey)
+        advanceUntilIdle()
+        assertEquals(parent.key, vm.state.value.currentKey)
+    }
+
     @Test fun `unlock locate record deduplicate and reopen latest without another password`() = runTest(dispatcher) {
         assertTrue(vm.resticHistoryNeedsPassword(entry()))
         var success = false

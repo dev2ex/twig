@@ -2645,6 +2645,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun unlockRestic(repoDir: XFile, password: String, onResult: (Boolean, String?) -> Unit) {
         closeAllInfo()
         val nodeKey = "restic:${fileKey(repoDir)}"
+        currentKey = nodeKey
         claimExpand(nodeKey) // Before the dedup: tapping back on a just-abandoned repo should reclaim it and reinstate the spinner.
         if (!connecting.add(nodeKey)) { rebuild(); return } // Already unlocking; this tap is not stacked on top.
         rebuild() // Show the spinner first.
