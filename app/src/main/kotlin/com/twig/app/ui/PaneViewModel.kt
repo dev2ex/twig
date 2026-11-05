@@ -430,7 +430,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val forcedSqlite = HashSet<String>()
     private val pendingSqliteSql = HashMap<String, String>()
     private val pendingSqliteSearch = HashMap<String, Pair<String, String?>>()
-    private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+    private val sqliteTreeState = lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+    private val sqliteTree by sqliteTreeState
 
     fun isSqlite(file: XFile, key: String = fileKey(file)): Boolean =
         com.twig.app.sqlite.SqliteSession.recognizes(file) || key in forcedSqlite
@@ -2143,6 +2144,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun closeAllInfo() {
         infoOpen.clear()
         closeSelectionInfo()
+        if (sqliteTreeState.isInitialized()) sqliteTree.closeProperties()
     }
 
     /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */

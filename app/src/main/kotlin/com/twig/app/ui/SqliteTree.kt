@@ -339,6 +339,17 @@ internal class SqliteTree(private val context: Context, private val scope: Corou
         }
     }
 
+    /** Clear property cards without publishing; the owning pane rebuilds after navigation. */
+    fun closeProperties() {
+        for (host in hosts.values) {
+            for (tables in listOfNotNull(host.tables, host.search?.tables, host.execution?.tables)) {
+                for ((name, state) in tables.toMap()) {
+                    if (state.properties) tables[name] = state.copy(properties = false)
+                }
+            }
+        }
+    }
+
     fun command(node: SqliteNode, command: SqliteCommand) {
         if (node.state.execution != null) return
         val host = hosts[node.owner] ?: return
