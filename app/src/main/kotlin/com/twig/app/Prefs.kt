@@ -36,6 +36,13 @@ object Prefs {
         sp(ctx).edit().putBoolean("toolbar_at_bottom", bottom).apply()
     }
 
+    /** Move the main title bar actions into the single-column strip in portrait. */
+    fun hideTitleBarPortrait(ctx: Context): Boolean = sp(ctx).getBoolean("hide_title_bar_portrait", false)
+
+    fun setHideTitleBarPortrait(ctx: Context, hide: Boolean) {
+        sp(ctx).edit().putBoolean("hide_title_bar_portrait", hide).apply()
+    }
+
     enum class BackAction { CLOSE, EXIT, UP, UP_EXIT }
 
     fun backAction(ctx: Context): BackAction {
@@ -627,7 +634,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx),
+        showHidden(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx), hideTitleBarPortrait(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

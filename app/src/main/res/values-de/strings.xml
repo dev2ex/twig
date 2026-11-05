@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">Pfaddetails</string>
     <string name="restic_location_repository">Repository</string>
     <string name="restic_location_snapshot">Schnappschuss</string>
+    <string name="settings_hide_title_bar_portrait">Titelleiste im Hochformat ausblenden</string>
+    <string name="settings_hide_title_bar_portrait_desc">Terminal, Bereichswechsel, Musik und Menü einspaltig oben in der Aktionsleiste anzeigen</string>
 </resources>

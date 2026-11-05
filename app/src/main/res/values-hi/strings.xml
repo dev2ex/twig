@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">पथ का विवरण</string>
     <string name="restic_location_repository">रिपॉज़िटरी</string>
     <string name="restic_location_snapshot">स्नैपशॉट</string>
+    <string name="settings_hide_title_bar_portrait">पोर्ट्रेट में शीर्षक बार छिपाएँ</string>
+    <string name="settings_hide_title_bar_portrait_desc">टर्मिनल, पैनल बदलने, संगीत और मेन्यू के बटन ऐक्शन बार के ऊपर एक कॉलम में दिखाएँ</string>
 </resources>

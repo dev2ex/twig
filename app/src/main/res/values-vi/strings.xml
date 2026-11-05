@@ -1259,4 +1259,6 @@
     <string name="restic_location_details">Chi tiết đường dẫn</string>
     <string name="restic_location_repository">Kho lưu trữ</string>
     <string name="restic_location_snapshot">Bản chụp</string>
+    <string name="settings_hide_title_bar_portrait">Ẩn thanh tiêu đề khi màn hình dọc</string>
+    <string name="settings_hide_title_bar_portrait_desc">Hiển thị thiết bị đầu cuối, chuyển ngăn, nhạc và menu thành một cột ở đầu thanh thao tác</string>
 </resources>

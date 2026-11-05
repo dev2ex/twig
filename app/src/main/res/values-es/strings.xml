@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">Detalles de la ruta</string>
     <string name="restic_location_repository">Repositorio</string>
     <string name="restic_location_snapshot">Instantánea</string>
+    <string name="settings_hide_title_bar_portrait">Ocultar barra de título en vertical</string>
+    <string name="settings_hide_title_bar_portrait_desc">Mostrar terminal, cambio de panel, música y menú en una columna al inicio de la barra de acciones</string>
 </resources>

@@ -161,9 +161,12 @@ its listing size must still describe the followed stream for copy/resume checks.
 - `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
   toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
   single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
-  directory-count subscriptions across Main and both pickers. Toolbar visibility and
-  action-strip density still follow orientation. The setting participates in
-  `uiSignature` and configuration backups.
+  directory-count subscriptions across Main and both pickers. In Main, toolbar visibility
+  follows orientation unless the default-off `Prefs.hideTitleBarPortrait` hides it in
+  portrait too. Hidden title-bar actions stay pinned above the strip with the same
+  separator, using one column in portrait and two in landscape. Action-strip density
+  still follows orientation. Both settings participate in `uiSignature` and
+  configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   `TreeIndentation` subtracts the shallowest visible depth from display indentation,
   with a shared 250 ms transition; partially visible rows retain their depth, and

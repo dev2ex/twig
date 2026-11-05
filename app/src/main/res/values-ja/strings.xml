@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">パスの詳細</string>
     <string name="restic_location_repository">リポジトリ</string>
     <string name="restic_location_snapshot">スナップショット</string>
+    <string name="settings_hide_title_bar_portrait">縦向きでタイトルバーを非表示</string>
+    <string name="settings_hide_title_bar_portrait_desc">ターミナル、ペイン切り替え、音楽、メニューを操作バーの上部に1列で表示</string>
 </resources>

@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">Yol ayrıntıları</string>
     <string name="restic_location_repository">Depo</string>
     <string name="restic_location_snapshot">Anlık görüntü</string>
+    <string name="settings_hide_title_bar_portrait">Dikey modda başlık çubuğunu gizle</string>
+    <string name="settings_hide_title_bar_portrait_desc">Terminal, panel değiştirme, müzik ve menüyü eylem çubuğunun üstünde tek sütunda göster</string>
 </resources>

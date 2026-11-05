@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">Detail jalur</string>
     <string name="restic_location_repository">Repositori</string>
     <string name="restic_location_snapshot">Snapshot</string>
+    <string name="settings_hide_title_bar_portrait">Sembunyikan bilah judul dalam mode potret</string>
+    <string name="settings_hide_title_bar_portrait_desc">Tampilkan terminal, pengalih panel, musik, dan menu dalam satu kolom di bagian atas bilah tindakan</string>
 </resources>

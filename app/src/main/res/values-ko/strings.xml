@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">경로 상세 정보</string>
     <string name="restic_location_repository">저장소</string>
     <string name="restic_location_snapshot">스냅샷</string>
+    <string name="settings_hide_title_bar_portrait">세로 모드에서 제목 표시줄 숨기기</string>
+    <string name="settings_hide_title_bar_portrait_desc">터미널, 창 전환, 음악, 메뉴를 작업 표시줄 맨 위에 한 열로 표시</string>
 </resources>

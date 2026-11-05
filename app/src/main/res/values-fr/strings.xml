@@ -1260,4 +1260,6 @@
     <string name="restic_location_details">Détails du chemin</string>
     <string name="restic_location_repository">Dépôt</string>
     <string name="restic_location_snapshot">Instantané</string>
+    <string name="settings_hide_title_bar_portrait">Masquer la barre de titre en portrait</string>
+    <string name="settings_hide_title_bar_portrait_desc">Afficher le terminal, le changement de volet, la musique et le menu en une colonne en haut de la barre d’actions</string>
 </resources>

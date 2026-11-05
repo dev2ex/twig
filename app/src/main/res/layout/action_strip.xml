@@ -5,9 +5,9 @@
     android:background="?attr/twigBar"
     android:orientation="vertical">
 
-    <!-- Top fixed area: when the Toolbar is hidden in landscape, the buttons that were
+    <!-- Top fixed area: when the title bar is hidden, the buttons that were
          on its right (terminal/music/swap panels/menu) move here and do not scroll with
-         the action strip below. In portrait MainActivity sets the whole block GONE. -->
+         the action strip below. MainActivity hides this block while the title bar is visible. -->
     <com.twig.app.ui.StripGrid
         android:id="@+id/as_top"
         android:layout_width="match_parent"
