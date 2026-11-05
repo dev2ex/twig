@@ -53,7 +53,6 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     private var onHeaderLongClick: ((Int) -> Unit)? = null
     private var filterable = emptySet<Int>()
     private var filtered = emptySet<Int>()
-    private var selectRows = false
     private var sort: SqliteSort? = null
     private var position = SqliteViewport()
     private var owner: String? = null
@@ -101,12 +100,12 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             if (cell != null) {
                 info.setCollectionItemInfo(AccessibilityNodeInfoCompat.CollectionItemInfoCompat.obtain(
                     cell.row + 1, 1, cell.column, 1, cell.row < 0,
-                    selectRows && cell.row >= 0 && cell.row == position.selectedRow))
-                info.isSelected = selectRows && cell.row >= 0 && cell.row == position.selectedRow
+                    cell.row >= 0 && cell.row == position.selectedRow))
+                info.isSelected = cell.row >= 0 && cell.row == position.selectedRow
                 if (cell.row >= 0 || onHeader != null) {
                     info.isClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_CLICK)
                 }
-                if (cell.row >= 0 && selectRows || cell.row < 0 && cell.column in filterable) {
+                if (cell.row >= 0 || cell.row < 0 && cell.column in filterable) {
                     info.isLongClickable = true; info.addAction(AccessibilityNodeInfoCompat.ACTION_LONG_CLICK)
                 }
                 if (cell.row < 0 && cell.column in filtered) {
@@ -128,7 +127,6 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
                         if (cell.column !in filterable) return false
                         filterHeader(cell.column)
                     } else {
-                        if (!selectRows) return false
                         activate(cell.row, cell.column, true)
                     }
                 }
@@ -141,8 +139,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             info.className = "android.widget.GridView"
             info.setCollectionInfo(AccessibilityNodeInfoCompat.CollectionInfoCompat.obtain(
                 rows.toLong().plus(1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), headers.size, false,
-                if (selectRows) AccessibilityNodeInfoCompat.CollectionInfoCompat.SELECTION_MODE_SINGLE
-                else AccessibilityNodeInfoCompat.CollectionInfoCompat.SELECTION_MODE_NONE))
+                AccessibilityNodeInfoCompat.CollectionInfoCompat.SELECTION_MODE_SINGLE))
             info.isScrollable = maxY > 0 || maxX > 0
             info.addAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_FORWARD)
             info.addAction(AccessibilityNodeInfoCompat.ACTION_SCROLL_BACKWARD)
@@ -183,7 +180,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             request = { row ->
                 val offset = row / state.pageSize * state.pageSize
                 if (offset !in state.pending) load(offset)
-            }, cell = cell, header = header.takeIf { state.execution == null }, sort = state.sort, selectRows = true,
+            }, cell = cell, header = header.takeIf { state.execution == null }, sort = state.sort,
             headerLongClick = filter, filterableColumns = state.table.visibleColumns.mapIndexedNotNull { i, col ->
                 i.takeUnless { col.type.contains("BLOB", ignoreCase = true) }
             }.toSet(), filteredColumns = state.table.visibleColumns.mapIndexedNotNull { i, col ->
@@ -194,7 +191,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     fun bind(key: String, headings: List<String>, count: Int, viewport: SqliteViewport,
         rowAt: (Int) -> List<SqliteCell>?, errorAt: (Int) -> String? = { null },
         request: (Int) -> Unit = {}, cell: (Int, Int) -> Unit = { _, _ -> },
-        header: ((Int) -> Unit)? = null, sort: SqliteSort? = null, selectRows: Boolean = false,
+        header: ((Int) -> Unit)? = null, sort: SqliteSort? = null,
         headerLongClick: ((Int) -> Unit)? = null, filterableColumns: Set<Int> = emptySet(),
         filteredColumns: Set<Int> = emptySet()) {
         if (owner != key || this.sort != sort || position !== viewport) scroller.abortAnimation()
@@ -210,7 +207,6 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         onHeaderLongClick = headerLongClick
         filterable = filterableColumns
         filtered = filteredColumns
-        this.selectRows = selectRows
         if (position.selectedRow !in 0 until rows) position.selectedRow = -1
         this.sort = sort
         // Stable widths: incoming pages cannot shift columns underneath a finger.
@@ -228,7 +224,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         headers = emptyList(); widths = emptyList(); rows = 0
         rowAt = { null }; errorAt = { null }; requestRow = {}; onCell = { _, _ -> }
         onHeader = null; onHeaderLongClick = null; filterable = emptySet(); filtered = emptySet()
-        sort = null; selectRows = false
+        sort = null
         position = SqliteViewport()
     }
     private val maxX get() = max(0f, contentWidth - width)
@@ -252,7 +248,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         for (row in start until end) {
             val cells = rowAt(row)
             val top = rowHeight + row.toFloat() * rowHeight - position.y
-            if (selectRows && (row == position.selectedRow || row % 2 == 1)) {
+            if (row == position.selectedRow || row % 2 == 1) {
                 paint.color = if (row == position.selectedRow) rowBackground else alternateBackground
                 canvas.drawRect(0f, top, width.toFloat(), top + rowHeight, paint)
             }
@@ -304,16 +300,19 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
         canvas.drawLine(0f, rowHeight, width.toFloat(), rowHeight, paint)
         if (rows == 0) drawCell(canvas, context.getString(R.string.sqlite_no_rows), 0f, rowHeight, width.toFloat(), secondary)
         paint.color = line
+        // Keep indicators inside the outer border, which is drawn above data grids.
+        val inset = 2 * dp
         if (maxX > 0 && width > 0) {
-            val thumb = max(24 * dp, width.toFloat() * width / contentWidth)
-            val left = (width - thumb) * position.x / maxX
-            canvas.drawRoundRect(left, height - 4 * dp, left + thumb, height.toFloat(), 2 * dp, 2 * dp, paint)
+            val track = max(0f, width - 2 * inset)
+            val thumb = min(track, max(24 * dp, track * width / contentWidth))
+            val left = inset + (track - thumb) * position.x / maxX
+            canvas.drawRoundRect(left, height - inset - 4 * dp, left + thumb, height - inset, 2 * dp, 2 * dp, paint)
         }
         if (maxY > 0 && height > rowHeight) {
-            val track = height - rowHeight
-            val thumb = max(24 * dp, track * track / (rows.toFloat() * rowHeight))
+            val track = max(0f, height - rowHeight - inset)
+            val thumb = min(track, max(24 * dp, track * (height - rowHeight) / (rows.toFloat() * rowHeight)))
             val top = rowHeight + (track - thumb) * position.y / maxY
-            canvas.drawRoundRect(width - 4 * dp, top, width.toFloat(), top + thumb, 2 * dp, 2 * dp, paint)
+            canvas.drawRoundRect(width - inset - 4 * dp, top, width - inset, top + thumb, 2 * dp, 2 * dp, paint)
         }
         if (missing.isNotEmpty() && !pendingRequests) {
             pendingRequests = true
@@ -351,9 +350,11 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
     }
 
     private fun activate(row: Int, column: Int, longPress: Boolean) {
-        if (selectRows) selectRow(row)
-        if (longPress) performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        if (longPress || !selectRows) onCell(row, column)
+        selectRow(row)
+        if (longPress) {
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            onCell(row, column)
+        }
     }
 
     private fun filterHeader(column: Int) {
@@ -378,7 +379,7 @@ class SqliteGridView @JvmOverloads constructor(context: Context, attrs: Attribut
             }
             x -= w
         }
-        if (!header && !longPress && selectRows) selectRow(row)
+        if (!header && !longPress) selectRow(row)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
