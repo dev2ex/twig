@@ -902,7 +902,7 @@ class FileAdapter(
 
         private fun fitResticSubtitle() {
             val location = resticSubtitle ?: return
-            b.meta.text = location.fitted(b.root.context.getString(R.string.restic_latest), b.meta.paint,
+            b.meta.text = location.fitted(b.meta.paint,
                 (b.meta.width - b.meta.compoundPaddingLeft - b.meta.compoundPaddingRight).toFloat())
         }
 
@@ -1047,11 +1047,11 @@ class FileAdapter(
                 else -> null
             }
             if (fav.kind == "restic") b.meta.ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-            b.name.text = favoriteDisplayName(fav, node.conn, ctx.getString(R.string.restic_latest))
-            setMeta(if (node.connecting) ctx.getString(R.string.ftp_connecting) else favoriteFullPath(fav, node.conn, ctx.getString(R.string.restic_latest)))
+            b.name.text = favoriteDisplayName(fav, node.conn)
+            setMeta(if (node.connecting) ctx.getString(R.string.ftp_connecting) else favoriteFullPath(fav, node.conn))
             if (fav.kind == "restic" && !node.connecting) {
                 resticSubtitle = com.twig.app.resticLocation(fav, node.conn)
-                b.meta.contentDescription = resticSubtitle!!.compact(ctx.getString(R.string.restic_latest))
+                b.meta.contentDescription = resticSubtitle!!.compact()
                 fitResticSubtitle()
             }
             b.icon.setImageResource(

@@ -32,7 +32,7 @@ fun formatRawLocationPath(connLabel: String, path: String, conn: SavedConnection
  * Favourite names follow live connection aliases for ordinary network sources. Restic
  * prefixes the target directory or snapshot with its repository name; the subtitle adds context.
  */
-fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String {
+fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?): String {
     // ★ Slicing the last segment of path only works for sources whose path is "just a path";
     // SAF's path is an entire document URI, so slicing yields something like
     // `primary%3ADCIM%2FPhotos`, which is why the name is stored alongside when favouriting.
@@ -41,18 +41,18 @@ fun defaultFavoriteName(fav: Favorite, conn: SavedConnection?, latest: String = 
     }
     return when (fav.kind) {
         "conn" -> "${conn?.displayLabel() ?: fav.connLabel}:$itemName"
-        "restic" -> resticLocation(fav, conn).favoriteName(latest)
+        "restic" -> resticLocation(fav, conn).favoriteName()
         else -> itemName
     }
 }
 
 /** The name actually shown on a favourite row: the custom name if any, otherwise [defaultFavoriteName]. */
-fun favoriteDisplayName(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String =
-    fav.customLabel.ifEmpty { defaultFavoriteName(fav, conn, latest) }
+fun favoriteDisplayName(fav: Favorite, conn: SavedConnection?): String =
+    fav.customLabel.ifEmpty { defaultFavoriteName(fav, conn) }
 
 /** Favourite subtitle: full address for ordinary sources, repository/snapshot context for restic. */
-fun favoriteFullPath(fav: Favorite, conn: SavedConnection?, latest: String = "latest"): String = when (fav.kind) {
-    "restic" -> resticLocation(fav, conn).compact(latest)
+fun favoriteFullPath(fav: Favorite, conn: SavedConnection?): String = when (fav.kind) {
+    "restic" -> resticLocation(fav, conn).compact()
     "saf" -> "saf:" + safReadablePath(fav.path)
     else -> formatRawLocationPath(fav.connLabel, fav.path, conn)
 }

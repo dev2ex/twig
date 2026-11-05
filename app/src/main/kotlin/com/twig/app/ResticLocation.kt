@@ -14,23 +14,27 @@ data class ResticLocation(
     val snapshotLabel: String = "",
     val resolvedSnapshotId: String = "",
 ) {
+    companion object {
+        const val LATEST_NAME = "Latest"
+    }
+
     val selector: String get() = path.trim('/').substringBefore('/')
     val insidePath: String get() = path.trim('/').substringAfter('/', "").let { "/$it" }
 
-    fun snapshotName(latest: String): String = when (selector) {
+    fun snapshotName(): String = when (selector) {
         "" -> ""
-        "latest" -> latest
+        "latest" -> LATEST_NAME
         else -> snapshotLabel.ifEmpty { selector }
     }
 
-    fun compact(latest: String): String = buildString {
+    fun compact(): String = buildString {
         append("restic · ").append(repositoryName)
-        if (selector.isNotEmpty()) append(" › ").append(snapshotName(latest)).append(" › ").append(insidePath)
+        if (selector.isNotEmpty()) append(" › ").append(snapshotName()).append(" › ").append(insidePath)
     }
 
     /** Keep the snapshot selector visible when a long repository/path exceeds the bar. */
-    fun fitted(latest: String, paint: android.text.TextPaint, width: Float): String {
-        val full = compact(latest)
+    fun fitted(paint: android.text.TextPaint, width: Float): String {
+        val full = compact()
         if (width <= 0 || paint.measureText(full) <= width || selector.isEmpty()) return full
         val prefix = "restic · "
         val separator = " › "
@@ -38,16 +42,16 @@ data class ResticLocation(
         if (available <= 0) return full
         fun shorten(text: String, budget: Float, where: android.text.TextUtils.TruncateAt) =
             android.text.TextUtils.ellipsize(text, paint, budget.coerceAtLeast(0f), where).toString()
-        val snapshot = shorten(snapshotName(latest), available * 0.45f, android.text.TextUtils.TruncateAt.END)
+        val snapshot = shorten(snapshotName(), available * 0.45f, android.text.TextUtils.TruncateAt.END)
         val remaining = available - paint.measureText(snapshot)
         val repository = shorten(repositoryName, remaining * 0.35f, android.text.TextUtils.TruncateAt.MIDDLE)
         val inside = shorten(insidePath, remaining - paint.measureText(repository), android.text.TextUtils.TruncateAt.START)
         return prefix + repository + separator + snapshot + separator + inside
     }
 
-    fun favoriteName(latest: String): String = when {
+    fun favoriteName(): String = when {
         selector.isEmpty() -> repositoryName
-        insidePath == "/" -> "$repositoryName:${snapshotName(latest)}"
+        insidePath == "/" -> "$repositoryName:${snapshotName()}"
         else -> "$repositoryName:${insidePath.substringAfterLast('/')}"
     }
 
@@ -55,10 +59,10 @@ data class ResticLocation(
         append(ctx.getString(R.string.restic_location_repository)).append("\n").append(repositoryAddress)
         if (selector.isNotEmpty()) {
             append("\n\n").append(ctx.getString(R.string.restic_location_snapshot)).append("\n")
-            append(snapshotName(ctx.getString(R.string.restic_latest)))
+            append(snapshotName())
             if (selector == "latest" && snapshotLabel.isNotEmpty()) append(" · ").append(snapshotLabel)
             val id = resolvedSnapshotId.ifEmpty { selector.takeUnless { it == "latest" }.orEmpty() }
-            if (id.isNotEmpty() && id != snapshotName(ctx.getString(R.string.restic_latest))) append(" · ").append(id)
+            if (id.isNotEmpty() && id != snapshotName()) append(" · ").append(id)
             append("\n\n").append(ctx.getString(R.string.info_path)).append("\n").append(insidePath)
         }
     }

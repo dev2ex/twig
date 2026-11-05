@@ -47,7 +47,7 @@ internal object HistoryDialog {
                 val entry = locations[position]
                 val conn = conns[if (entry.kind == "restic") entry.repoConnLabel else entry.connLabel]
                 val path = if (entry.kind == "restic") com.twig.app.resticLocation(entry.resticFavorite(), conn)
-                    .compact(ctx.getString(R.string.restic_latest))
+                    .compact()
                     else formatLocationPath(entry.connLabel, entry.path, conn)
                 row.name.text = if (entry.kind == "git") ctx.getString(R.string.history_git_prefix, path) else path
                 row.icon.setImageResource(when {

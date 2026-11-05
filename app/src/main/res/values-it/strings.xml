@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Salva password</string>
     <string name="restic_unlocking">Sblocco…</string>
     <string name="restic_wrong_pw">Password errata o illeggibile: %1$s</string>
-    <string name="restic_latest">Più recenti</string>
     <string name="action_density">Altezza righe</string>
     <string name="action_text_size">Dimensione testo</string>
     <string name="action_sort">Ordina</string>

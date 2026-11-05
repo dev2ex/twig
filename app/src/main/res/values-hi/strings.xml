@@ -23,7 +23,6 @@
     <string name="restic_save_pw">पासवर्ड सहेजें</string>
     <string name="restic_unlocking">अनलॉक हो रहा है…</string>
     <string name="restic_wrong_pw">गलत पासवर्ड या पढ़ना संभव नहीं: %1$s</string>
-    <string name="restic_latest">नवीनतम</string>
     <string name="action_density">पंक्ति की ऊँचाई</string>
     <string name="action_text_size">टेक्स्ट का आकार</string>
     <string name="action_sort">क्रमबद्ध करें</string>

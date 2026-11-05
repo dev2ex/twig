@@ -571,14 +571,14 @@ class PaneFragment : Fragment() {
 
     /** Match history and directory settings, retaining this pane's server lookup. */
     private fun pathLabel(f: XFile): String =
-        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme), getString(R.string.restic_latest))
+        Format.pathLabel(f, viewModel.connOf(f.scheme) ?: Connections.ofScheme(f.scheme))
 
     private fun setPathText(file: XFile?) {
         val full = file?.let(::pathLabel).orEmpty()
         val location = file?.let { com.twig.app.resticLocation(it) }
         b.tvPath.contentDescription = full
         b.tvPath.text = location?.fitted(
-            getString(R.string.restic_latest), b.tvPath.paint,
+            b.tvPath.paint,
             (b.tvPath.width - b.tvPath.compoundPaddingLeft - b.tvPath.compoundPaddingRight).toFloat(),
         ) ?: full
     }
@@ -2828,7 +2828,7 @@ class PaneFragment : Fragment() {
                 showResticLocation(com.twig.app.resticLocation(node.fav, node.conn))
             }
         }
-        val label = favoriteDisplayName(node.fav, node.conn, getString(R.string.restic_latest))
+        val label = favoriteDisplayName(node.fav, node.conn)
         actions.item(getString(R.string.action_rename_favorite), R.drawable.ic_rename) {
             promptRenameFavorite(node.fav, label)
         }

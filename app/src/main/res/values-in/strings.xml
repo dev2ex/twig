@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Simpan kata sandi</string>
     <string name="restic_unlocking">Membuka kunci…</string>
     <string name="restic_wrong_pw">Kata sandi salah atau tidak dapat dibaca: %1$s</string>
-    <string name="restic_latest">Terbaru</string>
     <string name="action_density">Tinggi baris</string>
     <string name="action_text_size">Ukuran teks</string>
     <string name="action_sort">Urutkan</string>

@@ -1704,7 +1704,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     scrollKey = descend.targetKey
                     rebuild()
                     if (_state.value.rows.none { it.key == descend.targetKey }) {
-                        mountPinnedDirectory(descend.target, Format.pathLabel(descend.target, latest = str(R.string.restic_latest)))
+                        mountPinnedDirectory(descend.target, Format.pathLabel(descend.target))
                     }
                     onResult(true, null)
                 },
@@ -3492,9 +3492,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (exp && unlocked) {
             // fs-restic is a pure JVM module with no string resources available, so
             // the "latest" virtual directory (path=="/latest") only carries the raw,
-            // language-neutral name; localized text is owned here at this one render point.
+            // language-neutral name; apply the shared display label here.
             visible(children[nodeKey]).forEach { f ->
-                val shown = if (f.path == "/latest") f.copy(displayName = str(R.string.restic_latest)) else f
+                val shown = if (f.path == "/latest") f.copy(displayName = com.twig.app.ResticLocation.LATEST_NAME) else f
                 addFile(rows, shown, depth + 1)
             }
         }

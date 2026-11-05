@@ -23,7 +23,6 @@
     <string name="restic_save_pw">حفظ كلمة المرور</string>
     <string name="restic_unlocking">جارٍ فتح القفل…</string>
     <string name="restic_wrong_pw">كلمة مرور خاطئة أو تعذرت القراءة: %1$s</string>
-    <string name="restic_latest">الأحدث</string>
     <string name="action_density">ارتفاع الصف</string>
     <string name="action_text_size">حجم النص</string>
     <string name="action_sort">ترتيب</string>

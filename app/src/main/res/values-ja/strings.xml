@@ -23,7 +23,6 @@
     <string name="restic_save_pw">パスワードを保存</string>
     <string name="restic_unlocking">ロック解除中…</string>
     <string name="restic_wrong_pw">パスワードが違うか読み取れません：%1$s</string>
-    <string name="restic_latest">最新</string>
     <string name="action_density">行の高さ</string>
     <string name="action_text_size">文字サイズ</string>
     <string name="action_sort">並べ替え</string>
