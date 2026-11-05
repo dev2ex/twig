@@ -164,9 +164,12 @@ its listing size must still describe the followed stream for copy/resume checks.
 - `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
   toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
   single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
-  directory-count subscriptions across Main and both pickers. Toolbar visibility and
-  action-strip density still follow orientation. The setting participates in
-  `uiSignature` and configuration backups.
+  directory-count subscriptions across Main and both pickers. In Main, toolbar visibility
+  follows orientation unless the default-off `Prefs.hideTitleBarPortrait` hides it in
+  portrait too. Hidden title-bar actions stay pinned above the strip with the same
+  separator, using one column in portrait and two in landscape. Action-strip density
+  still follows orientation. Both settings participate in `uiSignature` and
+  configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   `TreeIndentation` subtracts the shallowest visible depth from display indentation,
   with a shared 250 ms transition; partially visible rows retain their depth, and
@@ -775,7 +778,8 @@ add its symptom here.
   visible and openable — the **copy** is what refuses it (zip slip).
   *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
   asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
-  install with "only DEFLATED entries can have EXT descriptor", a PDF inside an archive
+  install with "only DEFLATED entries can have EXT descriptor", ZIPs with invalid filename
+  bytes failing with "Error reading Zip content from FileChannelImpl" (#53), a PDF inside an archive
   that no app (built-in or third-party) can open, followed by the whole tree freezing up
   and a copy failing with ENOENT until retried.
 - **[WiFi sharing](docs/lessons/wifi-sharing.md)** — read-only by default through one

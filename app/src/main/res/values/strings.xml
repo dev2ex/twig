@@ -1340,4 +1340,6 @@
     <string name="restic_location_details">Path details</string>
     <string name="restic_location_repository">Repository</string>
     <string name="restic_location_snapshot">Snapshot</string>
+    <string name="settings_hide_title_bar_portrait">Hide title bar in portrait</string>
+    <string name="settings_hide_title_bar_portrait_desc">Move terminal, pane switch, music and menu actions to the top of the action strip in a single column</string>
 </resources>

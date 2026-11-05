@@ -14,6 +14,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
 import android.widget.LinearLayout
+import com.twig.app.R
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -32,6 +33,14 @@ class InfoCardLayout @JvmOverloads constructor(context: Context, attrs: Attribut
     private var transition: ValueAnimator? = null
     private var outgoing: BitmapDrawable? = null
     private var contentInMotion: View? = null
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        val tabs = findViewById<View>(R.id.tab_bar) ?: return
+        val content = findViewById<View>(R.id.info_content) ?: return
+        // The body owns the shared edge; clip the overlapping title stroke and fill.
+        tabs.clipBounds = Rect(0, 0, tabs.width, (content.top - tabs.top).coerceIn(0, tabs.height))
+    }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         if (!swipeEnabled) return super.dispatchTouchEvent(event)

@@ -63,7 +63,7 @@ abstract class ArchiveFileSystem : FileSystem {
         }
         // For header-encrypted formats (7z/rar) the entry listing itself is a decryption result,
         // so changing the password means re-parsing
-        synchronized(entryCache) { entryCache.remove(archivePath) }
+        synchronized(entryCache) { entryCache.remove(entryCacheKey(archivePath)) }
     }
 
     protected fun passwordOf(archivePath: String): String? =
@@ -113,12 +113,16 @@ abstract class ArchiveFileSystem : FileSystem {
         return RandomSourceChannel(src, size)
     }
 
-    /** Get the entry list: remote archives are cached (re-expanding does not re-parse), local reads fresh each time. */
+    /** Subclasses can include configuration that changes how the same archive is listed. */
+    protected open fun entryCacheKey(archivePath: String): String = archivePath
+
+    /** Remote archives are cached; local reads are fresh each time. */
     protected fun entries(archivePath: String): List<ArchiveEntry> {
+        val key = entryCacheKey(archivePath)
         if (hostOf(archivePath).scheme == HOST_SCHEME) return readEntries(archivePath)
-        synchronized(entryCache) { entryCache[archivePath]?.let { return it } }
+        synchronized(entryCache) { entryCache[key]?.let { return it } }
         val list = readEntries(archivePath)
-        synchronized(entryCache) { entryCache[archivePath] = list }
+        synchronized(entryCache) { entryCache[key] = list }
         return list
     }
 

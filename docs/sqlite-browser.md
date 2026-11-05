@@ -22,7 +22,9 @@ as directory paths after process death.
   gesture to one axis. Data and property cards occupy the pane width independently of
   tree indentation. Vertically scrollable grids retain gestures at either scroll
   boundary. When all rows fit, vertical drags return to the outer tree; horizontal
-  drags still belong to the grid. Virtual accessibility nodes expose visible cells.
+  drags still belong to the grid. Data and Columns share alternating row backgrounds,
+  scroll indicators and row selection: taps select a row, long presses open details.
+  Virtual accessibility nodes expose visible cells and the same selection actions.
 - `ui/SqliteInfoView.kt` provides Columns and DDL content inside the common
   `item_info_card` shell. Columns use the grid; DDL uses the common selectable text
   body with wrapping, without a grid header or cell borders. `InfoCardTabs` renders both ordinary and SQLite property tabs,

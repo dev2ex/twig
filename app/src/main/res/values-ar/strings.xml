@@ -1265,4 +1265,6 @@
     <string name="restic_location_details">تفاصيل المسار</string>
     <string name="restic_location_repository">المستودع</string>
     <string name="restic_location_snapshot">اللقطة</string>
+    <string name="settings_hide_title_bar_portrait">إخفاء شريط العنوان في الوضع العمودي</string>
+    <string name="settings_hide_title_bar_portrait_desc">عرض الطرفية وتبديل اللوحات والموسيقى والقائمة في عمود واحد أعلى شريط الإجراءات</string>
 </resources>

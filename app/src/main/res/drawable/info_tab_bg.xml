@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Properties card tab title bar: round only the top corners; the bottom edge overlaps the content box stroke into a single line -->
+<!-- Properties title: round only the top corners; InfoCardLayout clips the bottom overlap. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <solid android:color="?attr/twigSurface" />
     <stroke android:width="1dp" android:color="?attr/twigDivider" />

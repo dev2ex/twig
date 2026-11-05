@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Typeface
 import android.graphics.Rect
+import android.graphics.Outline
 import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -20,6 +21,7 @@ import android.view.MotionEvent
 import android.content.res.ColorStateList
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -326,6 +328,16 @@ class FileAdapter(
         return when (viewType) {
             TYPE_SQLITE_DATA -> SqliteDataVH(ItemSqliteDataBinding.inflate(inflater, parent, false).apply {
                 sqliteGrid.layoutParams.height = sqliteViewportHeight(parent, 280)
+                sqliteGrid.setBackgroundColor(ContextCompat.getColor(parent.context, R.color.surface))
+                sqliteGrid.foreground = ContextCompat.getDrawable(parent.context, R.drawable.sqlite_grid_border)
+                // Clip cells independently of the background; only the foreground owns the border.
+                sqliteGrid.outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(0, 0, view.width, view.height,
+                            4 * view.resources.displayMetrics.density)
+                    }
+                }
+                sqliteGrid.clipToOutline = true
             })
             TYPE_SQLITE_INFO -> SqliteInfoVH(SqliteInfoView(parent.context).apply {
                 setGridHeight(sqliteViewportHeight(parent, 224))

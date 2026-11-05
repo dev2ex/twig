@@ -9,17 +9,18 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.nio.charset.Charset
 import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
  * ZIP filesystem. Read: commons-compress ZipFile goes through a seekable channel — works for
  * local and remote (SMB/WebDAV) alike; remote only fetches the central directory and the data
  * ranges actually accessed, with no whole-archive download. Entry names use UTF-8 when the EFS
- * flag is set; old archives fall back to GBK. Write: add/delete/modify are done by rewriting the
- * whole archive (java.util.zip, local archives only).
+ * flag is set; legacy names try the configured encodings, then replacement decoding.
+ * Write: append new entries; delete/rename/overwrite rewrite local archives with UTF-8 names.
  */
-class ZipFileSystem : ArchiveFileSystem() {
+class ZipFileSystem(
+    private val preferredCharsets: () -> List<Charset> = { listOf(Charset.forName("GB18030")) },
+) : ArchiveFileSystem() {
 
     override val scheme: String = SCHEME
     override val displayName: String = "Archive"
@@ -32,20 +33,45 @@ class ZipFileSystem : ArchiveFileSystem() {
     override fun writable(archivePath: String): Boolean =
         hostOf(archivePath).scheme == HOST_SCHEME && !needsPassword(archivePath)
 
-    private fun openZip(archivePath: String): org.apache.commons.compress.archivers.zip.ZipFile =
-        org.apache.commons.compress.archivers.zip.ZipFile.builder()
-            .setSeekableByteChannel(openChannel(archivePath))
-            .setCharset(GBK) // only used for entry names of old archives without the EFS flag
-            // Only read the central directory; do not seek each local file header (saves hundreds
-            // to thousands of small reads on remote archives). Data offsets are parsed lazily on demand
-            // inside getInputStream.
-            .setIgnoreLocalFileHeader(true)
-            .get()
+    private class OpenZip(
+        private val zip: org.apache.commons.compress.archivers.zip.ZipFile,
+        preferred: List<Charset>,
+    ) : java.io.Closeable {
+        val entries = zip.entries.asSequence().toList()
+        val names = ZipEntryNames(entries, preferred)
+        fun getInputStream(entry: org.apache.commons.compress.archivers.zip.ZipArchiveEntry) = zip.getInputStream(entry)
+        override fun close() = zip.close()
+    }
+
+    override fun entryCacheKey(archivePath: String): String =
+        archivePath + ":" + preferredCharsets().joinToString(",") { it.name() }
+
+    private fun openZip(archivePath: String): OpenZip {
+        val channel = openChannel(archivePath)
+        try {
+            val zip = org.apache.commons.compress.archivers.zip.ZipFile.builder()
+                .setSeekableByteChannel(channel)
+                // Parse arbitrary legacy bytes without failing before our per-entry decoder runs.
+                .setCharset(Charsets.ISO_8859_1)
+                // Keep remote reads limited to the central directory; data offsets are lazy.
+                .setIgnoreLocalFileHeader(true)
+                .get()
+            try {
+                return OpenZip(zip, preferredCharsets())
+            } catch (t: Throwable) {
+                zip.close()
+                throw t
+            }
+        } catch (t: Throwable) {
+            channel.close()
+            throw t
+        }
+    }
 
     override fun readEntries(archivePath: String): List<ArchiveEntry> {
         openZip(archivePath).use { zf ->
             return zf.entries.asSequence().map {
-                ArchiveEntry(it.name, it.isDirectory, if (it.isDirectory) 0L else it.size, it.time)
+                ArchiveEntry(zf.names[it], it.isDirectory, if (it.isDirectory) 0L else it.size, it.time)
             }.toList()
         }
     }
@@ -55,12 +81,12 @@ class ZipFileSystem : ArchiveFileSystem() {
 
     /** For a STORED (uncompressed) entry returns its (data offset, length) inside the archive; for a compressed entry returns null. */
     private fun storedSlice(archivePath: String, inner: String): Pair<Long, Long>? {
-        val key = "$archivePath$SEP$inner"
+        val key = "${entryCacheKey(archivePath)}$SEP$inner"
         synchronized(sliceCache) { if (sliceCache.containsKey(key)) return sliceCache[key] }
         val slice = runCatching {
             openZip(archivePath).use { zf ->
                 val e = zf.entries.asSequence()
-                    .firstOrNull { !it.isDirectory && it.name.replace('\\', '/').trimEnd('/') == inner }
+                    .firstOrNull { !it.isDirectory && zf.names[it].replace('\\', '/').trimEnd('/') == inner }
                 // Encrypted entries are excluded: they store ciphertext in the archive, so slicing
                 // would read out garbage.
                 if (e == null || e.generalPurposeBit.usesEncryption() ||
@@ -113,7 +139,7 @@ class ZipFileSystem : ArchiveFileSystem() {
     override fun openEntry(archivePath: String, inner: String): InputStream {
         val zf = openZip(archivePath)
         val entry = zf.entries.asSequence()
-            .firstOrNull { !it.isDirectory && it.name.replace('\\', '/').trimEnd('/') == inner }
+            .firstOrNull { !it.isDirectory && zf.names[it].replace('\\', '/').trimEnd('/') == inner }
         if (entry == null) {
             zf.close()
             throw FsException("No such file in archive: $inner")
@@ -136,13 +162,13 @@ class ZipFileSystem : ArchiveFileSystem() {
     private val encCache = HashMap<String, String?>()
 
     private fun firstEncrypted(archivePath: String): String? {
-        val key = stampOf(archivePath) // automatically invalidated when a same-named file is swapped out
+        val key = entryCacheKey(archivePath) + stampOf(archivePath) // automatically invalidated when a same-named file is swapped out
         synchronized(encCache) { if (encCache.containsKey(key)) return encCache[key] }
         val name = runCatching {
             openZip(archivePath).use { zf ->
                 zf.entries.asSequence()
                     .firstOrNull { !it.isDirectory && it.generalPurposeBit.usesEncryption() }
-                    ?.name
+                    ?.let { zf.names[it] }
             }
         }.getOrNull()
         synchronized(encCache) { encCache[key] = name }
@@ -160,7 +186,7 @@ class ZipFileSystem : ArchiveFileSystem() {
         // Only catch "wrong password"; a broken / unreadable archive is a different matter, so rethrow instead of calling it a wrong password
         return try {
             openZip(archivePath).use { zf ->
-                val e = zf.entries.asSequence().first { it.name == inner }
+                val e = zf.entries.asSequence().first { zf.names[it] == inner }
                 openEncrypted(archivePath, e, password).close()
             }
             true
@@ -398,7 +424,7 @@ class ZipFileSystem : ArchiveFileSystem() {
             }
         }
         // Entry positions have changed (central directory moved to the back), so the STORED slice cache is invalidated
-        synchronized(sliceCache) { sliceCache.keys.removeAll { it.startsWith(archivePath + SEP) } }
+        synchronized(sliceCache) { sliceCache.keys.removeAll { it.startsWith(archivePath + ":") } }
         return true
     }
 
@@ -493,19 +519,15 @@ class ZipFileSystem : ArchiveFileSystem() {
         addFiles: Map<String, File> = emptyMap(),
         transform: (String) -> String?,
     ) {
-        // Yes, this walks the central directory once more than the copy below does. Measured on
-        // a 5000-entry archive: 1.6 ms against 442 ms for the rewrite itself (0.35%), so caching
-        // it would buy nothing and add state to invalidate.
-        val cs = detectCharset(archivePath)
+        // Reuse the same entry names as listing/opening, including collision suffixes.
+        // UTF-8 can represent every decoded name when the input has mixed encodings.
         val src = File(archivePath)
         val tmp = File(src.parentFile, "${src.name}.twigtmp")
         try {
-            ZipOutputStream(tmp.outputStream(), cs).use { zos ->
-                ZipFile(src, cs).use { zf ->
-                    val en = zf.entries()
-                    while (en.hasMoreElements()) {
-                        val e = en.nextElement()
-                        val newName = transform(e.name) ?: continue
+            ZipOutputStream(tmp.outputStream(), Charsets.UTF_8).use { zos ->
+                openZip(archivePath).use { zf ->
+                    for (e in zf.entries) {
+                        val newName = transform(zf.names[e]) ?: continue
                         if (addFiles.containsKey(cmp(newName))) continue // new file takes over
                         val ne = ZipEntry(newName).apply { time = e.time }
                         zos.putNextEntry(ne)
@@ -538,7 +560,7 @@ class ZipFileSystem : ArchiveFileSystem() {
             }
             bak.delete()
             // Archive has been rewritten, so all entry offsets are invalid
-            synchronized(sliceCache) { sliceCache.keys.removeAll { it.startsWith(archivePath + SEP) } }
+            synchronized(sliceCache) { sliceCache.keys.removeAll { it.startsWith(archivePath + ":") } }
         } finally {
             if (tmp.exists()) tmp.delete()
         }
@@ -547,30 +569,10 @@ class ZipFileSystem : ArchiveFileSystem() {
     /** Normalize for comparison: unify '/', drop trailing '/'. */
     private fun cmp(raw: String): String = raw.replace('\\', '/').trimEnd('/')
 
-    /**
-     * Choose the encoding used to read entry names: prefer UTF-8; if UTF-8 parsing throws
-     * (illegal sequence), or the name contains a replacement character, decide it is an old GBK archive.
-     */
-    private fun detectCharset(archivePath: String): Charset {
-        return try {
-            ZipFile(File(archivePath), Charsets.UTF_8).use { zf ->
-                val en = zf.entries()
-                while (en.hasMoreElements()) {
-                    if (en.nextElement().name.any { it == REPLACEMENT_CHAR }) return GBK
-                }
-            }
-            Charsets.UTF_8
-        } catch (e: Exception) {
-            GBK
-        }
-    }
-
     companion object {
         const val SCHEME = "zip"
         private const val LOCAL_HEADER_LEN = 30
         private const val EOCD_LEN = 22
         private const val ZIP64_LOCATOR_LEN = 20
-        private val GBK: Charset = Charset.forName("GBK")
-        private val REPLACEMENT_CHAR = Char(0xFFFD) // placeholder used when a name fails to decode as UTF-8
     }
 }

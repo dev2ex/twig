@@ -261,6 +261,11 @@ class SettingsActivity : TwigActivity() {
         )
 
         switchRow(
+            getString(R.string.settings_hide_title_bar_portrait), getString(R.string.settings_hide_title_bar_portrait_desc),
+            get = { Prefs.hideTitleBarPortrait(this) },
+            set = { Prefs.setHideTitleBarPortrait(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_toolbar_bottom), getString(R.string.settings_toolbar_bottom_desc),
             get = { Prefs.toolbarAtBottom(this) },
             set = { Prefs.setToolbarAtBottom(this, it) },

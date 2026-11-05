@@ -1297,4 +1297,6 @@
     <string name="restic_location_details">Сведения о пути</string>
     <string name="restic_location_repository">Репозиторий</string>
     <string name="restic_location_snapshot">Снимок</string>
+    <string name="settings_hide_title_bar_portrait">Скрывать заголовок в книжной ориентации</string>
+    <string name="settings_hide_title_bar_portrait_desc">Показывать терминал, переключение панелей, музыку и меню в один столбец вверху панели действий</string>
 </resources>

@@ -633,6 +633,7 @@ Use JDK 21 and the Android SDK/NDK versions pinned in `app/build.gradle.kts`.
 ./gradlew :app:assembleLibreRelease    # F-Droid variant (no RAR, 100% FLOSS)
 ./gradlew :app:bundleLibreRelease     # libre AAB for store upload
 ./gradlew :app:assembleFullRelease -PabiSplit=true  # three single-ABI APKs
+./gradlew :app:assembleFullRelease -Planguages=zh   # Chinese translations + default English
 ```
 
 NFS is excluded by default from both full and libre builds. Add `-PwithNfs=true`
@@ -650,6 +651,10 @@ The package name, version and signing configuration stay the same. Saved NFS
 connections remain in configuration backups when using a build without NFS,
 but their root and connection editor are hidden until NFS is enabled again.
 
+`-Planguages` filters packaged translations for either flavor and build type. Use a
+comma-separated list of Android resource qualifiers, such as `en`, `zh`, `ja`,
+`pt-rBR` or `b+zh+Hant`. Omit it to keep all languages. Default English resources
+always remain as a fallback; this option does not force the app's display language.
 
 By default, release builds are signed only if a `keystore.properties` file exists at the repo
 root (`storeFile` / `storePassword` / `keyAlias` / `keyPassword`). Without it the

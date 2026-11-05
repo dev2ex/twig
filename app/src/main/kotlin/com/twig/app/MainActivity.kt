@@ -441,8 +441,8 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         // Don't consume if the pane isn't ready — taken too early nothing will handle it, defer to next onResume
         consumeFinishedTransfer()
         invalidateOptionsMenu() // terminal sessions may have been added/removed in another Activity; refresh the entry's visibility
-        val land = isLandscape()
-        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) applyStripState(s, land)
+        val hideTitleBar = isLandscape() || Prefs.hideTitleBarPortrait(this)
+        for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) applyStripState(s, hideTitleBar)
         // Sharing may have been turned off via the notification bar's "stop" button (the UI wasn't even present); sync once on returning to foreground
         syncShareIcon()
         // SD cards / USB drives are usually inserted/removed while the app isn't in the foreground; rescan on return — only refresh the tree if something changed
@@ -577,7 +577,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
             ShareDialogs.show(this, activePane()?.viewModel?.currentDir)
         }
 
-        // Top pinned row (only shown in landscape when there's no Toolbar): the entries that
+        // Top pinned actions shown when the title bar is hidden: the entries that
         // used to live on the right of the title bar
         s.asTerm.setOnClickListener { TerminalActivity.resume(this) }
         s.asMusic.setOnClickListener {
@@ -601,7 +601,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         setActiveIndex(targetIndex, animateSwitch = true)
     }
 
-    /** Landscape has no Toolbar; the overflow menu becomes a PopupMenu anchored on the action strip's "menu" button (items and handling both reuse R.menu.main). */
+    /** With the title bar hidden, the overflow menu becomes a PopupMenu anchored on the action strip's "menu" button (items and handling both reuse R.menu.main). */
     private fun showStripOverflow(anchor: View) {
         val popup = PopupMenu(this, anchor)
         popup.inflate(R.menu.main)
@@ -611,7 +611,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     /**
-     * Top pinned row visibility and state: only appears in landscape after the Toolbar is
+     * Top pinned row visibility and state: appears when the title bar is
      * hidden; the terminal entry is always available; the pane-swap icon
      * flips direction with the active pane (matching the one on the Toolbar).
      */
@@ -627,15 +627,15 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) s.asShareIcon.setImageResource(res)
     }
 
-    private fun applyStripState(s: ActionStripBinding, land: Boolean) {
+    private fun applyStripState(s: ActionStripBinding, hideTitleBar: Boolean) {
         s.asGrid.applyItems()
         val direction = if (activeIndex == 0) 1f else -1f
         s.asCopyIcon.scaleX = direction
         s.asMoveIcon.scaleX = direction
         s.asCompareIcon.scaleX = direction
-        s.asTop.visibility = if (land) View.VISIBLE else View.GONE
-        s.asTopDivider.visibility = if (land) View.VISIBLE else View.GONE
-        if (!land) return
+        s.asTop.visibility = if (hideTitleBar) View.VISIBLE else View.GONE
+        s.asTopDivider.visibility = if (hideTitleBar) View.VISIBLE else View.GONE
+        if (!hideTitleBar) return
         s.asSwapIcon.setImageResource(
             if (activeIndex == 0) R.drawable.ic_pane_to_right else R.drawable.ic_pane_to_left,
         )
@@ -782,13 +782,14 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         b.browser.stripMid.root.visibility = if (dual) View.VISIBLE else View.GONE
         b.browser.stripLeft.root.visibility = View.GONE
         b.browser.stripRight.root.visibility = if (!dual) View.VISIBLE else View.GONE
-        // Landscape has no Toolbar (vertical space is precious); its right-side buttons move into the strip's top pinned row
-        b.toolbar.visibility = if (land) View.GONE else View.VISIBLE
+        // Hidden title bar actions move into the fixed area above the scrolling strip.
+        val hideTitleBar = land || Prefs.hideTitleBarPortrait(this)
+        b.toolbar.visibility = if (hideTitleBar) View.GONE else View.VISIBLE
         com.twig.app.ui.ToolbarPlacement.apply(this, b.toolbar, Prefs.toolbarAtBottom(this))
         // Landscape's height can't fit a full single column, so the strip becomes two columns (width doubles)
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             applyStripColumns(s, land)
-            applyStripState(s, land)
+            applyStripState(s, hideTitleBar)
         }
         b.browser.root.showPane(activeIndex, animateSwitch && !dual)
         b.browser.root.requestLayout()
@@ -805,6 +806,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asTop.dividers = on
         val cols = if (land) 2 else 1
         s.asGrid.setColumns(cols)
+        s.asTop.setColumns(cols)
         val w = (STRIP_COL_DP * cols * resources.displayMetrics.density).toInt()
         val lp = s.root.layoutParams
         if (lp.width != w) {

@@ -1291,4 +1291,6 @@
     <string name="restic_location_details">路径详情</string>
     <string name="restic_location_repository">仓库</string>
     <string name="restic_location_snapshot">快照</string>
+    <string name="settings_hide_title_bar_portrait">竖屏隐藏标题栏</string>
+    <string name="settings_hide_title_bar_portrait_desc">将终端、切换面板、音乐和菜单按钮移到操作栏顶部，单列显示</string>
 </resources>

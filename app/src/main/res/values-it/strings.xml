@@ -1261,4 +1261,6 @@
     <string name="restic_location_details">Dettagli del percorso</string>
     <string name="restic_location_repository">Repository</string>
     <string name="restic_location_snapshot">Istantanea</string>
+    <string name="settings_hide_title_bar_portrait">Nascondi la barra del titolo in verticale</string>
+    <string name="settings_hide_title_bar_portrait_desc">Mostra terminale, cambio pannello, musica e menu in una colonna in cima alla barra delle azioni</string>
 </resources>

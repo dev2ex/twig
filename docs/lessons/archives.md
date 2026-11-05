@@ -244,3 +244,25 @@
   - `.` stays legal (tar's `./a.txt`), and so does a bare `/` ([XFile.name] of a source root).
   Tests: `entriesClimbingOutAreVisibleButCannotEscapeWhenExtracted`,
   `anOrdinaryFileUnderADotDotPathStillCopiesOut`, and `CopyEngineTest`'s "Unsafe names" section.
+
+- **A bad filename must not make the entire ZIP unreadable (2026-11-05, #53)**:
+  `ZipFileSystem.openZip` used a strict GBK decoder for every unflagged name. One
+  unmappable byte sequence made Commons Compress reject the central directory with
+  `Error reading Zip content from FileChannelImpl`, hiding even healthy entries.
+  Parse legacy bytes with Latin-1, then decode each raw name independently: valid
+  Unicode path metadata / strict UTF-8, the user's ordered encoding candidates,
+  always GB18030 even when absent from settings, finally replacement UTF-8.
+  An incorrect UTF-8 flag still permits these fallbacks.
+  `TwigApp` injects a live provider of `TextCodec.preferred`; the pure JVM module
+  retains no Android dependency. Encoding preferences participate in remote listing,
+  encryption-probe and STORED-slice cache keys.
+  `ZipEntryNames` maps original entry objects to names and suffixes colliding sibling
+  names (including directories), reserving literal names first and retaining file
+  extensions. Listing, streams, random slices and encrypted reads use that same map.
+  Never use the replacement name as an ambiguous lookup into the library's entries.
+  Rewrite operations also use this map and write UTF-8; reopening through JDK ZIP
+  would fail again on malformed names or disagree for mixed encodings. Browsing and
+  extraction leave source bytes unchanged. `ZipEncodingTest` uses raw ZIP records to
+  exercise invalid names, settings order, mixed encodings, incorrect flags, Unicode
+  extras, Shift_JIS backslash trail bytes, directory/file collisions, extraction,
+  random reads, encryption, remote preference changes and rewrite preservation.

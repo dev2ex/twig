@@ -25,6 +25,70 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class SqliteGridViewTest {
     @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun `columns share striped rows and select on tap before opening details on long press`() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        val context = ContextThemeWrapper(activity, R.style.Theme_Twig)
+        val state = SqliteTableState(SqliteTable("entries", "", List(12) {
+            SqliteColumn("column$it", "TEXT", false, null, 0)
+        }, SqliteIdentity("rowid", emptyList())))
+        val card = SqliteInfoView(context)
+        val node = SqliteInfoNode("db", 2, state)
+        card.bind(node) {}
+        activity.setContentView(card)
+        card.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        card.layout(0, 0, 320, card.measuredHeight)
+        val grid = card.findViewById<android.view.ViewGroup>(R.id.info_content).getChildAt(1) as SqliteGridView
+        val dp = grid.resources.displayMetrics.density
+        fun bitmap() = Bitmap.createBitmap(grid.width, grid.height, Bitmap.Config.ARGB_8888).also {
+            grid.draw(Canvas(it))
+        }
+        val before = bitmap()
+        val x = (100 * dp).toInt()
+        val y = (40 * dp).toInt()
+        assertNotEquals(before.getPixel(x, y), before.getPixel(x, (72 * dp).toInt()))
+        fun touch(action: Int, down: Long, time: Long = down) {
+            MotionEvent.obtain(down, time, action, x.toFloat(), y.toFloat(), 0).also {
+                grid.onTouchEvent(it); it.recycle()
+            }
+        }
+        val down = android.os.SystemClock.uptimeMillis()
+        touch(MotionEvent.ACTION_DOWN, down)
+        touch(MotionEvent.ACTION_UP, down, down + 20)
+        assertEquals(0, state.columnsViewport.selectedRow)
+        assertNull(org.robolectric.shadows.ShadowDialog.getLatestDialog())
+        assertNotEquals(before.getPixel(x, y), bitmap().getPixel(x, y))
+        card.bind(node) {}
+        assertEquals(0, state.columnsViewport.selectedRow)
+        val press = android.os.SystemClock.uptimeMillis()
+        touch(MotionEvent.ACTION_DOWN, press)
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(
+            android.view.ViewConfiguration.getLongPressTimeout() + 20L))
+        touch(MotionEvent.ACTION_UP, press, android.os.SystemClock.uptimeMillis())
+        val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()!!
+        assertTrue(dialog.isShowing)
+        fun text(view: View): String = when (view) {
+            is android.widget.TextView -> view.text.toString()
+            is android.view.ViewGroup -> (0 until view.childCount).joinToString("\n") { text(view.getChildAt(it)) }
+            else -> ""
+        }
+        assertTrue(text(dialog.window!!.decorView).contains("column0\nTEXT\n0\n—\n0\n0"))
+        dialog.dismiss()
+        val provider = grid.accessibilityNodeProvider!!
+        assertTrue(provider.createAccessibilityNodeInfo(0)!!.isSelected)
+        assertTrue(provider.performAction(6,
+            androidx.core.view.accessibility.AccessibilityNodeInfoCompat.ACTION_CLICK, null))
+        assertEquals(1, state.columnsViewport.selectedRow)
+        assertFalse(provider.createAccessibilityNodeInfo(-2)!!.isClickable)
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid,
+            androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_RIGHT.id, null))
+        assertTrue(androidx.core.view.ViewCompat.performAccessibilityAction(grid,
+            androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat.ACTION_SCROLL_DOWN.id, null))
+        assertTrue(state.columnsViewport.x > 0f)
+        assertTrue(state.columnsViewport.y > 0f)
+    }
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     @Test fun `data taps select entire rows while long presses open cells and retain search highlights`() {
         val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         val grid = SqliteGridView(ContextThemeWrapper(activity, R.style.Theme_Twig))
@@ -32,7 +96,7 @@ class SqliteGridViewTest {
         val opened = mutableListOf<Pair<Int, Int>>()
         fun bind(view: SqliteGridView) = view.bind("data", listOf("a", "b"), 2, position,
             rowAt = { listOf(SqliteCell.text("match").copy(matched = true), SqliteCell.text("other")) },
-            cell = { row, col -> opened.add(row to col) }, selectRows = true)
+            cell = { row, col -> opened.add(row to col) })
         bind(grid)
         activity.setContentView(grid)
         grid.measure(View.MeasureSpec.makeMeasureSpec(320, View.MeasureSpec.EXACTLY),
