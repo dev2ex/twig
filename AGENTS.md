@@ -859,11 +859,13 @@ add its symptom here.
   entries, and purge symlinks without following them.
   *Explains*: how to recover interrupted moves, why Robolectric needs real lstat semantics,
   and Android 11 FUSE rejecting no-replace moves with EINVAL.
-- **[Removable storage](docs/lessons/removable-storage.md)** — `getStorageVolumes()` does
-  return invisible volumes, the event channels do not fire for them (the foreground UI
+- **[Storage](docs/lessons/storage.md)** — shared-profile storage uses the public
+  API before directory enumeration; never assume a clone user id. `getStorageVolumes()` does
+  return invisible removable volumes, the event channels do not fire for them (the foreground UI
   polls), filter by `isPrimary` rather than `isRemovable`, and `/mnt/media_rw` needs
   elevation.
-  *Explains*: a USB drive that only appears after restarting the app, internal storage
+  *Explains*: app-clone storage missing beside Internal Storage (#55; Samsung device
+  verification pending), a USB drive that only appears after restarting the app, internal storage
   listed twice, capacity reads blocking the UI during device changes.
 - **[Terminal: local shell, fonts, zoom](docs/lessons/terminal-local.md)** — only
   returning to the foreground may arm the size thaw; a terminal font is acceptable only

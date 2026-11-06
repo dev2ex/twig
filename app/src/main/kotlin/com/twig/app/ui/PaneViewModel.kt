@@ -1200,7 +1200,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 !(
                     it.scheme == "file" &&
                         (
-                            it.path == Environment.getExternalStorageDirectory().absolutePath ||
+                            it.path in StorageVolumes.internalRoots(getApplication()) ||
                                 it.path == PrivateSpace.directory(getApplication()).path ||
                                 StorageVolumes.isVolumeRoot(it.path) // A whole SD card / USB stick shouldn't be the default target either.
                             )
@@ -1366,11 +1366,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         // Reuse the other-pane pin when the normal source is hidden, without
         // changing the user's root visibility choices.
         if (lockRoot == null) {
-            val ext = Environment.getExternalStorageDirectory().absolutePath
+            val internal = StorageVolumes.internalRoots(getApplication()).firstOrNull { target.path == it || target.path.startsWith("$it/") }
             val privatePath = PrivateSpace.directory(getApplication()).path
             val root = when {
                 target.scheme != "file" -> conn?.let { groupIdFor(it) }
-                target.path == ext || target.path.startsWith("$ext/") -> null
+                internal != null -> null
                 rootVisible("private") && (target.path == privatePath || target.path.startsWith("$privatePath/")) -> null
                 else -> "root"
             }
@@ -1443,11 +1443,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val expand = ArrayList<Pair<String, XFile>>()
         val fetched = ArrayList<Restored>()
         if (target.scheme == "file") {
-            val ext = Environment.getExternalStorageDirectory().absolutePath
+            val internal = StorageVolumes.internalRoots(getApplication()).firstOrNull { target.path == it || target.path.startsWith("$it/") }
             val privatePath = PrivateSpace.directory(getApplication()).path
             val root = when {
                 rootVisible("private") && (target.path == privatePath || target.path.startsWith("$privatePath/")) -> privatePath
-                target.path == ext || target.path.startsWith("$ext/") -> ext
+                internal != null -> internal
                 else -> "/"
             }
             var p = target.path
@@ -3335,11 +3335,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (lock != null) {
             addFile(rows, lock, 0, lockLabel)
         } else {
-            val ext = Environment.getExternalStorageDirectory().absolutePath
+            val internal = StorageVolumes.internalRoots(getApplication())
             val volumes = StorageVolumes.cached(getApplication())
             // Register all shortcut identities before rendering any expanded subtree:
             // Their paths may also appear below another root, regardless of root order.
-            if (rootVisible("internal")) storageShortcutKeys.add(fileKey(XFile("file", ext, isDir = true)))
+            if (rootVisible("internal")) internal.forEach {
+                storageShortcutKeys.add(fileKey(XFile("file", it, isDir = true)))
+            }
             if (rootVisible("root")) storageShortcutKeys.add(fileKey(XFile("file", "/", isDir = true)))
             if (rootVisible("removable")) volumes.forEach {
                 storageShortcutKeys.add(fileKey(XFile("file", it.path, isDir = true)))
@@ -3355,8 +3357,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 val item = orderedRoots.next()
                 if (!rootVisible(item.id)) return
                 when (item.id) {
-                    "internal" -> addFile(rows, XFile("file", ext, isDir = true), 0,
-                        str(R.string.group_internal_storage), capacity(ext))
+                    "internal" -> internal.forEachIndexed { index, path ->
+                        val label = str(R.string.group_internal_storage) + if (index == 0) "" else " (${path.substringAfterLast('/')})"
+                        addFile(rows, XFile("file", path, isDir = true), 0, label, capacity(path))
+                    }
                     "removable" -> volumes.forEach { v ->
                         addFile(rows, storageRoot(v.path), 0, v.label, capacity(v.path))
                     }

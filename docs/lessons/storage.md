@@ -1,8 +1,28 @@
-# Removable storage (SD card / USB)
+# Storage (internal, app clones, SD card and USB)
 
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
+
+## Internal storage and app clones
+
+- **Additional emulated storage shortcuts (2026-11-06, #55)**: storage-volume
+  discovery for the current user alone can miss app-clone storage. On API 33+ with
+  all-files access, use `StorageManager.getStorageVolumesIncludingSharedProfiles()`
+  and `StorageVolume.directory` for mounted emulated volumes. This public API covers
+  profiles that share media with the caller, not arbitrary users. Cache those paths
+  separately from removable volumes; readable numeric directories under
+  `/storage/emulated` are only a supplementary discovery source. Exclude the current
+  primary storage by canonical path. Never assume the clone user id is 95. Render
+  the primary first, then additional ids in numeric order, as one configurable
+  Internal Storage slot with shared visibility, icons and capacity presentation.
+  Pre-register all shortcut keys, protect whole roots from default destructive
+  actions, and start reveal navigation at the matching shortcut. An unreadable
+  parent must not discard system-reported roots. Older Android/vendor profile
+  behavior still needs device verification; do not invent entries or claim that
+  adding a shortcut grants cross-user access.
+
+## Removable storage (SD card / USB)
 
 **(★ 2026-08-26, `StorageVolumes`)** The entry points are the rows after "Internal storage" and
 "Root directory", sourced solely from `getStorageVolumes()` (plus one fallback derived from

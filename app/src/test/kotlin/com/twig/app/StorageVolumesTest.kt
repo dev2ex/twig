@@ -76,6 +76,88 @@ class StorageVolumesTest {
     }
 
     @Test
+    fun `extra internal roots discover user ids in numeric order without inventing absent roots`() {
+        val primary = File(sd, "0").apply { mkdirs() }
+        assertEquals(listOf(primary.path), StorageVolumes.scanInternalRoots(primary, sd))
+        val user101 = File(sd, "101").apply { mkdirs() }
+        val user95 = File(sd, "95").apply { mkdirs() }
+        File(sd, "10").mkdirs()
+        File(sd, "legacy").mkdirs()
+        File(sd, "42").writeText("not a directory")
+        assertEquals(listOf(primary.path, File(sd, "10").path, user95.path, user101.path),
+            StorageVolumes.scanInternalRoots(primary, sd))
+        assertEquals(listOf(user95.path, primary.path, File(sd, "10").path, user101.path),
+            StorageVolumes.scanInternalRoots(user95, sd))
+        assertEquals(listOf(primary.path), StorageVolumes.scanInternalRoots(primary, File(sd, "absent")))
+    }
+
+    @Test
+    fun `system reported shared roots survive an unlistable parent without duplicate paths`() {
+        val primary = File(sd, "0")
+        val shared = File(sd, "101")
+        val blockedParent = object : File(sd, "emulated") {
+            override fun listFiles(): Array<File>? = null
+        }
+        assertEquals(listOf(primary.path, shared.path), StorageVolumes.scanInternalRoots(
+            primary, blockedParent, listOf(shared, primary, shared)))
+        primary.mkdirs()
+        shared.mkdirs()
+        assertEquals(listOf(primary.path, shared.path), StorageVolumes.scanInternalRoots(
+            primary, sd, listOf(shared, primary)))
+    }
+
+    private fun withExtraStorage(): String {
+        val path = File(sd, "101").apply { mkdirs() }.path
+        org.robolectric.util.ReflectionHelpers.setStaticField(StorageVolumes::class.java, "internalCache",
+            listOf(Environment.getExternalStorageDirectory().absolutePath, path))
+        return path
+    }
+
+    @Test
+    fun `extra internal storage follows internal storage when reordered and hidden and is protected`() {
+        val extra = withExtraStorage()
+        val primary = Environment.getExternalStorageDirectory().absolutePath
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        Prefs.setRootItemOrder(app, RootItems.all.map { it.id }.filter { it != "internal" } + "internal")
+        vm.refreshTree()
+        val roots = vm.state.value.rows.takeLast(2).map { it as PaneViewModel.FileNode }
+        assertEquals(listOf(primary, extra), roots.map { it.file.path })
+        assertEquals(listOf(app.getString(R.string.group_internal_storage),
+            app.getString(R.string.group_internal_storage) + " (101)"), roots.map { it.label })
+        assertEquals(R.drawable.ic_storage, com.twig.app.ui.FileIcons.storageRootIconRes(roots.last().file))
+        vm.toggle(roots.last())
+        assertEquals(extra, vm.currentDir?.path)
+        assertNull(vm.currentSelection())
+        Prefs.setRootItemVisible(app, 0, "internal", false)
+        vm.refreshRootItems()
+        assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.path in setOf(primary, extra) })
+        assertNull(vm.currentDir)
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `extra storage reveal uses its shortcut and nested copies have unique keys`() {
+        val extra = withExtraStorage()
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        val children = PaneViewModel::class.java.getDeclaredField("children")
+            .apply { isAccessible = true }.get(vm) as MutableMap<String, List<com.twig.core.XFile>>
+        val expanded = PaneViewModel::class.java.getDeclaredField("expanded")
+            .apply { isAccessible = true }.get(vm) as MutableSet<String>
+        children["f:file:/"] = listOf(com.twig.core.XFile("file", extra, isDir = true))
+        children["f:file:$extra"] = emptyList()
+        expanded.add("f:file:/")
+        vm.refreshTree()
+        val rows = vm.state.value.rows
+        assertEquals(2, rows.filterIsInstance<PaneViewModel.FileNode>().count { it.file.path == extra })
+        assertEquals(rows.size, rows.map { it.key }.toSet().size)
+        vm.revealPath(com.twig.core.XFile("file", extra, isDir = true))
+        dispatcher.scheduler.runCurrent()
+        assertNull(vm.state.value.error)
+        assertEquals("f:file:$extra", vm.state.value.currentKey)
+        assertFalse("reveal must not traverse inaccessible ancestors", "f:file:/" in expanded)
+    }
+
+    @Test
     fun `a removable volume enters the tree root, the primary volume does not duplicate a row`() {
         // ★ On some ROMs the primary volume's isRemovable is also true — filtering by
         // that would add an extra "Internal Storage" row

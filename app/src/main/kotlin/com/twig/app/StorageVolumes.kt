@@ -58,22 +58,62 @@ object StorageVolumes {
     private const val TAG = "twig-vol"
 
     @Volatile private var cache: List<RemovableVolume>? = null
+    @Volatile private var internalCache: List<String>? = null
+
+    /** Primary and shared-profile emulated roots, cached independently of removable media. */
+    fun internalRoots(ctx: Context): List<String> = internalCache ?: scanInternalRoots(ctx).also { internalCache = it }
+
+    private fun scanInternalRoots(ctx: Context): List<String> {
+        val reported = runCatching {
+            val sm = ctx.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+            val volumes = if (Build.VERSION.SDK_INT >= 33 && Environment.isExternalStorageManager()) {
+                // The parent /storage/emulated is commonly not enumerable by apps.
+                runCatching { sm.storageVolumesIncludingSharedProfiles }.getOrElse { sm.storageVolumes }
+            } else sm.storageVolumes
+            volumes.filter { it.isEmulated && it.state in setOf(Environment.MEDIA_MOUNTED, Environment.MEDIA_MOUNTED_READ_ONLY) }
+                .mapNotNull { pathOf(it)?.let(::File) }
+        }.getOrDefault(emptyList())
+        return scanInternalRoots(reported = reported)
+    }
+
+    internal fun scanInternalRoots(
+        primary: File = Environment.getExternalStorageDirectory(),
+        emulated: File = File("/storage/emulated"),
+        reported: List<File> = emptyList(),
+    ): List<String> = buildList {
+        add(primary.absolutePath)
+        fun identity(file: File) = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+        val primaryPath = identity(primary)
+        // Enumeration supplements the public API on older/vendor systems. Its
+        // failure must not discard system-reported volumes or invent user ids.
+        val discovered = emulated.listFiles().orEmpty().filter {
+            it.name.all(Char::isDigit) && it.name.toIntOrNull() != null && it.isDirectory && it.canRead()
+        }
+        (reported + discovered).distinctBy(::identity)
+            .filter { identity(it) != primaryPath }
+            .sortedWith(compareBy<File> { it.name.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.path })
+            .forEach { add(it.absolutePath) }
+    }
 
     /** Cached volume list (the first call performs a scan). One binder IPC, callable from the main thread. */
     fun cached(ctx: Context): List<RemovableVolume> = cache ?: scan(ctx).also { cache = it }
 
-    /** Rescan; **returns true only if the list changed**, so callers can decide whether to rebuild the tree. */
+    /** Rescan internal and removable roots; return whether either list changed. */
     fun refresh(ctx: Context): Boolean {
         // ★ Take "what we already have", not cached() — it would opportunistically
         // scan the first time, so the very first call always reports "no change"
         // and the first refresh after plugging in a card is silently dropped.
         val before = cache.orEmpty()
+        val beforeInternal = internalCache
+        val nowInternal = scanInternalRoots(ctx)
+        internalCache = nowInternal
         val now = scan(ctx)
         cache = now
         // Log only on change: this line is what tells "card plugged in but nothing
         // showed up" apart from "we didn't scan"
         if (now != before) Log.i(TAG, "volumes -> ${now.map { it.path }}")
-        return now != before
+        if (nowInternal != beforeInternal) Log.i(TAG, "internal roots -> $nowInternal")
+        return now != before || nowInternal != beforeInternal
     }
 
     /** Is this path the root of a removable volume (treated like internal storage / root, to prevent accidental whole-volume deletes)? */
@@ -85,6 +125,7 @@ object StorageVolumes {
     /** For test reset only. */
     fun reset() {
         cache = null
+        internalCache = null
     }
 
     /**
@@ -104,6 +145,7 @@ object StorageVolumes {
                 val state = runCatching { v.state }.getOrNull()
                 if (state != Environment.MEDIA_MOUNTED && state != Environment.MEDIA_MOUNTED_READ_ONLY) continue
                 val path = pathOf(v) ?: continue
+                if (path in internalRoots(ctx)) continue
                 // getDescription returns the system's human-readable name ("SD card" /
                 // "USB drive"); ★ an empty string is not acceptable here — passing
                 // an empty string to XFile.displayName makes name itself empty too.
