@@ -340,6 +340,12 @@ its listing size must still describe the followed stream for copy/resume checks.
   These tracks cannot be favorited, saved into playlists or exported; player exit
   clears the queue. Resolve them through the live filesystem, without reopening a
   repository or archive from a persisted descriptor.
+  Continue Watching (`PlaybackStore`) retains a `pendingNext` destination after confirmed
+  local/file-backend episode completion, including automatic ending skips. This is a zero-position
+  destination, never watched progress: quick exits, buffering and failures leave it intact;
+  qualified progress replaces it. Reuse the loaded episode queue, independently of auto-play,
+  and never create it for manual episode changes or server-owned playback. Existing next-episode
+  progress wins. Only durable local/saved-connection locations can become destinations.
   **Playback choice memory** (`MediaPrefStore` + `TrackMatch`): the audio track, the subtitle
   and the picture scaling a user picks by hand are applied again on the next episode and the
   next time the file is opened (scaling rides along because it has the same scope — every

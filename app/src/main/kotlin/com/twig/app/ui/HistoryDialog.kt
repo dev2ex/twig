@@ -71,9 +71,9 @@ internal object HistoryDialog {
                 row.name.text = video.name
                 row.icon.setImageResource(R.drawable.ic_play)
                 row.detail.visibility = View.VISIBLE
+                val path = formatLocationPath(video.connLabel, video.path, conns[video.connLabel])
                 row.detail.text = ctx.getString(R.string.history_video_progress,
-                    time(video.posMs), time(video.durMs),
-                    formatLocationPath(video.connLabel, video.path, conns[video.connLabel]))
+                    time(video.posMs), if (video.durMs > 0) time(video.durMs) else "--:--", path)
                 return row.root
             }
         }

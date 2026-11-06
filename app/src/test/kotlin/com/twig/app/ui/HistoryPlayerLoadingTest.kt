@@ -113,6 +113,39 @@ class HistoryPlayerLoadingTest {
         assertEquals(30_000L, ReflectionHelpers.getField<Long>(player, "resumeFrom"))
     }
 
+    private fun pendingNext() {
+        PlaybackStore.clear(app)
+        PlaybackStore.completeEpisode(app, video.copy(path = "/videos/previous.mp4"), video)
+        assertTrue(PlaybackStore.recent(app).single().pendingNext)
+    }
+
+    @Test fun `pending next episode reconnects and starts at zero without consuming its destination`() {
+        pendingNext()
+        open()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        assertTrue(PlaybackStore.recent(app).single().pendingNext)
+        release.countDown()
+        awaitUi { ReflectionHelpers.getField<Boolean>(player, "resumeReady") }
+        assertEquals(video, ReflectionHelpers.getField<XFile>(player, "file"))
+        assertEquals(0L, ReflectionHelpers.getField<Long>(player, "resumeFrom"))
+        assertTrue(PlaybackStore.recent(app).single().pendingNext)
+    }
+
+    @Test fun `failed next episode metadata retains the pending destination`() {
+        pendingNext()
+        result = null
+        open()
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        release.countDown()
+        awaitUi { player.findViewById<View>(R.id.loading).visibility == View.GONE }
+        val dialog = ShadowDialog.getLatestDialog() as AlertDialog
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(player.isFinishing)
+        assertTrue(PlaybackStore.recent(app).single().pendingNext)
+        assertEquals(video.path, PlaybackStore.recent(app).single().path)
+    }
+
     @Test fun `from start still opens immediately and does not restore saved progress`() {
         open(fromStart = true)
         assertTrue(entered.await(5, TimeUnit.SECONDS))

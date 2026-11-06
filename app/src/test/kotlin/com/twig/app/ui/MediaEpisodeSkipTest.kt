@@ -31,10 +31,12 @@ class MediaEpisodeSkipTest {
     )
     private var position = 0L
     private var playing = true
+    private var playbackState = androidx.media3.common.Player.STATE_READY
     private val seeks = mutableListOf<Long>()
     private val fakePlayer = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader,
         arrayOf(ExoPlayer::class.java)) { _, method, args ->
         when (method.name) {
+            "getPlaybackState" -> playbackState
             "getDuration" -> 1_800_000L
             "getCurrentPosition" -> position
             "isPlaying", "isCurrentMediaItemSeekable" -> playing
@@ -100,6 +102,77 @@ class MediaEpisodeSkipTest {
             ReflectionHelpers.ClassParameter.from(com.twig.core.PlayState::class.java, com.twig.core.PlayState.STOP))
         assertEquals(0L, PlaybackStore.positionFor(ctx, files[1]))
         assertTrue(seeks.isEmpty()) // Completing must not fetch credits over the network.
+    }
+
+    private fun save() = ReflectionHelpers.callInstanceMethod<Unit>(activity, "saveProgress",
+        ReflectionHelpers.ClassParameter.from(com.twig.core.PlayState::class.java, com.twig.core.PlayState.STOP))
+
+    @Test fun `confirmed natural completion records next episode before it starts and survives early exit`() {
+        setup()
+        val ctx: Context = ApplicationProvider.getApplicationContext()
+        Prefs.setResumePlayback(ctx, true)
+        PlaybackStore.clear(ctx)
+        val gate = ReflectionHelpers.getField<PlaybackSaveGate>(activity, "saveGate")
+        gate.onPlayingChanged(true, android.os.SystemClock.elapsedRealtime() - 10000)
+        playbackState = androidx.media3.common.Player.STATE_ENDED
+        position = 1_800_000
+        save()
+        assertEquals(files[1].path, PlaybackStore.recent(ctx).single().path)
+        assertTrue(PlaybackStore.recent(ctx).single().pendingNext)
+        // Repeated lifecycle saves must not create a second record.
+        save()
+        assertEquals(1, PlaybackStore.recent(ctx).size)
+        setup(index = 1)
+        ReflectionHelpers.setField(activity, "episodeCompleted", false)
+        playbackState = androidx.media3.common.Player.STATE_READY
+        gate.reset()
+        position = 0
+        playing = false
+        save()
+        assertTrue(PlaybackStore.recent(ctx).single().pendingNext)
+        // Even after ten seconds of playback, a position below 15s preserves it.
+        playing = true
+        gate.onPlayingChanged(true, android.os.SystemClock.elapsedRealtime() - 10000)
+        position = 12000
+        save()
+        assertTrue(PlaybackStore.recent(ctx).single().pendingNext)
+        position = 20000
+        save()
+        assertFalse(PlaybackStore.recent(ctx).single().pendingNext)
+        assertEquals(20000L, PlaybackStore.positionFor(ctx, files[1]))
+        PlaybackStore.clear(ctx)
+    }
+
+    @Test fun `manual episode change and immediate seek to end do not create next destination`() {
+        setup()
+        val ctx: Context = ApplicationProvider.getApplicationContext()
+        Prefs.setResumePlayback(ctx, true)
+        PlaybackStore.clear(ctx)
+        val gate = ReflectionHelpers.getField<PlaybackSaveGate>(activity, "saveGate")
+        gate.onPlayingChanged(true, android.os.SystemClock.elapsedRealtime() - 10000)
+        position = 600000
+        save() // The same STOP path used by a manual episode change.
+        assertFalse(PlaybackStore.recent(ctx).single().pendingNext)
+        assertEquals(files[0].path, PlaybackStore.recent(ctx).single().path)
+        gate.seek(android.os.SystemClock.elapsedRealtime(), true)
+        position = 1_800_000
+        playbackState = androidx.media3.common.Player.STATE_ENDED
+        save()
+        assertEquals(files[0].path, PlaybackStore.recent(ctx).single().path)
+        PlaybackStore.clear(ctx)
+    }
+
+    @Test fun `ending skip records next destination even after a recent seek`() {
+        setup()
+        val ctx: Context = ApplicationProvider.getApplicationContext()
+        Prefs.setResumePlayback(ctx, true)
+        PlaybackStore.clear(ctx)
+        ReflectionHelpers.setField(activity, "skippedEnding", true)
+        position = 1_680_000
+        save()
+        assertTrue(PlaybackStore.recent(ctx).single().pendingNext)
+        assertEquals(files[1].path, PlaybackStore.recent(ctx).single().path)
+        PlaybackStore.clear(ctx)
     }
 
     @Test fun `narrow controls keep every playback button visible and rejoin on wide screens`() {

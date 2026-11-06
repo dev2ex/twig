@@ -118,4 +118,68 @@ class PlaybackHistoryTest {
         assertEquals(file.path, PlaybackStore.recent(app).single().path)
         assertEquals(30000L, PlaybackStore.positionFor(app, file))
     }
+    private val next = file.copy(path = "/movies/2.mp4", size = 234567L)
+
+    @Test fun `completion persists an unstarted next episode without a resume position`() {
+        PlaybackStore.save(app, file, 30000, 180000)
+        PlaybackStore.completeEpisode(app, file, next)
+        val mark = PlaybackStore.recent(app).single()
+        assertEquals(next.path, mark.path)
+        assertTrue(mark.pendingNext)
+        assertEquals(mark, PlaybackMark.fromJson(mark.toJson()))
+        assertEquals(0L, PlaybackStore.positionFor(app, next))
+        assertEquals(0L, PlaybackStore.positionFor(app, file))
+        // Saving before the position threshold must preserve the destination.
+        PlaybackStore.save(app, next, 12000, 180000)
+        assertEquals(mark, PlaybackStore.recent(app).single())
+        PlaybackStore.save(app, next, 20000, 180000)
+        assertFalse(PlaybackStore.recent(app).single().pendingNext)
+        assertEquals(20000L, PlaybackStore.positionFor(app, next))
+        PlaybackStore.completeEpisode(app, next, null)
+        assertTrue(PlaybackStore.recent(app).isEmpty())
+    }
+
+    @Test fun `duration metadata fills pending total without saving progress or unhiding history`() {
+        PlaybackStore.completeEpisode(app, file, next)
+        PlaybackStore.hide(app, PlaybackStore.keyOf(next))
+        val before = PlaybackStore.all(app).single()
+        PlaybackStore.updatePendingDuration(app, next, 180000)
+        assertEquals(before.copy(durMs = 180000), PlaybackStore.all(app).single())
+        assertEquals(0L, PlaybackStore.positionFor(app, next))
+        PlaybackStore.updatePendingDuration(app, next, 0)
+        assertEquals(180000L, PlaybackStore.all(app).single().durMs)
+        PlaybackStore.completeEpisode(app, file, next)
+        assertEquals(180000L, PlaybackStore.recent(app).single().durMs)
+        PlaybackStore.save(app, next, 30000, 180000)
+        val progress = PlaybackStore.all(app).single()
+        PlaybackStore.updatePendingDuration(app, next, 200000)
+        assertEquals(progress, PlaybackStore.all(app).single())
+    }
+
+    @Test fun `completion keeps genuine next episode progress and unhides its entry`() {
+        PlaybackStore.save(app, next, 40000, 180000)
+        PlaybackStore.hide(app, PlaybackStore.keyOf(next))
+        PlaybackStore.completeEpisode(app, file, next)
+        assertFalse(PlaybackStore.recent(app).single().pendingNext)
+        assertEquals(40000L, PlaybackStore.positionFor(app, next))
+    }
+
+    @Test fun `pending destinations support hide clear and disabled resume`() {
+        PlaybackStore.completeEpisode(app, file, next)
+        PlaybackStore.hide(app, PlaybackStore.keyOf(next))
+        assertTrue(PlaybackStore.recent(app).isEmpty())
+        PlaybackStore.completeEpisode(app, file, next)
+        PlaybackStore.hideRecent(app)
+        assertTrue(PlaybackStore.recent(app).isEmpty())
+        PlaybackStore.clear(app)
+        Prefs.setResumePlayback(app, false)
+        PlaybackStore.completeEpisode(app, file, next)
+        assertTrue(PlaybackStore.all(app).isEmpty())
+    }
+
+    @Test fun `temporary mounts cannot create next episode history destinations`() {
+        PlaybackStore.completeEpisode(app, file, next.copy(scheme = "archive-session"))
+        assertTrue(PlaybackStore.all(app).isEmpty())
+    }
+
 }

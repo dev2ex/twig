@@ -25,10 +25,12 @@ data class PlaybackMark(
     val path: String = "",
     val connLabel: String = "",
     val hidden: Boolean = false,
+    /** A next-episode destination, independent of actual watched progress. */
+    val pendingNext: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("key", key); put("name", name); put("pos", posMs); put("dur", durMs); put("at", updatedAt)
-        put("path", path); put("connLabel", connLabel); put("hidden", hidden)
+        put("path", path); put("connLabel", connLabel); put("hidden", hidden); put("pendingNext", pendingNext)
     }
 
     companion object {
@@ -41,6 +43,7 @@ data class PlaybackMark(
             path = o.optString("path", ""),
             connLabel = o.optString("connLabel", ""),
             hidden = o.optBoolean("hidden", false),
+            pendingNext = o.optBoolean("pendingNext", false),
         )
     }
 }
@@ -53,8 +56,8 @@ data class PlaybackMark(
  * doesn't grow is **delete-on-finish** — a record sitting at the end credits has
  * no value, the next play should start from the top. Combined with "too short to
  * bother" and "barely started", what survives day-to-day is essentially
- * "half-watched long videos", which 100 entries covers easily (~100 bytes each,
- * worst case 10KB).
+ * "half-watched long videos" and their next-episode destinations. The 100-entry
+ * cap comfortably covers both.
  */
 object PlaybackStore {
     private const val FILE = "twig_playback"
@@ -90,7 +93,7 @@ object PlaybackStore {
     fun positionFor(ctx: Context, f: XFile): Long {
         if (!Prefs.resumePlayback(ctx)) return 0L
         val key = keyOf(f)
-        return all(ctx).firstOrNull { it.key == key }?.posMs ?: 0L
+        return all(ctx).firstOrNull { it.key == key && !it.pendingNext }?.posMs ?: 0L
     }
 
     /** Old records still resume normally, but cannot be reopened from history. */
@@ -108,9 +111,9 @@ object PlaybackStore {
     }
 
     /**
-     * Record one position. "Too short / barely started / finished" are all treated
-     * as **not worth recording** — and any existing record is also removed, so
-     * finishing a video doesn't make the next open jump back to the credits.
+     * Record one position. Short, barely started and finished videos do not retain
+     * progress. A barely started episode keeps its pending destination until real
+     * progress replaces it; finishing removes either kind of record.
      */
     fun save(ctx: Context, f: XFile, posMs: Long, durMs: Long) {
         if (!Prefs.resumePlayback(ctx)) return
@@ -121,17 +124,51 @@ object PlaybackStore {
         val list = all(ctx)
         val rest = list.filter { it.key != key }
         if (!worth) {
+            // Barely starting the next episode must not erase its destination.
+            val finished = durMs >= MIN_DURATION_MS && posMs >= durMs - endSlack(durMs)
+            if (!finished && list.any { it.key == key && it.pendingNext }) return
             if (rest.size != list.size) persist(ctx, rest) // only write back if there was a record to remove
             return
         }
-        // Store how to reconnect, not a session-scoped filesystem scheme. Archives and
-        // temporary content grants can still remember progress, but are not reopenable.
+        val mark = markOf(ctx, f, posMs, durMs)
+        persist(ctx, (listOf(mark) + rest).take(MAX))
+    }
+
+    /** Called only after confirmed playback completion, never for a manual episode change. */
+    fun completeEpisode(ctx: Context, current: XFile, next: XFile?) {
+        if (!Prefs.resumePlayback(ctx)) return
+        val rest = all(ctx).filter { it.key != keyOf(current) }
+        val nextMark = next?.let { markOf(ctx, it, 0L, 0L).copy(pendingNext = true) }
+        val existing = nextMark?.let { mark -> rest.firstOrNull { it.key == mark.key } }
+        val replacement = when {
+            nextMark == null || nextMark.path.isEmpty() -> null
+            // Never replace genuine progress with an unstarted destination.
+            existing != null && !existing.pendingNext -> existing.copy(
+                updatedAt = nextMark.updatedAt, hidden = false)
+            else -> nextMark.copy(durMs = existing?.durMs ?: 0L)
+        }
+        persist(ctx, if (replacement == null) rest else
+            (listOf(replacement) + rest.filter { it.key != replacement.key }).take(MAX))
+    }
+
+    /** Metadata alone can fill the total without accepting any watched progress. */
+    fun updatePendingDuration(ctx: Context, file: XFile, durMs: Long) {
+        if (!Prefs.resumePlayback(ctx) || durMs <= 0) return
+        val key = keyOf(file)
+        val list = all(ctx)
+        if (list.none { it.key == key && it.pendingNext && it.durMs != durMs }) return
+        persist(ctx, list.map {
+            if (it.key == key && it.pendingNext) it.copy(durMs = durMs) else it
+        })
+    }
+
+    private fun markOf(ctx: Context, f: XFile, posMs: Long, durMs: Long): PlaybackMark {
+        // Persist connection identity rather than a process-scoped mount scheme.
         val conn = Connections.ofScheme(f.scheme)
         val reopenable = f.scheme == "file" || (conn != null &&
             ConnectionStore.all(ctx).any { it.label() == conn.label() })
-        val mark = PlaybackMark(key, f.name, posMs, durMs, System.currentTimeMillis(),
+        return PlaybackMark(keyOf(f), f.name, posMs, durMs, System.currentTimeMillis(),
             path = if (reopenable) f.path else "", connLabel = conn?.label().orEmpty())
-        persist(ctx, (listOf(mark) + rest).take(MAX))
     }
 
     fun clear(ctx: Context) = sp(ctx).edit().remove(KEY).apply()

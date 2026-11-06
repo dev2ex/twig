@@ -137,6 +137,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var skipMarks = EpisodeSkip()
     private var headApplied = false
     private var skippedEnding = false
+    private var episodeCompleted = false
     private var tailArmed = true
     private var scrubbing = false
     private var playbackOnSeparateRow = false
@@ -488,6 +489,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                         if (!prepared) {
                             prepared = true
                             val dur = p.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+                            if (remote == null) PlaybackStore.updatePendingDuration(this@MediaPlayerActivity, file, dur)
                             b.seek.max = dur.toInt().coerceAtLeast(0)
                             b.tvDur.text = fmt(dur.toInt())
                             syncSkipMarks()
@@ -498,6 +500,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     Player.STATE_ENDED -> {
                         android.util.Log.d("twig", "player: ended pos=${p.currentPosition} dur=${p.duration}")
                         b.btnPlay.setImageResource(R.drawable.ic_play)
+                        if (remote == null) saveProgress()
                         if (com.twig.app.Prefs.autoNextEpisode(this@MediaPlayerActivity) &&
                             queueIndex in 0 until queue.size - 1
                         ) {
@@ -1924,6 +1927,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         if (old != null) Thread { runCatching { old.close() } }.apply { isDaemon = true }.start()
 
         queueIndex = index
+        episodeCompleted = false
         file = next
         resumeFrom = 0
         b.toolbar.title = file.name
@@ -2070,8 +2074,14 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             if (!startedReported) { startedReported = true; r.report(position, dur, PlayState.START) }
             lastRemotePosition = position
             r.report(position, dur, state)
-        } else {
-            PlaybackStore.save(this, file, position, dur)
+        } else if (!episodeCompleted) {
+            if (skippedEnding || p.playbackState == Player.STATE_ENDED) {
+                episodeCompleted = true
+                PlaybackStore.completeEpisode(this, file,
+                    if (queueIndex >= 0) queue.getOrNull(queueIndex + 1) else null)
+            } else {
+                PlaybackStore.save(this, file, position, dur)
+            }
         }
     }
 
