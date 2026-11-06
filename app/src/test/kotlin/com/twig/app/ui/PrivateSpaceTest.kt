@@ -88,13 +88,17 @@ class PrivateSpaceTest {
 
     @Test fun `hidden network roots do not affect the other pane`() {
         Prefs.setRootItemVisible(app, 0, "lan", false)
+        Prefs.setRootItemVisible(app, 0, "nfs", false)
         val left = PaneViewModel(app).apply { io = dispatcher }
         val right = PaneViewModel(app).apply { io = dispatcher; paneIndex = 1 }
         left.bootstrap()
         right.bootstrap()
         assertFalse(left.state.value.rows.any { it.key == "g:lan" })
         assertTrue(right.state.value.rows.any { it.key == "g:lan" })
-        assertTrue(RootItems.all.filter { it.id !in setOf("private", "lan") }.all { Prefs.rootItemVisible(app, 0, it.id) })
+        assertEquals(com.twig.app.NfsSupport.enabled, RootItems.all.any { it.id == "nfs" })
+        assertFalse(left.state.value.rows.any { it.key == "g:nfs" })
+        assertEquals(com.twig.app.NfsSupport.enabled, right.state.value.rows.any { it.key == "g:nfs" })
+        assertTrue(RootItems.all.filter { it.id !in setOf("private", "lan", "nfs") }.all { Prefs.rootItemVisible(app, 0, it.id) })
     }
 
     @Test fun `navigation hints reach only this apps data and do not invent children inside it`() {

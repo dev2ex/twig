@@ -14,6 +14,7 @@ close to shipping, at least once:
               feature does not get slower, it fails to load
   abis        a per-ABI split that quietly contains every ABI is not a split
   flavour     libre must not contain junrar (non-free); full must
+  nfs         an NFS-labelled APK must contain its JNI library for every ABI
 
 Usage:  verify-apk.py --version-code 295 --version-name 1.10.0 APK [APK ...]
 Exit status is non-zero if any check fails.
@@ -128,6 +129,14 @@ def check(path: str, want_code: str, want_name: str, want_dn: str) -> list[str]:
     want_abis = expected_abis(name)
     if want_abis is not None and abis != want_abis:
         problems.append(f"ABIs {sorted(abis)}, expected {sorted(want_abis)}")
+
+    if "-nfs" in name:
+        nfs_abis = {n.split("/")[1] for n in names if n.endswith("/libtwig_nfs.so")}
+        if not abis or nfs_abis != abis:
+            problems.append(f"NFS libraries for {sorted(nfs_abis)}, expected {sorted(abis)}")
+        if not any(b"com/twig/fs/nfs/NativeNfsClient" in zf.read(n)
+                   for n in names if n.endswith(".dex")):
+            problems.append("NFS build has no native client class")
 
     junrar = zf.read("classes.dex").decode("latin1").count("junrar")
     if "-libre" in name and junrar:

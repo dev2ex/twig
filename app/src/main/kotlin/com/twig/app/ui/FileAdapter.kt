@@ -1384,6 +1384,7 @@ class FileAdapter(
                     "fav" -> R.drawable.ic_star
                     "cmp" -> R.drawable.ic_compare_fav
                     "lan" -> R.drawable.ic_lan
+                    "nfs" -> R.drawable.ic_nfs
                     "ftp" -> R.drawable.ic_ftp
                     "dav" -> R.drawable.ic_webdav
                     "s3" -> R.drawable.ic_s3
@@ -1416,8 +1417,8 @@ class FileAdapter(
                     listOfNotNull(addr, node.info).joinToString("  ")
                 },
             )
-            // Media servers get a dedicated icon: easy to spot among a row of green server icons, and to tell which one it is.
-            // Other types keep the generic server icon — this column's semantics are just "a server".
+            // Media servers use their dedicated source icons; ordinary connections,
+            // including NFS, keep the generic server icon below their protocol group.
             b.icon.setImageResource(
                 if (node.conn.isMediaServer()) FileIcons.sourceIconOfType(node.conn.type)
                 else R.drawable.ic_server,

@@ -11,6 +11,7 @@ object RootItems {
         Item("removable", R.string.group_removable_storage, R.drawable.ic_sd_card),
         Item("private", R.string.private_space, R.drawable.ic_private_space),
         Item("lan", R.string.group_lan, R.drawable.ic_lan),
+        Item("nfs", R.string.group_nfs, R.drawable.ic_nfs),
         Item("ftp", R.string.group_ftp, R.drawable.ic_ftp),
         Item("sftp", R.string.group_sftp, R.drawable.ic_sftp),
         Item("dav", R.string.group_webdav, R.drawable.ic_webdav),
@@ -19,7 +20,7 @@ object RootItems {
         Item("saf", R.string.group_saf, R.drawable.ic_document_tree),
         Item("websites", R.string.group_websites, R.drawable.ic_website),
         Item("apps", R.string.apps_root, R.drawable.ic_file_apk),
-    )
+    ).filter { it.id != "nfs" || NfsSupport.enabled }
 
     private val byId = all.associateBy { it.id }
 

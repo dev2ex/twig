@@ -29,6 +29,9 @@ Views, no Material library, minimal dependencies.
 #      F-Droid build.
 ./gradlew :app:assembleFullRelease
 
+# Optional NFS build (full/libre both exclude NFS by default; APK suffix: -nfs.apk)
+./gradlew :app:assembleFullRelease -PwithNfs=true
+
 # Verify the version with aapt (★ never trust the pipeline's exit code —
 # a failed build can still leave you installing the previous APK)
 "$ANDROID_HOME"/build-tools/36.1.0/aapt dump badging \
@@ -522,7 +525,7 @@ its listing size must still describe the followed stream for copy/resume checks.
   directory); repeated failures identify the next entry independently. `TransferCheckpoint` belongs
   to that operation in memory only; there is no task history or persisted queue. Completed roots/files are skipped on retry; owned UUID
   `.twigpart` siblings retain partial bytes until retry, success, cancellation or dismissal.
-  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3);
+  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3, NFSv3/v4);
   other destinations use `SafeWrite` and restart incomplete files. Resume requires known source
   size and modification time. Original targets survive interrupted writes; only a complete
   temporary file can replace them. A moving retry must still finish a failed source deletion.

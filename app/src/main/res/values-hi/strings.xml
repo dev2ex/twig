@@ -1073,7 +1073,7 @@
     <string name="website_open_url">यूआरएल खोलें</string>
     <string name="website_user_agent_global_hint">खाली = वैश्विक User-Agent, फिर मोबाइल/डेस्कटॉप डिफ़ॉल्ट</string>
     <string name="website_global_settings_hint">हर वेबसाइट वैश्विक User-Agent को बदल सकती है। JavaScript, CSS, छिपे तत्व और अनुरोध अवरोध वैश्विक सेटिंग से जुड़ते हैं। प्रदर्शन विकल्प नई वेबसाइटों के डिफ़ॉल्ट हैं।</string>
-    <string name="action_add_nfs">＋ NFS जोड़ें</string>
+    <string name="action_add_nfs">NFS जोड़ें</string>
     <string name="nfs_host">NFS सर्वर का पता</string>
     <string name="nfs_export">निर्यात पथ (जैसे /volume1/public)</string>
     <string name="nfs_version">NFS संस्करण (3 या 4)</string>
@@ -1132,6 +1132,7 @@
     <string name="share_prepare_failed">साझा करने के लिए फ़ाइलें तैयार नहीं हो सकीं।</string>
     <string name="share_prepare_space">फ़ाइलें तैयार करने के लिए पर्याप्त जगह नहीं है।</string>
     <string name="share_prepare_incomplete">फ़ाइल बदल गई है या पूरी तरह पढ़ी नहीं जा सकी।</string>
+    <string name="nfs_port">Port (default 2049)</string>
     <string name="root_drag_to_reorder">क्रम बदलने के लिए खींचें</string>
     <string name="root_reorder_hint">दोनों पैनल के रूट आइटम का क्रम बदलने के लिए हैंडल खींचें।</string>
     <string name="action_sort_favorites">पसंदीदा का क्रम बदलें</string>

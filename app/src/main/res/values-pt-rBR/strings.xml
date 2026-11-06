@@ -1073,7 +1073,7 @@
     <string name="website_open_url">Abrir URL</string>
     <string name="website_user_agent_global_hint">Vazio = User-Agent global ou padrão móvel/desktop</string>
     <string name="website_global_settings_hint">Cada site pode substituir o User-Agent global. JavaScript, CSS, elementos ocultos e bloqueio de solicitações se combinam com as configurações globais. As opções de exibição são padrões para novos sites.</string>
-    <string name="action_add_nfs">＋ Adicionar NFS</string>
+    <string name="action_add_nfs">Adicionar NFS</string>
     <string name="nfs_host">Endereço do servidor NFS</string>
     <string name="nfs_export">Caminho de exportação (ex.: /volume1/public)</string>
     <string name="nfs_version">Versão do NFS (3 ou 4)</string>
@@ -1132,6 +1132,7 @@
     <string name="share_prepare_failed">Não foi possível preparar os arquivos para compartilhar.</string>
     <string name="share_prepare_space">Espaço insuficiente para preparar os arquivos.</string>
     <string name="share_prepare_incomplete">O arquivo foi alterado ou não pôde ser lido completamente.</string>
+    <string name="nfs_port">Port (default 2049)</string>
     <string name="root_drag_to_reorder">Arraste para reordenar</string>
     <string name="root_reorder_hint">Arraste as alças para reordenar os itens da raiz nos dois painéis.</string>
     <string name="action_sort_favorites">Reordenar favoritos</string>

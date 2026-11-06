@@ -80,6 +80,7 @@ Signed APKs are attached to every [GitHub release](https://github.com/dev2ex/twi
 | `Twig-<version>-libre.apk` | You want free software throughout — no RAR, because `junrar` is not free software |
 | `Twig-<version>-full-arm64-v8a.apk` / `-x86_64.apk` | You want a smaller download for one architecture |
 | `Twig-<version>-full-armeabi-v7a.apk` | You have a 32-bit ARM device — experimental, untested on hardware |
+| `Twig-<version>-full-nfs-arm64-v8a.apk` | You need NFS on a 64-bit ARM device |
 
 All of them are signed with the same key, so any one installs over any other. The
 certificate's SHA-256 is `196f633e942bf4f32f875b98c8ff181138256ba329a63364e3a39f154c1a5e62`.
@@ -635,6 +636,21 @@ Use JDK 21 and the Android SDK/NDK versions pinned in `app/build.gradle.kts`.
 ./gradlew :app:assembleFullRelease -Planguages=zh   # Chinese translations + default English
 ```
 
+NFS is excluded by default from both full and libre builds. Add `-PwithNfs=true`
+to any app build task to include the NFS backend and its connection editor:
+
+```bash
+./gradlew :app:assembleFullRelease -PwithNfs=true
+# Only the arm64 NFS APK (used by release.sh):
+./gradlew :app:assembleFullRelease -PwithNfs=true -PabiSplit=true -Pabis=arm64-v8a
+```
+
+These APKs use an `-nfs.apk` filename suffix (for example,
+`app/build/outputs/apk/full/release/app-full-release-nfs.apk` when signed).
+The package name, version and signing configuration stay the same. Saved NFS
+connections remain in configuration backups when using a build without NFS,
+but their root and connection editor are hidden until NFS is enabled again.
+
 `-Planguages` filters packaged translations for either flavor and build type. Use a
 comma-separated list of Android resource qualifiers, such as `en`, `zh`, `ja`,
 `pt-rBR` or `b+zh+Hant`. Omit it to keep all languages. Default English resources
@@ -660,7 +676,8 @@ built by default. The opt-in ABI split also builds experimental `armeabi-v7a` AP
 R8 is enabled, and JNI entry points for libsmb2 and zstd are kept by name.
 
 For a release rehearsal, run `tools/release.sh` from a clean, committed tree with
-release signing configured. It builds and verifies all five APKs and generates
+release signing configured. It builds and verifies six APKs (the five standard
+builds plus full with NFS for arm64-v8a) and generates
 bilingual release notes under `build/release/<version>/`, without tagging or pushing.
 `tools/release.sh --publish` also tags, pushes and creates the GitHub release.
 Both modes build from a fresh detached git checkout, with Gradle build and
@@ -669,8 +686,9 @@ dependencies remain available; add `--offline` to require cached dependencies.
 
 To rebuild an existing release, run `tools/release.sh --tag v1.16.0` (optionally
 with `--offline`). This uses the tag even if the current checkout has newer or
-uncommitted work. It keeps the original release files and writes the five verified
+uncommitted work. It keeps the original release files and writes the verified
 APKs, notes and source commit to `build/release/1.16.0/rebuild.<suffix>/`.
+Tags predating the optional NFS build retain their original five-APK set.
 The build checkout stays under `build/release-checkouts/` for inspection, including
 R8 mappings. Builds use this machine's `local.properties` and `keystore.properties`;
 use an absolute `storeFile` path in the latter. Tag rebuilds cannot publish or

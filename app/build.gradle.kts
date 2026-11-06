@@ -1,4 +1,5 @@
 import java.util.Properties
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
 
 plugins {
     alias(libs.plugins.android.application)
@@ -45,6 +46,16 @@ val debugSign = (
 // separate per-ABI APKs (armeabi-v7a too) for size/compatibility comparison —
 // see splits { abi {} } below.
 val abiSplit = (project.findProperty("abiSplit") as String?)?.toBoolean() == true
+// Release packaging can request just one architecture instead of rebuilding every split.
+val buildAbis = providers.gradleProperty("abis").map { it.split(',') }.getOrElse(
+    if (abiSplit) listOf("armeabi-v7a", "arm64-v8a", "x86_64") else listOf("arm64-v8a", "x86_64"),
+)
+require(buildAbis.isNotEmpty() && buildAbis.all { it in setOf("armeabi-v7a", "arm64-v8a", "x86_64") }) {
+    "abis must be a comma-separated list of armeabi-v7a, arm64-v8a or x86_64"
+}
+
+// Optional in both distributions; ordinary builds keep NFS out of the dependency graph.
+val withNfs = providers.gradleProperty("withNfs").map { it.toBooleanStrict() }.getOrElse(false)
 
 // Optional translation filter, e.g. -Planguages=zh or -Planguages=en,ja.
 // Use Android resource qualifiers (pt-rBR, b+zh+Hant); unqualified resources
@@ -76,7 +87,7 @@ android {
         // ABIs from `splits { abi {} }` below instead.
         if (!abiSplit) {
             // Same as fs-smb / fs-zstd: prevent the ffmpeg decoder from dragging in v7a/x86 .so too
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+            ndk { abiFilters += buildAbis }
         }
         // libtwigpty: PTY allocation inside the privileged process (see cpp/twigpty.c top comment)
         externalNativeBuild { cmake { arguments("-DANDROID_STL=none") } }
@@ -91,6 +102,20 @@ android {
     productFlavors {
         register("full") { dimension = "distribution"; isDefault = true }
         register("libre") { dimension = "distribution" }
+    }
+
+    sourceSets.getByName("main") {
+        java.srcDir(if (withNfs) "src/withNfs/kotlin" else "src/withoutNfs/kotlin")
+        if (withNfs) res.srcDir("src/withNfs/res")
+    }
+
+    if (withNfs) {
+        applicationVariants.all {
+            outputs.all {
+                val output = this as BaseVariantOutputImpl
+                output.outputFileName = output.outputFileName.replace(".apk", "-nfs.apk")
+            }
+        }
     }
 
     signingConfigs {
@@ -132,7 +157,7 @@ android {
         abi {
             isEnable = abiSplit
             reset()
-            if (abiSplit) include("armeabi-v7a", "arm64-v8a", "x86_64")
+            if (abiSplit) include(*buildAbis.toTypedArray())
             isUniversalApk = false
         }
     }
@@ -213,6 +238,7 @@ dependencies {
     implementation(project(":fs-network"))
     implementation(libs.okhttp) // Already shipped by fs-network; website downloads share its TLS policy.
     implementation(project(":fs-smb"))
+    if (withNfs) implementation(project(":fs-nfs"))
     implementation(project(":fs-restic"))
     implementation(project(":fs-zstd"))
     implementation(project(":git-lite"))

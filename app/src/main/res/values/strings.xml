@@ -1144,7 +1144,7 @@
     <string name="website_open_url">Open URL</string>
     <string name="website_user_agent_global_hint">Blank = global User-Agent, then mobile/desktop default</string>
     <string name="website_global_settings_hint">User-Agent can be overridden per website. JavaScript, CSS, hidden elements and request blocking combine with global settings. Display options are defaults for new websites.</string>
-    <string name="action_add_nfs">＋ Add NFS</string>
+    <string name="action_add_nfs">Add NFS</string>
     <string name="nfs_host">NFS server address</string>
     <string name="nfs_export">Export path (e.g. /volume1/public)</string>
     <string name="nfs_version">NFS version (3 or 4)</string>
@@ -1175,6 +1175,7 @@
     <string name="private_space_create_failed">Could not create Private space</string>
 
     <!-- Fixed protocol names, shared by tree roots and visibility settings. -->
+    <string name="group_nfs" translatable="false">NFS</string>
     <string name="group_ftp" translatable="false">FTP</string>
     <string name="group_sftp" translatable="false">SSH (SFTP)</string>
     <string name="group_webdav" translatable="false">WebDAV</string>
@@ -1211,6 +1212,7 @@
     <string name="share_prepare_failed">Could not prepare files for sharing.</string>
     <string name="share_prepare_space">Not enough space to prepare files for sharing.</string>
     <string name="share_prepare_incomplete">The file changed or could not be read completely.</string>
+    <string name="nfs_port">Port (default 2049)</string>
     <string name="transfer_retry">Retry unfinished items</string>
     <string name="transfer_retry_detail">Retry only unfinished items. Completed files are skipped; partial files resume when supported.</string>
     <string name="transfer_failed_target">Target: %1$s</string>

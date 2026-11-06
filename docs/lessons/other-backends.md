@@ -1,5 +1,20 @@
 # Other backends and odds and ends
 
+- **NFS directory connections must be discarded after failure** (2026-10-27).
+  Switching networks left a cached libnfs context returning
+  `opendir call failed with "nfs_service failed"` indefinitely. Native reconnect
+  was disabled to avoid replaying uncertain writes, but the Kotlin metadata cache
+  also reused failed contexts forever. A local TCP fault proxy reproduced the
+  exact message without changing exports or permissions. Discard a metadata
+  context after any filesystem error; read-only listing/stat/exists may mount
+  afresh and retry once, discarding a failed retry too. Never replay mutations
+  automatically: the server may have applied them before the reply was lost.
+  Active file streams retain their own failure behavior. `NfsRecoveryLiveTest`
+  covers dropped sockets, a fully offline interval, recovery with the same
+  filesystem, mutation non-replay and a fresh mount. A genuinely new process
+  has no cached native context; persistent cold-start failures still need a
+  reachability/server diagnosis rather than being attributed to this cache.
+
 > One section of Twig's hard-won lessons. The index, the ship checklist and the
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
@@ -185,6 +200,17 @@
   not today, which is an implementation detail, not a guarantee.
 - **restic base64 reports a bad character as corrupt key data** — it used to crash with
   ArrayIndexOutOfBounds on anything non-ASCII.
+
+- **NFS stream metadata belongs to the handle, not its path** (2026-10-27 audit).
+  A stream previously queried size with `stat(path)` after opening the file. If
+  another client renamed it and reused that path, the size could describe a
+  different file; use `nfs_fstat64` on the open handle instead. The live tests hold
+  an original file open, rename it, create a smaller replacement at the old path,
+  and check both the handle's length and its bytes on NFSv3 and NFSv4.
+  The same audit reproduced mangled emoji in native error paths: `NewStringUTF`
+  expects JNI modified UTF-8, while libnfs emits ordinary UTF-8. Decode errors
+  through the same `String(byte[], "UTF-8")` path as directory entry names, and
+  stop JNI work if a preceding allocation or lookup raised an exception.
 
 - **Remote system sharing needs preparation progress, separately from streaming viewers**
   (2026-10-27, issue #39). Sharing a large SFTP file to WeChat left the user staring

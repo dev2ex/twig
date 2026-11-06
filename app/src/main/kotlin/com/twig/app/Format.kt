@@ -83,7 +83,7 @@ object Format {
 
     /** Each server / repository has a unique scheme = type + hash (see PaneViewModel.schemeForConn) */
     private val SCHEME_TYPES =
-        listOf("webdav", "restic", "git", "sftp", "smb", "ftp", "dav", "s3", "jellyfin", "emby")
+        listOf("nfs", "webdav", "restic", "git", "sftp", "smb", "ftp", "dav", "s3", "jellyfin", "emby")
 
     /**
      * Display name for a scheme: strip the hash part of "type + hash".

@@ -1073,7 +1073,7 @@
     <string name="website_open_url">URL öffnen</string>
     <string name="website_user_agent_global_hint">Leer = globale User-Agent, sonst Mobil-/Desktop-Standard</string>
     <string name="website_global_settings_hint">Websites können den globalen User-Agent überschreiben. JavaScript, CSS, ausgeblendete Elemente und Anfragesperren ergänzen die globalen Einstellungen. Anzeigeoptionen gelten als Standard für neue Websites.</string>
-    <string name="action_add_nfs">＋ NFS hinzufügen</string>
+    <string name="action_add_nfs">NFS hinzufügen</string>
     <string name="nfs_host">NFS-Serveradresse</string>
     <string name="nfs_export">Exportpfad (z. B. /volume1/public)</string>
     <string name="nfs_version">NFS-Version (3 oder 4)</string>
@@ -1132,6 +1132,7 @@
     <string name="share_prepare_failed">Dateien konnten nicht zur Freigabe vorbereitet werden.</string>
     <string name="share_prepare_space">Nicht genügend Speicherplatz zur Vorbereitung der Freigabe.</string>
     <string name="share_prepare_incomplete">Die Datei wurde geändert oder konnte nicht vollständig gelesen werden.</string>
+    <string name="nfs_port">Port (default 2049)</string>
     <string name="root_drag_to_reorder">Zum Sortieren ziehen</string>
     <string name="root_reorder_hint">Ziehe die Griffe, um die Stammeinträge in beiden Bereichen zu sortieren.</string>
     <string name="action_sort_favorites">Favoriten sortieren</string>

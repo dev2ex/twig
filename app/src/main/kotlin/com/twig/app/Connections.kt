@@ -65,7 +65,7 @@ object Connections {
             is SmbFileSystem -> runCatching { fs.disconnect() }
             is Smb1FileSystem -> runCatching { fs.disconnect() }
             is SftpFileSystem -> runCatching { fs.disconnect() }
-            else -> Unit
+            else -> NfsSupport.disconnect(fs)
         }
     }
 
@@ -103,6 +103,7 @@ object Connections {
             drop(s)
         }
         when (conn.type) {
+            "nfs" -> NfsSupport.connect(ctx, conn, s, onInfo)
             "smb" -> {
                 val config = SmbConfig(conn.host, conn.share, conn.user, conn.password, conn.domain)
                 if (conn.smb1) {

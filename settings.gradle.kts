@@ -25,3 +25,5 @@ include(":fs-smb")
 include(":fs-restic")
 include(":fs-zstd")
 include(":git-lite")
+
+include(":fs-nfs")

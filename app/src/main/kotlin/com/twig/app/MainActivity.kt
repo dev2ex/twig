@@ -970,6 +970,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     override fun onAddServer(type: String) = when (type) {
+        "nfs" -> NfsSupport.showEditor(this, null) { saveServer(null, it, "nfs") }
         "smb" -> showSmbDialog()
         "ftp" -> showFtpDialog()
         "sftp" -> showSftpDialog()
@@ -996,6 +997,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
     }
 
     override fun onEditServer(conn: SavedConnection) = when (conn.type) {
+        "nfs" -> NfsSupport.showEditor(this, conn) { saveServer(conn, it, "nfs") }
         "smb" -> showSmbDialog(conn)
         "ftp" -> showFtpDialog(conn)
         "sftp" -> showSftpDialog(conn)

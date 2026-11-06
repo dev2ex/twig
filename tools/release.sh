@@ -2,7 +2,7 @@
 #
 # Tag the current commit and publish a GitHub release.
 #
-# Builds the five APKs a release carries, checks every one of them, writes the
+# Builds the standard APKs plus an arm64 NFS APK, checks every one, writes the
 # release notes from the changelog, and only then tags and publishes.
 #
 #   tools/release.sh              build, verify, show what would be published
@@ -127,10 +127,10 @@ printf 'tag=%s\ncommit=%s\ncheckout=%s\n' "$TAG" "$COMMIT" "$BUILD_ROOT" > "$OUT
 
 # ---------------------------------------------------------------------- build
 
-# Two passes: AGP refuses to have both ndk.abiFilters and splits.abi set, so the
+# Separate passes: AGP refuses to have both ndk.abiFilters and splits.abi set, so the
 # combined APK and the per-ABI ones cannot come out of one invocation.
 say "Building the combined APKs"
-JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease :app:assembleLibreRelease "${GRADLE_ARGS[@]}"
+JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease :app:assembleLibreRelease -PwithNfs=false "${GRADLE_ARGS[@]}"
 cp app/build/outputs/apk/full/release/app-full-release.apk   "$OUT/Twig-$VERSION_NAME-full.apk"
 cp app/build/outputs/apk/libre/release/app-libre-release.apk "$OUT/Twig-$VERSION_NAME-libre.apk"
 # Preserve the combined APK mappings before the split build's clean task.
@@ -141,11 +141,24 @@ for flavor in full libre; do
 done
 
 say "Building the per-ABI APKs"
-JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease -PabiSplit=true "${GRADLE_ARGS[@]}"
+JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease -PabiSplit=true -PwithNfs=false "${GRADLE_ARGS[@]}"
 for abi in arm64-v8a armeabi-v7a x86_64; do
   cp "app/build/outputs/apk/full/release/app-full-$abi-release.apk" \
      "$OUT/Twig-$VERSION_NAME-full-$abi.apk"
 done
+
+# Older release tags predate the optional backend; rebuilding them keeps their
+# original five-APK set. Inspect the checked-out source, not the calling tree.
+NFS=
+if grep -q '^val withNfs =' app/build.gradle.kts; then
+  say "Building the arm64 NFS APK"
+  JAVA_HOME="$JDK" ./gradlew clean :app:assembleFullRelease \
+    -PabiSplit=true -Pabis=arm64-v8a -PwithNfs=true "${GRADLE_ARGS[@]}"
+  NFS="Twig-$VERSION_NAME-full-nfs-arm64-v8a.apk"
+  cp app/build/outputs/apk/full/release/app-full-arm64-v8a-release-nfs.apk "$OUT/$NFS"
+  mkdir -p "$OUT/mapping/full-nfs-arm64-v8a"
+  cp -R app/build/outputs/mapping/fullRelease/. "$OUT/mapping/full-nfs-arm64-v8a/"
+fi
 
 # --------------------------------------------------------------------- verify
 
@@ -160,6 +173,13 @@ LIBRE="Twig-$VERSION_NAME-libre.apk"
 FULL="Twig-$VERSION_NAME-full.apk"
 sha() { sha256sum "$OUT/$1" | cut -d' ' -f1; }
 mb()  { printf '%.2f MB' "$(echo "scale=4; $(stat -c %s "$OUT/$1") / 1048576" | bc)"; }
+
+NFS_ROW=
+NFS_NOTE=
+if [ -n "$NFS" ]; then
+  NFS_ROW="| \`$NFS\` | 64-bit ARM with optional NFS support | $(mb "$NFS") |"
+  NFS_NOTE='The `full-nfs-arm64-v8a` download adds NFS support. The other downloads exclude NFS.'
+fi
 
 NOTES="$OUT/notes.md"
 {
@@ -181,17 +201,21 @@ cat >> "$NOTES" <<EOF
 | \`Twig-$VERSION_NAME-full-arm64-v8a.apk\` | 64-bit ARM only, smaller download | $(mb "Twig-$VERSION_NAME-full-arm64-v8a.apk") |
 | \`Twig-$VERSION_NAME-full-x86_64.apk\` | x86_64 only | $(mb "Twig-$VERSION_NAME-full-x86_64.apk") |
 | \`Twig-$VERSION_NAME-full-armeabi-v7a.apk\` | ⚠️ 32-bit ARM — experimental, untested on hardware | $(mb "Twig-$VERSION_NAME-full-armeabi-v7a.apk") |
+$NFS_ROW
 
 The \`full\` builds add read-only RAR through \`junrar\`, which is under the UnRAR licence and is not free software — see [LICENSE-EXCEPTIONS.md](LICENSE-EXCEPTIONS.md). The flavours differ in RAR alone.
 
-All five are signed with the same key, so any one installs over any other. For automatic updates without a store, add this repository to [Obtainium](https://github.com/ImranR98/Obtainium) and set *Filter APKs by Regular Expression* to \`-full\\.apk\$\` (or \`-libre\\.apk\$\`).
+$NFS_NOTE
+
+All APKs are signed with the same key, so any one installs over any other. For automatic updates without a store, add this repository to [Obtainium](https://github.com/ImranR98/Obtainium) and set *Filter APKs by Regular Expression* to \`-full\\.apk\$\` (or \`-libre\\.apk\$\`).
 
 ### Verifying the download
 
 \`\`\`
 $(for f in "$LIBRE" "$FULL" "Twig-$VERSION_NAME-full-arm64-v8a.apk" "Twig-$VERSION_NAME-full-x86_64.apk" "Twig-$VERSION_NAME-full-armeabi-v7a.apk"; do
     printf '%-36s %s\n' "$f" "$(sha "$f")"
-  done)
+  done
+  if [ -n "$NFS" ]; then printf '%-36s %s\n' "$NFS" "$(sha "$NFS")"; fi)
 
 Signing cert   ${TWIG_SIGNER_DN:-CN=Twig, O=Twig}
 Cert SHA-256   $("$ANDROID_HOME"/build-tools/"${TWIG_BUILD_TOOLS:-36.1.0}"/apksigner verify --print-certs "$OUT/$LIBRE" | grep -m1 'SHA-256 digest' | awk '{print $NF}')
@@ -223,12 +247,18 @@ git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
 git push "$REMOTE" HEAD
 git push "$REMOTE" "$TAG"
 
+NFS_ASSET=()
+if [ -n "$NFS" ]; then
+  NFS_ASSET+=("$OUT/$NFS#Twig $VERSION_NAME (full with NFS — arm64-v8a only)")
+fi
+
 gh release create "$TAG" --title "Twig $VERSION_NAME" --notes-file "$NOTES" \
   "$OUT/$FULL#Twig $VERSION_NAME (full — arm64-v8a + x86_64, start here)" \
   "$OUT/$LIBRE#Twig $VERSION_NAME (libre — free software, what F-Droid builds)" \
   "$OUT/Twig-$VERSION_NAME-full-arm64-v8a.apk#Twig $VERSION_NAME (full — arm64-v8a only)" \
   "$OUT/Twig-$VERSION_NAME-full-x86_64.apk#Twig $VERSION_NAME (full — x86_64 only)" \
-  "$OUT/Twig-$VERSION_NAME-full-armeabi-v7a.apk#Twig $VERSION_NAME (full — armeabi-v7a, experimental)"
+  "$OUT/Twig-$VERSION_NAME-full-armeabi-v7a.apk#Twig $VERSION_NAME (full — armeabi-v7a, experimental)" \
+  "${NFS_ASSET[@]}"
 
 # The Binaries: URL in fdroiddata points at the libre APK by name; if that 404s,
 # the reproducible-build comparison has nothing to compare against.

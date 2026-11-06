@@ -36,15 +36,25 @@ with open(os.environ['EVENT_LOG'], 'a') as f:
         keystore=(root / 'keystore.properties').read_text(),
         leaked=(root / 'uncommitted.txt').exists())) + '\\n')
 if os.environ.get('FAIL_BUILD') == '1': sys.exit(1)
+if '-PwithNfs=true' in sys.argv and os.environ.get('FAIL_NFS_BUILD') == '1': sys.exit(1)
+if 'clean' in sys.argv:
+    import shutil
+    shutil.rmtree(root / 'app/build', ignore_errors=True)
 for flavor in ('full', 'libre'):
     dest = root / f'app/build/outputs/apk/{flavor}/release'
     dest.mkdir(parents=True, exist_ok=True)
     (dest / f'app-{flavor}-release.apk').write_text(flavor)
+    mapping = root / f'app/build/outputs/mapping/{flavor}Release'
+    mapping.mkdir(parents=True, exist_ok=True)
+    (mapping / 'mapping.txt').write_text('NFS' if '-PwithNfs=true' in sys.argv else flavor)
+    if '-PwithNfs=true' in sys.argv and os.environ.get('SKIP_NFS_APK') != '1':
+        (dest / f'app-{flavor}-arm64-v8a-release-nfs.apk').write_text('NFS arm64')
     for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64'):
         (dest / f'app-{flavor}-{abi}-release.apk').write_text(abi)
 ''', executable=True)
-        self.write("tools/verify-apk.py", '''import os, sys
-with open(os.environ['EVENT_LOG'], 'a') as f: f.write('verify\\n')
+        self.write("tools/verify-apk.py", '''import json, os, sys
+with open(os.environ['EVENT_LOG'], 'a') as f:
+    f.write('verify-apks:' + json.dumps(sys.argv[1:]) + '\\nverify\\n')
 sys.exit(int(os.environ.get('FAIL_VERIFY', '0')))
 ''')
         self.write("bin/java", "#!/bin/sh\nexit 0\n", executable=True)
@@ -53,7 +63,12 @@ sys.exit(int(os.environ.get('FAIL_VERIFY', '0')))
 if [ "$1" = push ]; then echo push >> "$EVENT_LOG"; exit 0; fi
 exec '{GIT}' "$@"
 ''', executable=True)
-        self.write("bin/gh", '#!/bin/sh\necho github >> "$EVENT_LOG"\n', executable=True)
+        self.write("bin/gh", """#!/usr/bin/env python3
+import json, os, sys
+with open(os.environ['EVENT_LOG'], 'a') as f:
+    f.write('github-args:' + json.dumps(sys.argv[1:]) + '\\ngithub\\n')
+""", executable=True)
+        self.write("bin/curl", '#!/bin/sh\necho 200\n', executable=True)
         self.write("bin/bc", '#!/bin/sh\necho 0.01\n', executable=True)
         self.git("init", "-q", "-b", "main")
         self.git("config", "user.email", "release@example.invalid")
@@ -118,6 +133,55 @@ exec '{GIT}' "$@"
         self.assertEqual(5, len(list((self.root / 'build/release/1.16.0').glob('*.apk'))))
         self.assertNotEqual(str(self.root), json.loads(self.events()[0])['cwd'])
         self.assertEqual('verify', self.events()[-1])
+
+    def enable_nfs(self):
+        path = self.root / 'app/build.gradle.kts'
+        path.write_text(path.read_text() + 'val withNfs = true\n')
+        self.git('add', 'app/build.gradle.kts')
+        self.git('commit', '-qm', 'optional NFS support')
+        self.git('tag', '-f', 'v1.16.0')
+
+    def test_nfs_rehearsal_builds_one_extra_arm64_apk_with_notes_and_mapping(self):
+        self.enable_nfs()
+        result = self.run_script('--offline')
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        out = self.root / 'build/release/1.16.0'
+        nfs = 'Twig-1.16.0-full-nfs-arm64-v8a.apk'
+        self.assertEqual(6, len(list(out.glob('*.apk'))))
+        self.assertEqual('NFS arm64', (out / nfs).read_text())
+        self.assertEqual('NFS', (out / 'mapping/full-nfs-arm64-v8a/mapping.txt').read_text())
+        builds = [json.loads(e) for e in self.events() if e.startswith('{')]
+        self.assertEqual(3, len(builds))
+        for build in builds[:2]:
+            self.assertIn('-PwithNfs=false', build['args'])
+        for flag in ('clean', '-PwithNfs=true', '-PabiSplit=true', '-Pabis=arm64-v8a', '--offline'):
+            self.assertIn(flag, builds[2]['args'])
+        self.assertGreaterEqual((out / 'notes.md').read_text().count(nfs), 2)
+        self.assertIn(str(out / nfs), json.loads(next(e.removeprefix('verify-apks:')
+            for e in self.events() if e.startswith('verify-apks:'))))
+        self.assertNotIn('github', self.events())
+
+    def test_nfs_publish_includes_extra_asset_and_mirror(self):
+        self.enable_nfs()
+        mirror = self.root / 'build/mirror'
+        mirror.mkdir(parents=True)
+        result = self.run_script('--publish', TWIG_RELEASE_MIRROR=str(mirror))
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        args = json.loads(next(e.removeprefix('github-args:') for e in self.events()
+                               if e.startswith('github-args:')))
+        assets = [a for a in args if '.apk#' in a]
+        self.assertEqual(6, len(assets))
+        self.assertTrue(any('full-nfs-arm64-v8a.apk#' in a for a in assets))
+        self.assertEqual(6, len(list(mirror.glob('*.apk'))))
+
+    def test_nfs_failure_or_missing_apk_never_publishes(self):
+        self.enable_nfs()
+        for flag in ('FAIL_NFS_BUILD', 'SKIP_NFS_APK'):
+            with self.subTest(flag=flag):
+                result = self.run_script('--publish', **{flag: '1'})
+                self.assertNotEqual(0, result.returncode)
+                self.assertNotIn('push', self.events())
+                self.assertNotIn('github', self.events())
 
     def test_rebuild_cannot_publish(self):
         result = self.run_script('--tag', 'v1.16.0', '--publish')

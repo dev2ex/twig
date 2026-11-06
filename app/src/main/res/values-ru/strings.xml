@@ -1109,7 +1109,7 @@
     <string name="website_open_url">Открыть URL</string>
     <string name="website_user_agent_global_hint">Пусто = глобальный User-Agent, затем мобильный/настольный</string>
     <string name="website_global_settings_hint">Сайт может переопределить глобальный User-Agent. JavaScript, CSS, скрытые элементы и блокировка запросов объединяются с глобальными настройками. Параметры отображения задают значения по умолчанию для новых сайтов.</string>
-    <string name="action_add_nfs">＋ Добавить NFS</string>
+    <string name="action_add_nfs">Добавить NFS</string>
     <string name="nfs_host">Адрес NFS сервера</string>
     <string name="nfs_export">Путь экспорта (например, /volume1/public)</string>
     <string name="nfs_version">Версия NFS (3 или 4)</string>
@@ -1168,6 +1168,7 @@
     <string name="share_prepare_failed">Не удалось подготовить файлы к отправке.</string>
     <string name="share_prepare_space">Недостаточно места для подготовки файлов.</string>
     <string name="share_prepare_incomplete">Файл изменён или прочитан не полностью.</string>
+    <string name="nfs_port">Порт (по умолчанию 2049)</string>
     <string name="root_drag_to_reorder">Перетащите для изменения порядка</string>
     <string name="root_reorder_hint">Перетаскивайте маркеры, чтобы изменить порядок элементов корня в обеих панелях.</string>
     <string name="action_sort_favorites">Упорядочить избранное</string>
