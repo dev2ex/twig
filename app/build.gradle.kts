@@ -177,6 +177,11 @@ android {
     testOptions {
         // Robolectric needs to read res/ (layouts, strings) to run
         unitTests.isIncludeAndroidResources = true
+        // Release suites load many SDK sandboxes; recycle workers before they exhaust the heap.
+        unitTests.all {
+            it.maxHeapSize = "1024m"
+            it.forkEvery = 12
+        }
     }
 
     compileOptions {

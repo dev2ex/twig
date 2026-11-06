@@ -105,7 +105,7 @@ S3, restic repositories and Jellyfin/Emby libraries expand in place. Keep two
 sources side by side: compress an SMB folder into a local zip, or copy a file
 from a remote archive straight to an FTP server.
 
-**Small and resource-conscious.** The 1.17.0 full build's arm64-v8a download measures 8.59 MiB,
+**Small and resource-conscious.** The 1.18.0 full build's arm64-v8a download measures 8.81 MiB,
 including the terminal, network backends and media player. Dependencies are added
 only after their APK cost is measured.
 
@@ -145,24 +145,25 @@ only after their APK cost is measured.
 
 ## Size
 
-Measured on the signed 1.17.0 release APKs (R8 + resource shrinking; MiB = 1,048,576 bytes):
+Measured on the signed 1.18.0 release APKs (R8 + resource shrinking; MiB = 1,048,576 bytes):
 
 | | Size |
 |---|---|
-| Full APK (`arm64-v8a` + `x86_64`) | 10.73 MiB |
-| Libre APK (`arm64-v8a` + `x86_64`) | 10.66 MiB |
-| **Full APK, `arm64-v8a` only** | **8.59 MiB** |
-| Full APK, `x86_64` only | 8.71 MiB |
-| Full APK, `armeabi-v7a` only (experimental) | 8.35 MiB |
+| Full APK (`arm64-v8a` + `x86_64`) | 10.95 MiB |
+| Libre APK (`arm64-v8a` + `x86_64`) | 10.88 MiB |
+| **Full APK, `arm64-v8a` only** | **8.81 MiB** |
+| Full APK, `x86_64` only | 8.93 MiB |
+| Full APK, `armeabi-v7a` only (experimental) | 8.56 MiB |
+| Full APK with NFS, `arm64-v8a` only | 8.98 MiB |
 
 Where it goes (compressed entries inside the full `arm64-v8a` APK):
 
 | Component | Size |
 |---|---|
-| `classes*.dex` (all our code plus every JVM dependency) | 3.21 MiB |
+| `classes*.dex` (all our code plus every JVM dependency) | 3.31 MiB |
 | `libffmpegJNI.so` | 1.39 MiB |
 | Bouncy Castle data files | 1.18 MiB |
-| Resources (`resources.arsc` + `res`) | 1.93 MiB |
+| Resources (`resources.arsc` + `res`) | 2.04 MiB |
 | `libsamba_jni.so` (libsmb2) | 485 KiB |
 | `libtwigzstd` / `libtermux` / `libtwigpty` | 110 KiB |
 

@@ -4,7 +4,7 @@ Browse local storage, archives, FTP, SFTP, SMB, WebDAV, S3, restic and Jellyfin/
 
 <b>Small and resource-conscious</b>
 
-The 1.17.0 libre APK measures 10.66 MiB for arm64-v8a and x86_64 together, including the terminal and media player.
+The 1.18.0 libre APK measures 10.88 MiB for arm64-v8a and x86_64 together, including the terminal and media player.
 
 <b>Features</b>
 
