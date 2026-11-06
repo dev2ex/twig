@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Tocar nas linhas para selecionar</string>
     <string name="settings_tap_row_to_select_desc">Com itens selecionados, toque na linha para selecionar ou desmarcar. Toque no ícone ou na miniatura para abrir. Desativado: selecione apenas pelas caixas de seleção.</string>
     <string name="strip_duplicate">Duplicar</string>
+    <string name="settings_hide_path_bar_single_pane">Ocultar barra de endereços com um painel</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Manter a barra de endereços visível com dois painéis</string>
     <string name="settings_pane_layout">Layout dos painéis</string>
     <string name="pane_layout_follow_orientation">Seguir orientação da tela</string>
     <string name="pane_layout_single">Um painel</string>

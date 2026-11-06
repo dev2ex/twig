@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Tocca le righe per selezionare</string>
     <string name="settings_tap_row_to_select_desc">Se ci sono elementi selezionati, tocca una riga per selezionarla o deselezionarla. Tocca icona o miniatura per aprire. Disattivato: selezione solo con le caselle.</string>
     <string name="strip_duplicate">Duplica</string>
+    <string name="settings_hide_path_bar_single_pane">Nascondi la barra degli indirizzi con un pannello</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Mantieni visibile la barra degli indirizzi con due pannelli</string>
     <string name="settings_pane_layout">Disposizione dei pannelli</string>
     <string name="pane_layout_follow_orientation">Segui orientamento dello schermo</string>
     <string name="pane_layout_single">Un pannello</string>

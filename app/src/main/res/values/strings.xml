@@ -1255,6 +1255,8 @@
     <string name="settings_tap_row_to_select">Tap rows to select</string>
     <string name="settings_tap_row_to_select_desc">When items are selected, tap a row to select or deselect it. Tap its icon or thumbnail to open. Off: select using checkmarks only.</string>
     <string name="strip_duplicate">Duplicate</string>
+    <string name="settings_hide_path_bar_single_pane">Hide address bar in single-pane mode</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Keep the address bar visible in dual-pane mode</string>
     <string name="settings_pane_layout">Pane layout</string>
     <string name="pane_layout_follow_orientation">Follow screen orientation</string>
     <string name="pane_layout_single">Single pane</string>

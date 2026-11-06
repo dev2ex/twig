@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Seçmek için satırlara dokun</string>
     <string name="settings_tap_row_to_select_desc">Seçili öğeler varken seçmek veya seçimi kaldırmak için satıra dokunun. Açmak için simgeye veya küçük resme dokunun. Kapalı: yalnızca onay işaretleriyle seçilir.</string>
     <string name="strip_duplicate">Çoğalt</string>
+    <string name="settings_hide_path_bar_single_pane">Tek panel modunda adres çubuğunu gizle</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Çift panel modunda adres çubuğunu görünür tut</string>
     <string name="settings_pane_layout">Panel düzeni</string>
     <string name="pane_layout_follow_orientation">Ekran yönünü izle</string>
     <string name="pane_layout_single">Tek panel</string>

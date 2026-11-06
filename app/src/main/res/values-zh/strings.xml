@@ -1207,6 +1207,8 @@
     <string name="settings_tap_row_to_select">点击行选择</string>
     <string name="settings_tap_row_to_select_desc">有选中项时，点击行可选择或取消选择，点击图标或缩略图打开。关闭时，只能通过勾选按钮选择。</string>
     <string name="strip_duplicate">创建副本</string>
+    <string name="settings_hide_path_bar_single_pane">单面板隐藏地址栏</string>
+    <string name="settings_hide_path_bar_single_pane_desc">双面板模式下仍显示地址栏</string>
     <string name="settings_pane_layout">面板布局</string>
     <string name="pane_layout_follow_orientation">跟随屏幕方向</string>
     <string name="pane_layout_single">单面板</string>

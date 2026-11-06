@@ -188,6 +188,11 @@ class SettingsActivity : TwigActivity() {
             get = { Prefs.paneLayout(this) },
             set = { Prefs.setPaneLayout(this, it) },
         )
+        switchRow(
+            getString(R.string.settings_hide_path_bar_single_pane), getString(R.string.settings_hide_path_bar_single_pane_desc),
+            get = { Prefs.hidePathBarSinglePane(this) },
+            set = { Prefs.setHidePathBarSinglePane(this, it) },
+        )
         choiceRow(
             getString(R.string.settings_date_format),
             arrayOf(

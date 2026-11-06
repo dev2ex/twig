@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Zeilen zum Auswählen antippen</string>
     <string name="settings_tap_row_to_select_desc">Bei ausgewählten Einträgen schaltet ein Tippen auf die Zeile die Auswahl um. Symbol oder Vorschaubild öffnet den Eintrag. Aus: Auswahl nur über Häkchen.</string>
     <string name="strip_duplicate">Duplizieren</string>
+    <string name="settings_hide_path_bar_single_pane">Adressleiste bei einem Bereich ausblenden</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Adressleiste bei zwei Bereichen weiterhin anzeigen</string>
     <string name="settings_pane_layout">Bereichslayout</string>
     <string name="pane_layout_follow_orientation">Bildschirmausrichtung folgen</string>
     <string name="pane_layout_single">Ein Bereich</string>

@@ -232,6 +232,7 @@ class PaneFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?,
     ): View {
         _b = FragmentPaneBinding.inflate(inflater, container, false)
+        updatePathBarVisibility()
         return b.root
     }
 
@@ -456,6 +457,7 @@ class PaneFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        updatePathBarVisibility()
         takeImageViewerResult()
         refreshSortAndView()
         // The user may have just picked "Always" in the system resolver: clear the file-association icon cache and redraw so the icon follows.
@@ -470,6 +472,12 @@ class PaneFragment : Fragment() {
         // Re-read the current directory on every backend, plus watched local ancestors.
         viewModel.refreshOnResume()
         syncObservers(viewModel.state.value.rows)
+    }
+
+    private fun updatePathBarVisibility() {
+        val ctx = requireContext()
+        _b?.pathBar?.visibility = if (Prefs.hidePathBarSinglePane(ctx) && !Prefs.dualPane(ctx))
+            View.GONE else View.VISIBLE
     }
 
     /**

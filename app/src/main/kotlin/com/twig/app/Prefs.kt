@@ -43,6 +43,12 @@ object Prefs {
         sp(ctx).edit().putBoolean("hide_title_bar_portrait", hide).apply()
     }
 
+    fun hidePathBarSinglePane(ctx: Context): Boolean = sp(ctx).getBoolean("hide_path_bar_single_pane", false)
+
+    fun setHidePathBarSinglePane(ctx: Context, hide: Boolean) {
+        sp(ctx).edit().putBoolean("hide_path_bar_single_pane", hide).apply()
+    }
+
     enum class BackAction { CLOSE, EXIT, UP, UP_EXIT }
 
     fun backAction(ctx: Context): BackAction {
@@ -634,7 +640,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx), hideTitleBarPortrait(ctx),
+        showHidden(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx), hideTitleBarPortrait(ctx), hidePathBarSinglePane(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

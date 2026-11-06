@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">行をタップして選択</string>
     <string name="settings_tap_row_to_select_desc">選択中の項目がある場合、行をタップして選択を切り替えます。アイコンやサムネイルで開きます。オフの場合はチェックボタンのみで選択します。</string>
     <string name="strip_duplicate">複製</string>
+    <string name="settings_hide_path_bar_single_pane">シングルペインでアドレスバーを非表示</string>
+    <string name="settings_hide_path_bar_single_pane_desc">デュアルペインではアドレスバーを表示します</string>
     <string name="settings_pane_layout">ペインのレイアウト</string>
     <string name="pane_layout_follow_orientation">画面の向きに合わせる</string>
     <string name="pane_layout_single">シングルペイン</string>

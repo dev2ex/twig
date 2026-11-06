@@ -1176,6 +1176,8 @@
     <string name="settings_tap_row_to_select">Chạm vào hàng để chọn</string>
     <string name="settings_tap_row_to_select_desc">Khi có mục được chọn, chạm vào hàng để chọn hoặc bỏ chọn. Chạm vào biểu tượng hoặc hình thu nhỏ để mở. Khi tắt, chỉ chọn bằng nút đánh dấu.</string>
     <string name="strip_duplicate">Nhân bản</string>
+    <string name="settings_hide_path_bar_single_pane">Ẩn thanh địa chỉ ở chế độ một bảng</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Vẫn hiển thị thanh địa chỉ ở chế độ hai bảng</string>
     <string name="settings_pane_layout">Bố cục bảng</string>
     <string name="pane_layout_follow_orientation">Theo hướng màn hình</string>
     <string name="pane_layout_single">Một bảng</string>

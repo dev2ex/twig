@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Toucher les lignes pour sélectionner</string>
     <string name="settings_tap_row_to_select_desc">Si des éléments sont sélectionnés, toucher une ligne change sa sélection. Toucher son icône ou sa miniature pour ouvrir. Désactivé : sélection par les coches uniquement.</string>
     <string name="strip_duplicate">Dupliquer</string>
+    <string name="settings_hide_path_bar_single_pane">Masquer la barre d’adresse avec un seul volet</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Garder la barre d’adresse visible avec deux volets</string>
     <string name="settings_pane_layout">Disposition des volets</string>
     <string name="pane_layout_follow_orientation">Suivre l’orientation de l’écran</string>
     <string name="pane_layout_single">Un volet</string>

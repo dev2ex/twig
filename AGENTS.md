@@ -166,7 +166,9 @@ its listing size must still describe the followed stream for copy/resume checks.
   portrait too. Hidden title-bar actions stay pinned above the strip with the same
   separator, using one column in portrait and two in landscape. Action-strip density
   still follows orientation. Both settings participate in `uiSignature` and
-  configuration backups.
+  configuration backups. `Prefs.hidePathBarSinglePane` defaults off and hides the address
+  bar whenever the effective layout is single-pane, including both pickers. Dual-pane
+  layouts retain it. The setting participates in `uiSignature` and configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   Tapping the path bar reveals horizontally scrollable path buttons; its source icon toggles
   the compact display; clicking a tree node also restores it. Buttons have square corners,

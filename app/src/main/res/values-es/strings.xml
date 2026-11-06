@@ -1177,6 +1177,8 @@
     <string name="settings_tap_row_to_select">Tocar filas para seleccionar</string>
     <string name="settings_tap_row_to_select_desc">Si hay elementos seleccionados, toca una fila para seleccionarla o deseleccionarla. Toca el icono o la miniatura para abrir. Desactivado: selecciona solo con las casillas.</string>
     <string name="strip_duplicate">Duplicar</string>
+    <string name="settings_hide_path_bar_single_pane">Ocultar barra de direcciones con un panel</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Mantener la barra de direcciones visible con dos paneles</string>
     <string name="settings_pane_layout">Diseño de paneles</string>
     <string name="pane_layout_follow_orientation">Seguir la orientación de la pantalla</string>
     <string name="pane_layout_single">Un panel</string>

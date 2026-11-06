@@ -1213,6 +1213,8 @@
     <string name="settings_tap_row_to_select">Выбор нажатием на строку</string>
     <string name="settings_tap_row_to_select_desc">Если есть выбранные элементы, нажатие на строку меняет её выделение. Значок или миниатюра открывает элемент. Выключено: выбор только флажками.</string>
     <string name="strip_duplicate">Дубликат</string>
+    <string name="settings_hide_path_bar_single_pane">Скрывать адресную строку в однопанельном режиме</string>
+    <string name="settings_hide_path_bar_single_pane_desc">Показывать адресную строку в двухпанельном режиме</string>
     <string name="settings_pane_layout">Расположение панелей</string>
     <string name="pane_layout_follow_orientation">По ориентации экрана</string>
     <string name="pane_layout_single">Одна панель</string>
