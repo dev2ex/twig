@@ -99,9 +99,8 @@ object Format {
     fun pathLabel(
         f: com.twig.core.XFile,
         conn: SavedConnection? = Connections.ofScheme(f.scheme),
-        latest: String = "latest",
     ): String {
-        resticLocation(f)?.let { return it.compact(latest) }
+        resticLocation(f)?.let { return it.compact() }
         return when {
             f.scheme == "file" -> f.path
             f.scheme == "saf" -> f.name

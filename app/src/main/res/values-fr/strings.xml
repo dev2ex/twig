@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Enregistrer le mot de passe</string>
     <string name="restic_unlocking">Déverrouillage…</string>
     <string name="restic_wrong_pw">Mot de passe incorrect ou lecture impossible : %1$s</string>
-    <string name="restic_latest">Récents</string>
     <string name="action_density">Hauteur des lignes</string>
     <string name="action_text_size">Taille du texte</string>
     <string name="action_sort">Trier</string>

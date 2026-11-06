@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Parolayı kaydet</string>
     <string name="restic_unlocking">Kilit açılıyor…</string>
     <string name="restic_wrong_pw">Parola yanlış veya okunamıyor: %1$s</string>
-    <string name="restic_latest">En son</string>
     <string name="action_density">Satır yüksekliği</string>
     <string name="action_text_size">Metin boyutu</string>
     <string name="action_sort">Sırala</string>

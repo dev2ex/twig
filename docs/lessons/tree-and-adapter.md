@@ -4,6 +4,14 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **First restic unlock left the frame on the parent directory (2026-11-05)**:
+  snapshots expanded successfully, but `unlockRestic` never selected the repository
+  hint row's `currentKey`. Later taps used `toggleRestic`, which already selected it,
+  so only the first unlock was affected. Select the row before starting IO, including
+  duplicate taps; never reselect it on completion, which would steal a later selection.
+  `ResticHistoryTest` covers initial/loading/completed selection, subsequent toggles
+  and navigation away while unlocking.
+
 - **Directory-tree labels ignored app language on Android 11 (2026-10-31)**:
   settings and menus followed the selected language while storage roots and groups
   stayed in the system language. Rebuilding rows alone did not help: below API 33,

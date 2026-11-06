@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Guardar contraseña</string>
     <string name="restic_unlocking">Desbloqueando…</string>
     <string name="restic_wrong_pw">Contraseña incorrecta o no se puede leer: %1$s</string>
-    <string name="restic_latest">Más reciente</string>
     <string name="action_density">Altura de fila</string>
     <string name="action_text_size">Tamaño del texto</string>
     <string name="action_sort">Ordenar</string>

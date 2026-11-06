@@ -35,11 +35,11 @@ class ResticLocationTest {
     @Test fun `latest remains an alias even when its current snapshot is known`() {
         val location = ResticLocation("/backup", "backup", "/latest/home/vale/Documents",
             "2026-11-04 09:30:00 · laptop", "a1b2c3d4")
-        assertEquals("restic · backup › 最新 › /home/vale/Documents", location.compact("最新"))
-        assertEquals("backup:最新", location.copy(path = "/latest").favoriteName("最新"))
+        assertEquals("restic · backup › Latest › /home/vale/Documents", location.compact())
+        assertEquals("backup:Latest", location.copy(path = "/latest").favoriteName())
         assertEquals("backup:2026-11-04 09:30:00 · laptop",
-            location.copy(path = "/a1b2c3d4").favoriteName("最新"))
-        assertEquals("backup", location.copy(path = "/").favoriteName("最新"))
+            location.copy(path = "/a1b2c3d4").favoriteName())
+        assertEquals("backup", location.copy(path = "/").favoriteName())
     }
 
     @Test fun `old favorites and deleted connections remain readable without a mounted filesystem`() {
@@ -60,7 +60,7 @@ class ResticLocationTest {
     @Test fun `narrow address bar retains latest and the target directory`() {
         val location = ResticLocation("/backup", "a-very-long-repository-name", "/latest/home/vale/a-very-long-parent-directory/Documents")
         val paint = TextPaint().apply { textSize = 12f }
-        val result = location.fitted("Latest", paint, 300f)
+        val result = location.fitted(paint, 300f)
         assertTrue(result, result.contains("Latest"))
         assertTrue(result, result.endsWith("Documents"))
         assertTrue(result, paint.measureText(result) <= 301f)

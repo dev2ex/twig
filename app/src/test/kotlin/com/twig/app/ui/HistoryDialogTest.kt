@@ -67,7 +67,7 @@ class HistoryDialogTest {
         try {
             val list = dialog.findViewById<ListView>(R.id.locations_list)!!
             val row = list.adapter.getView(0, null, list)
-            assertEquals("restic · laptop › ${host.get().getString(R.string.restic_latest)} › /home/Documents",
+            assertEquals("restic · laptop › Latest › /home/Documents",
                 row.findViewById<android.widget.TextView>(R.id.name).text.toString())
             list.performItemClick(row, 0, 0)
             assertEquals(recent, selected)

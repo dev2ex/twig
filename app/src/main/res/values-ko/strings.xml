@@ -23,7 +23,6 @@
     <string name="restic_save_pw">비밀번호 저장</string>
     <string name="restic_unlocking">잠금 해제 중…</string>
     <string name="restic_wrong_pw">비밀번호가 틀리거나 읽을 수 없음: %1$s</string>
-    <string name="restic_latest">최신</string>
     <string name="action_density">행 높이</string>
     <string name="action_text_size">글자 크기</string>
     <string name="action_sort">정렬</string>

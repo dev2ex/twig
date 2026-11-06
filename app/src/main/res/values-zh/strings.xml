@@ -23,7 +23,6 @@
     <string name="restic_save_pw">保存密码</string>
     <string name="restic_unlocking">解锁中…</string>
     <string name="restic_wrong_pw">密码错误或无法读取:%1$s</string>
-    <string name="restic_latest">最新 (latest)</string>
     <string name="action_density">行高</string>
     <string name="action_text_size">文字大小</string>
     <string name="action_sort">排序</string>

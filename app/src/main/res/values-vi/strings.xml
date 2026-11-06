@@ -23,7 +23,6 @@
     <string name="restic_save_pw">Lưu mật khẩu</string>
     <string name="restic_unlocking">Đang mở khóa…</string>
     <string name="restic_wrong_pw">Sai mật khẩu hoặc không thể đọc: %1$s</string>
-    <string name="restic_latest">Mới nhất</string>
     <string name="action_density">Chiều cao hàng</string>
     <string name="action_text_size">Cỡ chữ</string>
     <string name="action_sort">Sắp xếp</string>

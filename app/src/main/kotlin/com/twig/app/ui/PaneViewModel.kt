@@ -430,7 +430,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val forcedSqlite = HashSet<String>()
     private val pendingSqliteSql = HashMap<String, String>()
     private val pendingSqliteSearch = HashMap<String, Pair<String, String?>>()
-    private val sqliteTree by lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+    private val sqliteTreeState = lazy { SqliteTree(getApplication(), viewModelScope, { io }, ::rebuild) }
+    private val sqliteTree by sqliteTreeState
 
     fun isSqlite(file: XFile, key: String = fileKey(file)): Boolean =
         com.twig.app.sqlite.SqliteSession.recognizes(file) || key in forcedSqlite
@@ -1705,7 +1706,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     scrollKey = descend.targetKey
                     rebuild()
                     if (_state.value.rows.none { it.key == descend.targetKey }) {
-                        mountPinnedDirectory(descend.target, Format.pathLabel(descend.target, latest = str(R.string.restic_latest)))
+                        mountPinnedDirectory(descend.target, Format.pathLabel(descend.target))
                     }
                     onResult(true, null)
                 },
@@ -2145,6 +2146,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun closeAllInfo() {
         infoOpen.clear()
         closeSelectionInfo()
+        if (sqliteTreeState.isInitialized()) sqliteTree.closeProperties()
     }
 
     /** Same as above but takes a file directly (favorite rows have no matching [FileNode]; the menu's "Properties" entry uses this). */
@@ -2647,6 +2649,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun unlockRestic(repoDir: XFile, password: String, onResult: (Boolean, String?) -> Unit) {
         closeAllInfo()
         val nodeKey = "restic:${fileKey(repoDir)}"
+        currentKey = nodeKey
         claimExpand(nodeKey) // Before the dedup: tapping back on a just-abandoned repo should reclaim it and reinstate the spinner.
         if (!connecting.add(nodeKey)) { rebuild(); return } // Already unlocking; this tap is not stacked on top.
         rebuild() // Show the spinner first.
@@ -3494,9 +3497,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         if (exp && unlocked) {
             // fs-restic is a pure JVM module with no string resources available, so
             // the "latest" virtual directory (path=="/latest") only carries the raw,
-            // language-neutral name; localized text is owned here at this one render point.
+            // language-neutral name; apply the shared display label here.
             visible(children[nodeKey]).forEach { f ->
-                val shown = if (f.path == "/latest") f.copy(displayName = str(R.string.restic_latest)) else f
+                val shown = if (f.path == "/latest") f.copy(displayName = com.twig.app.ResticLocation.LATEST_NAME) else f
                 addFile(rows, shown, depth + 1)
             }
         }
