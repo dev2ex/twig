@@ -77,6 +77,7 @@ RAR-handling code.
 
 Twig ships the following LGPL-licensed components:
 
+- **libnfs** 18.0.0, in optional NFS builds (`fs-nfs/src/main/cpp/libnfs/`, LGPL-2.1-or-later; generated RPC files BSD-2-Clause)
 - **libsmb2** 2.3.0 (`fs-smb/src/main/cpp/libsmb2/`, LGPL-2.1-or-later)
 - **FFmpeg**, via `org.jellyfin.media3:media3-ffmpeg-decoder` (FFmpeg upstream is
   LGPL-2.1-or-later; that AAR itself is released under GPL-3.0)

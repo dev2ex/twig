@@ -7,22 +7,31 @@ Additional permissions and notices are in
 Twig builds in two flavors. **`libre`** (published on F-Droid) is 100% free
 software. **`full`** additionally bundles `junrar` for read-only RAR support;
 that library is **not** free software, and §2.2 applies to `full` only. Rows
-below are otherwise common to both.
+below are otherwise common to both, except optional libnfs, included only
+when building with `-PwithNfs=true`.
 
 This file inventories every third-party component Twig uses, as of
-**1.17.0 (versionCode 318)**. Keep it in sync when dependencies change.
+**1.18.0 (versionCode 319)**. Keep it in sync when dependencies change.
 
 ---
 
 ## 1. Third-party source included in this repository (vendored)
 
-All three are **unmodified upstream copies**, redistributed with this repository.
+These components are redistributed with this repository. The libnfs CMake
+build has local changes to derive version metadata from its autotools files.
 
 | Component | Version | License | Location |
 |---|---|---|---|
+| **libnfs** (optional NFS builds) | 18.0.0 | **LGPL-2.1-or-later**; generated RPC protocol files BSD-2-Clause | `fs-nfs/src/main/cpp/libnfs/` |
 | **libsmb2** | 2.3.0 | **LGPL-2.1-or-later** | `fs-smb/src/main/cpp/libsmb2/` |
 | **Zstandard (zstd)** | 1.5.6 | **BSD-3-Clause** or GPL-2.0 (dual; Twig takes BSD-3-Clause) | `fs-zstd/src/main/cpp/zstd/` |
 | **Termux terminal JNI** (`termux.c`) | v0.118.0 | **GPL-3.0-only** | `app/src/main/cpp/termux/` |
+
+**libnfs** — https://github.com/sahlberg/libnfs
+Included only in NFS-enabled builds. The client library uses LGPL-2.1-or-later;
+protocol definitions and generated RPC files use the simplified BSD license.
+License texts: `fs-nfs/src/main/cpp/libnfs/COPYING`,
+`LICENCE-LGPL-2.1.txt` and `LICENCE-BSD.txt`. Utilities and examples are not built.
 
 **libsmb2** — https://github.com/sahlberg/libsmb2
 Only the `lib/` and `include/` directories are vendored (LGPL-2.1-or-later); the

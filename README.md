@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.17.0** (versionCode 318) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.18.0** (versionCode 319) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -226,6 +226,18 @@ scheme), and persist their configuration. Extraction is just a cross-source copy
 so is compression, which is why "compress a folder on SMB into a local archive"
 needs no special case.
 The compression dialog remembers the last ZIP/7z format and Fast / Standard / Store level across launches, even if cancelled. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible; ZIP file names remain visible.
+
+### New in 1.18
+
+- **SQLite browsing:** expand databases into tables and read-only data grids. Search across tables, sort columns, filter values or comparisons, run read-only SQL, inspect BLOBs in hex and export selected columns to CSV. See [SQLite browsing](docs/sqlite-browser.md) for source and size limits.
+- **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the portrait title bar or the single-pane address bar.
+- **More storage roots:** internal and removable storage can be hidden or reordered; additional shared-profile storage roots appear beside primary storage when available.
+- **Recent restic locations** restore directories inside snapshots, unlocking the repository when needed. The latest-snapshot alias follows the newest snapshot.
+- **Animated images:** GIF and animated WebP play in the image viewer on Android 9+.
+- **Playback:** completed episodes retain the next episode in Continue Watching, even with auto-play off. Long-press audio/subtitle controls to mute or toggle subtitles. Network playback retries interruptions; unsupported Dolby Vision Profile 7 falls back to HDR10.
+- **Web search and websites:** configure a search homepage and query template, choose a system search handler, and optionally share a bookmark's page settings across its exact hostname. Website links offer copy, share and opening in the default browser.
+- **Remote RAR:** full builds read archive data on demand on sources with efficient random access, without downloading the whole archive.
+- **Optional NFS:** the dedicated arm64 full APK supports NFSv3/v4 browsing, writes and resumable transfers. Ordinary full/libre APKs exclude NFS.
 
 ### Browsing
 
