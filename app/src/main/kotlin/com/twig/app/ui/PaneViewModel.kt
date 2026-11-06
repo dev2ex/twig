@@ -1085,6 +1085,62 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Interaction ----
 
+    data class PathSegment(val key: String, val file: XFile, val label: String)
+
+    var pathBarExpanded = false
+    private var pathTrail = emptyList<PathSegment>()
+
+    /** Use tree identities, including mount roots, rather than splitting opaque backend paths. */
+    fun pathSegments(): List<PathSegment> {
+        val selected = currentKey
+        if (currentDir == null || selected == null) {
+            pathTrail = emptyList()
+            return pathTrail
+        }
+        val keys = ancestorKeysOf(selected) + selected
+        val chain = state.value.rows.filter { it.key in keys }.mapNotNull { node ->
+            val file = mountRoots[node.key] ?: keyFile[node.key]?.takeIf { it.isDir }
+                ?: return@mapNotNull null
+            val label = when (node) {
+                is FileNode -> node.label ?: node.file.name
+                is ServerNode -> node.conn.displayLabel()
+                is FavoriteNode -> com.twig.app.favoriteDisplayName(node.fav, node.conn)
+                else -> file.name
+            }
+            PathSegment(node.key, file, label)
+        }
+        if (chain.isEmpty() || chain.last().key != selected) return emptyList()
+        // Selecting a parent retains the trail; a different branch replaces it.
+        pathTrail = if (chain.size <= pathTrail.size &&
+            chain.indices.all { chain[it].key == pathTrail[it].key &&
+                chain[it].file.scheme == pathTrail[it].file.scheme &&
+                chain[it].file.path == pathTrail[it].file.path }) {
+            chain + pathTrail.drop(chain.size)
+        } else chain
+        return pathTrail
+    }
+
+    /** Show this directory's direct children, collapsing descendants while retaining the path trail. */
+    fun selectPathSegment(key: String) {
+        val index = pathTrail.indexOfFirst { it.key == key }
+        if (index < 0) return
+        closeAllInfo()
+        pathTrail.take(index).forEach { expanded.add(it.key) }
+        rebuild()
+        val node = state.value.rows.firstOrNull { it.key == key } ?: return
+        val file = mountRoots[key] ?: keyFile[key]?.takeIf { it.isDir } ?: return
+        if (key !in expanded && node is FileNode) {
+            toggleFile(node)
+        } else {
+            claimExpand(key)
+            currentKey = key
+            currentDir = file
+            accordionExpand(key)
+            rebuild()
+            relistQuietly(key, file)
+        }
+    }
+
     /** Move the selection frame without opening a leaf in a launcher configuration. */
     fun highlightNode(node: Node) {
         currentKey = node.key

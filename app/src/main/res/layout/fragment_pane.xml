@@ -35,6 +35,22 @@
             android:textColor="@color/white"
             android:textSize="12sp" />
 
+        <HorizontalScrollView
+            android:id="@+id/path_scroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/path_segments"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
         <TextView
             android:id="@+id/tv_selection_count"
             android:layout_width="wrap_content"

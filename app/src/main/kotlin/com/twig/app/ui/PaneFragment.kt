@@ -247,6 +247,8 @@ class PaneFragment : Fragment() {
             gridNames = Prefs.thumbsGridNames(requireContext()),
             selectFilesByRow = host?.selectFilesByRow == true,
             onClick = click@{ node ->
+                viewModel.pathBarExpanded = false
+                renderPathSegments()
                 if (host?.onPickNode(node) == true) return@click
                 when (node) {
                     is PaneViewModel.FileNode ->
@@ -344,16 +346,36 @@ class PaneFragment : Fragment() {
         b.tvPath.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
             if (right - left != oldRight - oldLeft && !mapMode) setPathText(viewModel.state.value.currentDir)
         }
+        b.pathBar.setOnClickListener {
+            host?.onPaneTouched(this)
+            if (!mapMode) {
+                viewModel.pathBarExpanded = !viewModel.pathBarExpanded
+                renderPathSegments()
+            }
+        }
+        b.ivPathIcon.setOnClickListener { b.pathBar.performClick() }
+        b.ivPathIcon.setOnLongClickListener { editCurrentPath() }
         b.pathBar.setOnLongClickListener { editCurrentPath() }
+        var pathDoubleTap = false
         val pathGestures = GestureDetector(requireContext(), object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
-            override fun onDoubleTap(e: MotionEvent) = editCurrentPath()
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                pathDoubleTap = editCurrentPath()
+                return pathDoubleTap
+            }
         }).apply { setIsLongpressEnabled(false) }
-        b.pathBar.setOnTouchListener { _, event ->
+        val pathTouch = View.OnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                pathDoubleTap = false
+                host?.onPaneTouched(this)
+            }
             pathGestures.onTouchEvent(event)
-            // Observe double taps while leaving the View's native long-click handling intact.
-            false
+            // Consume the second tap so editing does not also navigate or toggle the bar.
+            pathDoubleTap
         }
+        b.pathBar.setOnTouchListener(pathTouch)
+        b.ivPathIcon.setOnTouchListener(pathTouch)
+        pathSegmentTouch = pathTouch
         // The map's swipes / touches share the same interaction as the tree list: horizontal swipe switches panes, touch reports the active pane.
         b.map.onTouchDown = { host?.onPaneTouched(this) }
         b.map.onSwipe = { dx -> host?.onPaneSwipe(dx) }
@@ -581,6 +603,60 @@ class PaneFragment : Fragment() {
             b.tvPath.paint,
             (b.tvPath.width - b.tvPath.compoundPaddingLeft - b.tvPath.compoundPaddingRight).toFloat(),
         ) ?: full
+        renderPathSegments()
+    }
+
+    private var pathSegmentTouch: View.OnTouchListener? = null
+    private var renderedPath: Pair<List<PaneViewModel.PathSegment>, String?>? = null
+
+    private fun renderPathSegments() {
+        val expanded = viewModel.pathBarExpanded && !mapMode
+        b.tvPath.visibility = if (expanded) View.GONE else View.VISIBLE
+        b.pathScroll.visibility = if (expanded) View.VISIBLE else View.GONE
+        val segments = viewModel.pathSegments()
+        val signature = segments to viewModel.state.value.currentKey
+        if (!expanded || signature == renderedPath) return
+        renderedPath = signature
+        b.pathSegments.removeAllViews()
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        var selectedView: View? = null
+        segments.forEach { segment ->
+            val selected = segment.key == signature.second
+            val button = TextView(requireContext()).apply {
+                text = segment.label
+                textSize = 12f
+                setTextColor(b.tvPath.currentTextColor)
+                setSingleLine()
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(6), 0, dp(6), 0)
+                includeFontPadding = false
+                isSelected = selected
+                isFocusable = true
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(if (selected) 0x33FFFFFF else android.graphics.Color.TRANSPARENT)
+                }
+                contentDescription = pathLabel(segment.file)
+                setOnClickListener {
+                    host?.onPaneTouched(this@PaneFragment)
+                    pendingScrollToCurrent = true
+                    viewModel.selectPathSegment(segment.key)
+                }
+                setOnLongClickListener { editCurrentPath() }
+                setOnTouchListener(pathSegmentTouch)
+            }
+            b.pathSegments.addView(button, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT,
+            ))
+            if (selected) selectedView = button
+        }
+        selectedView?.let { selected ->
+            b.pathScroll.post {
+                if (_b != null && selected.parent === b.pathSegments) {
+                    selected.requestRectangleOnScreen(android.graphics.Rect(0, 0, selected.width, selected.height), true)
+                }
+            }
+        }
     }
 
     /** For the host (share-target page) to display a path in the same format. */
@@ -3303,6 +3379,8 @@ class PaneFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        renderedPath = null
+        pathSegmentTouch = null
         saveAsDialog.destroy()
         treeIndentation?.dispose()
         treeIndentation = null

@@ -168,6 +168,14 @@ its listing size must still describe the followed stream for copy/resume checks.
   still follows orientation. Both settings participate in `uiSignature` and
   configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
+  Tapping the path bar reveals horizontally scrollable path buttons; its source icon toggles
+  the compact display; clicking a tree node also restores it. Buttons have square corners,
+  fill the bar height, omit slash separators and prefer display aliases. Only the selected
+  segment changes background. `pathSegments` uses
+  real tree keys and mount roots, retaining child segments when selecting a parent and
+  replacing them on another branch. `selectPathSegment` opens the selected directory with
+  only its direct children visible and all child directories collapsed, keeping ancestors
+  open; never split SAF/media-server paths. Long press and double tap still edit paths.
   `TreeIndentation` subtracts the shallowest visible depth from display indentation,
   with a shared 250 ms transition; partially visible rows retain their depth, and
   properties cards use their owner's depth. Grid cells retain their full width.
