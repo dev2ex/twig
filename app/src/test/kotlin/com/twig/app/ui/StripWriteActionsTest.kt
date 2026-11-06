@@ -275,7 +275,7 @@ class StripWriteActionsTest {
         state.value = state.value.copy(rows = listOf(database), currentKey = database.key)
         activity.onClipTargetChanged()
         assertStrip(R.id.as_search, false) // A suffix alone is not evidence that SQLite can read it.
-        val tree = ReflectionHelpers.getField<Lazy<SqliteTree>>(vm, "sqliteTree\$delegate").value
+        val tree = ReflectionHelpers.getField<Lazy<SqliteTree>>(vm, "sqliteTreeState").value
         ReflectionHelpers.getField<MutableSet<String>>(tree, "verified").add(database.key)
         for (selected in listOf(database, database.copy(expanded = false), table, result)) {
             val rows = if (selected is PaneViewModel.FileNode) listOf(selected) else listOf(database, selected)
