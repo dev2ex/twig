@@ -16,7 +16,7 @@ import java.io.OutputStream
  *  - [openEntry]: open an input stream for one archive-internal file
  *
  * Read-only by default; formats that can write (e.g. zip) override the write operations.
- * The archive itself is assumed to live locally ("file").
+ * Hosts can be local files or registered remote sources with positional reads.
  */
 abstract class ArchiveFileSystem : FileSystem {
 
@@ -41,7 +41,7 @@ abstract class ArchiveFileSystem : FileSystem {
 
     /**
      * Mount an archive file as the archive root. The host can be any source: local is read directly;
-     * SMB/WebDAV and others go through openRandom's positional read for streaming parse (zip/7z), without downloading the whole archive.
+     * SMB/WebDAV and others go through openRandom's positional read for streaming parse (zip/7z/rar), without downloading the whole archive.
      */
     fun rootOf(archive: XFile): XFile {
         synchronized(hosts) {

@@ -48,8 +48,7 @@ class TreemapScanner(private val cacheDir: java.io.File) {
             val scheme = Archives.schemeFor(target) ?: throw TreemapException("unsupported target: ${target.scheme}")
             val afs = FsRegistry.of(scheme) as ArchiveFileSystem
             val hostFs = runCatching { FsRegistry.of(target) }.getOrNull()
-            val needLocal = scheme == Archives.RAR_SCHEME ||
-                (hostFs is ArchiveFileSystem && !hostFs.fastRandom(target))
+            val needLocal = hostFs is ArchiveFileSystem && !hostFs.fastRandom(target)
             afs.rootOf(if (needLocal) localArchive(target) else target)
         }
         val root = TreemapEntry(rootFile, true, 0, ArrayList(), null)
@@ -106,7 +105,6 @@ class TreemapScanner(private val cacheDir: java.io.File) {
 
     /** Shares the cache directory/key with PaneViewModel.localArchive, so repeat opens don't redownload. */
     private fun localArchive(file: XFile): XFile {
-        if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
         val dir = java.io.File(cacheDir, "arc").apply { mkdirs() }
         val key = Integer.toHexString(
             "${file.scheme}:${file.path}:${file.size}:${file.lastModified}".hashCode(),

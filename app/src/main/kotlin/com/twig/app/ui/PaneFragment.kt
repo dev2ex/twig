@@ -1926,7 +1926,7 @@ class PaneFragment : Fragment() {
 
     /**
      * "This needs downloading, continue?" dialog. Triggered by [PaneViewModel.State.confirmMaterialize]
-     * when a tap would materialize a large (or unknown-size) nested/RAR archive to local
+     * when a tap would materialize a large (or unknown-size) nested archive to local
      * cache before it can be browsed (see [PaneViewModel.materializeConfirmNeeded]).
      */
     private var materializeDialogFor: String? = null

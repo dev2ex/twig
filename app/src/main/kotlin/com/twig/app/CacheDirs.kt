@@ -7,9 +7,8 @@ import java.io.File
  * Capacity management for the app's cache directory.
  *
  * Places that pile things into `cacheDir`:
- * - `arc/` — archives that must land on disk before they can be read (RAR: junrar only
- *   accepts local files; nested packages with high compression: seeking through the
- *   outer decompression stream degrades into repeated full decompression); see
+ * - `arc/` — nested archives that must land on disk before they can be read:
+ *   seeking through a compressed outer entry degrades into repeated full decompression; see
  *   [ui.PaneViewModel]'s localArchive.
  * - `open/` — materialised copies for "open with another app"; see [OpenFiles.materialize].
  * - `share/` — completed outgoing shares; reuse by source metadata and preserve recent grants.
@@ -45,7 +44,7 @@ object CacheDirs {
      * are already doing a large file copy, so one more listFiles() is negligible.
      *
      * [keep] is the file just written and about to be used, which must never be deleted:
-     * when a single file already exceeds the cap (e.g. a 1 GB rar with a 512 MB cap),
+     * when a single file already exceeds the cap (e.g. a 1 GB nested archive with a 512 MB cap),
      * without excluding it the loop would keep deleting until that file is gone too,
      * leaving the caller holding a path pointing at a deleted file.
      * [keepFiles] protects active batches; [minAgeMs] preserves recently shared files.
