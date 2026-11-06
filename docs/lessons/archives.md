@@ -196,7 +196,7 @@
   - **Fix**: before proxying, ask the same question the tree-expand path already asks
     (`ArchiveFileSystem.fastRandom(file)` — see `PaneViewModel.archiveTarget`) or
     `randomAccessEfficient()` for a non-archive source; when it says no, materialize the
-    file once (`OpenFiles.materialize`, the same bounded O(size) copy RAR/nested archives
+    file once (`OpenFiles.materialize`, the same bounded O(size) copy compressed nested archives
     already pay for in the tree) and hand back a real local fd instead of a proxy one. A
     STORED zip entry, a tar entry (always contiguous, `TarFileSystem.fastRandom` is
     unconditionally true) and SMB/WebDAV/FTP/SFTP (`randomAccessEfficient() == true`) are

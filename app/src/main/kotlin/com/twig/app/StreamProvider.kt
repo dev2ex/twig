@@ -110,7 +110,7 @@ class StreamProvider : ContentProvider() {
             // caller, and, with enough concurrent attempts, starving Dispatchers.IO for
             // everything else that shares it (see docs/lessons/ for the incident this fixed).
             // Materializing once first is O(size) and bounded, same trade [OpenFiles.materialize]
-            // already makes for RAR/nested archives in the tree.
+            // already makes for compressed nested archives in the tree.
             val efficient = (fs as? ArchiveFileSystem)?.fastRandom(f) ?: fs.randomAccessEfficient()
             if (!efficient) {
                 val local = OpenFiles.materialize(ctx, f)

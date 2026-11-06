@@ -2,8 +2,11 @@ package com.twig.fs.archive
 
 import com.twig.core.FsException
 import com.github.junrar.Archive
+import com.github.junrar.volume.Volume
+import com.github.junrar.volume.VolumeManager
 import java.io.File
 import java.io.FilterInputStream
+import java.io.IOException
 import java.io.InputStream
 
 /**
@@ -23,8 +26,36 @@ class RarFileSystem : ArchiveFileSystem() {
     override val displayName: String = "RAR archive"
     override fun writable(): Boolean = false
 
-    private fun open(archivePath: String, password: String? = passwordOf(archivePath)): Archive =
-        if (password != null) Archive(File(archivePath), password) else Archive(File(archivePath))
+    private fun open(archivePath: String, password: String? = passwordOf(archivePath)): Archive {
+        // Keep local volume discovery; remote archives use positional reads without a local copy.
+        if (hostOf(archivePath).scheme == HOST_SCHEME) {
+            return if (password != null) Archive(File(archivePath), password) else Archive(File(archivePath))
+        }
+        val channel = openChannel(archivePath)
+        val input = RarReadChannel(channel)
+        try {
+            val length = channel.size()
+            val volumes = VolumeManager { archive, previous ->
+                if (previous != null) null else object : Volume {
+                    override fun getArchive(): Archive = archive
+                    override fun getLength(): Long = length
+                    override fun getChannel() = input
+                }
+            }
+            val archive = Archive(volumes, null, password)
+            try {
+                input.rethrowFailure()
+                return archive
+            } catch (t: Throwable) {
+                runCatching { archive.close() }
+                throw t
+            }
+        } catch (t: Throwable) {
+            runCatching { channel.close() }
+            input.rethrowFailure()
+            throw t
+        }
+    }
 
     override fun readEntries(archivePath: String): List<ArchiveEntry> {
         try {
@@ -61,7 +92,20 @@ class RarFileSystem : ArchiveFileSystem() {
             archive.close()
             throw ArchivePasswordException(archivePath)
         }
-        return object : FilterInputStream(archive.getInputStream(header)) {
+        val input = try {
+            archive.getInputStream(header)
+        } catch (t: Throwable) {
+            runCatching { archive.close() }
+            throw t
+        }
+        return object : FilterInputStream(input) {
+            override fun read(): Int = super.read().also {
+                (archive.channel as? RarReadChannel)?.rethrowFailure()
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                super.read(buffer, offset, length).also {
+                    (archive.channel as? RarReadChannel)?.rethrowFailure()
+                }
             override fun close() {
                 try { super.close() } finally { archive.close() }
             }
@@ -77,8 +121,8 @@ class RarFileSystem : ArchiveFileSystem() {
         synchronized(encCache) { encCache[key]?.let { return it } }
         // A header-encrypted archive fails to even construct without a password; otherwise check each entry's own encrypted flag
         val enc = runCatching {
-            Archive(File(archivePath)).use { a -> a.isEncrypted || a.fileHeaders.any { it.isEncrypted } }
-        }.getOrElse { true }
+            open(archivePath, password = null).use { a -> a.isEncrypted || a.fileHeaders.any { it.isEncrypted } }
+        }.getOrElse { if (it is IOException || it is FsException) throw it else true }
         synchronized(encCache) { encCache[key] = enc }
         return enc
     }

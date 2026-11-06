@@ -19,9 +19,9 @@ no non-free section, so it would certainly be rejected**. So `:app` has two flav
   `internal`** — Kotlin's `internal` is module-visible, and changing a single one to internal
   would break this split immediately.
 - **Always check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`**: that class
-  does not exist in libre, so referencing it means libre does not compile. The two places this
-  was hit are `Treemap.kt` and `PaneViewModel.archiveTarget` (both deciding "must this be
-  materialized locally first").
+  does not exist in libre, so referencing it means libre does not compile. This originally
+  affected `Treemap.kt` and `PaneViewModel.archiveTarget`; neither needs a RAR-specific
+  materialization rule since the remote-channel change below.
 - **Registration lives in flavor source sets** (`app/src/{full,libre}/kotlin/…/RarSupport.kt`,
   each with its own `rarFileSystem()`, the libre one returning null), with
   `?.let { register(it) }` in `TwigApp.registerBaseFs`. In libre, `.rar` degrades to an ordinary
@@ -150,3 +150,26 @@ development work or overwriting the original release files. It saves combined
 APK R8 mappings before the split build cleans intermediates. `--offline` can reuse
 downloaded dependencies while build caches remain disabled; deleting the global
 Gradle dependency cache is unnecessary for this verified rebuild.
+
+**(2026-11-06, remote RAR reads)** Remote RAR expansion used to download the whole
+archive because Twig only used junrar's `Archive(File)` constructor. The library
+also accepts a `VolumeManager` with a `SeekableReadOnlyByteChannel`:
+`RarReadChannel` now bridges that API to `ArchiveFileSystem.openChannel`, reusing
+the bounded 256 KiB remote buffer used by ZIP/7z. Listing seeks over packed data;
+opening an entry reads the data its decoder needs. Solid entries can still need
+earlier data to rebuild their dictionary. Local files retain junrar's file-backed
+volume discovery; remote split-volume discovery is not added by this change.
+
+Both pane expansion (including its download-confirmation gate) and treemap mounting
+now materialize only nested archives whose host cannot slice them efficiently.
+Keep that fallback: compressed outer entries still turn random seeks into repeated
+decompression. Mount with `rootOf` before password probes, just as for ZIP/7z.
+
+Junrar can swallow IO failures during header parsing and piped extraction. The
+adapter retains read failures and rethrows them after opening/reading, so a network
+disconnect cannot become a successful empty listing or truncated file. IO failures
+also bypass the password-required heuristic. `RemoteRarTest` covers RAR4/5,
+content/header encryption, short remote reads, unknown size, solid compressed data,
+early stream close and disconnects. Its enlarged STORED fixture forbids reads in
+the middle of an unrelated 8 MiB entry; the app's `RemoteRarMountTest` checks that
+large/unknown-size rows and treemap use the original remote host without caching.

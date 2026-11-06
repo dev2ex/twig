@@ -262,7 +262,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
          */
         val passwordFor: XFile? = null,
         /**
-         * Expanding this row would materialize a nested/RAR archive to local cache first
+         * Expanding this row would materialize a nested archive to local cache first
          * (see [archiveTarget]'s needLocal test) and it's either large enough or of
          * unknown size to be worth asking about (see [materializeConfirmNeeded]) — the UI
          * shows a "this needs downloading, continue?" dialog instead of silently
@@ -3068,8 +3068,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 git = if (kids.any { it.name == ".git" }) buildGit(file) else null,
             )
         } else {
-            // zip/7z parse streamingly over the seekable read channel (no full download for remote hosts). Materialize to cache first in two cases (see archiveTarget):
-            // - rar: junrar only accepts local files
+            // zip/7z/rar parse over the seekable read channel (no full download for remote hosts).
+            // Materialize to cache first when the host cannot slice the nested archive directly (see archiveTarget):
             // - nested archive (archive-in-archive) with the inner entry compressed: seeking through the outer decompression stream degenerates into repeated full decompressions. STORED (uncompressed, the normal case for zip-in-zip) can be sliced directly — no materialization, instant open.
             val (afs, archive) = archiveTarget(file, rowKey)
             // ★ rootOf must run **before** the encryption probe: non-local hosts (SMB/WebDAV/S3...) are only registered at mount time, before that needsPassword would try to open a remote path as a local file, read no bytes, and get silently swallowed by the internal runCatching into "no password needed" — remote encrypted archives would never prompt for a password again (see RemoteArchiveMountTest).
@@ -3137,14 +3137,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun archiveTarget(file: XFile, rowKey: String? = null): Pair<ArchiveFileSystem, XFile> {
         val scheme = Archives.schemeFor(file) ?: throw FsException(str(R.string.err_unsupported_type))
         val afs = FsRegistry.of(scheme) as ArchiveFileSystem
-        val needLocal = needsLocalMaterialization(file, scheme)
+        val needLocal = needsLocalMaterialization(file)
         return afs to if (needLocal) localArchive(file, rowKey) else file
     }
 
-    /** Whether mounting [file] (of archive-format [scheme]) needs [localArchive] first — RAR always does (junrar only accepts local files), everything else only when the host can't slice it directly. Cheap, no IO: used both to actually mount and, before that, to decide whether [materializeConfirmNeeded] should ask first. */
-    private fun needsLocalMaterialization(file: XFile, scheme: String): Boolean {
+    /** Whether mounting [file] needs [localArchive] because its archive host cannot slice it directly. Cheap, no IO: also used by [materializeConfirmNeeded]. */
+    private fun needsLocalMaterialization(file: XFile): Boolean {
         val hostFs = runCatching { FsRegistry.of(file) }.getOrNull()
-        return scheme == Archives.RAR_SCHEME || (hostFs is ArchiveFileSystem && !hostFs.fastRandom(file))
+        return hostFs is ArchiveFileSystem && !hostFs.fastRandom(file)
     }
 
     /** Threshold above (or at unknown size) which expanding a row that needs [localArchive] first asks for confirmation instead of silently downloading/decompressing — see [State.confirmMaterialize]. */
@@ -3161,8 +3161,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun materializeConfirmNeeded(file: XFile, rowKey: String): XFile? {
         if (rowKey in confirmedMaterialize) return null
-        val scheme = Archives.schemeFor(file) ?: return null
-        if (!needsLocalMaterialization(file, scheme)) return null
+        Archives.schemeFor(file) ?: return null
+        if (!needsLocalMaterialization(file)) return null
         if (file.size in 1 until materializeConfirmBytes) return null
         val out = archiveCacheFile(file)
         val cached = out.exists() && (file.size <= 0 || out.length() == file.size)
@@ -3211,9 +3211,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Materialize an archive into the cache directory (RAR and nested archives
-     * require this), keyed by source + path + size + mtime so re-expanding the same
-     * archive doesn't re-download / re-extract; local files are returned as-is.
+     * Materialize a nested archive whose host cannot slice it directly into the cache
+     * directory, keyed by source + path + size + mtime so re-expanding the same
+     * archive doesn't re-download / re-extract.
      *
      * [rowKey], when given, is polled between chunks: if the row that asked for this
      * has since been abandoned (collapsed, or superseded by a later tap — see
@@ -3221,7 +3221,6 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * huge — nested archive to completion for a row nobody is waiting on anymore.
      */
     private fun localArchive(file: XFile, rowKey: String? = null): XFile {
-        if (file.scheme == ArchiveFileSystem.HOST_SCHEME) return file
         val dir = com.twig.app.CacheDirs.dir(getApplication(), com.twig.app.CacheDirs.ARCHIVES)
         val out = archiveCacheFile(file)
         // ★ A size of 0 must not be used as the validity check: bz2 cannot report its
