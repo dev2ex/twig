@@ -1264,4 +1264,6 @@
     <string name="restic_location_snapshot">Instantané</string>
     <string name="settings_hide_title_bar_portrait">Masquer la barre de titre en portrait</string>
     <string name="settings_hide_title_bar_portrait_desc">Afficher le terminal, le changement de volet, la musique et le menu en une colonne en haut de la barre d’actions</string>
+    <string name="settings_start_videos_without_audio">Démarrer les vidéos sans son</string>
+    <string name="settings_start_videos_without_audio_desc">Désactiver les pistes audio à l’ouverture d’une vidéo. Le bouton de piste audio permet de réactiver le son.</string>
 </resources>

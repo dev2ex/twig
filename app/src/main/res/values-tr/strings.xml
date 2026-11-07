@@ -1264,4 +1264,6 @@
     <string name="restic_location_snapshot">Anlık görüntü</string>
     <string name="settings_hide_title_bar_portrait">Dikey modda başlık çubuğunu gizle</string>
     <string name="settings_hide_title_bar_portrait_desc">Terminal, panel değiştirme, müzik ve menüyü eylem çubuğunun üstünde tek sütunda göster</string>
+    <string name="settings_start_videos_without_audio">Videoları sessiz başlat</string>
+    <string name="settings_start_videos_without_audio_desc">Video açılırken ses parçalarını devre dışı bırak. Sesi açmak için ses parçası düğmesini kullanın.</string>
 </resources>

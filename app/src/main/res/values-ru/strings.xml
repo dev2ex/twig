@@ -1300,4 +1300,6 @@
     <string name="restic_location_snapshot">Снимок</string>
     <string name="settings_hide_title_bar_portrait">Скрывать заголовок в книжной ориентации</string>
     <string name="settings_hide_title_bar_portrait_desc">Показывать терминал, переключение панелей, музыку и меню в один столбец вверху панели действий</string>
+    <string name="settings_start_videos_without_audio">Открывать видео без звука</string>
+    <string name="settings_start_videos_without_audio_desc">Отключать аудиодорожки при открытии видео. Звук можно включить кнопкой выбора аудиодорожки.</string>
 </resources>

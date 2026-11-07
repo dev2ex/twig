@@ -1264,4 +1264,6 @@
     <string name="restic_location_snapshot">Instantâneo</string>
     <string name="settings_hide_title_bar_portrait">Ocultar barra de título na vertical</string>
     <string name="settings_hide_title_bar_portrait_desc">Mostrar terminal, troca de painel, música e menu em uma coluna no topo da barra de ações</string>
+    <string name="settings_start_videos_without_audio">Iniciar vídeos sem áudio</string>
+    <string name="settings_start_videos_without_audio_desc">Desativar as faixas de áudio ao abrir um vídeo. Use o botão de faixa de áudio para ativar o som.</string>
 </resources>

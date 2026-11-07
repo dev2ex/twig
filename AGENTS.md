@@ -355,6 +355,11 @@ its listing size must still describe the followed stream for copy/resume checks.
   qualified progress replaces it. Reuse the loaded episode queue, independently of auto-play,
   and never create it for manual episode changes or server-owned playback. Existing next-episode
   progress wins. Only durable local/saved-connection locations can become destinations.
+  `Prefs.startVideosWithoutAudio` defaults off and disables audio tracks before preparing each
+  newly opened video/episode. It is a player setting included in `twig_prefs` backups, independent
+  of remembered tracks. Startup policy never records a manual choice; existing audio controls can
+  enable sound for the current video. Disabled audio does not request audio focus; manually
+  enabling a track restores normal focus handling. Audio-only playback is unaffected.
   **Playback choice memory** (`MediaPrefStore` + `TrackMatch`): the audio track, the subtitle
   and the picture scaling a user picks by hand are applied again on the next episode and the
   next time the file is opened (scaling rides along because it has the same scope — every

@@ -1263,4 +1263,6 @@
     <string name="restic_location_snapshot">Bản chụp</string>
     <string name="settings_hide_title_bar_portrait">Ẩn thanh tiêu đề khi màn hình dọc</string>
     <string name="settings_hide_title_bar_portrait_desc">Hiển thị thiết bị đầu cuối, chuyển ngăn, nhạc và menu thành một cột ở đầu thanh thao tác</string>
+    <string name="settings_start_videos_without_audio">Mở video không có âm thanh</string>
+    <string name="settings_start_videos_without_audio_desc">Tắt các bản âm thanh khi mở video. Dùng nút bản âm thanh để bật tiếng.</string>
 </resources>

@@ -445,3 +445,13 @@
   ignores status-bar and cutout padding on all edges, including transient status-bar reveals.
   Normal mode still reserves visible status-bar space. Reinstall listeners after
   orientation reinflation and request fresh insets when focus returns.
+
+- **Videos could not start with audio off (2026-11-07, #35)**: the existing audio controls
+  disabled tracks only after opening playback. `Prefs.startVideosWithoutAudio` is an independent,
+  default-off startup policy, applied in `loadMemo` for each video/episode. Disable the audio
+  track type before `prepare`, so a remembered choice or initial buffer cannot briefly play sound.
+  Startup policy is not a manual choice and must not write to `MediaPrefStore`; audio-only
+  playback remains unchanged. Disabled audio also disables audio-focus handling, so a silent
+  video does not pause background music. Manual track selection restores normal focus handling.
+  Player tests capture track parameters at preparation and exercise manual unmute, episode reset
+  and audio-only exclusions.

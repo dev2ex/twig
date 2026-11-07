@@ -295,6 +295,13 @@ object Prefs {
         sp(ctx).edit().putInt("subtitle_text_color", color).apply()
     }
 
+    /** Disable audio tracks when opening a video; manual track choices still work. */
+    fun startVideosWithoutAudio(ctx: Context): Boolean = sp(ctx).getBoolean("start_videos_without_audio", false)
+
+    fun setStartVideosWithoutAudio(ctx: Context, on: Boolean) {
+        sp(ctx).edit().putBoolean("start_videos_without_audio", on).apply()
+    }
+
     /** Remember video playback position and resume next time, default on (records see [PlaybackStore]). */
     fun resumePlayback(ctx: Context): Boolean = sp(ctx).getBoolean("resume_playback", true)
 

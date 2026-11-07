@@ -492,6 +492,9 @@ all work the same way.
   must be followed by ten continuous seconds of playback before progress is updated.
 - **Playback preferences** remember manually selected audio/subtitle tracks and
   picture scaling for the next episode and when reopening a file
+- **Start videos with audio off** in Settings → Player disables audio tracks when opening
+  a video or episode. Audio-only playback is unaffected. Enable sound through the audio-track
+  button; silent playback leaves other music playing.
 - **Playback controls** include swipe seeking, brightness/volume gestures and
   temporary speed-up while holding the screen; embedded and external subtitles
   can be selected alongside audio tracks. Text subtitle size and color are configurable;

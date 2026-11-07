@@ -481,6 +481,12 @@ class SettingsActivity : TwigActivity() {
         }
 
         section(getString(R.string.settings_section_player))
+        switchRow(
+            getString(R.string.settings_start_videos_without_audio),
+            getString(R.string.settings_start_videos_without_audio_desc),
+            get = { Prefs.startVideosWithoutAudio(this) },
+            set = { Prefs.setStartVideosWithoutAudio(this, it) },
+        )
         actionRow(
             getString(R.string.player_subtitle_appearance),
             getString(R.string.player_subtitle_size_value, Prefs.subtitleSize(this)),

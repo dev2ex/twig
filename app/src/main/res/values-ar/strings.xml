@@ -1268,4 +1268,6 @@
     <string name="restic_location_snapshot">اللقطة</string>
     <string name="settings_hide_title_bar_portrait">إخفاء شريط العنوان في الوضع العمودي</string>
     <string name="settings_hide_title_bar_portrait_desc">عرض الطرفية وتبديل اللوحات والموسيقى والقائمة في عمود واحد أعلى شريط الإجراءات</string>
+    <string name="settings_start_videos_without_audio">بدء الفيديو بدون صوت</string>
+    <string name="settings_start_videos_without_audio_desc">تعطيل المسارات الصوتية عند فتح الفيديو. استخدم زر المسار الصوتي لتشغيل الصوت.</string>
 </resources>

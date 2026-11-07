@@ -163,6 +163,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var orientationLocked = false
     private var speedBoosted = false // long-press to speed up; release to restore original speed
     private var speedBeforeBoost = 1f
+    private val playbackAudioAttributes = AudioAttributes.Builder()
+        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).setUsage(C.USAGE_MEDIA).build()
     private var audioDisabled = false
     private var previousAudioTrack: Tracks.Group? = null
     private lateinit var audio: AudioManager
@@ -440,19 +442,15 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         // MediaSource factory — attach [MediaSources.extractors] (which includes
         // [TwigSubtitleParserFactory]); otherwise PGS subtitles in local MKV still fall back to
         // the official PgsParser and only show one segment per screen.
-        // Audio focus: without requesting it, music playing elsewhere (the built-in MusicEngine
-        // / external music apps) won't be paused and the sounds just stack on top of each other.
+        // Only audible playback requests focus; starting a silent video must not pause other music.
         // becomingNoisy is also on — auto-pause without speaker output when headphones unplug
         // or Bluetooth disconnects.
         val p = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(this, MediaSources.extractors()))
             .setLoadControl(loadControl())
             .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .setUsage(C.USAGE_MEDIA)
-                    .build(),
-                /* handleAudioFocus = */ true,
+                playbackAudioAttributes,
+                /* handleAudioFocus = */ !audioDisabled,
             )
             .setHandleAudioBecomingNoisy(true)
             .build()
@@ -675,6 +673,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
                 }
+                p.setAudioAttributes(playbackAudioAttributes, !(disableAudio || audioDisabled))
                 if (positionMs > 0L) p.seekTo(positionMs)
                 p.playWhenReady = playbackWanted
                 p.prepare()
@@ -1155,6 +1154,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
      * uses, so "the next episode" means the same thing to both.
      */
     private fun loadMemo() {
+        if (isVideo && com.twig.app.Prefs.startVideosWithoutAudio(this)) audioDisabled = true
         seriesKey = seriesKeyFor(file)
         memo = MediaPrefStore.memoFor(this, MediaPrefStore.fileKey(file), seriesKey?.let { MediaPrefStore.seriesKey(it) })
         audioRestored = false
@@ -1450,6 +1450,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             saveAudioMemo(index)
         }
         p.trackSelectionParameters = builder.build()
+        p.setAudioAttributes(playbackAudioAttributes, !audioDisabled)
         return true
     }
 

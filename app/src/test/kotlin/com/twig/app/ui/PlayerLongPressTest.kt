@@ -42,12 +42,16 @@ class PlayerLongPressTest {
     private val activity get() = controller.get()
     private var volume = 0.7f
     private var params = TrackSelectionParameters.DEFAULT_WITHOUT_CONTEXT
+    private var preparedParams: TrackSelectionParameters? = null
+    private var handleAudioFocus = true
     private var readGate = CountDownLatch(0)
     private val readStarted = CountDownLatch(1)
     private val readFinished = CountDownLatch(1)
     private val sidecar = XFile("long-press-test", "/movie.en.srt", false, size = 40)
     private val player = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader, arrayOf(ExoPlayer::class.java)) { _, method, args ->
         when (method.name) {
+            "prepare" -> { preparedParams = params; null }
+            "setAudioAttributes" -> { handleAudioFocus = args!![1] as Boolean; null }
             "getVolume" -> volume
             "setVolume" -> { volume = args!![0] as Float; null }
             "getTrackSelectionParameters" -> params
@@ -84,6 +88,7 @@ class PlayerLongPressTest {
 
     @After fun cleanup() {
         readGate.countDown()
+        com.twig.app.Prefs.setStartVideosWithoutAudio(app, false)
         controller.destroy()
         FsRegistry.unregister(sidecar.scheme)
     }
@@ -109,6 +114,36 @@ class PlayerLongPressTest {
         ReflectionHelpers.setField(activity, "prepared", true)
         activity.findViewById<View>(R.id.btn_audio_track).performClick()
         return ShadowDialog.getLatestDialog() as AlertDialog
+    }
+
+    @Test fun `videos start with audio disabled before preparation and manual unmute restores focus`() {
+        assertFalse(com.twig.app.Prefs.startVideosWithoutAudio(app))
+        com.twig.app.Prefs.setStartVideosWithoutAudio(app, true)
+        val local = java.io.File.createTempFile("muted-video", ".mp4", app.cacheDir)
+        try {
+            ReflectionHelpers.setField(activity, "file", XFile("file", local.path, false))
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "loadMemo")
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "loadSource",
+                from(ExoPlayer::class.java, player), from(android.view.SurfaceHolder::class.java, null),
+                from(Boolean::class.javaPrimitiveType!!, false), from(Long::class.javaPrimitiveType!!, 0L))
+            await { preparedParams != null }
+            assertTrue(C.TRACK_TYPE_AUDIO in preparedParams!!.disabledTrackTypes)
+            assertFalse(handleAudioFocus)
+            audioTracks()
+            press(R.id.btn_audio_track)
+            assertFalse(C.TRACK_TYPE_AUDIO in params.disabledTrackTypes)
+            assertTrue(handleAudioFocus)
+            // Opening the next episode applies the startup policy again, without saving a user choice.
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "loadMemo")
+            assertTrue(ReflectionHelpers.getField(activity, "audioDisabled"))
+            assertFalse(ReflectionHelpers.getField(activity, "audioUserChosen"))
+            ReflectionHelpers.setField(activity, "isVideo", false)
+            ReflectionHelpers.setField(activity, "audioDisabled", false)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "loadMemo")
+            assertFalse(ReflectionHelpers.getField(activity, "audioDisabled"))
+        } finally {
+            local.delete()
+        }
     }
 
     @Test fun `note long press selects off and restores the same track with full icon opacity`() {
