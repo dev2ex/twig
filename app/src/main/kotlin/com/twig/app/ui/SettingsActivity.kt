@@ -42,6 +42,7 @@ class SettingsActivity : TwigActivity() {
 
     private lateinit var folderCountsLocalOnlyRow: View
     private lateinit var unixPermissionsOctalRow: View
+    private lateinit var toolbarAtBottomRow: View
 
     /** Thumbnail sub-item rows (greyed out and disabled when the master switch is off). */
     private val thumbRows = ArrayList<View>()
@@ -268,9 +269,9 @@ class SettingsActivity : TwigActivity() {
         switchRow(
             getString(R.string.settings_hide_title_bar_portrait), getString(R.string.settings_hide_title_bar_portrait_desc),
             get = { Prefs.hideTitleBarPortrait(this) },
-            set = { Prefs.setHideTitleBarPortrait(this, it) },
+            set = { Prefs.setHideTitleBarPortrait(this, it); applyEnabled() },
         )
-        switchRow(
+        toolbarAtBottomRow = switchRow(
             getString(R.string.settings_toolbar_bottom), getString(R.string.settings_toolbar_bottom_desc),
             get = { Prefs.toolbarAtBottom(this) },
             set = { Prefs.setToolbarAtBottom(this, it) },
@@ -569,6 +570,9 @@ class SettingsActivity : TwigActivity() {
     }
 
     private fun applyEnabled() {
+        val toolbarVisible = !Prefs.hideTitleBarPortrait(this)
+        toolbarAtBottomRow.alpha = if (toolbarVisible) 1f else 0.4f
+        setEnabledDeep(toolbarAtBottomRow, toolbarVisible)
         folderCountsLocalOnlyRow.visibility = if (Prefs.folderCounts(this)) View.VISIBLE else View.GONE
         unixPermissionsOctalRow.visibility = if (Prefs.unixPermissions(this)) View.VISIBLE else View.GONE
         val on = Prefs.thumbs(this)
@@ -657,7 +661,7 @@ class SettingsActivity : TwigActivity() {
             isChecked = get()
             setOnCheckedChangeListener { _, v -> set(v) }
         }
-        val (row, _) = addRow(title, subtitle, sw) { sw.toggle() }
+        val (row, _) = addRow(title, subtitle, sw) { if (sw.isEnabled) sw.toggle() }
         return row
     }
 

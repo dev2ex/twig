@@ -25,6 +25,45 @@ import org.robolectric.util.ReflectionHelpers
 class ToolbarPlacementTest {
     private val app: Application get() = ApplicationProvider.getApplicationContext()
 
+    @Test fun `hiding the toolbar disables bottom placement without losing its saved choice`() {
+        for (initiallyHidden in listOf(false, true)) {
+            Prefs.setToolbarAtBottom(app, true)
+            Prefs.setHideTitleBarPortrait(app, initiallyHidden)
+            val controller = Robolectric.buildActivity(SettingsActivity::class.java).setup()
+            try {
+                val activity = controller.get()
+                val list = ReflectionHelpers.getField<android.widget.LinearLayout>(activity, "list")
+                fun row(title: Int): ViewGroup = (0 until list.childCount)
+                    .map { list.getChildAt(it) }.filterIsInstance<ViewGroup>().single {
+                        val labels = it.getChildAt(0) as? ViewGroup
+                        (labels?.getChildAt(0) as? android.widget.TextView)?.text == activity.getString(title)
+                    }
+                val hide = row(R.string.settings_hide_title_bar_portrait)
+                val bottom = row(R.string.settings_toolbar_bottom)
+                val switch = bottom.getChildAt(bottom.childCount - 1) as androidx.appcompat.widget.SwitchCompat
+                assertEquals(!initiallyHidden, bottom.isEnabled)
+                if (!initiallyHidden) hide.performClick()
+                assertTrue(Prefs.hideTitleBarPortrait(app))
+                assertFalse(bottom.isEnabled)
+                assertFalse(switch.isEnabled)
+                assertEquals(0.4f, bottom.alpha, 0f)
+                bottom.performClick()
+                assertTrue(Prefs.toolbarAtBottom(app))
+                assertTrue(switch.isChecked)
+                hide.performClick()
+                assertFalse(Prefs.hideTitleBarPortrait(app))
+                assertTrue(bottom.isEnabled)
+                assertTrue(switch.isEnabled)
+                assertEquals(1f, bottom.alpha, 0f)
+                assertTrue(switch.isChecked)
+                bottom.performClick()
+                assertFalse(Prefs.toolbarAtBottom(app))
+            } finally {
+                controller.pause().stop().destroy()
+            }
+        }
+    }
+
     @Before fun setup() {
         ReflectionHelpers.setStaticField(androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory::class.java,
             "_instance", null)

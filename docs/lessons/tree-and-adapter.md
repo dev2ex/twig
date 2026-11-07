@@ -642,3 +642,11 @@
   single-line TextView; disable horizontal scrolling after inflation, since singleLine can
   override the XML scrolling flag. Tests narrow and widen the real metadata layout in both
   directions on API 24/34, with native glyph/ellipsis checks on API 34.
+
+- **Toolbar hiding left its placement switch active (2026-11-07, #35)**:
+  the two display preferences were independent in Settings even though portrait hiding
+  makes placement ineffective in Main. Disable and dim the whole placement row, including
+  its switch, while hiding is enabled; preserve its saved value and restore interaction
+  immediately when hiding is turned off. Disabled row callbacks must not toggle switches.
+  Use “toolbar” consistently for both labels in every locale. Settings tests cover initial
+  hidden state, live toggles, disabled clicks and preservation of the placement choice.

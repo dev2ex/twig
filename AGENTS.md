@@ -170,9 +170,11 @@ its listing size must still describe the followed stream for copy/resume checks.
   single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
   directory-count subscriptions across Main and both pickers. In Main, toolbar visibility
   follows orientation unless the default-off `Prefs.hideTitleBarPortrait` hides it in
-  portrait too. Hidden title-bar actions stay pinned above the strip with the same
+  portrait too. Hidden toolbar actions stay pinned above the strip with the same
   separator, using one column in portrait and two in landscape. Action-strip density
-  still follows orientation. Both settings participate in `uiSignature` and
+  still follows orientation. Hiding the portrait toolbar disables and dims its bottom-placement
+  setting without clearing the saved placement; showing it restores that setting immediately.
+  Both settings participate in `uiSignature` and
   configuration backups. `Prefs.hidePathBarSinglePane` defaults off and hides the address
   bar whenever the effective layout is single-pane, including both pickers. Dual-pane
   layouts retain it. The setting participates in `uiSignature` and configuration backups.
