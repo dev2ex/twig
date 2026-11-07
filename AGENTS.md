@@ -137,7 +137,11 @@ The format choice participates in `uiSignature` and configuration backups. The i
 default-off `Prefs.unixPermissions` display setting controls this row only, participates
 in `uiSignature` and is included in configuration backups. The Unix properties tab stays
 available with the setting off. When counts are enabled, reserve both count slots for rows
-with permissions, including files and pending directory counts. The counts container exposes its first child's baseline so all metadata
+with permissions, including files and pending directory counts, when space permits.
+`MetadataRow` reserves the trailing size/time first, then permissions, then both count slots;
+leading groups that do not fit get zero layout bounds without changing their binding visibility.
+They return on widening, and oversized size/time text truncates at the start.
+The counts container exposes its first child's baseline so all metadata
 text aligns across the nested layout. Numeric permissions, UID/GID, access/status-change times and available SELinux context belong in a dedicated
 Unix properties tab, after all other tabs including Hash. Its initial loading tab uses listing metadata only;
 unsupported backends have no Unix tab. General retains modification time and link targets.

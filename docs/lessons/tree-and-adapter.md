@@ -630,3 +630,15 @@
   distinct within each parent and absent from that parent, including selected sources.
   Failed listings remain failures. Freeze confirmed names in the existing transfer
   work so retries keep them, and use the ordinary background progress/cancellation.
+
+- **Deep trees still hid dates after automatic indentation (2026-11-07, #35)**:
+  indentation reduced wasted space but did not change measurement priority. The horizontal
+  row measured fixed count/permission groups first, leaving the weighted date with whatever
+  remained. `MetadataRow` reserves natural size/time width from the trailing end before
+  permissions and counts. Hide an entire leading group when it cannot fit, including its
+  margins; retain binding visibility and count subscriptions so later measurements restore it.
+  Keep baseline alignment and fixed count slots when visible. If even size/time alone is too
+  wide, ellipsize its beginning to preserve its trailing text. START ellipsis requires a
+  single-line TextView; disable horizontal scrolling after inflation, since singleLine can
+  override the XML scrolling flag. Tests narrow and widen the real metadata layout in both
+  directions on API 24/34, with native glyph/ellipsis checks on API 34.

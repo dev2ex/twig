@@ -74,7 +74,7 @@
                 android:visibility="gone" />
 
             <!-- Counts, then Unix permissions when known; size/time stays at the end. -->
-            <LinearLayout
+            <com.twig.app.ui.MetadataRow
                 android:id="@+id/metaRow"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -131,15 +131,15 @@
                 <TextView
                     android:id="@+id/meta"
                     android:includeFontPadding="false"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:maxLines="1"
-                    android:ellipsize="end"
+                    android:singleLine="true"
+                    android:scrollHorizontally="false"
+                    android:ellipsize="start"
                     android:gravity="end"
                     android:textColor="@color/text_secondary"
                     android:textSize="10sp" />
-            </LinearLayout>
+            </com.twig.app.ui.MetadataRow>
         </LinearLayout>
 
         <ProgressBar

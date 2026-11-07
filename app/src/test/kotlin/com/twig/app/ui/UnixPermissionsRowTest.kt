@@ -25,6 +25,54 @@ import java.io.File
 @Config(sdk = [24, 34], application = Application::class, qualifiers = "mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class UnixPermissionsRowTest {
+    @Test fun `narrow metadata rows keep the date then permissions and restore counts when widened`() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val ctx = ContextThemeWrapper(app, R.style.Theme_Twig)
+        val row = android.view.LayoutInflater.from(ctx).inflate(R.layout.item_file, FrameLayout(ctx), false)
+        val metadata = row.findViewById<MetadataRow>(R.id.metaRow)
+        val date = row.findViewById<TextView>(R.id.meta).apply { text = "42 MiB 07.11.2026 12:34" }
+        val permissions = row.findViewById<TextView>(R.id.permissions).apply {
+            visibility = View.VISIBLE
+            text = "0755"
+        }
+        val counts = row.findViewById<View>(R.id.folderCounts).apply { visibility = View.VISIBLE }
+        val unspecified = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        date.measure(unspecified, unspecified)
+        val dateWidth = date.measuredWidth
+        permissions.measure(unspecified, unspecified)
+        val permissionWidth = permissions.measuredWidth +
+            (permissions.layoutParams as ViewGroup.MarginLayoutParams).marginEnd
+        fun layout(width: Int) {
+            metadata.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY), unspecified)
+            metadata.layout(0, 0, width, metadata.measuredHeight)
+        }
+        for (direction in listOf(View.LAYOUT_DIRECTION_LTR, View.LAYOUT_DIRECTION_RTL)) {
+            metadata.layoutDirection = direction
+            layout(600)
+            assertTrue(counts.width > 0)
+            assertTrue(permissions.width > 0)
+            layout(dateWidth + permissionWidth + 1)
+            assertEquals(0, counts.width)
+            assertTrue(permissions.width > 0)
+            assertEquals(0, date.layout.getEllipsisCount(0))
+            layout(dateWidth + 1)
+            assertEquals(0, counts.width)
+            assertEquals(0, permissions.width)
+            assertEquals(0, date.layout.getEllipsisCount(0))
+            layout(dateWidth / 2)
+            assertTrue(date.layout.width <= date.width)
+            // Robolectric uses legacy graphics on API 24, whose text layouts report zero glyph width.
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                assertTrue(date.layout.getEllipsisCount(0) > 0)
+                assertEquals(0, date.layout.getEllipsisStart(0))
+            }
+            layout(600)
+            assertTrue(counts.width > 0)
+            assertTrue(permissions.width > 0)
+            assertEquals(0, date.layout.getEllipsisCount(0))
+        }
+    }
+
     @Test fun `permission rows default hidden and setting refreshes the layout without hiding the Unix tab`() {
         val host = Robolectric.buildActivity(Activity::class.java).setup()
         val ctx = ContextThemeWrapper(host.get(), R.style.Theme_Twig)
