@@ -35,7 +35,7 @@ The 1.18.0 libre APK measures 10.88 MiB for arm64-v8a and x86_64 together, inclu
 <ul>
 <li>Read-only restic backups decrypted on-device, with snapshots as dated folders and recent snapshot locations.</li>
 <li>Videos recognized as a series share remembered opening/ending skip marks; Continue Watching retains the next episode.</li>
-<li>Network MP4/MKV thumbnails fetch keyframes through container indexes, without downloading whole videos.</li>
+<li>Network MP4/MKV thumbnails fetch keyframes through container indexes</li>
 <li>Blu-ray M2TS, DTS-HD Master Audio, TrueHD AC-3 cores and PGS subtitles.</li>
 <li>Jellyfin/Emby playback progress syncs to the server; posters, tags, lyrics and external subtitles come from its API.</li>
 </ul>
