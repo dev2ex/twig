@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Mostra terminale, cambio pannello, musica e menu in una colonna in cima alla barra delle azioni</string>
     <string name="settings_start_videos_without_audio">Avvia video senza audio</string>
     <string name="settings_start_videos_without_audio_desc">Disattiva le tracce audio quando apri un video. Usa il pulsante della traccia audio per attivare il suono.</string>
+    <string name="settings_current_user_internal_storage_only">Mostra solo la memoria interna dell’utente attuale</string>
+    <string name="settings_current_user_internal_storage_only_desc">Nascondi i collegamenti alla memoria interna delle app clonate e degli altri utenti Android.</string>
 </resources>

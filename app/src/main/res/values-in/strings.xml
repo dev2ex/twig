@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Tampilkan terminal, pengalih panel, musik, dan menu dalam satu kolom di bagian atas bilah tindakan</string>
     <string name="settings_start_videos_without_audio">Mulai video tanpa audio</string>
     <string name="settings_start_videos_without_audio_desc">Nonaktifkan trek audio saat membuka video. Gunakan tombol trek audio untuk mengaktifkan suara.</string>
+    <string name="settings_current_user_internal_storage_only">Hanya tampilkan penyimpanan internal pengguna saat ini</string>
+    <string name="settings_current_user_internal_storage_only_desc">Sembunyikan pintasan penyimpanan internal untuk aplikasi kloning dan pengguna Android lain.</string>
 </resources>

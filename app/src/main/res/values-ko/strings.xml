@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">터미널, 창 전환, 음악, 메뉴를 작업 표시줄 맨 위에 한 열로 표시</string>
     <string name="settings_start_videos_without_audio">동영상을 소리 없이 시작</string>
     <string name="settings_start_videos_without_audio_desc">동영상을 열 때 오디오 트랙을 끕니다. 오디오 트랙 버튼으로 소리를 켤 수 있습니다.</string>
+    <string name="settings_current_user_internal_storage_only">현재 사용자의 내부 저장소만 표시</string>
+    <string name="settings_current_user_internal_storage_only_desc">복제 앱과 다른 Android 사용자의 내부 저장소 바로가기를 숨깁니다.</string>
 </resources>

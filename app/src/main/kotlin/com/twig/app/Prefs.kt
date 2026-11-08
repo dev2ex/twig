@@ -74,6 +74,14 @@ object Prefs {
         sp(ctx).edit().putBoolean("foreground_completion_notifications", on).apply()
     }
 
+    /** Skip shared-profile discovery and shortcuts while retaining whole-root protection. */
+    fun currentUserInternalStorageOnly(ctx: Context): Boolean =
+        sp(ctx).getBoolean("current_user_internal_storage_only", false)
+
+    fun setCurrentUserInternalStorageOnly(ctx: Context, only: Boolean) {
+        sp(ctx).edit().putBoolean("current_user_internal_storage_only", only).apply()
+    }
+
     fun rootItemVisible(ctx: Context, pane: Int, id: String): Boolean =
         sp(ctx).getBoolean("root_item_${pane}_$id", RootItems.all.first { it.id == id }.visibleByDefault)
 
@@ -647,7 +655,7 @@ object Prefs {
      * returning from settings, MainActivity recreates. */
     fun uiSignature(ctx: Context): String = listOf(
         density(ctx), textSize(ctx), thumbs(ctx), thumbsGrid(ctx), thumbsGridNames(ctx), gridCell(ctx), thumbsPlaybackProgress(ctx),
-        showHidden(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx), hideTitleBarPortrait(ctx), hidePathBarSinglePane(ctx),
+        showHidden(ctx), currentUserInternalStorageOnly(ctx), rowDivider(ctx), autoTreeIndent(ctx), paneLayout(ctx), tapRowToSelect(ctx), sniffTypes(ctx), dateFormat(ctx), folderCounts(ctx), folderCountsLocalOnly(ctx), unixPermissions(ctx), unixPermissionsOctal(ctx), trashEnabled(ctx), toolbarAtBottom(ctx), hideTitleBarPortrait(ctx), hidePathBarSinglePane(ctx),
     ).joinToString(",")
 
     /** Last active queue id (NOW or a named playlist), used by cold-start resume to locate the right list. */

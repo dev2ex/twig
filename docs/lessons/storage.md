@@ -22,6 +22,20 @@
   behavior still needs device verification; do not invent entries or claim that
   adding a shortcut grants cross-user access.
 
+- **Optional current-user shortcuts (2026-11-08)**: some users have no use for
+  shared-profile entries such as Internal Storage (999). The settings-only
+  `Prefs.currentUserInternalStorageOnly` switch defaults off to retain the existing
+  behavior. When enabled, render only the first discovered internal root (the
+  caller's primary storage, never a hard-coded user 0). Apply the same shortcut
+  list to key registration and reveal routing; hidden extra roots use Root directory
+  or a temporary pin if that entry is hidden too. Skip profile discovery on initial
+  access and foreground polls while enabled: do not query shared-profile volumes or
+  enumerate `/storage/emulated`. Retain previously discovered identities for protection;
+  numeric `/storage/emulated/<id>` roots remain protected even on a cold start.
+  Emulated volumes never become removable entries. Do not cache a primary-only scan,
+  so disabling the setting discovers profiles immediately. The preference is part of
+  `uiSignature` and the backed-up `twig_prefs`.
+
 ## Removable storage (SD card / USB)
 
 **(★ 2026-08-26, `StorageVolumes`)** The entry points are the rows after "Internal storage" and

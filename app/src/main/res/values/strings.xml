@@ -1345,4 +1345,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Move terminal, pane switch, music and menu actions to the top of the action strip in a single column</string>
     <string name="settings_start_videos_without_audio">Start videos with audio off</string>
     <string name="settings_start_videos_without_audio_desc">Disable audio tracks when opening a video. Use the audio-track button to turn sound on.</string>
+    <string name="settings_current_user_internal_storage_only">Only show current user’s internal storage</string>
+    <string name="settings_current_user_internal_storage_only_desc">Hide internal storage shortcuts for app clones and other Android users.</string>
 </resources>

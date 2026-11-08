@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Mostrar terminal, cambio de panel, música y menú en una columna al inicio de la barra de acciones</string>
     <string name="settings_start_videos_without_audio">Iniciar vídeos sin audio</string>
     <string name="settings_start_videos_without_audio_desc">Desactivar las pistas de audio al abrir un vídeo. Usa el botón de pista de audio para activar el sonido.</string>
+    <string name="settings_current_user_internal_storage_only">Mostrar solo el almacenamiento interno del usuario actual</string>
+    <string name="settings_current_user_internal_storage_only_desc">Ocultar los accesos al almacenamiento interno de aplicaciones clonadas y otros usuarios de Android.</string>
 </resources>

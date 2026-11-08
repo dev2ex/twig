@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">टर्मिनल, पैनल बदलने, संगीत और मेन्यू के बटन ऐक्शन बार के ऊपर एक कॉलम में दिखाएँ</string>
     <string name="settings_start_videos_without_audio">वीडियो बिना आवाज़ के शुरू करें</string>
     <string name="settings_start_videos_without_audio_desc">वीडियो खोलते समय ऑडियो ट्रैक बंद करें। आवाज़ चालू करने के लिए ऑडियो ट्रैक बटन का उपयोग करें।</string>
+    <string name="settings_current_user_internal_storage_only">केवल मौजूदा उपयोगकर्ता का आंतरिक स्टोरेज दिखाएँ</string>
+    <string name="settings_current_user_internal_storage_only_desc">क्लोन किए गए ऐप्स और अन्य Android उपयोगकर्ताओं के आंतरिक स्टोरेज के शॉर्टकट छिपाएँ।</string>
 </resources>

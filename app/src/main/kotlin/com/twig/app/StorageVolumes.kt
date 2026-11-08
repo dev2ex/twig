@@ -60,8 +60,16 @@ object StorageVolumes {
     @Volatile private var cache: List<RemovableVolume>? = null
     @Volatile private var internalCache: List<String>? = null
 
-    /** Primary and shared-profile emulated roots, cached independently of removable media. */
-    fun internalRoots(ctx: Context): List<String> = internalCache ?: scanInternalRoots(ctx).also { internalCache = it }
+    /** Internal shortcuts; discover shared profiles only when the setting permits it. */
+    fun internalRoots(ctx: Context): List<String> = if (Prefs.currentUserInternalStorageOnly(ctx)) {
+        // Do not cache this restricted result: disabling the setting must discover profiles immediately.
+        internalCache?.take(1) ?: listOf(Environment.getExternalStorageDirectory().absolutePath)
+    } else internalCache ?: scanInternalRoots(ctx).also { internalCache = it }
+
+    /** Protect roots reached through Root directory even when profile discovery is disabled. */
+    fun isInternalRoot(path: String): Boolean =
+        path == Environment.getExternalStorageDirectory().absolutePath ||
+            path in internalCache.orEmpty() || EMULATED_ROOT_PATH.matches(path)
 
     private fun scanInternalRoots(ctx: Context): List<String> {
         val reported = runCatching {
@@ -104,9 +112,12 @@ object StorageVolumes {
         // scan the first time, so the very first call always reports "no change"
         // and the first refresh after plugging in a card is silently dropped.
         val before = cache.orEmpty()
-        val beforeInternal = internalCache
-        val nowInternal = scanInternalRoots(ctx)
-        internalCache = nowInternal
+        val currentUserOnly = Prefs.currentUserInternalStorageOnly(ctx)
+        val beforeInternal = if (currentUserOnly) internalRoots(ctx) else internalCache
+        // Keep previously known identities for protection, but perform no profile discovery
+        // while hidden, including during the periodic foreground poll.
+        val nowInternal = if (currentUserOnly) internalRoots(ctx)
+            else scanInternalRoots(ctx).also { internalCache = it }
         val now = scan(ctx)
         cache = now
         // Log only on change: this line is what tells "card plugged in but nothing
@@ -141,7 +152,7 @@ object StorageVolumes {
                 // ★ The test is isPrimary, not isRemovable: on some ROMs the primary
                 // volume also reports isRemovable=true, and checking only that would
                 // list internal storage twice at the root.
-                if (v.isPrimary) continue
+                if (v.isPrimary || v.isEmulated) continue
                 val state = runCatching { v.state }.getOrNull()
                 if (state != Environment.MEDIA_MOUNTED && state != Environment.MEDIA_MOUNTED_READ_ONLY) continue
                 val path = pathOf(v) ?: continue
@@ -203,4 +214,5 @@ object StorageVolumes {
 
     private const val PRIVATE_MARK = "/Android/data/"
     private val VOLUME_PATH = Regex("/storage/[^/]+")
+    private val EMULATED_ROOT_PATH = Regex("/storage/emulated/[0-9]+")
 }

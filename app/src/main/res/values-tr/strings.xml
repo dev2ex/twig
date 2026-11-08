@@ -1266,4 +1266,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Terminal, panel değiştirme, müzik ve menüyü eylem çubuğunun üstünde tek sütunda göster</string>
     <string name="settings_start_videos_without_audio">Videoları sessiz başlat</string>
     <string name="settings_start_videos_without_audio_desc">Video açılırken ses parçalarını devre dışı bırak. Sesi açmak için ses parçası düğmesini kullanın.</string>
+    <string name="settings_current_user_internal_storage_only">Yalnızca mevcut kullanıcının dahili depolamasını göster</string>
+    <string name="settings_current_user_internal_storage_only_desc">Klonlanmış uygulamaların ve diğer Android kullanıcılarının dahili depolama kısayollarını gizle.</string>
 </resources>

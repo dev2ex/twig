@@ -1265,4 +1265,6 @@
     <string name="settings_hide_title_bar_portrait_desc">Hiển thị thiết bị đầu cuối, chuyển ngăn, nhạc và menu thành một cột ở đầu thanh thao tác</string>
     <string name="settings_start_videos_without_audio">Mở video không có âm thanh</string>
     <string name="settings_start_videos_without_audio_desc">Tắt các bản âm thanh khi mở video. Dùng nút bản âm thanh để bật tiếng.</string>
+    <string name="settings_current_user_internal_storage_only">Chỉ hiển thị bộ nhớ trong của người dùng hiện tại</string>
+    <string name="settings_current_user_internal_storage_only_desc">Ẩn lối tắt bộ nhớ trong của ứng dụng nhân bản và người dùng Android khác.</string>
 </resources>

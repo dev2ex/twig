@@ -2,6 +2,7 @@ package com.twig.app
 
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.os.Environment
 import android.os.Process
 import android.os.storage.StorageManager
@@ -155,6 +156,119 @@ class StorageVolumesTest {
         assertNull(vm.state.value.error)
         assertEquals("f:file:$extra", vm.state.value.currentKey)
         assertFalse("reveal must not traverse inaccessible ancestors", "f:file:/" in expanded)
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `current user setting hides only extra shortcuts in both panes and retains root protection`() {
+        val extra = withExtraStorage()
+        val primary = Environment.getExternalStorageDirectory().absolutePath
+        val panes = (0..1).map { pane -> PaneViewModel(app).apply { io = dispatcher; paneIndex = pane } }
+        assertFalse(Prefs.currentUserInternalStorageOnly(app))
+        val before = Prefs.uiSignature(app)
+        panes.forEach { vm ->
+            val children = PaneViewModel::class.java.getDeclaredField("children")
+                .apply { isAccessible = true }.get(vm) as MutableMap<String, List<com.twig.core.XFile>>
+            val expanded = PaneViewModel::class.java.getDeclaredField("expanded")
+                .apply { isAccessible = true }.get(vm) as MutableSet<String>
+            children["f:file:/"] = listOf(com.twig.core.XFile("file", extra, isDir = true))
+            children["f:file:$extra"] = emptyList()
+            expanded.add("f:file:/")
+            vm.refreshTree()
+            assertEquals(2, vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().count { it.file.path == extra })
+        }
+        Prefs.setCurrentUserInternalStorageOnly(app, true)
+        assertTrue(before != Prefs.uiSignature(app))
+        panes.forEach { vm ->
+            vm.refreshRootItems()
+            val rows = vm.state.value.rows
+            assertTrue(rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.path == primary && it.depth == 0 })
+            val nested = rows.filterIsInstance<PaneViewModel.FileNode>().single { it.file.path == extra }
+            assertTrue(nested.depth > 0)
+            assertEquals(rows.size, rows.map { it.key }.toSet().size)
+            vm.toggle(nested)
+            assertEquals(extra, vm.currentDir?.path)
+            assertNull("hidden shortcuts must retain whole-root protection", vm.currentSelection())
+        }
+        Prefs.setCurrentUserInternalStorageOnly(app, false)
+        panes.forEach { vm ->
+            vm.refreshRootItems()
+            val rows = vm.state.value.rows
+            assertEquals(2, rows.filterIsInstance<PaneViewModel.FileNode>().count { it.file.path == extra })
+            assertEquals(rows.size, rows.map { it.key }.toSet().size)
+        }
+    }
+
+    @Test
+    fun `current user setting skips profile discovery on cold access and repeated polls`() {
+        var storageCalls = 0
+        val ctx = object : ContextWrapper(app) {
+            override fun getSystemService(name: String): Any? {
+                if (name == Context.STORAGE_SERVICE) storageCalls++
+                return super.getSystemService(name)
+            }
+        }
+        Prefs.setCurrentUserInternalStorageOnly(app, true)
+        val primary = Environment.getExternalStorageDirectory().absolutePath
+        assertEquals(listOf(primary), StorageVolumes.internalRoots(ctx))
+        assertEquals("cold access must not query storage volumes", 0, storageCalls)
+        repeat(2) {
+            assertFalse(StorageVolumes.refresh(ctx))
+        }
+        // One ordinary volume query per poll for SD/USB, with no internal-root scan.
+        assertEquals(2, storageCalls)
+        assertTrue(StorageVolumes.isInternalRoot("/storage/emulated/999"))
+        assertFalse(StorageVolumes.isInternalRoot("/storage/emulated/999/Download"))
+        Prefs.setCurrentUserInternalStorageOnly(app, false)
+        StorageVolumes.internalRoots(ctx)
+        assertEquals("disabling the setting must discover profiles without restarting", 3, storageCalls)
+    }
+
+    @Test
+    fun `current user storage is the first discovered root rather than hard coded user zero`() {
+        val current = File(sd, "95").path
+        val other = File(sd, "0").path
+        org.robolectric.util.ReflectionHelpers.setStaticField(StorageVolumes::class.java, "internalCache", listOf(current, other))
+        Prefs.setCurrentUserInternalStorageOnly(app, true)
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        vm.refreshTree()
+        val roots = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+        assertTrue(roots.any { it.file.path == current })
+        assertFalse(roots.any { it.file.path == other })
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `revealing hidden extra storage uses root or a temporary pin when root is hidden`() {
+        val extra = withExtraStorage()
+        Prefs.setCurrentUserInternalStorageOnly(app, true)
+        val vm = PaneViewModel(app).apply { io = dispatcher }
+        val children = PaneViewModel::class.java.getDeclaredField("children")
+            .apply { isAccessible = true }.get(vm) as MutableMap<String, List<com.twig.core.XFile>>
+        var child = File(extra)
+        children["f:file:$extra"] = emptyList()
+        while (child.parentFile != null) {
+            val parent = child.parentFile!!
+            children["f:file:${parent.path}"] = listOf(com.twig.core.XFile("file", child.path, isDir = true))
+            child = parent
+        }
+        vm.refreshTree()
+        val target = com.twig.core.XFile("file", extra, isDir = true)
+        vm.revealPath(target)
+        dispatcher.scheduler.runCurrent()
+        assertNull(vm.state.value.error)
+        assertEquals("f:file:$extra", vm.state.value.currentKey)
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().single { it.file.path == extra }.depth > 0)
+
+        Prefs.setRootItemVisible(app, 0, "root", false)
+        vm.refreshRootItems()
+        vm.revealPath(target)
+        dispatcher.scheduler.runCurrent()
+        assertNull(vm.state.value.error)
+        assertEquals(extra, vm.currentDir?.path)
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.path == extra && it.depth == 0 })
+        assertTrue(Prefs.currentUserInternalStorageOnly(app))
+        assertFalse(Prefs.rootItemVisible(app, 0, "root"))
     }
 
     @Test

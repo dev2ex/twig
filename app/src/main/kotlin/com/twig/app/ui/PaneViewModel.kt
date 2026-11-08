@@ -1200,7 +1200,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 !(
                     it.scheme == "file" &&
                         (
-                            it.path in StorageVolumes.internalRoots(getApplication()) ||
+                            StorageVolumes.isInternalRoot(it.path) ||
                                 it.path == PrivateSpace.directory(getApplication()).path ||
                                 StorageVolumes.isVolumeRoot(it.path) // A whole SD card / USB stick shouldn't be the default target either.
                             )
@@ -1370,7 +1370,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val privatePath = PrivateSpace.directory(getApplication()).path
             val root = when {
                 target.scheme != "file" -> conn?.let { groupIdFor(it) }
-                internal != null -> null
+                internal != null -> "internal"
                 rootVisible("private") && (target.path == privatePath || target.path.startsWith("$privatePath/")) -> null
                 else -> "root"
             }
@@ -1447,7 +1447,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             val privatePath = PrivateSpace.directory(getApplication()).path
             val root = when {
                 rootVisible("private") && (target.path == privatePath || target.path.startsWith("$privatePath/")) -> privatePath
-                internal != null -> internal
+                rootVisible("internal") && internal != null -> internal
                 else -> "/"
             }
             var p = target.path

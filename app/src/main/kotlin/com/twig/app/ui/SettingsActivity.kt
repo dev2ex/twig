@@ -251,6 +251,12 @@ class SettingsActivity : TwigActivity() {
             set = { Prefs.setShowHidden(this, it) },
         )
         switchRow(
+            getString(R.string.settings_current_user_internal_storage_only),
+            getString(R.string.settings_current_user_internal_storage_only_desc),
+            get = { Prefs.currentUserInternalStorageOnly(this) },
+            set = { Prefs.setCurrentUserInternalStorageOnly(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_sniff_types), getString(R.string.settings_sniff_types_desc),
             get = { Prefs.sniffTypes(this) },
             set = { Prefs.setSniffTypes(this, it) },

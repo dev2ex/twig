@@ -1296,4 +1296,6 @@
     <string name="settings_hide_title_bar_portrait_desc">将终端、切换面板、音乐和菜单按钮移到操作栏顶部，单列显示</string>
     <string name="settings_start_videos_without_audio">打开视频时关闭音轨</string>
     <string name="settings_start_videos_without_audio_desc">打开视频时不播放音轨，可通过音轨按钮恢复声音。</string>
+    <string name="settings_current_user_internal_storage_only">仅显示当前用户的内部存储</string>
+    <string name="settings_current_user_internal_storage_only_desc">隐藏应用分身及其他 Android 用户的内部存储快捷入口。</string>
 </resources>
