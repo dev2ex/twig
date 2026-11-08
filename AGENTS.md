@@ -880,7 +880,8 @@ add its symptom here.
   elevation.
   *Explains*: app-clone storage missing beside Internal Storage (#55; Samsung device
   verification pending), a USB drive that only appears after restarting the app, internal storage
-  listed twice, capacity reads blocking the UI during device changes.
+  listed twice, capacity reads blocking the UI during device changes, unwanted shared-profile
+  shortcuts (use the settings-only `Prefs.currentUserInternalStorageOnly` switch).
 - **[Terminal: local shell, fonts, zoom](docs/lessons/terminal-local.md)** — only
   returning to the foreground may arm the size thaw; a terminal font is acceptable only
   at a 0.5em advance; `attachSession` forks the shell itself; the key bar shares one text
