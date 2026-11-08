@@ -173,7 +173,15 @@ class FileAdapter(
     /** Key of the most recently selected node (synced from State by PaneFragment); used to position the highlight frame. */
     var currentKey: String? = null
 
-    private val selected = HashSet<String>()
+    // Bulk selections retain a predictable fallback anchor.
+    private val selected = LinkedHashSet<String>()
+    private var rangeAnchor: String? = null
+    private var rangeSelect = true
+
+    private fun resetRangeAnchor() {
+        rangeAnchor = selected.lastOrNull()
+        rangeSelect = true
+    }
     /** Identifier of the directory containing the current selection (scheme:parentPath); cleared when selecting across directories. */
     private var selectParent: String? = null
 
@@ -193,6 +201,8 @@ class FileAdapter(
     }
 
     fun clearSelection() {
+        rangeAnchor = null
+        rangeSelect = true
         if (selected.isEmpty()) return
         selected.clear()
         selectParent = null
@@ -228,6 +238,7 @@ class FileAdapter(
                 selected.add(node.key)
             }
         }
+        resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
     }
@@ -264,6 +275,7 @@ class FileAdapter(
         selected.clear()
         selectParent = null
         if (!allSelected) kids.forEach { selected.add(it.key) }
+        resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
     }
@@ -276,6 +288,7 @@ class FileAdapter(
         files.forEach { selected.add(PaneViewModel.fileKey(it)) }
         selectParent = files.firstOrNull()?.let { "${it.scheme}:${it.parentPath}" }
         if (selected.isEmpty()) selectParent = null
+        resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
     }
@@ -288,9 +301,41 @@ class FileAdapter(
         }
         selectParent = parent
         if (!selected.add(node.key)) selected.remove(node.key)
+        rangeAnchor = node.key
+        rangeSelect = isSelected(node)
         if (selected.isEmpty()) selectParent = null
         refreshSelection()
         onSelectionChanged()
+    }
+
+    /** Repeat the last check/uncheck action across displayed siblings, including both endpoints. */
+    fun selectRangeTo(node: PaneViewModel.FileNode): Boolean {
+        if (node.label != null || (selectFilesByRow && node.file.isDir)) return false
+        val anchorKey = rangeAnchor ?: return false
+        val rows = currentList
+        val start = rows.indexOfFirst { it.key == anchorKey }
+        val end = rows.indexOfFirst { it.key == node.key }
+        val anchor = rows.getOrNull(start) as? PaneViewModel.FileNode ?: return false
+        if (end < 0 || anchor.depth != node.depth || anchor.file.scheme != node.file.scheme ||
+            anchor.file.parentPath != node.file.parentPath) return false
+        // Tree identity matters too: a directory can appear under multiple roots or favorites.
+        fun treeParent(index: Int): String? = (index - 1 downTo 0)
+            .firstOrNull { rows[it].depth < node.depth }?.let { rows[it].key }
+        if (treeParent(start) != treeParent(end)) return false
+        for (index in minOf(start, end)..maxOf(start, end)) {
+            val sibling = rows[index] as? PaneViewModel.FileNode ?: continue
+            if (sibling.depth == node.depth && sibling.label == null &&
+                sibling.file.scheme == node.file.scheme && sibling.file.parentPath == node.file.parentPath &&
+                (!selectFilesByRow || !sibling.file.isDir)) {
+                if (rangeSelect) selected.add(sibling.key) else selected.remove(sibling.key)
+            }
+        }
+        // The endpoint becomes the next anchor, including for ranges selected upwards.
+        rangeAnchor = node.key
+        if (selected.isEmpty()) selectParent = null
+        refreshSelection()
+        onSelectionChanged()
+        return true
     }
 
     private val appExpanded = HashMap<String, MutableSet<AppDetails.Kind>>()
@@ -304,9 +349,11 @@ class FileAdapter(
     ) {
         super.onCurrentListChanged(previousList, currentList)
         appExpanded.keys.retainAll(currentList.filterIsInstance<PaneViewModel.InfoNode>().mapTo(HashSet()) { it.key })
-        if (selected.isEmpty()) return
+        if (selected.isEmpty() && rangeAnchor == null) return
         val liveKeys = currentList.mapTo(HashSet()) { it.key }
-        if (selected.retainAll(liveKeys)) {
+        val changed = selected.retainAll(liveKeys)
+        if (rangeAnchor !in liveKeys) resetRangeAnchor()
+        if (changed) {
             if (selected.isEmpty()) selectParent = null
             onSelectionChanged()
         }
@@ -554,6 +601,7 @@ class FileAdapter(
                 b.cellCheck.visibility = View.GONE
                 b.infoToggle.visibility = View.GONE
                 b.cellCheck.setOnClickListener(null)
+                b.cellCheck.setOnLongClickListener(null)
                 b.infoToggle.setImageResource(R.drawable.ic_info)
             b.infoToggle.setOnClickListener(null)
                 b.infoToggle.setOnLongClickListener(null)
@@ -572,6 +620,7 @@ class FileAdapter(
 
             bindSelection(node)
             b.cellCheck.setOnClickListener { toggleSelection(node) }
+            b.cellCheck.setOnLongClickListener { selectRangeTo(node); true }
             b.infoToggle.setOnClickListener { onInfo(node) }
             b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
             b.thumb.setOnClickListener { onClick(node) }
@@ -950,6 +999,8 @@ class FileAdapter(
                 ((2 + (node.depth - indentOffset).coerceAtLeast(0f) * 14) * dpi).toInt(), 0, 0, 0,
             )
             // Reset reusable state
+            b.check.setOnLongClickListener(null)
+            b.check.isLongClickable = false
             b.icon.resetThumbnail()
             b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
@@ -1364,6 +1415,7 @@ class FileAdapter(
                 b.check.visibility = View.VISIBLE
                 bindSelection(node)
                 b.check.setOnClickListener { cycleSelection(node) }
+                b.check.setOnLongClickListener { selectRangeTo(node); true }
             } else {
                 b.check.visibility = View.GONE
             }

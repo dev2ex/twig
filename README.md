@@ -255,6 +255,9 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
   files through the system chooser. The path bar shows the checked-item count.
+  Check or uncheck a starting item, then long-press another item's checkbox in the same
+  directory to repeat that action across the whole range in display order, including
+  both endpoints, in lists or grids. Items outside the range retain their selection.
 - Choose copy/move destinations directly in the opposite pane. Optionally tap rows to
   toggle selection once items are checked; external multi-file pickers select by tapping.
   Enable the hidden **Duplicate** action to confirm editable copy names; hold it to make
