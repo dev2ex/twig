@@ -172,7 +172,7 @@ its listing size must still describe the followed stream for copy/resume checks.
   follows orientation unless the default-off `Prefs.hideTitleBarPortrait` hides it in
   portrait too. Hidden toolbar actions stay pinned above the strip with the same
   separator, using one column in portrait and two in landscape. Action-strip density
-  still follows orientation. Hiding the portrait toolbar disables and dims its bottom-placement
+  still follows orientation. Hiding the toolbar disables and dims its bottom-placement
   setting without clearing the saved placement; showing it restores that setting immediately.
   Both settings participate in `uiSignature` and
   configuration backups. `Prefs.hidePathBarSinglePane` defaults off and hides the address

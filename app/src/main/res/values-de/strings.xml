@@ -1262,8 +1262,8 @@
     <string name="restic_location_details">Pfaddetails</string>
     <string name="restic_location_repository">Repository</string>
     <string name="restic_location_snapshot">Schnappschuss</string>
-    <string name="settings_hide_title_bar_portrait">Symbolleiste im Hochformat ausblenden</string>
-    <string name="settings_hide_title_bar_portrait_desc">Terminal, Bereichswechsel, Musik und Menü einspaltig oben in der Aktionsleiste anzeigen</string>
+    <string name="settings_hide_toolbar">Symbolleiste ausblenden</string>
+    <string name="settings_hide_toolbar_desc">Terminal, Bereichswechsel, Musik und Menü einspaltig oben in der Aktionsleiste anzeigen</string>
     <string name="settings_start_videos_without_audio">Videos ohne Ton starten</string>
     <string name="settings_start_videos_without_audio_desc">Beim Öffnen eines Videos die Audiospuren deaktivieren. Über die Audiospur-Taste lässt sich der Ton einschalten.</string>
     <string name="settings_current_user_internal_storage_only">Nur internen Speicher des aktuellen Nutzers anzeigen</string>

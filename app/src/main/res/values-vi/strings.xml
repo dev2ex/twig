@@ -1261,8 +1261,8 @@
     <string name="restic_location_details">Chi tiết đường dẫn</string>
     <string name="restic_location_repository">Kho lưu trữ</string>
     <string name="restic_location_snapshot">Bản chụp</string>
-    <string name="settings_hide_title_bar_portrait">Ẩn thanh công cụ ở chế độ dọc</string>
-    <string name="settings_hide_title_bar_portrait_desc">Hiển thị thiết bị đầu cuối, chuyển ngăn, nhạc và menu thành một cột ở đầu thanh thao tác</string>
+    <string name="settings_hide_toolbar">Ẩn thanh công cụ</string>
+    <string name="settings_hide_toolbar_desc">Hiển thị thiết bị đầu cuối, chuyển ngăn, nhạc và menu thành một cột ở đầu thanh thao tác</string>
     <string name="settings_start_videos_without_audio">Mở video không có âm thanh</string>
     <string name="settings_start_videos_without_audio_desc">Tắt các bản âm thanh khi mở video. Dùng nút bản âm thanh để bật tiếng.</string>
     <string name="settings_current_user_internal_storage_only">Chỉ hiển thị bộ nhớ trong của người dùng hiện tại</string>

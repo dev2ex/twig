@@ -1261,8 +1261,8 @@
     <string name="restic_location_details">路徑詳情</string>
     <string name="restic_location_repository">儲存庫</string>
     <string name="restic_location_snapshot">快照</string>
-    <string name="settings_hide_title_bar_portrait">直向隱藏工具列</string>
-    <string name="settings_hide_title_bar_portrait_desc">將終端機、切換面板、音樂和選單按鈕移到操作列頂部，單欄顯示</string>
+    <string name="settings_hide_toolbar">隱藏工具列</string>
+    <string name="settings_hide_toolbar_desc">將終端機、切換面板、音樂和選單按鈕移到操作列頂部，單欄顯示</string>
     <string name="settings_start_videos_without_audio">開啟影片時關閉音軌</string>
     <string name="settings_start_videos_without_audio_desc">開啟影片時不播放音軌，可透過音軌按鈕恢復聲音。</string>
     <string name="settings_current_user_internal_storage_only">僅顯示目前使用者的內部儲存</string>

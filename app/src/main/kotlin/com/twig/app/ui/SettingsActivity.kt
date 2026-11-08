@@ -189,11 +189,6 @@ class SettingsActivity : TwigActivity() {
             get = { Prefs.paneLayout(this) },
             set = { Prefs.setPaneLayout(this, it) },
         )
-        switchRow(
-            getString(R.string.settings_hide_path_bar_single_pane), getString(R.string.settings_hide_path_bar_single_pane_desc),
-            get = { Prefs.hidePathBarSinglePane(this) },
-            set = { Prefs.setHidePathBarSinglePane(this, it) },
-        )
         choiceRow(
             getString(R.string.settings_date_format),
             arrayOf(
@@ -273,7 +268,7 @@ class SettingsActivity : TwigActivity() {
         )
 
         switchRow(
-            getString(R.string.settings_hide_title_bar_portrait), getString(R.string.settings_hide_title_bar_portrait_desc),
+            getString(R.string.settings_hide_toolbar), getString(R.string.settings_hide_toolbar_desc),
             get = { Prefs.hideTitleBarPortrait(this) },
             set = { Prefs.setHideTitleBarPortrait(this, it); applyEnabled() },
         )
@@ -281,6 +276,11 @@ class SettingsActivity : TwigActivity() {
             getString(R.string.settings_toolbar_bottom), getString(R.string.settings_toolbar_bottom_desc),
             get = { Prefs.toolbarAtBottom(this) },
             set = { Prefs.setToolbarAtBottom(this, it) },
+        )
+        switchRow(
+            getString(R.string.settings_hide_path_bar_single_pane), getString(R.string.settings_hide_path_bar_single_pane_desc),
+            get = { Prefs.hidePathBarSinglePane(this) },
+            set = { Prefs.setHidePathBarSinglePane(this, it) },
         )
         choiceRow(
             getString(R.string.settings_back_action),

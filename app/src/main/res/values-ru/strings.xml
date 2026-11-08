@@ -1298,8 +1298,8 @@
     <string name="restic_location_details">Сведения о пути</string>
     <string name="restic_location_repository">Репозиторий</string>
     <string name="restic_location_snapshot">Снимок</string>
-    <string name="settings_hide_title_bar_portrait">Скрывать панель инструментов в книжной ориентации</string>
-    <string name="settings_hide_title_bar_portrait_desc">Показывать терминал, переключение панелей, музыку и меню в один столбец вверху панели действий</string>
+    <string name="settings_hide_toolbar">Скрывать панель инструментов</string>
+    <string name="settings_hide_toolbar_desc">Показывать терминал, переключение панелей, музыку и меню в один столбец вверху панели действий</string>
     <string name="settings_start_videos_without_audio">Открывать видео без звука</string>
     <string name="settings_start_videos_without_audio_desc">Отключать аудиодорожки при открытии видео. Звук можно включить кнопкой выбора аудиодорожки.</string>
     <string name="settings_current_user_internal_storage_only">Только внутренняя память текущего пользователя</string>

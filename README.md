@@ -231,7 +231,7 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 ### New in 1.18
 
 - **SQLite browsing:** expand databases into tables and read-only data grids. Search across tables, sort columns, filter values or comparisons, run read-only SQL, inspect BLOBs in hex and export selected columns to CSV. See [SQLite browsing](docs/sqlite-browser.md) for source and size limits.
-- **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the portrait toolbar or the single-pane address bar.
+- **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the toolbar or the single-pane address bar.
 - **More storage roots:** internal and removable storage can be hidden or reordered; additional shared-profile storage roots appear beside primary storage when available.
 - **Recent restic locations** restore directories inside snapshots, unlocking the repository when needed. The latest-snapshot alias follows the newest snapshot.
 - **Animated images:** GIF and animated WebP play in the image viewer on Android 9+.

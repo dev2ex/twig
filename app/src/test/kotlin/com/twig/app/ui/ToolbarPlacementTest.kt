@@ -38,7 +38,7 @@ class ToolbarPlacementTest {
                         val labels = it.getChildAt(0) as? ViewGroup
                         (labels?.getChildAt(0) as? android.widget.TextView)?.text == activity.getString(title)
                     }
-                val hide = row(R.string.settings_hide_title_bar_portrait)
+                val hide = row(R.string.settings_hide_toolbar)
                 val bottom = row(R.string.settings_toolbar_bottom)
                 val switch = bottom.getChildAt(bottom.childCount - 1) as androidx.appcompat.widget.SwitchCompat
                 assertEquals(!initiallyHidden, bottom.isEnabled)

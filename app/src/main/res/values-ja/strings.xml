@@ -1262,8 +1262,8 @@
     <string name="restic_location_details">パスの詳細</string>
     <string name="restic_location_repository">リポジトリ</string>
     <string name="restic_location_snapshot">スナップショット</string>
-    <string name="settings_hide_title_bar_portrait">縦向きでツールバーを非表示</string>
-    <string name="settings_hide_title_bar_portrait_desc">ターミナル、ペイン切り替え、音楽、メニューを操作バーの上部に1列で表示</string>
+    <string name="settings_hide_toolbar">ツールバーを非表示</string>
+    <string name="settings_hide_toolbar_desc">ターミナル、ペイン切り替え、音楽、メニューを操作バーの上部に1列で表示</string>
     <string name="settings_start_videos_without_audio">動画を音声オフで開始</string>
     <string name="settings_start_videos_without_audio_desc">動画を開くときに音声トラックを無効にします。音声トラックボタンで音声を有効にできます。</string>
     <string name="settings_current_user_internal_storage_only">現在のユーザーの内部ストレージのみ表示</string>
