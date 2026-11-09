@@ -1,0 +1,1 @@
+Fix read-only access when opening writable local and SAF documents or text files in external apps, including existing app-specific desktop shortcuts. Fall back to viewing when an app does not handle editing. Files opened from Twig’s own network sources and archives remain read-only. Includes the changes from beta.1.

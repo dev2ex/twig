@@ -78,8 +78,8 @@ android {
         applicationId = "com.twig.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 320
-        versionName = "1.18.1-beta.1"
+        versionCode = 321
+        versionName = "1.18.1-beta.2"
         vectorDrawables.useSupportLibrary = true
         languages?.let { resourceConfigurations += it }
         // AGP rejects having both `ndk.abiFilters` and `splits.abi` set at once, so
