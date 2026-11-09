@@ -21,6 +21,7 @@ import com.twig.core.RandomSource
 import com.twig.core.XFile
 import com.twig.fs.archive.ArchiveFileSystem
 import java.io.File
+import java.io.FileNotFoundException
 
 /**
  * Streaming ContentProvider: exposes an [XFile] from any source (local /
@@ -37,6 +38,13 @@ import java.io.File
  *   instead — see the comment in [openFile] for why proxying it anyway is a
  *   correctness bug, not just a slow path;
  * - On older systems this degrades to a one-way pipe (not seekable).
+ *
+ * ★ **Write-back (2026-11-09)**: `openFile` also answers mode `"w"`, but only for the two
+ * sources that own their bytes — a writable local file, and an SAF document, which is handed
+ * to its own provider instead of being proxied. Everything else still answers
+ * `SecurityException`. Which files those are is decided in exactly one place,
+ * [canWriteBack], because the intent's write grant and this method have to agree: a grant the
+ * provider then refuses reaches the user as an error *after* they already edited.
  *
  * The URI has the form
  * `content://<pkg>.stream/<base64(scheme,size,name,path)>/<signature>/<file name>`, and
@@ -93,8 +101,19 @@ class StreamProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val ctx = ctx()
-        if ("w" in mode) throw SecurityException(ctx.getString(R.string.stream_read_only))
         val f = decode(ctx, uri)
+        if ("w" in mode) {
+            if (!canWriteBack(f)) throw SecurityException(ctx.getString(R.string.stream_read_only))
+            if (f.scheme == SafFileSystem.SCHEME) {
+                // Delegate rather than proxy: the document's own provider is the only writer of
+                // its bytes, and this is the same fd SAF would hand an editor directly. A
+                // proxy fd (RandomCallback) has no write path and a pipe cannot be written, so
+                // this is the only way an SAF document becomes editable through Twig.
+                return ctx.contentResolver.openFileDescriptor(Uri.parse(f.path), mode)
+                    ?: throw FileNotFoundException("no writable descriptor for ${f.name}")
+            }
+            return ParcelFileDescriptor.open(File(f.path), ParcelFileDescriptor.parseMode(mode))
+        }
         if (OpenFiles.directlyReadable(f)) {
             return ParcelFileDescriptor.open(File(f.path), ParcelFileDescriptor.MODE_READ_ONLY)
         }
@@ -206,6 +225,23 @@ class StreamProvider : ContentProvider() {
             val mac = javax.crypto.Mac.getInstance("HmacSHA256")
             mac.init(javax.crypto.spec.SecretKeySpec(key(ctx), "HmacSHA256"))
             return Base64.encodeToString(mac.doFinal(token.toByteArray()).copyOf(16), B64)
+        }
+
+        /**
+         * Whether an external editor can save back to [f] through this provider — the single
+         * answer behind both the intent's write grant and [openFile], so the two cannot drift.
+         *
+         * Only the sources that own their bytes qualify: a **writable local file**, which gets a
+         * real fd, and an **SAF document** (`saf`), which is delegated to its own provider.
+         * Streamed sources (SMB/FTP/WebDAV) and archive entries have no writable fd here — the
+         * proxy is read-only by design — so they stay view-only and are not offered a write
+         * grant. [XFile.canWrite] is honoured where the backend knows it; `true` means "unknown".
+         */
+        fun canWriteBack(f: XFile): Boolean = when {
+            f.isDir -> false
+            f.scheme == SafFileSystem.SCHEME -> f.canWrite && FsRegistry.of(f).writable()
+            f.scheme == "file" -> f.canWrite && OpenFiles.directlyReadable(f) && File(f.path).canWrite()
+            else -> false
         }
 
         fun uriFor(context: Context, f: XFile): Uri {

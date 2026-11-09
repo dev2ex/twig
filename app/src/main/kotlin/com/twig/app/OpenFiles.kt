@@ -218,6 +218,9 @@ object OpenFiles {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // Only where the provider can really hand over a writable fd, or the editor would
+            // offer "save" and then fail on our refusal (see StreamProvider.canWriteBack).
+            if (StreamProvider.canWriteBack(file)) addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
         return try {
             context.startActivity(
@@ -250,6 +253,7 @@ object OpenFiles {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (StreamProvider.canWriteBack(file)) addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             setComponent(component)
         }
         return try {
