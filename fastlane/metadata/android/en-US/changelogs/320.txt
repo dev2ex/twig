@@ -1,0 +1,1 @@
+Show disk usage and recursive sizes in the file tree after a scan. Repeat checkbox actions across a range. Optionally show only the current user’s internal storage and start videos without audio. Improve narrow-row metadata and toolbar settings.
