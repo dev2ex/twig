@@ -202,8 +202,9 @@ its listing size must still describe the followed stream for copy/resume checks.
   size order within each listing. The scan target has no usage background; selected rows use
   a stronger overlay over the selection background. These snapshots
   live only in `PaneViewModel`, survive view recreation and never rewrite saved sort settings.
-  Folding a directory, including accordion folding, discards its descendants' scan data;
-  its own total remains until its parent folds. Collapse All clears all scan data.
+  Every descendant's proportion uses the scan target's total as its denominator.
+  Folding/reopening child directories, including accordion folding, retains the scan.
+  Folding the scan target or any ancestor discards that scan; Collapse All clears all scans.
 - Directory counts (`DirectoryCounts`) use separate background workers for direct local
   storage and other sources. Only attached rows in visible panes request probes;
   prefetch does not enumerate directories. Detaching/recycling a row, hiding its pane

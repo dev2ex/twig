@@ -73,12 +73,12 @@ class TreeUsageTest {
         assertEquals(0f, row(dir.path).usage!!.fraction, 0f)
         assertEquals(8L, row(File(dir, "large").path).usage!!.bytes)
         assertEquals(8f / 14f, row(File(dir, "large").path).usage!!.fraction, 0.0001f)
-        assertEquals(1f, row(File(dir, "large/z.txt").path).usage!!.fraction, 0f)
+        assertEquals(8f / 14f, row(File(dir, "large/z.txt").path).usage!!.fraction, 0.0001f)
         vm.resortAll()
         assertEquals(listOf("large", "middle.txt", "small"), rows().filter { it.depth == 1 }.map { it.file.name })
     }
 
-    @Test fun `folding child clears its contents but retains its total until parent folds`() = runTest(dispatcher) {
+    @Test fun `folding child preserves scan until the scan target folds`() = runTest(dispatcher) {
         open()
         vm.retainUsage(scan.file, scan)
         val large = File(dir, "large").path
@@ -87,12 +87,27 @@ class TreeUsageTest {
         assertEquals(8L, row(large).usage!!.bytes)
         vm.toggle(row(large))
         advanceUntilIdle()
-        assertNull(row(File(dir, "large/z.txt").path).usage)
+        assertEquals(8L, row(File(dir, "large/z.txt").path).usage!!.bytes)
+        assertEquals(8f / 14f, row(File(dir, "large/z.txt").path).usage!!.fraction, 0.0001f)
         vm.toggle(row(dir.path))
         advanceUntilIdle()
         vm.toggle(row(dir.path))
         advanceUntilIdle()
-        assertTrue(rows().filter { it.depth == 1 }.all { it.usage == null })
+        assertTrue(rows().all { it.usage == null })
+    }
+
+    @Test fun `accordion folding a child preserves the target scan`() = runTest(dispatcher) {
+        open()
+        vm.retainUsage(scan.file, scan)
+        vm.toggle(row(File(dir, "small").path))
+        advanceUntilIdle()
+        assertEquals(2f / 14f, row(File(dir, "small/a.txt").path).usage!!.fraction, 0.0001f)
+        vm.toggle(row(File(dir, "large").path))
+        advanceUntilIdle()
+        assertEquals(8L, row(File(dir, "large/z.txt").path).usage!!.bytes)
+        assertEquals(8f / 14f, row(File(dir, "large/z.txt").path).usage!!.fraction, 0.0001f)
+        vm.collapseAll()
+        assertTrue(rows().all { it.usage == null })
     }
 
     @Test fun `accordion collapse clears analysis of the abandoned branch`() = runTest(dispatcher) {

@@ -591,11 +591,10 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Scan totals belong to this pane's visible branch, never to saved sort preferences. */
     data class Usage(val bytes: Long, val fraction: Float)
-    private data class UsageEntry(val value: Usage, val parent: String?)
     private data class UsageBranch(
         val anchor: String,
         val ancestors: Set<String>,
-        val entries: MutableMap<String, UsageEntry>,
+        val entries: MutableMap<String, Usage>,
     )
     private val usageBranches = ArrayList<UsageBranch>()
 
@@ -610,14 +609,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val anchor = state.value.rows.firstOrNull { it.key == currentKey && matches(it) }
             ?: state.value.rows.firstOrNull(::matches) ?: return
         val prefix = (anchor as? FileNode)?.keyPrefix ?: ""
-        val entries = LinkedHashMap<String, UsageEntry>()
-        fun collect(entry: TreemapEntry, key: String, parent: String?, total: Long) {
-            entries[key] = UsageEntry(Usage(entry.size,
-                if (parent != null && total > 0) (entry.size.toDouble() / total).toFloat().coerceIn(0f, 1f) else 0f), parent)
-            entry.children?.forEach { collect(it, prefix + fileKey(it.file), key, entry.size) }
+        val entries = LinkedHashMap<String, Usage>()
+        fun collect(entry: TreemapEntry, key: String, isTarget: Boolean = false) {
+            entries[key] = Usage(entry.size,
+                if (!isTarget && root.size > 0) (entry.size.toDouble() / root.size).toFloat().coerceIn(0f, 1f) else 0f)
+            entry.children?.forEach { collect(it, prefix + fileKey(it.file)) }
         }
-        collect(root, anchor.key, null, root.size)
-        // A new scan replaces overlapping totals, including previously pruned descendants.
+        collect(root, anchor.key, isTarget = true)
+        // A new scan replaces overlapping totals.
         usageBranches.forEach { branch -> branch.entries.keys.removeAll(entries.keys) }
         usageBranches.removeAll { it.entries.isEmpty() }
         usageBranches.add(UsageBranch(anchor.key, ancestorKeysOf(anchor.key), entries))
@@ -625,7 +624,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun usageOf(key: String): Usage? =
-        usageBranches.firstNotNullOfOrNull { it.entries[key]?.value }
+        usageBranches.firstNotNullOfOrNull { it.entries[key] }
 
     private fun pruneUsage() {
         if (usageBranches.isEmpty()) return
@@ -640,18 +639,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         }.mapTo(HashSet()) { it.key }
         if (collapsed.isEmpty()) return
         usageBranches.removeAll { branch ->
-            if (branch.ancestors.any { it in collapsed }) return@removeAll true
-            // Entries were inserted parent-first, so one pass removes entire folded subtrees.
-            val removed = HashSet<String>()
-            val iterator = branch.entries.iterator()
-            while (iterator.hasNext()) {
-                val (key, entry) = iterator.next()
-                if (entry.parent in collapsed || entry.parent in removed) {
-                    removed.add(key)
-                    iterator.remove()
-                }
-            }
-            branch.entries.isEmpty()
+            branch.anchor in collapsed || branch.ancestors.any { it in collapsed }
         }
     }
 
