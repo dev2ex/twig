@@ -198,10 +198,12 @@ its listing size must still describe the followed stream for copy/resume checks.
   (`PaneFragment.syncObservers`); resume also re-lists the current directory on any backend.
   The tree always expands/collapses **in place**, it never "enters" a directory.
 - Returning from the usage treemap keeps the existing tree expansion and adds pane-local
-  scan totals: green proportional child-row backgrounds, recursive directory sizes and descending
+  scan totals: proportional child-row backgrounds using the selection color, recursive directory sizes and descending
   size order within each listing. The scan target has no usage background; selected rows use
   a stronger overlay over the selection background. These snapshots
   live only in `PaneViewModel`, survive view recreation and never rewrite saved sort settings.
+  Analyzed directories temporarily render all entries as list rows, overriding global and
+  directory grid choices without saving changes; clearing the scan restores those choices.
   Every descendant's proportion uses the scan target's total as its denominator.
   Folding/reopening child directories, including accordion folding, retains the scan.
   Folding the scan target or any ancestor discards that scan; Collapse All clears all scans.

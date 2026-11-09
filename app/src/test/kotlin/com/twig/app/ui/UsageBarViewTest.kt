@@ -6,6 +6,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.widget.FrameLayout
 import androidx.test.core.app.ApplicationProvider
+import androidx.core.content.ContextCompat
+import com.twig.app.R
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,10 +37,11 @@ class UsageBarViewTest {
         }
         val normal = pixel(10)
         assertNotEquals(0, normal)
-        assertTrue(Color.green(normal) > Color.red(normal))
+        assertEquals(ContextCompat.getColor(context, R.color.selected), normal)
         assertEquals(0, pixel(30))
         parent.isActivated = true
-        assertTrue(Color.alpha(pixel(10)) > Color.alpha(normal))
+        assertEquals(76, Color.alpha(pixel(10)))
+        assertNotEquals(normal, pixel(10))
         assertEquals(0, pixel(30))
         parent.isActivated = false
         assertNotEquals(0, pixel(10))

@@ -3,6 +3,9 @@ package com.twig.app.ui
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.twig.core.XFile
+import com.twig.app.Prefs
+import com.twig.app.DirectoryView
+import com.twig.app.DirectoryViewStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -108,6 +111,41 @@ class TreeUsageTest {
         assertEquals(8f / 14f, row(File(dir, "large/z.txt").path).usage!!.fraction, 0.0001f)
         vm.collapseAll()
         assertTrue(rows().all { it.usage == null })
+    }
+
+    @Test fun `usage temporarily overrides global and directory grids and restores them after folding target`() = runTest(dispatcher) {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val previousGrid = Prefs.thumbsGrid(app)
+        val large = XFile("file", File(dir, "large").path, isDir = true)
+        val previousView = DirectoryViewStore.get(DirectoryViewStore.load(app), large)
+        try {
+            Prefs.setThumbsGrid(app, 2)
+            DirectoryViewStore.save(app, large, DirectoryView(gridMode = 1))
+            vm.refreshSortAndView()
+            open()
+            assertEquals(2, row(File(dir, "middle.txt").path).gridMode)
+            assertEquals(1, row(File(dir, "large/z.txt").path).gridMode)
+            vm.retainUsage(scan.file, scan)
+            assertTrue(rows().all { it.gridMode == 0 })
+            vm.toggle(row(large.path))
+            advanceUntilIdle()
+            vm.toggle(row(large.path))
+            advanceUntilIdle()
+            assertTrue(rows().all { it.gridMode == 0 })
+            vm.toggle(row(dir.path))
+            advanceUntilIdle()
+            vm.toggle(row(dir.path))
+            advanceUntilIdle()
+            vm.toggle(row(large.path))
+            advanceUntilIdle()
+            assertEquals(2, row(File(dir, "middle.txt").path).gridMode)
+            assertEquals(1, row(File(dir, "large/z.txt").path).gridMode)
+            assertEquals(2, Prefs.thumbsGrid(app))
+            assertEquals(1, DirectoryViewStore.get(DirectoryViewStore.load(app), large)!!.gridMode)
+        } finally {
+            Prefs.setThumbsGrid(app, previousGrid)
+            DirectoryViewStore.save(app, large, previousView ?: DirectoryView())
+        }
     }
 
     @Test fun `accordion collapse clears analysis of the abandoned branch`() = runTest(dispatcher) {

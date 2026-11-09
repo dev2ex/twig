@@ -3509,7 +3509,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             file, depth, expandable, exp || searchState.containsKey(key),
             label, capacity, busy(key) || sqliteTree.loading(key), rowPrefix,
             DirectoryCounts.known(file, showHidden),
-            gridMode,
+            if (usageOf(key) != null) 0 else gridMode,
             usage = usageOf(key),
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
@@ -3542,8 +3542,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun addListedFiles(rows: MutableList<Node>, key: String, depth: Int, keyPrefix: String = "") {
-        val grid = DirectoryViewStore.resolve(directoryViews, mountRoots[key] ?: keyFile[key], parentOf = ::directoryViewParent).gridMode
-            ?: defaultGridMode
+        val grid = if (usageOf(key) != null) 0 else
+            DirectoryViewStore.resolve(directoryViews, mountRoots[key] ?: keyFile[key], parentOf = ::directoryViewParent).gridMode
+                ?: defaultGridMode
         val listed = visible(children[key])
         val ordered = if (listed.any { usageOf(keyPrefix + fileKey(it)) != null })
             listed.sortedByDescending { usageOf(keyPrefix + fileKey(it))?.bytes ?: -1L }
