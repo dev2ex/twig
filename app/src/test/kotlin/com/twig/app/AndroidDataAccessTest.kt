@@ -89,6 +89,17 @@ class AndroidDataAccessTest {
         assertFalse(root.isMovableSource())
     }
 
+    @Test fun `external editing preserves SAF handles for routed local documents`() {
+        grant()
+        File(provider.base, "sheet.xlsx").writeText("sheet")
+        val local = XFile("file", root.path + "/sheet.xlsx", false)
+        val intent = OpenFiles.externalIntent(app, local)
+        assertEquals(Intent.ACTION_EDIT, intent.action)
+        assertEquals(AndroidDataAccess.AUTHORITY, intent.data!!.authority)
+        assertEquals("$packageId/sheet.xlsx", DocumentsContract.getDocumentId(intent.data!!))
+        assertTrue(intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0)
+    }
+
     @Test fun `copies edits creates renames and deletes go through the provider`() {
         grant()
         val source = File(app.cacheDir, "source.txt").apply { writeText("copied") }

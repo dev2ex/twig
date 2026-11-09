@@ -4,6 +4,24 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **External editors received read-only handles for writable documents (2026-11-10, #61)**:
+  `OpenFiles` used `ACTION_VIEW` with a read grant for every source, and `StreamProvider`
+  rejected writes. A Nextcloud document opened through SAF therefore could not save back
+  in Collabora, even though another file manager could save the same document. Writable
+  local/SAF documents and text files now prefer `ACTION_EDIT`, with a `VIEW` fallback for apps without
+  edit handlers. SAF hands over the original document URI, including for native paths
+  routed through a document-tree grant. Check both the persisted write grant and
+  `Document.FLAG_SUPPORTS_WRITE`: `XFile.canWrite` also includes rename/delete capability
+  and does not prove content can be overwritten. Cover `isText` as well as `isDoc`;
+  the document extension set excludes plain text, code and configuration files. Local editing uses a separately signed
+  StreamProvider capability returning a writable native fd; ordinary share/view URIs
+  remain read-only and cannot gain writes by changing the URI query. The edit signature
+  covers its capability as well as its source, and its filename field escapes newlines.
+  Native paths needing privileged access and Twig's network/archive backends retain
+  read-only hand-offs. A writable cache copy is not save-back to the original. Regression
+  coverage is in `OpenFilesEditTest` and `AndroidDataAccessTest`; actual editor behavior
+  and Nextcloud synchronization still require device checks.
+
 - **A removable volume's SAF grant did not apply to its original row (2026-10-31,
   #47)**: the volume menu saved a valid document-tree grant, but local routing only
   accepted `Android/data`. Android 10 could therefore write through the SAF group

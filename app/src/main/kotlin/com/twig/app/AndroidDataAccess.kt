@@ -63,6 +63,9 @@ class AndroidDataAccess(private val ctx: Context) {
         return Tree(grant)
     }
 
+    /** Preserve the underlying document URI when handing a routed local file to an editor. */
+    internal fun documentFor(file: XFile): XFile? = (route(file.path) as? Tree)?.remote(file)
+
     /** Only existing grants are shown when Android refuses the parent listing; never invent installed-app folders. */
     fun grantedFolders(root: XFile): List<XFile> = grants.mapNotNull { grant ->
         val relative = grant.path.removePrefix(File(root.path).canonicalPath + "/")
@@ -134,7 +137,7 @@ class AndroidDataAccess(private val ctx: Context) {
     private inner class Tree(private val grant: Grant) : FileSystem by saf {
         override val scheme = LocalFileSystem.SCHEME
         override val displayName = "Local storage"
-        private fun remote(file: XFile): XFile {
+        fun remote(file: XFile): XFile {
             val path = File(file.path).canonicalPath
             if (path != grant.path && !path.startsWith(grant.path + "/")) throw FsException(ctx.getString(R.string.android_data_wrong_folder))
             val suffix = path.removePrefix(grant.path)

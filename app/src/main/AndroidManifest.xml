@@ -107,6 +107,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="*/*" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.EDIT" />
+            <data android:mimeType="*/*" />
+        </intent>
         <!-- ★ Without this declaration, on targetSdk 30+ Shizuku's
              pingBinder / version-query always fails — symptom is "Shizuku is
              installed but the app says it's not" — package visibility keeps

@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.net.Uri
 import android.webkit.MimeTypeMap
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -206,56 +207,82 @@ object OpenFiles {
     }
 
     /**
-     * Open with another app (via [StreamProvider] for streamed authorization —
-     * any source works without caching the whole file, and external players can
-     * seek).
-     *
-     * [forceChooser]=false: startActivity directly; the system shows its resolver
-     * ("just once / always", or opens directly if a default app is set); true:
-     * force the full chooser (ignore default, no "always").
+     * Build one hand-off policy for the resolver, pinned shortcuts and explicit apps.
+     * Editing is limited to documents and text whose original local/SAF handle accepts writes.
      */
-    fun openWith(context: Context, file: XFile, forceChooser: Boolean = false): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    internal fun externalIntent(context: Context, file: XFile): Intent {
+        var target = StreamProvider.uriFor(context, file)
+        var edit = false
+        if (isDoc(file) || isText(file)) {
+            val document = when (file.scheme) {
+                SafFileSystem.SCHEME -> file
+                "file" -> runCatching { AndroidDataAccess.instance?.documentFor(file) }.getOrNull()
+                else -> null
+            }
+            if (document != null && SafFileSystem(context).supportsEditing(document)) {
+                target = Uri.parse(document.path)
+                edit = true
+            } else if (file.scheme == "file" && !file.isDir && directlyReadable(file) && File(file.path).canWrite()) {
+                target = StreamProvider.uriForLocalEdit(context, file)
+                edit = true
+            }
         }
-        return try {
-            context.startActivity(
-                if (forceChooser) {
-                    Intent.createChooser(intent, context.getString(R.string.open_with_external))
-                } else intent,
-            )
+        return Intent(if (edit) Intent.ACTION_EDIT else Intent.ACTION_VIEW).apply {
+            setDataAndType(target, mimeOf(file.name))
+            clipData = ClipData.newRawUri(file.name, target)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (edit) addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        }
+    }
+
+    /** System resolver/default app, or a forced chooser. Fall back for view-only apps. */
+    fun openWith(context: Context, file: XFile, forceChooser: Boolean = false): Boolean {
+        val intent = externalIntent(context, file)
+        fun launch(): Boolean = try {
+            context.startActivity(if (forceChooser) {
+                Intent.createChooser(intent, context.getString(R.string.open_with_external))
+            } else intent)
             true
-        } catch (e: ActivityNotFoundException) {
+        } catch (_: ActivityNotFoundException) {
             false
         }
+        // A chooser can launch even when its target action has no handlers.
+        if (intent.action == Intent.ACTION_EDIT && viewers(context, intent).isEmpty()) {
+            intent.action = Intent.ACTION_VIEW
+        }
+        if (launch()) return true
+        if (intent.action != Intent.ACTION_EDIT) return false
+        intent.action = Intent.ACTION_VIEW
+        return launch()
     }
 
-    /**
-     * Candidate apps for viewing this file (excluding Twig itself) — used to let the user
-     * pick one **up front** when pinning a "with this app" desktop shortcut. A shortcut has
-     * no chance to show the system resolver's "just once / always" dialog on every tap the
-     * way [openWith] does, so the choice has to be made once, at creation time, and baked in.
-     */
-    fun resolveViewers(context: Context, file: XFile): List<ResolveInfo> {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
-        }
-        return context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+    private fun viewers(context: Context, intent: Intent): List<ResolveInfo> =
+        context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             .filter { it.activityInfo.packageName != context.packageName }
+
+    /** Editors first, followed by view-only apps, with each component offered once. */
+    fun resolveViewers(context: Context, file: XFile): List<ResolveInfo> {
+        val intent = externalIntent(context, file)
+        val preferred = viewers(context, intent)
+        val fallback = if (intent.action == Intent.ACTION_EDIT) {
+            viewers(context, Intent(intent).setAction(Intent.ACTION_VIEW))
+        } else emptyList()
+        return (preferred + fallback).distinctBy { it.activityInfo.packageName to it.activityInfo.name }
     }
 
-    /** Open with one specific, already-chosen app (see [resolveViewers]) — no resolver, no "always" prompt, straight to that component. */
+    /** Open with one specific app, using EDIT only when that component handles it. */
     fun openWithComponent(context: Context, file: XFile, component: ComponentName): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(StreamProvider.uriFor(context, file), mimeOf(file.name))
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            setComponent(component)
+        val intent = externalIntent(context, file)
+        if (intent.action == Intent.ACTION_EDIT && viewers(context, intent).none {
+                it.activityInfo.packageName == component.packageName && it.activityInfo.name == component.className
+            }) {
+            intent.action = Intent.ACTION_VIEW
         }
+        intent.component = component
         return try {
             context.startActivity(intent)
             true
-        } catch (e: ActivityNotFoundException) {
+        } catch (_: ActivityNotFoundException) {
             false
         }
     }

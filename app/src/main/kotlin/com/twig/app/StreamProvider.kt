@@ -28,7 +28,8 @@ import java.io.File
  * with..."), without caching the whole file first — *when* the source can
  * actually do positional reads cheaply.
  *
- * - Local files return a real fd directly;
+ * - Local files return a real fd directly; only separately signed local-edit URIs
+ *   allow writing, and only while the path is directly readable and writable;
  * - Virtual sources on API 26+ use openProxyFileDescriptor (a FUSE-backed
  *   seekable proxy fd: the external player's seek bar becomes a positional
  *   read via openRandom) **when the source reports true random access**
@@ -78,7 +79,7 @@ class StreamProvider : ContentProvider() {
         selectionArgs: Array<String>?,
         sortOrder: String?,
     ): Cursor {
-        val f = decode(ctx(), uri)
+        val f = decode(ctx(), uri).file
         val cols = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         return MatrixCursor(cols, 1).apply {
             addRow(cols.map {
@@ -93,8 +94,14 @@ class StreamProvider : ContentProvider() {
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         val ctx = ctx()
-        if ("w" in mode) throw SecurityException(ctx.getString(R.string.stream_read_only))
-        val f = decode(ctx, uri)
+        val handle = decode(ctx, uri)
+        val f = handle.file
+        if ("w" in mode) {
+            if (!handle.localEdit || !OpenFiles.directlyReadable(f) || !File(f.path).canWrite()) {
+                throw SecurityException(ctx.getString(R.string.stream_read_only))
+            }
+            return ParcelFileDescriptor.open(File(f.path), ParcelFileDescriptor.parseMode(mode))
+        }
         if (OpenFiles.directlyReadable(f)) {
             return ParcelFileDescriptor.open(File(f.path), ParcelFileDescriptor.MODE_READ_ONLY)
         }
@@ -208,35 +215,49 @@ class StreamProvider : ContentProvider() {
             return Base64.encodeToString(mac.doFinal(token.toByteArray()).copyOf(16), B64)
         }
 
-        fun uriFor(context: Context, f: XFile): Uri {
-            val token = Base64.encodeToString(
-                "${f.scheme}\n${f.size}\n${f.name}\n${f.path}".toByteArray(), B64,
-            )
-            val sig = sign(context, token)
-            return Uri.parse(
-                "content://${context.packageName}.stream/$token/$sig/${Uri.encode(f.name)}",
-            )
+        fun uriFor(context: Context, f: XFile): Uri = uriFor(context, f, localEdit = false)
+
+        /** A separate signed capability; ordinary share/view URIs remain read-only. */
+        internal fun uriForLocalEdit(context: Context, f: XFile): Uri {
+            require(!f.isDir && OpenFiles.directlyReadable(f) && File(f.path).canWrite())
+            return uriFor(context, f.copy(path = File(f.path).canonicalPath), localEdit = true)
         }
 
-        private fun decode(ctx: Context, uri: Uri): XFile {
+        private fun uriFor(context: Context, f: XFile, localEdit: Boolean): Uri {
+            // Editing tokens escape the name so embedded newlines cannot shift the path field.
+            val name = if (localEdit) Uri.encode(f.name) else f.name
+            val token = Base64.encodeToString(
+                "${f.scheme}\n${f.size}\n$name\n${f.path}".toByteArray(), B64,
+            )
+            val sig = sign(context, if (localEdit) "local-edit:$token" else token)
+            return Uri.parse(
+                "content://${context.packageName}.stream/$token/$sig/${Uri.encode(f.name)}",
+            ).let { if (localEdit) it.buildUpon().appendQueryParameter("edit", "1").build() else it }
+        }
+
+        private data class Handle(val file: XFile, val localEdit: Boolean)
+
+        private fun decode(ctx: Context, uri: Uri): Handle {
             val segs = uri.pathSegments
             if (segs.size < 3) throw SecurityException(ctx.getString(R.string.stream_bad_uri))
             val token = segs[0]
             // Constant-time: the signature is the only thing standing between a caller and
             // any file on any connected server.
-            val expected = sign(ctx, token).toByteArray()
+            val localEdit = uri.getQueryParameter("edit") == "1"
+            val expected = sign(ctx, if (localEdit) "local-edit:$token" else token).toByteArray()
             if (!java.security.MessageDigest.isEqual(expected, segs[1].toByteArray())) {
                 throw SecurityException(ctx.getString(R.string.stream_bad_token))
             }
             val parts = String(Base64.decode(token, B64)).split("\n", limit = 4)
             require(parts.size == 4) { ctx.getString(R.string.stream_bad_token) }
-            return XFile(
+            if (localEdit && parts[0] != "file") throw SecurityException(ctx.getString(R.string.stream_bad_token))
+            return Handle(XFile(
                 scheme = parts[0],
                 path = parts[3],
                 isDir = false,
                 size = parts[1].toLongOrNull() ?: 0L,
-                displayName = parts[2],
-            )
+                displayName = if (localEdit) Uri.decode(parts[2]) else parts[2],
+            ), localEdit)
         }
     }
 }

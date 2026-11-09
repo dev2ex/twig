@@ -186,6 +186,14 @@ class SafFileSystem(context: Context) : FileSystem {
             if (c.moveToFirst()) c.getString(0) else null
         }
 
+    /** Content editing needs SUPPORTS_WRITE, not merely rename/delete capability. */
+    internal fun supportsEditing(file: XFile): Boolean = !file.isDir && runCatching {
+        val uri = Uri.parse(file.path)
+        writableGrant(uri) && resolver.query(uri, arrayOf(Document.COLUMN_FLAGS), null, null, null)?.use {
+            it.moveToFirst() && it.getInt(0) and Document.FLAG_SUPPORTS_WRITE != 0
+        } == true
+    }.getOrDefault(false)
+
     private fun writableGrant(uri: Uri): Boolean = resolver.persistedUriPermissions.any { permission ->
         permission.isWritePermission && permission.uri.authority == uri.authority && runCatching {
             DocumentsContract.getTreeDocumentId(permission.uri) == DocumentsContract.getTreeDocumentId(uri)
