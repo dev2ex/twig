@@ -1011,6 +1011,7 @@ class PaneFragment : Fragment() {
             }
             ticker.cancel()
             if (_b == null || !mapMode) return@launch
+            if (root != null) viewModel.retainUsage(target, root)
             if (root == null || root.children.isNullOrEmpty()) {
                 b.mapStatus.text = getString(
                     if (root == null) R.string.treemap_failed else R.string.treemap_empty,

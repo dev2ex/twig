@@ -130,6 +130,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val gridMode: Int = -1,
         /** Synthetic children are independent of the directory's visible file count. */
         val hasVirtualChildren: Boolean = false,
+        val usage: Usage? = null,
     ) : Node {
         override val key: String get() = keyPrefix + fileKey(file)
     }
@@ -587,6 +588,72 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun directoryViewParent(dir: XFile): XFile? =
         if (dir.path.startsWith("/")) DirectoryViewStore.pathParent(dir)
         else directoryViewParents[fileKey(dir)]
+
+    /** Scan totals belong to this pane's visible branch, never to saved sort preferences. */
+    data class Usage(val bytes: Long, val fraction: Float)
+    private data class UsageEntry(val value: Usage, val parent: String?)
+    private data class UsageBranch(
+        val anchor: String,
+        val ancestors: Set<String>,
+        val entries: MutableMap<String, UsageEntry>,
+    )
+    private val usageBranches = ArrayList<UsageBranch>()
+
+    fun retainUsage(target: XFile, root: TreemapEntry) {
+        fun matches(row: Node): Boolean =
+            when (row) {
+                is FileNode -> row.file.scheme == target.scheme && row.file.path == target.path
+                else -> (mountRoots[row.key] ?: keyFile[row.key])?.let {
+                    it.scheme == target.scheme && it.path == target.path
+                } == true
+            }
+        val anchor = state.value.rows.firstOrNull { it.key == currentKey && matches(it) }
+            ?: state.value.rows.firstOrNull(::matches) ?: return
+        val prefix = (anchor as? FileNode)?.keyPrefix ?: ""
+        val entries = LinkedHashMap<String, UsageEntry>()
+        fun collect(entry: TreemapEntry, key: String, parent: String?, total: Long) {
+            entries[key] = UsageEntry(Usage(entry.size,
+                if (parent != null && total > 0) (entry.size.toDouble() / total).toFloat().coerceIn(0f, 1f) else 0f), parent)
+            entry.children?.forEach { collect(it, prefix + fileKey(it.file), key, entry.size) }
+        }
+        collect(root, anchor.key, null, root.size)
+        // A new scan replaces overlapping totals, including previously pruned descendants.
+        usageBranches.forEach { branch -> branch.entries.keys.removeAll(entries.keys) }
+        usageBranches.removeAll { it.entries.isEmpty() }
+        usageBranches.add(UsageBranch(anchor.key, ancestorKeysOf(anchor.key), entries))
+        rebuild()
+    }
+
+    private fun usageOf(key: String): Usage? =
+        usageBranches.firstNotNullOfOrNull { it.entries[key]?.value }
+
+    private fun pruneUsage() {
+        if (usageBranches.isEmpty()) return
+        val collapsed = state.value.rows.filter { row ->
+            when (row) {
+                is FileNode -> row.expanded
+                is GroupNode -> row.expanded
+                is FavoriteNode -> row.expanded
+                is ServerNode -> row.expanded
+                else -> false
+            } && row.key !in expanded
+        }.mapTo(HashSet()) { it.key }
+        if (collapsed.isEmpty()) return
+        usageBranches.removeAll { branch ->
+            if (branch.ancestors.any { it in collapsed }) return@removeAll true
+            // Entries were inserted parent-first, so one pass removes entire folded subtrees.
+            val removed = HashSet<String>()
+            val iterator = branch.entries.iterator()
+            while (iterator.hasNext()) {
+                val (key, entry) = iterator.next()
+                if (entry.parent in collapsed || entry.parent in removed) {
+                    removed.add(key)
+                    iterator.remove()
+                }
+            }
+            branch.entries.isEmpty()
+        }
+    }
 
     /** Whether to show hidden files; refreshed at the top of every [rebuild]. */
     private var showHidden = Prefs.showHidden(getApplication())
@@ -1818,6 +1885,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Collapse every branch and abandon pending expansions without discarding cached listings. */
     fun collapseAll() {
+        usageBranches.clear()
         pendingSqliteSearch.clear()
         pendingSqliteSql.clear()
         abandoned.addAll(loadingKeys)
@@ -3319,6 +3387,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Building the tree ----
 
     private fun rebuild() {
+        pruneUsage()
         val trashEnabled = Prefs.trashEnabled(getApplication())
         if (trashEnabled && !trashPresenceLoaded && trashRefresh?.isActive != true) refreshTrashRoot()
         if (!trashEnabled) {
@@ -3416,6 +3485,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows.filterIsInstance<FileNode>().firstOrNull {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
+        val liveKeys = rows.mapTo(HashSet()) { it.key }
+        usageBranches.removeAll { it.anchor !in liveKeys }
         val databases = rows.filterIsInstance<FileNode>().filter { isSqlite(it.file, it.key) }
         sqliteTree.retain(databases.filter { it.expanded }.mapTo(HashSet()) { it.key }, databases.mapTo(HashSet()) { it.key })
         _state.value = State(rows, currentDir, currentKey, _state.value.error, null, null,
@@ -3451,6 +3522,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             label, capacity, busy(key) || sqliteTree.loading(key), rowPrefix,
             DirectoryCounts.known(file, showHidden),
             gridMode,
+            usage = usageOf(key),
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )
@@ -3484,7 +3556,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun addListedFiles(rows: MutableList<Node>, key: String, depth: Int, keyPrefix: String = "") {
         val grid = DirectoryViewStore.resolve(directoryViews, mountRoots[key] ?: keyFile[key], parentOf = ::directoryViewParent).gridMode
             ?: defaultGridMode
-        visible(children[key]).forEach { addFile(rows, it, depth, keyPrefix = keyPrefix, gridMode = grid) }
+        val listed = visible(children[key])
+        val ordered = if (listed.any { usageOf(keyPrefix + fileKey(it)) != null })
+            listed.sortedByDescending { usageOf(keyPrefix + fileKey(it))?.bytes ?: -1L }
+        else listed
+        ordered.forEach { addFile(rows, it, depth, keyPrefix = keyPrefix, gridMode = grid) }
     }
 
     /**

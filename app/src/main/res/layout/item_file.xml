@@ -7,6 +7,13 @@
     android:descendantFocusability="beforeDescendants"
     android:background="@drawable/row_bg">
 
+    <com.twig.app.ui.UsageBarView
+        android:id="@+id/usage_bar"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:duplicateParentState="true"
+        android:importantForAccessibility="no" />
+
     <LinearLayout
         android:id="@+id/row_content"
         android:layout_width="match_parent"

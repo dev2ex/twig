@@ -998,6 +998,7 @@ class FileAdapter(
             b.rowContent.setPaddingRelative(
                 ((2 + (node.depth - indentOffset).coerceAtLeast(0f) * 14) * dpi).toInt(), 0, 0, 0,
             )
+            b.usageBar.fraction = (node as? PaneViewModel.FileNode)?.usage?.fraction ?: 0f
             // Reset reusable state
             b.check.setOnLongClickListener(null)
             b.check.isLongClickable = false
@@ -1328,14 +1329,14 @@ class FileAdapter(
                 if (Prefs.folderCountsFor(ctx, file.scheme)) b.folderCounts.visibility = View.INVISIBLE
             }
             setMeta(
-                node.capacity ?: when {
+                node.usage?.let { usageMeta(file, it.bytes) } ?: node.capacity ?: when {
                     file.isDir -> dateMeta(file)
                     else -> fileMeta(file)
                 },
             )
             // A source that cannot report a size in its listing (media server photos) is asked
             // for this row's, in the background; the answer rewrites this row's meta line only.
-            if (node.capacity == null) {
+            if (node.capacity == null && node.usage == null) {
                 SizeProbes.request(b.meta, file) { bytes -> setMeta(fileMeta(file, bytes)) }
             }
             // ★★ Do **not touch `imageTintList` here** (bitten on 2026-08-19):
@@ -1535,6 +1536,14 @@ class FileAdapter(
          *
          * Returns null when the entry has neither (virtual git entries etc.), which hides the line.
          */
+        private fun usageMeta(file: XFile, bytes: Long): CharSequence {
+            val text = SpannableStringBuilder(Format.size(bytes))
+            text.setSpan(ForegroundColorSpan(ContextCompat.getColor(b.root.context, R.color.row_meta)),
+                0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            dateMeta(file)?.let { text.append("  ").append(it) }
+            return text
+        }
+
         private fun fileMeta(file: XFile, bytes: Long = SizeProbes.known(file)): CharSequence? {
             if (file.scheme == "trash") return dateMeta(file)
             // When size is unknown (media servers don't give byte counts for photos) don't show the whole segment, don't write "0 B"
