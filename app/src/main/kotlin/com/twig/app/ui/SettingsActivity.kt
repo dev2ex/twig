@@ -579,8 +579,12 @@ class SettingsActivity : TwigActivity() {
         val toolbarVisible = !Prefs.hideTitleBarPortrait(this)
         toolbarAtBottomRow.alpha = if (toolbarVisible) 1f else 0.4f
         setEnabledDeep(toolbarAtBottomRow, toolbarVisible)
-        folderCountsLocalOnlyRow.visibility = if (Prefs.folderCounts(this)) View.VISIBLE else View.GONE
-        unixPermissionsOctalRow.visibility = if (Prefs.unixPermissions(this)) View.VISIBLE else View.GONE
+        val countsEnabled = Prefs.folderCounts(this)
+        folderCountsLocalOnlyRow.alpha = if (countsEnabled) 1f else 0.4f
+        setEnabledDeep(folderCountsLocalOnlyRow, countsEnabled)
+        val permissionsEnabled = Prefs.unixPermissions(this)
+        unixPermissionsOctalRow.alpha = if (permissionsEnabled) 1f else 0.4f
+        setEnabledDeep(unixPermissionsOctalRow, permissionsEnabled)
         val on = Prefs.thumbs(this)
         thumbRows.forEach { row ->
             row.alpha = if (on) 1f else 0.4f
