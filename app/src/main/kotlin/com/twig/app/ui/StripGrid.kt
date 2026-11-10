@@ -38,7 +38,7 @@ class StripGrid @JvmOverloads constructor(
             }
         }
 
-    /** Strip buttons use automatic positions and equal-width columns in both orientations. */
+    /** Strip buttons use equal-width columns in both orientations. */
     fun setColumns(columns: Int) {
         if (columnCount == columns) return
         // GridLayout writes assigned indices back into its child specs during layout.
@@ -72,6 +72,26 @@ class StripGrid @JvmOverloads constructor(
                 View.VISIBLE else View.GONE
             addView(child)
         }
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // GridLayout's automatic placement counts GONE children too. Assign cells
+        // from visible order on every measure, including after visibility changes.
+        var position = 0
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            val visible = child.visibility != View.GONE
+            val row = spec(if (visible) position / columnCount else 0)
+            val column = spec(if (visible) position % columnCount else 0, FILL, if (visible) 1f else 0f)
+            val params = child.layoutParams as LayoutParams
+            if (params.rowSpec != row || params.columnSpec != column) {
+                params.rowSpec = row
+                params.columnSpec = column
+                child.layoutParams = params
+            }
+            if (visible) position++
+        }
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
     override fun dispatchDraw(canvas: Canvas) {

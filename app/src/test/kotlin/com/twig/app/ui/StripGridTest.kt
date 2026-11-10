@@ -22,6 +22,41 @@ class StripGridTest {
         grid.layout(0, 0, grid.measuredWidth, grid.measuredHeight)
     }
 
+    private fun assertPacked(grid: StripGrid, columns: Int) {
+        val visible = (0 until grid.childCount).map { grid.getChildAt(it) }
+            .filter { it.visibility != View.GONE }
+        visible.forEachIndexed { index, child ->
+            assertEquals("column of visible button $index", index % columns * 52, child.left)
+            assertEquals("row of visible button $index", visible[index / columns * columns].top, child.top)
+            assertEquals(52, child.width)
+            if (index >= columns) assertEquals(visible[index - columns].bottom, child.top)
+        }
+    }
+
+    @Test fun `hidden buttons leave no gaps before or after layout and rotation`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val strip = ActionStripBinding.inflate(LayoutInflater.from(ContextThemeWrapper(app, R.style.Theme_Twig)))
+        for (grid in listOf(strip.asGrid, strip.asTop)) {
+            grid.visibility = View.VISIBLE
+            grid.setColumns(2)
+            layout(grid, 2)
+            assertPacked(grid, 2)
+            val hidden = grid.getChildAt(1)
+            hidden.visibility = View.GONE
+            layout(grid, 2)
+            assertPacked(grid, 2)
+            grid.setColumns(1)
+            layout(grid, 1)
+            assertPacked(grid, 1)
+            grid.setColumns(2)
+            layout(grid, 2)
+            assertPacked(grid, 2)
+            hidden.visibility = View.VISIBLE
+            layout(grid, 2)
+            assertPacked(grid, 2)
+        }
+    }
+
     @Test fun `measured action grids can repeatedly shrink to one column without losing button state`() {
         val app = ApplicationProvider.getApplicationContext<Application>()
         val strip = ActionStripBinding.inflate(LayoutInflater.from(ContextThemeWrapper(app, R.style.Theme_Twig)))
@@ -83,8 +118,11 @@ class StripGridTest {
                 assertEquals(52, strip.asInfo.width)
                 strip.asGrid.setColumns(2)
                 layout(strip.asGrid, 2)
+                assertPacked(strip.asGrid, 2)
             }
             strip.asGrid.applyItems(setOf("up", "info", "search"))
+            layout(strip.asGrid, 2)
+            assertPacked(strip.asGrid, 2)
             assertEquals(View.GONE, strip.asCopy.visibility)
             assertEquals(View.VISIBLE, strip.asInfo.visibility)
             strip.asInfo.performClick()

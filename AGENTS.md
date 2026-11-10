@@ -511,7 +511,8 @@ its listing size must still describe the followed stream for copy/resume checks.
   the main menu uses drag handles and shared visibility choices.
   Order and visibility live in `twig_prefs` and are included in configuration backups. `StripGrid.applyItems`
   reorders existing views while resetting GridLayout specs; retain listeners and
-  orientation changes. Main and picker screens apply the same configuration, with
+  orientation changes. `StripGrid` assigns cells from visible order during measurement:
+  GridLayout's automatic placement counts GONE children and leaves gaps. Main and picker screens apply the same configuration, with
   pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
   Duplicate defaults to hidden; tapping confirms editable copy names, while holding
   copies selected entries immediately into their own parents with `_1`, `_2`, … suffixes.
