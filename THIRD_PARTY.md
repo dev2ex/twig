@@ -11,7 +11,7 @@ below are otherwise common to both, except optional libnfs, included only
 when building with `-PwithNfs=true`.
 
 This file inventories every third-party component Twig uses, as of
-**1.18.0 (versionCode 319)**. Keep it in sync when dependencies change.
+**1.18.1 (versionCode 322)**. Keep it in sync when dependencies change.
 
 ---
 

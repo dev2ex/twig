@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.18.0** (versionCode 319) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.18.1** (versionCode 322) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 <p align="center">
@@ -334,8 +334,12 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 - **Readable system directories** such as `/system` and `/vendor` remain reachable
   when Android blocks listing `/`; access to their contents still follows system
   permissions.
+- Display settings can show only the current user’s internal storage, skipping discovery
+  of other shared profiles.
 - **Treemap disk usage** (SpaceSniffer style) embedded in the pane, pinch to zoom,
-  with a reset-zoom button and the same long-press actions as the tree.
+  with a reset-zoom button and the same long-press actions as the tree. Returning to the tree
+  retains recursive sizes, proportional backgrounds and descending size order. Child folding
+  retains the scan; folding its target or an ancestor clears it. Analyzed rows temporarily use list view.
 - **SD cards and USB drives** get their own rows at the root, named and sized by the
   system. No new permission — a volume the ordinary APIs cannot read can be granted
   through SAF or reached with elevation.
@@ -467,7 +471,11 @@ all work the same way.
   then strict UTF-8, then the fallbacks you ordered (GB18030 by default). Editing is not
   limited to UTF-8 — a file is written back in the encoding it was read with, and if the
   original encoding cannot represent something you typed, Twig asks instead of silently
-  substituting `?`
+  substituting `?`. The viewer’s encoding menu can reopen a file with a chosen encoding
+  and remember that choice; Auto restores normal detection.
+- Writable local and SAF documents and text files open in external editors with save-back
+  access. Apps without an edit handler use viewing; Twig’s own network and archive sources
+  continue to provide read-only handles.
 - Hex viewer with virtual scrolling, a draggable scrollbar and text/HEX search
 - **PDF reader** on the platform renderer: continuous or single-page scrolling,
   double-tap to crop the page margins away, text selection, and full-text search

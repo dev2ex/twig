@@ -9,20 +9,20 @@ The 1.18.0 libre APK measures 10.88 MiB for arm64-v8a and x86_64 together, inclu
 <b>Features</b>
 
 <ul>
-<li>Single/dual panes in either orientation; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and per-folder views</li>
+<li>Single/dual panes; checkbox range selection; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and per-folder views</li>
 <li>Choose copy/move targets in the opposite pane; numbered duplicates; background transfers, retry and resume; local trash with batch restore/purge</li>
 <li>Dual-pane file picking and shared file/text saving; cache remote selections and shares</li>
 <li>Batch rename with text/regex replacement, numbering and previews</li>
 <li>Read/create encrypted ZIP/7z; compression levels, optional 7z name encryption and saving beside sources; browse tar and gz/xz/bz2/zst</li>
 <li>Folder compare and sync between any two sources</li>
 <li>SQLite tables in the tree: search, sort, filter, read-only SQL, BLOB hex previews and CSV export</li>
-<li>Disk usage treemap with pinch zoom; bottom toolbar, Back navigation/exit choices, completion vibration and foreground notifications</li>
+<li>Disk usage treemap with pinch zoom and scanned sizes/usage bars in the tree; bottom toolbar, Back navigation/exit choices, completion vibration and foreground notifications</li>
 <li>Private space excluded from backups and configuration exports; files are deleted when Twig is uninstalled</li>
-<li>Text editing with syntax highlighting and original encoding; hex, PDF (passwords on Android 15+), SVG, image and media viewers; GIF/animated WebP on Android 9+; image selection sync; subtitle size/color and video control auto-hide</li>
-<li>Music playlists, M3U/folder imports, synced lyrics and background playback</li>
+<li>Text editing with syntax highlighting and per-file encoding choices; external editing of writable local/SAF documents; hex, PDF (passwords on Android 15+), SVG, image and media viewers; GIF/animated WebP on Android 9+; image selection sync; subtitle size/color and video control auto-hide</li>
+<li>Music playlists, M3U imports, lyrics and background playback</li>
 <li>Git status, history, side-by-side diff, worktrees and submodules for local and remote repositories</li>
 <li>Local, SSH and privileged terminals with multiple sessions, idle dimming and locating the shell directory in the tree</li>
-<li>File, folder, website and terminal/command shortcuts; path buttons and automatic tree indentation; long-press actions for browsing, music and terminals</li>
+<li>File, folder, website and terminal shortcuts; path buttons and automatic tree indentation; long-press actions for browsing, music and terminals</li>
 <li>Wi-Fi sharing: Twig becomes an HTTP and WebDAV server, so a desktop can mount it</li>
 <li>Website bookmarks, home-screen shortcuts, per-site display settings, JavaScript/CSS, element hiding, resource blocking and debugging; configurable web search and shared domain settings</li>
 <li>Website downloads and optional background sessions</li>
@@ -35,7 +35,7 @@ The 1.18.0 libre APK measures 10.88 MiB for arm64-v8a and x86_64 together, inclu
 <ul>
 <li>Read-only restic backups decrypted on-device, with snapshots as dated folders and recent snapshot locations.</li>
 <li>Videos recognized as a series share remembered opening/ending skip marks; Continue Watching retains the next episode.</li>
-<li>Network MP4/MKV thumbnails fetch keyframes through container indexes</li>
+<li>Network MP4/MKV thumbnails fetch keyframes through container indexes.</li>
 <li>Blu-ray M2TS, DTS-HD Master Audio, TrueHD AC-3 cores and PGS subtitles.</li>
 <li>Jellyfin/Emby playback progress syncs to the server; posters, tags, lyrics and external subtitles come from its API.</li>
 </ul>
