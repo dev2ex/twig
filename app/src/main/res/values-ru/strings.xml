@@ -1216,6 +1216,8 @@
     <string name="strip_duplicate">Дубликат</string>
     <string name="settings_hide_path_bar_single_pane">Скрывать адресную строку в однопанельном режиме</string>
     <string name="settings_hide_path_bar_single_pane_desc">Показывать адресную строку в двухпанельном режиме</string>
+    <string name="settings_path_bar_bottom">Адресная строка внизу</string>
+    <string name="settings_path_bar_bottom_desc">Показывать адресную строку под списком файлов</string>
     <string name="settings_pane_layout">Расположение панелей</string>
     <string name="pane_layout_follow_orientation">По ориентации экрана</string>
     <string name="pane_layout_single">Одна панель</string>

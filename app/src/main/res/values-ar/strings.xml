@@ -1184,6 +1184,8 @@
     <string name="strip_duplicate">تكرار</string>
     <string name="settings_hide_path_bar_single_pane">إخفاء شريط العنوان في وضع اللوحة الواحدة</string>
     <string name="settings_hide_path_bar_single_pane_desc">إبقاء شريط العنوان ظاهرًا في وضع اللوحتين</string>
+    <string name="settings_path_bar_bottom">شريط العنوان في الأسفل</string>
+    <string name="settings_path_bar_bottom_desc">عرض شريط العنوان أسفل قائمة الملفات</string>
     <string name="settings_pane_layout">تخطيط اللوحات</string>
     <string name="pane_layout_follow_orientation">اتباع اتجاه الشاشة</string>
     <string name="pane_layout_single">لوحة واحدة</string>

@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">Dupliquer</string>
     <string name="settings_hide_path_bar_single_pane">Masquer la barre d’adresse avec un seul volet</string>
     <string name="settings_hide_path_bar_single_pane_desc">Garder la barre d’adresse visible avec deux volets</string>
+    <string name="settings_path_bar_bottom">Barre d’adresse en bas</string>
+    <string name="settings_path_bar_bottom_desc">Afficher la barre d’adresse sous la liste des fichiers</string>
     <string name="settings_pane_layout">Disposition des volets</string>
     <string name="pane_layout_follow_orientation">Suivre l’orientation de l’écran</string>
     <string name="pane_layout_single">Un volet</string>

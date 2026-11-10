@@ -282,6 +282,11 @@ class SettingsActivity : TwigActivity() {
             get = { Prefs.hidePathBarSinglePane(this) },
             set = { Prefs.setHidePathBarSinglePane(this, it) },
         )
+        switchRow(
+            getString(R.string.settings_path_bar_bottom), getString(R.string.settings_path_bar_bottom_desc),
+            get = { Prefs.pathBarAtBottom(this) },
+            set = { Prefs.setPathBarAtBottom(this, it) },
+        )
         choiceRow(
             getString(R.string.settings_back_action),
             arrayOf(

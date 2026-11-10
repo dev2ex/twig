@@ -43,6 +43,8 @@ class PaneDisplayModeTest {
         shadowOf(app).grantPermissions(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE,
             "${app.packageName}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
         Prefs.setRememberLocation(app, false)
+        Prefs.setPathBarAtBottom(app, false)
+        Prefs.setHidePathBarSinglePane(app, false)
     }
 
     private fun measure(activity: AppCompatActivity, dual: Boolean) {
@@ -98,7 +100,30 @@ class PaneDisplayModeTest {
             assertEquals(if (hidden) View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO,
                 container.importantForAccessibility)
         }
+        verifyPathBars(panes)
         assertEquals(dir, left.viewModel.currentDir)
+    }
+
+    private fun verifyPathBars(panes: List<PaneFragment>) {
+        for (pane in panes) {
+            val root = pane.requireView() as android.view.ViewGroup
+            val bar = root.findViewById<View>(R.id.path_bar)
+            val content = root.findViewById<View>(R.id.list).parent as View
+            val bottom = Prefs.pathBarAtBottom(app)
+            assertEquals(if (bottom) root.childCount - 1 else 0, root.indexOfChild(bar))
+            val hidden = Prefs.hidePathBarSinglePane(app) && !Prefs.dualPane(app)
+            assertEquals(if (hidden) View.GONE else View.VISIBLE, bar.visibility)
+            if (!hidden) {
+                assertTrue(content.height > 0)
+                if (bottom) {
+                    assertEquals(content.bottom, bar.top)
+                    assertEquals(root.height, bar.bottom)
+                } else {
+                    assertEquals(0, bar.top)
+                    assertEquals(bar.bottom, content.top)
+                }
+            }
+        }
     }
 
     private fun verifyHosts(mode: Int, dual: Boolean, landscape: Boolean) {
@@ -120,6 +145,13 @@ class PaneDisplayModeTest {
     }
 
     @Test @Config(qualifiers = "port") fun `portrait dual panes retain toolbar touch focus and both count subscriptions across recreation`() {
+        verifyHosts(Prefs.PANE_LAYOUT_DUAL, dual = true, landscape = false)
+    }
+
+    @Test @Config(qualifiers = "port") fun `bottom address bars sit below both file lists across hosts and recreation`() {
+        val signature = Prefs.uiSignature(app)
+        Prefs.setPathBarAtBottom(app, true)
+        assertNotEquals(signature, Prefs.uiSignature(app))
         verifyHosts(Prefs.PANE_LAYOUT_DUAL, dual = true, landscape = false)
     }
 
@@ -149,6 +181,8 @@ class PaneDisplayModeTest {
                 for (mode in listOf(Prefs.PANE_LAYOUT_DUAL, Prefs.PANE_LAYOUT_SINGLE, Prefs.PANE_LAYOUT_FOLLOW_ORIENTATION)) {
                     controller.pause().stop()
                     Prefs.setPaneLayout(app, mode)
+                    Prefs.setPathBarAtBottom(app, mode != Prefs.PANE_LAYOUT_FOLLOW_ORIENTATION)
+                    Prefs.setHidePathBarSinglePane(app, mode == Prefs.PANE_LAYOUT_SINGLE)
                     controller.start().resume()
                     idle()
                     assertTrue(host.isPaneActive(right))
@@ -156,6 +190,7 @@ class PaneDisplayModeTest {
                     assertEquals(destination, right.viewModel.currentDir)
                     assertTrue(activity.findViewById<View>(R.id.btn_confirm).isEnabled)
                     measure(activity, mode == Prefs.PANE_LAYOUT_DUAL)
+                    verifyPathBars(panes)
                 }
             } finally { controller.pause().stop().destroy() }
         }

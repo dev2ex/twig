@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">Duplicar</string>
     <string name="settings_hide_path_bar_single_pane">Ocultar barra de endereços com um painel</string>
     <string name="settings_hide_path_bar_single_pane_desc">Manter a barra de endereços visível com dois painéis</string>
+    <string name="settings_path_bar_bottom">Barra de endereços embaixo</string>
+    <string name="settings_path_bar_bottom_desc">Mostrar a barra de endereços abaixo da lista de arquivos</string>
     <string name="settings_pane_layout">Layout dos painéis</string>
     <string name="pane_layout_follow_orientation">Seguir orientação da tela</string>
     <string name="pane_layout_single">Um painel</string>

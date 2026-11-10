@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">Duplicar</string>
     <string name="settings_hide_path_bar_single_pane">Ocultar barra de direcciones con un panel</string>
     <string name="settings_hide_path_bar_single_pane_desc">Mantener la barra de direcciones visible con dos paneles</string>
+    <string name="settings_path_bar_bottom">Barra de direcciones abajo</string>
+    <string name="settings_path_bar_bottom_desc">Mostrar la barra de direcciones debajo de la lista de archivos</string>
     <string name="settings_pane_layout">Diseño de paneles</string>
     <string name="pane_layout_follow_orientation">Seguir la orientación de la pantalla</string>
     <string name="pane_layout_single">Un panel</string>

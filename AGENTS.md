@@ -178,6 +178,10 @@ its listing size must still describe the followed stream for copy/resume checks.
   configuration backups. `Prefs.hidePathBarSinglePane` defaults off and hides the address
   bar whenever the effective layout is single-pane, including both pickers. Dual-pane
   layouts retain it. The setting participates in `uiSignature` and configuration backups.
+  `Prefs.pathBarAtBottom` defaults off and places each pane’s address bar below its file
+  list in Main and both pickers, independently of toolbar placement and path-bar hiding.
+  Its settings row follows single-pane path-bar hiding; it participates in `uiSignature`
+  and configuration backups.
 - `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
   Tapping the path bar reveals horizontally scrollable path buttons; its source icon toggles
   the compact display; clicking a tree node also restores it. Buttons have square corners,

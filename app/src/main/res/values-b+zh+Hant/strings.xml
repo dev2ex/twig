@@ -1179,6 +1179,8 @@
     <string name="strip_duplicate">建立副本</string>
     <string name="settings_hide_path_bar_single_pane">單面板隱藏網址列</string>
     <string name="settings_hide_path_bar_single_pane_desc">雙面板模式下仍顯示網址列</string>
+    <string name="settings_path_bar_bottom">網址列置於底部</string>
+    <string name="settings_path_bar_bottom_desc">在檔案清單下方顯示網址列</string>
     <string name="settings_pane_layout">面板配置</string>
     <string name="pane_layout_follow_orientation">跟隨螢幕方向</string>
     <string name="pane_layout_single">單面板</string>

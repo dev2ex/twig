@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">Duplizieren</string>
     <string name="settings_hide_path_bar_single_pane">Adressleiste bei einem Bereich ausblenden</string>
     <string name="settings_hide_path_bar_single_pane_desc">Adressleiste bei zwei Bereichen weiterhin anzeigen</string>
+    <string name="settings_path_bar_bottom">Adressleiste unten</string>
+    <string name="settings_path_bar_bottom_desc">Adressleiste unter der Dateiliste anzeigen</string>
     <string name="settings_pane_layout">Bereichslayout</string>
     <string name="pane_layout_follow_orientation">Bildschirmausrichtung folgen</string>
     <string name="pane_layout_single">Ein Bereich</string>

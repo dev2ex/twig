@@ -1179,6 +1179,8 @@
     <string name="strip_duplicate">Nhân bản</string>
     <string name="settings_hide_path_bar_single_pane">Ẩn thanh địa chỉ ở chế độ một bảng</string>
     <string name="settings_hide_path_bar_single_pane_desc">Vẫn hiển thị thanh địa chỉ ở chế độ hai bảng</string>
+    <string name="settings_path_bar_bottom">Thanh địa chỉ ở dưới cùng</string>
+    <string name="settings_path_bar_bottom_desc">Hiển thị thanh địa chỉ bên dưới danh sách tệp</string>
     <string name="settings_pane_layout">Bố cục bảng</string>
     <string name="pane_layout_follow_orientation">Theo hướng màn hình</string>
     <string name="pane_layout_single">Một bảng</string>

@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">複製</string>
     <string name="settings_hide_path_bar_single_pane">シングルペインでアドレスバーを非表示</string>
     <string name="settings_hide_path_bar_single_pane_desc">デュアルペインではアドレスバーを表示します</string>
+    <string name="settings_path_bar_bottom">アドレスバーを下部に表示</string>
+    <string name="settings_path_bar_bottom_desc">ファイル一覧の下にアドレスバーを表示します</string>
     <string name="settings_pane_layout">ペインのレイアウト</string>
     <string name="pane_layout_follow_orientation">画面の向きに合わせる</string>
     <string name="pane_layout_single">シングルペイン</string>

@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">복제</string>
     <string name="settings_hide_path_bar_single_pane">단일 패널에서 주소 표시줄 숨기기</string>
     <string name="settings_hide_path_bar_single_pane_desc">이중 패널에서는 주소 표시줄을 계속 표시</string>
+    <string name="settings_path_bar_bottom">주소 표시줄을 하단에 표시</string>
+    <string name="settings_path_bar_bottom_desc">파일 목록 아래에 주소 표시줄 표시</string>
     <string name="settings_pane_layout">패널 레이아웃</string>
     <string name="pane_layout_follow_orientation">화면 방향에 맞춤</string>
     <string name="pane_layout_single">단일 패널</string>

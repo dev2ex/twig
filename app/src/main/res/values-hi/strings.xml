@@ -1180,6 +1180,8 @@
     <string name="strip_duplicate">डुप्लिकेट</string>
     <string name="settings_hide_path_bar_single_pane">एक पैनल मोड में पता बार छिपाएँ</string>
     <string name="settings_hide_path_bar_single_pane_desc">दो पैनल मोड में पता बार दिखाते रहें</string>
+    <string name="settings_path_bar_bottom">पता बार नीचे दिखाएँ</string>
+    <string name="settings_path_bar_bottom_desc">फ़ाइल सूची के नीचे पता बार दिखाएँ</string>
     <string name="settings_pane_layout">पैनल लेआउट</string>
     <string name="pane_layout_follow_orientation">स्क्रीन की दिशा के अनुसार</string>
     <string name="pane_layout_single">एक पैनल</string>
