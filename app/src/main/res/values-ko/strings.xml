@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">동영상을 열 때 오디오 트랙을 끕니다. 오디오 트랙 버튼으로 소리를 켤 수 있습니다.</string>
     <string name="settings_current_user_internal_storage_only">현재 사용자의 내부 저장소만 표시</string>
     <string name="settings_current_user_internal_storage_only_desc">복제 앱과 다른 Android 사용자의 내부 저장소 바로가기를 숨깁니다.</string>
+    <string name="viewer_encoding_auto">자동 (설정의 우선순위)</string>
+    <string name="viewer_encoding_invalid">이 파일을 %1$s 인코딩으로 디코딩할 수 없습니다.</string>
 </resources>

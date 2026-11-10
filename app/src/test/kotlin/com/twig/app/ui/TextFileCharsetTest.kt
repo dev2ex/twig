@@ -49,6 +49,23 @@ class TextFileCharsetTest {
         return XFile("file", f.path, isDir = false, size = f.length())
     }
 
+    @Test fun `explicit UTF16LE keeps a matching BOM and writes edits in the selected encoding`() {
+        val bom = byteArrayOf(0xFF.toByte(), 0xFE.toByte())
+        val file = write("utf16.txt", bom + "中文\nhello".toByteArray(Charsets.UTF_16LE))
+        val read = readTextFile(file, 1 shl 20, Charsets.UTF_16LE)
+        assertEquals("中文\nhello", read.text)
+        assertArrayEquals(bom, read.bom)
+        app.writeAtomically(file, TextCodec.encode(read.text + "!", read.charset!!, read.bom)!!)
+        assertArrayEquals(bom + "中文\nhello!".toByteArray(Charsets.UTF_16LE), File(file.path).readBytes())
+    }
+
+    @Test fun `stale remembered encoding falls back to automatic decoding`() {
+        val file = write("changed.txt", "hello".toByteArray())
+        val read = readTextFile(file, 1 shl 20, Charsets.UTF_16LE, fallback = true)
+        assertEquals("hello", read.text)
+        assertEquals(Charsets.UTF_8, read.charset)
+    }
+
     @Test
     fun `a GB18030 file reads back as GB18030, and saving one edited line still writes GB18030`() {
         val file = write("note.txt", "第一行\n第二行\n".toByteArray(gbk))

@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">Désactiver les pistes audio à l’ouverture d’une vidéo. Le bouton de piste audio permet de réactiver le son.</string>
     <string name="settings_current_user_internal_storage_only">Afficher uniquement le stockage interne de l’utilisateur actuel</string>
     <string name="settings_current_user_internal_storage_only_desc">Masquer les raccourcis du stockage interne des applications clonées et des autres utilisateurs Android.</string>
+    <string name="viewer_encoding_auto">Automatique (priorité des paramètres)</string>
+    <string name="viewer_encoding_invalid">Impossible de décoder ce fichier en %1$s.</string>
 </resources>

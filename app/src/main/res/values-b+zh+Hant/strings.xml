@@ -1267,4 +1267,6 @@
     <string name="settings_start_videos_without_audio_desc">開啟影片時不播放音軌，可透過音軌按鈕恢復聲音。</string>
     <string name="settings_current_user_internal_storage_only">僅顯示目前使用者的內部儲存</string>
     <string name="settings_current_user_internal_storage_only_desc">隱藏應用程式分身及其他 Android 使用者的內部儲存捷徑。</string>
+    <string name="viewer_encoding_auto">自動（依設定中的優先順序）</string>
+    <string name="viewer_encoding_invalid">無法使用 %1$s 解碼此檔案。</string>
 </resources>

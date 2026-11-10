@@ -1347,4 +1347,6 @@
     <string name="settings_start_videos_without_audio_desc">Disable audio tracks when opening a video. Use the audio-track button to turn sound on.</string>
     <string name="settings_current_user_internal_storage_only">Only show current user’s internal storage</string>
     <string name="settings_current_user_internal_storage_only_desc">Hide internal storage shortcuts for app clones and other Android users.</string>
+    <string name="viewer_encoding_auto">Automatic (Settings priority)</string>
+    <string name="viewer_encoding_invalid">Cannot decode this file as %1$s.</string>
 </resources>

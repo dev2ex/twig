@@ -1304,4 +1304,6 @@
     <string name="settings_start_videos_without_audio_desc">Отключать аудиодорожки при открытии видео. Звук можно включить кнопкой выбора аудиодорожки.</string>
     <string name="settings_current_user_internal_storage_only">Только внутренняя память текущего пользователя</string>
     <string name="settings_current_user_internal_storage_only_desc">Скрыть ярлыки внутренней памяти клонов приложений и других пользователей Android.</string>
+    <string name="viewer_encoding_auto">Автоматически (приоритет из настроек)</string>
+    <string name="viewer_encoding_invalid">Не удалось декодировать файл как %1$s.</string>
 </resources>

@@ -34,6 +34,7 @@ import com.twig.app.OpenFiles
 import com.twig.app.Prefs
 import com.twig.app.R
 import com.twig.app.TextCodec
+import com.twig.app.TextEncodingStore
 import com.twig.app.databinding.ActivityTextViewerBinding
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -103,6 +104,8 @@ class TextViewerActivity : TwigActivity() {
 
     /** Encoding used when reading; null = no encoding strictly decoded it (lenient UTF-8 display); editing is disallowed. */
     private var fileCharset: Charset? = Charsets.UTF_8
+    private var selectedCharset: Charset? = null
+    private var loading = false
 
     /** Original BOM at the file's head (stripped during decode); restored verbatim on save. */
     private var fileBom: ByteArray? = null
@@ -198,6 +201,9 @@ class TextViewerActivity : TwigActivity() {
             setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
             setOnMenuItemClickListener { saveAs(); true }
         }
+        b.toolbar.menu.add(0, R.id.viewer_encoding, 0, R.string.settings_text_charsets).apply {
+            setOnMenuItemClickListener { pickEncoding(); true }
+        }
         externalResourcesMenuItem = b.toolbar.menu.add(R.string.viewer_load_external_resources).apply {
             isVisible = false
             setOnMenuItemClickListener {
@@ -242,6 +248,7 @@ class TextViewerActivity : TwigActivity() {
 
         // Carry the displayName: content:// paths don't include the file name; losing it means losing the extension (used for syntax-highlight / preview detection)
         currentFile = XFile(scheme = scheme, path = path, isDir = false, displayName = name)
+        selectedCharset = TextEncodingStore.get(this, currentFile)
         setupWebView()
         wireSearchBar()
         load(currentFile, intent.getBooleanExtra(EXTRA_PREVIEW, false))
@@ -539,6 +546,7 @@ class TextViewerActivity : TwigActivity() {
     }
 
     private fun enterEdit() {
+        if (loading) return
         editBlockReason()?.let { toast(it); return }
         if (!canEdit) return
         // Editing always happens on the source text, so the pencil doubles as "leave the render".
@@ -629,7 +637,7 @@ class TextViewerActivity : TwigActivity() {
      * [TextCodec.encode] returns null, surface the stuck characters and let the user pick "save as UTF-8" or go back.
      */
     private fun save(exitAfter: Boolean = false) {
-        if (saving || saveAsDialog.isSaving) return
+        if (loading || saving || saveAsDialog.isSaving) return
         val text = b.content.text.toString()
         val cs = fileCharset ?: Charsets.UTF_8 // fallback: if we got into edit state, decoding must have succeeded once
         val bytes = TextCodec.encode(text, cs, fileBom)
@@ -655,6 +663,10 @@ class TextViewerActivity : TwigActivity() {
             r.fold(
                 onSuccess = { saved ->
                     currentFile = saved.copy(size = bytes.size.toLong())
+                    if (selectedCharset != null) {
+                        selectedCharset = cs
+                        TextEncodingStore.put(this@TextViewerActivity, currentFile, cs)
+                    }
                     fileName = currentFile.name
                     intent.putExtra(EXTRA_SCHEME, currentFile.scheme).putExtra(EXTRA_PATH, currentFile.path)
                         .putExtra(EXTRA_NAME, fileName)
@@ -673,7 +685,7 @@ class TextViewerActivity : TwigActivity() {
 
     /** Save a snapshot of the edited text; choosing or cancelling a destination never changes the original. */
     private fun saveAs(cs: Charset = fileCharset ?: Charsets.UTF_8, bom: ByteArray? = fileBom) {
-        if (!editMode || saving || saveAsDialog.isSaving) return
+        if (loading || !editMode || saving || saveAsDialog.isSaving) return
         val text = b.content.text.toString()
         val bytes = TextCodec.encode(text, cs, bom)
         if (bytes == null) {
@@ -686,6 +698,10 @@ class TextViewerActivity : TwigActivity() {
             fileName = currentFile.name
             fileCharset = cs
             fileBom = bom
+            if (selectedCharset != null) {
+                selectedCharset = cs
+            }
+            TextEncodingStore.put(this, currentFile, selectedCharset)
             raw = text
             rawLower = text.lowercase()
             dirty = b.content.text.toString() != text
@@ -770,13 +786,38 @@ class TextViewerActivity : TwigActivity() {
 
     // ---- Loading and themes ----
 
-    private fun load(file: XFile, startPreview: Boolean) {
+    private fun pickEncoding() {
+        if (loading || saving || saveAsDialog.isSaving) return
+        val names = (listOf("UTF-8", "UTF-16LE", "UTF-16BE") + TextCodec.CANDIDATES + "ISO-8859-1").distinct()
+        val options = listOf(getString(R.string.viewer_encoding_auto)) + names
+        val checked = selectedCharset?.let { cs -> names.indexOfFirst { Charset.forName(it) == cs } + 1 } ?: 0
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_text_charsets)
+            .setSingleChoiceItems(options.toTypedArray(), checked) { dialog, index ->
+                dialog.dismiss()
+                val charset = if (index == 0) null else Charset.forName(names[index - 1])
+                if (charset == selectedCharset) return@setSingleChoiceItems
+                val reopen = { load(currentFile, previewHome, charset, explicit = true) }
+                if (dirty) AlertDialog.Builder(this)
+                    .setTitle(R.string.viewer_discard_title)
+                    .setMessage(R.string.viewer_discard_msg)
+                    .setPositiveButton(R.string.viewer_discard_ok) { _, _ -> reopen() }
+                    .setNegativeButton(android.R.string.cancel, null).show()
+                else reopen()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun load(file: XFile, startPreview: Boolean, charset: Charset? = selectedCharset, explicit: Boolean = false) {
         val l = lang
+        loading = true
+        b.content.isEnabled = false
         b.loadingBox.visibility = View.VISIBLE
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val read = readTextFile(file, MAX_BYTES.toInt())
+                    val read = readTextFile(file, MAX_BYTES.toInt(), charset, fallback = !explicit)
                     val full = if (read.truncated) {
                         read.text + "\n\n" + getString(R.string.viewer_too_large, Format.size(MAX_BYTES))
                     } else {
@@ -792,8 +833,21 @@ class TextViewerActivity : TwigActivity() {
                 }
             }
             b.loadingBox.visibility = View.GONE
+            loading = false
+            b.content.isEnabled = true
             result.fold(
                 onSuccess = { r ->
+                    selectedCharset = charset?.takeIf { it == r.charset }
+                    if (explicit || selectedCharset != charset) TextEncodingStore.put(this@TextViewerActivity, file, selectedCharset)
+                    val wasEditing = editMode
+                    if (wasEditing) exitEdit()
+                    dirty = false
+                    ++hlGen
+                    matches = emptyList()
+                    hitSpans.clear()
+                    curSpan = null
+                    previewMode = false
+                    updateTitle()
                     raw = r.text
                     rawLower = r.lower
                     tokens = r.tokens
@@ -812,18 +866,24 @@ class TextViewerActivity : TwigActivity() {
                     applyTheme()
                     syncEditMenu()
                     previewHome = startPreview && isPreviewable
-                    if (intent.getBooleanExtra(EXTRA_EDIT, false)) {
+                    if (wasEditing || (!explicit && intent.getBooleanExtra(EXTRA_EDIT, false))) {
                         // Explicitly asked to edit (a file we just created) — that beats the render,
                         // which exitEdit will drop back to afterwards when previewHome is set.
                         enterEdit() // fine if it can't build: enterEdit itself rejects non-editable cases
                     } else if (previewHome) {
                         previewMode = true
                         renderPreview()
-                        applyPreviewVisibility()
+                    }
+                    applyPreviewVisibility()
+                    if (!editMode && !previewMode) {
+                        runSearch(false)
                     }
                 },
                 onFailure = {
-                    setContentText(getString(R.string.viewer_load_failed, it.message ?: ""))
+                    if (explicit) toast(getString(R.string.viewer_load_failed,
+                        if (it is java.nio.charset.CharacterCodingException) getString(R.string.viewer_encoding_invalid, charset?.name())
+                        else it.message ?: ""))
+                    else setContentText(getString(R.string.viewer_load_failed, it.message ?: ""))
                 },
             )
         }

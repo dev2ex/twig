@@ -1272,4 +1272,6 @@
     <string name="settings_start_videos_without_audio_desc">تعطيل المسارات الصوتية عند فتح الفيديو. استخدم زر المسار الصوتي لتشغيل الصوت.</string>
     <string name="settings_current_user_internal_storage_only">عرض وحدة التخزين الداخلية للمستخدم الحالي فقط</string>
     <string name="settings_current_user_internal_storage_only_desc">إخفاء اختصارات وحدات التخزين الداخلية للتطبيقات المستنسخة ومستخدمي Android الآخرين.</string>
+    <string name="viewer_encoding_auto">تلقائي (أولوية الإعدادات)</string>
+    <string name="viewer_encoding_invalid">تعذر فك ترميز هذا الملف باستخدام %1$s.</string>
 </resources>

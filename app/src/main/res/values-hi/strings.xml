@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">वीडियो खोलते समय ऑडियो ट्रैक बंद करें। आवाज़ चालू करने के लिए ऑडियो ट्रैक बटन का उपयोग करें।</string>
     <string name="settings_current_user_internal_storage_only">केवल मौजूदा उपयोगकर्ता का आंतरिक स्टोरेज दिखाएँ</string>
     <string name="settings_current_user_internal_storage_only_desc">क्लोन किए गए ऐप्स और अन्य Android उपयोगकर्ताओं के आंतरिक स्टोरेज के शॉर्टकट छिपाएँ।</string>
+    <string name="viewer_encoding_auto">स्वचालित (सेटिंग की प्राथमिकता)</string>
+    <string name="viewer_encoding_invalid">इस फ़ाइल को %1$s के रूप में डिकोड नहीं किया जा सकता।</string>
 </resources>

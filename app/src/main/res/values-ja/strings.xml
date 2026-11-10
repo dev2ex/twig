@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">動画を開くときに音声トラックを無効にします。音声トラックボタンで音声を有効にできます。</string>
     <string name="settings_current_user_internal_storage_only">現在のユーザーの内部ストレージのみ表示</string>
     <string name="settings_current_user_internal_storage_only_desc">アプリのクローンや他の Android ユーザーの内部ストレージへのショートカットを非表示にします。</string>
+    <string name="viewer_encoding_auto">自動（設定の優先順位）</string>
+    <string name="viewer_encoding_invalid">このファイルを %1$s としてデコードできません。</string>
 </resources>

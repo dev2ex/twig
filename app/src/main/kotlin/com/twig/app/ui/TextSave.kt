@@ -39,7 +39,7 @@ internal class TextRead(
  * that's **our** cut, not a flaw in the file's encoding (truncation already disables
  * editing, no need to layer another reason on top).
  */
-internal fun readTextFile(file: XFile, max: Int): TextRead {
+internal fun readTextFile(file: XFile, max: Int, charset: Charset? = null, fallback: Boolean = false): TextRead {
     FsRegistry.of(file).openInput(file).use { input ->
         val buf = ByteArray(max)
         var read = 0
@@ -49,7 +49,17 @@ internal fun readTextFile(file: XFile, max: Int): TextRead {
             read += n
         }
         val truncated = input.read() >= 0
-        val d = TextCodec.decode(buf, 0, read)
+        val d = if (charset == null) TextCodec.decode(buf, 0, read) else {
+            // A viewer limit can split a character. Decode the complete prefix without
+            // accepting malformed bytes elsewhere; truncated documents cannot be edited.
+            var decoded = TextCodec.decodeAs(buf, 0, read, charset)
+            if (truncated) for (cut in 1..minOf(4, read)) {
+                if (decoded != null) break
+                decoded = TextCodec.decodeAs(buf, 0, read - cut, charset)
+            }
+            decoded ?: if (fallback) TextCodec.decode(buf, 0, read)
+                else throw java.nio.charset.CharacterCodingException()
+        }
         return TextRead(d.text, truncated, d.charset ?: if (truncated) Charsets.UTF_8 else null, d.bom)
     }
 }

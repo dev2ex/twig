@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">Desactivar las pistas de audio al abrir un vídeo. Usa el botón de pista de audio para activar el sonido.</string>
     <string name="settings_current_user_internal_storage_only">Mostrar solo el almacenamiento interno del usuario actual</string>
     <string name="settings_current_user_internal_storage_only_desc">Ocultar los accesos al almacenamiento interno de aplicaciones clonadas y otros usuarios de Android.</string>
+    <string name="viewer_encoding_auto">Automático (prioridad de Ajustes)</string>
+    <string name="viewer_encoding_invalid">No se puede decodificar este archivo como %1$s.</string>
 </resources>

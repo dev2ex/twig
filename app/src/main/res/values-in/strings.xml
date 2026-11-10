@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">Nonaktifkan trek audio saat membuka video. Gunakan tombol trek audio untuk mengaktifkan suara.</string>
     <string name="settings_current_user_internal_storage_only">Hanya tampilkan penyimpanan internal pengguna saat ini</string>
     <string name="settings_current_user_internal_storage_only_desc">Sembunyikan pintasan penyimpanan internal untuk aplikasi kloning dan pengguna Android lain.</string>
+    <string name="viewer_encoding_auto">Otomatis (prioritas pengaturan)</string>
+    <string name="viewer_encoding_invalid">Tidak dapat mendekode berkas ini sebagai %1$s.</string>
 </resources>

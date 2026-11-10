@@ -91,6 +91,14 @@ object TextCodec {
 
     // ---- Decoding ----
 
+    /** Explicit viewer choice: bypass guessing, strip only a matching BOM, never replace bad bytes. */
+    fun decodeAs(bytes: ByteArray, off: Int, len: Int, charset: Charset): Decoded? {
+        val bom = bomOf(bytes, off, len)?.takeIf { it.second == charset }?.first
+        val skip = bom?.size ?: 0
+        val text = strict(bytes, off + skip, len - skip, charset) ?: return null
+        return Decoded(text, charset, bom)
+    }
+
     fun decode(
         bytes: ByteArray,
         off: Int = 0,

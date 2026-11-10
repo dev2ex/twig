@@ -1267,4 +1267,6 @@
     <string name="settings_start_videos_without_audio_desc">Tắt các bản âm thanh khi mở video. Dùng nút bản âm thanh để bật tiếng.</string>
     <string name="settings_current_user_internal_storage_only">Chỉ hiển thị bộ nhớ trong của người dùng hiện tại</string>
     <string name="settings_current_user_internal_storage_only_desc">Ẩn lối tắt bộ nhớ trong của ứng dụng nhân bản và người dùng Android khác.</string>
+    <string name="viewer_encoding_auto">Tự động (ưu tiên trong cài đặt)</string>
+    <string name="viewer_encoding_invalid">Không thể giải mã tệp này bằng %1$s.</string>
 </resources>

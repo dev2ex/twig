@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">Disattiva le tracce audio quando apri un video. Usa il pulsante della traccia audio per attivare il suono.</string>
     <string name="settings_current_user_internal_storage_only">Mostra solo la memoria interna dell’utente attuale</string>
     <string name="settings_current_user_internal_storage_only_desc">Nascondi i collegamenti alla memoria interna delle app clonate e degli altri utenti Android.</string>
+    <string name="viewer_encoding_auto">Automatico (priorità delle impostazioni)</string>
+    <string name="viewer_encoding_invalid">Impossibile decodificare questo file come %1$s.</string>
 </resources>

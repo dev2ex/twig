@@ -59,6 +59,18 @@
     callback is dispatched through a Handler message** (AlertController's `mButtonHandler`), so
     `performClick()` alone does nothing and every assertion sees the initial values, looking like
     "the click had no effect at all" — follow it with `shadowOf(mainLooper).idle()`.
+  - **Viewer overrides (2026-11-10, issue #58)**: the text viewer's encoding menu reopens
+    bytes with an explicit charset through `TextCodec.decodeAs`, including BOM-less
+    UTF-16LE/BE. Automatic mode retains the existing detection order. Explicit decoding
+    bypasses guessing and plausibility checks, strips only a matching BOM and rejects
+    malformed bytes; a failed switch leaves the current document and edits intact.
+    Unsaved edits require discard consent before reopening. Save still uses the actual
+    decoded charset/BOM. `TextEncodingStore` remembers only deliberate choices, capped at
+    200 entries, keyed by full path plus local/SAF source or saved connection label.
+    Temporary sources use bounded process memory. Automatic clears the override;
+    an invalid remembered encoding falls back to detection and clears that record.
+    Successful saves update manual records, including UTF-8 conversion and changed
+    document identities. Detection results are never cached as user choices.
 - **The text editor's caret (★ 2026-08-16, `TextViewerActivity`/`CodeEditText`)**: two symptoms,
   both rooted in the framework rather than in our state machine:
   - **"The caret is invisible until you type a character"**: the blink timer is only restarted in

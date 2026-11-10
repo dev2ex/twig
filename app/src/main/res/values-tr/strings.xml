@@ -1268,4 +1268,6 @@
     <string name="settings_start_videos_without_audio_desc">Video açılırken ses parçalarını devre dışı bırak. Sesi açmak için ses parçası düğmesini kullanın.</string>
     <string name="settings_current_user_internal_storage_only">Yalnızca mevcut kullanıcının dahili depolamasını göster</string>
     <string name="settings_current_user_internal_storage_only_desc">Klonlanmış uygulamaların ve diğer Android kullanıcılarının dahili depolama kısayollarını gizle.</string>
+    <string name="viewer_encoding_auto">Otomatik (ayar önceliği)</string>
+    <string name="viewer_encoding_invalid">Bu dosya %1$s olarak çözümlenemiyor.</string>
 </resources>

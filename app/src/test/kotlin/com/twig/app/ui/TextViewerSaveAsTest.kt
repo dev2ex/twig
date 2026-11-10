@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.twig.app.Prefs
 import com.twig.app.R
 import com.twig.app.TextCodec
+import com.twig.app.TextEncodingStore
 import com.twig.core.FsRegistry
 import com.twig.fs.local.LocalFileSystem
 import org.junit.After
@@ -63,13 +64,88 @@ class TextViewerSaveAsTest {
         assertTrue("The asynchronous save/load did not finish", condition())
     }
 
-    private fun open(bytes: ByteArray) {
+    private fun open(bytes: ByteArray, edit: Boolean = true) {
         source.writeBytes(bytes)
         controller = Robolectric.buildActivity(TextViewerActivity::class.java,
             Intent(ApplicationProvider.getApplicationContext(), TextViewerActivity::class.java)
                 .putExtra("scheme", "file").putExtra("path", source.path).putExtra("name", source.name)
-                .putExtra("edit", true).putExtra("preview", false)).setup().visible()
-        await { ReflectionHelpers.getField<Boolean>(activity, "editMode") }
+                .putExtra("edit", edit).putExtra("preview", false)).setup().visible()
+        await { !ReflectionHelpers.getField<Boolean>(activity, "loading") }
+        if (edit) assertTrue(ReflectionHelpers.getField<Boolean>(activity, "editMode"))
+    }
+
+    private fun chooseEncoding(name: String?) {
+        assertTrue(menu.performIdentifierAction(R.id.viewer_encoding, 0))
+        val dialog = latest()
+        val list = dialog.listView
+        val index = if (name == null) 0 else (1 until list.adapter.count).first {
+            list.adapter.getItem(it).toString() == name
+        }
+        list.performItemClick(list.adapter.getView(index, null, list), index, index.toLong())
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
+    @Test fun `manual UTF16 without BOM is remembered across opens and Auto clears the override`() {
+        val bytes = "第一行\n第二行".toByteArray(Charsets.UTF_16LE)
+        open(bytes, edit = false)
+        chooseEncoding("UTF-16LE")
+        await { content.text.toString() == "第一行\n第二行" }
+        val file = com.twig.core.XFile("file", source.path, false)
+        assertEquals(Charsets.UTF_16LE, TextEncodingStore.get(activity, file))
+        assertArrayEquals(bytes, source.readBytes())
+        controller.pause().stop().destroy()
+        open(bytes, edit = false)
+        assertEquals("第一行\n第二行", content.text.toString())
+        chooseEncoding(null)
+        await { !ReflectionHelpers.getField<Boolean>(activity, "loading") }
+        assertNull(TextEncodingStore.get(activity, file))
+        assertEquals(TextCodec.decode(bytes).text, content.text.toString())
+    }
+
+    @Test fun `invalid explicit decoding preserves the document and does not remember a choice`() {
+        open("hello".toByteArray(), edit = false)
+        chooseEncoding("UTF-16LE") // Odd byte count cannot be UTF-16.
+        await { !ReflectionHelpers.getField<Boolean>(activity, "loading") }
+        assertEquals("hello", content.text.toString())
+        assertEquals(Charsets.UTF_8, ReflectionHelpers.getField<Charset>(activity, "fileCharset"))
+        assertNull(TextEncodingStore.get(activity, com.twig.core.XFile("file", source.path, false)))
+    }
+
+    @Test fun `cancelled encoding switch preserves unsaved edits and original bytes`() {
+        open("original".toByteArray())
+        content.setText("unsaved")
+        chooseEncoding("UTF-16LE")
+        latest().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals("unsaved", content.text.toString())
+        assertTrue(ReflectionHelpers.getField<Boolean>(activity, "dirty"))
+        assertEquals("original", source.readText())
+        assertNull(TextEncodingStore.get(activity, com.twig.core.XFile("file", source.path, false)))
+    }
+
+    @Test fun `confirmed reopen discards edits and keeps the editor visible`() {
+        open("original".toByteArray())
+        content.setText("unsaved")
+        chooseEncoding("UTF-8")
+        latest().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        await { !ReflectionHelpers.getField<Boolean>(activity, "loading") }
+        assertEquals("original", content.text.toString())
+        assertFalse(ReflectionHelpers.getField<Boolean>(activity, "dirty"))
+        assertTrue(ReflectionHelpers.getField<Boolean>(activity, "editMode"))
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.scroll).visibility)
+    }
+
+    @Test fun `manually reopened UTF16 file saves edits in UTF16 and keeps its remembered choice`() {
+        open("中文".toByteArray(Charsets.UTF_16LE), edit = false)
+        chooseEncoding("UTF-16LE")
+        await { content.text.toString() == "中文" }
+        ReflectionHelpers.callInstanceMethod<Unit>(activity, "enterEdit")
+        content.append("!")
+        assertTrue(menu.performIdentifierAction(R.id.viewer_save, 0))
+        await { !ReflectionHelpers.getField<Boolean>(activity, "saving") }
+        assertArrayEquals("中文!".toByteArray(Charsets.UTF_16LE), source.readBytes())
+        assertEquals(Charsets.UTF_16LE, TextEncodingStore.get(activity, com.twig.core.XFile("file", source.path, false)))
     }
 
     private fun views(view: View): List<View> = listOf(view) + if (view is ViewGroup)
