@@ -4,6 +4,16 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Replacing a downloaded APK must invalidate its icon** (2026-11-10, issue #35):
+  APK and bundle icons use `FileIcons`, not `Thumbs`. Their memory cache previously
+  used only the path, so deleting a package and downloading another at the same path
+  kept the old icon until process exit. Local package keys now include listing size
+  and modification time, including the asynchronous view tag. Keep the loader's
+  source path separate from that key; never stat files on the binding thread.
+  Installed-app and extension icons retain their existing keys. `PackageFileIconTest`
+  covers size-only and time-only replacements, real bundle decoding, cache reuse and
+  rejecting an old callback after the row has rebound to a replacement.
+
 - **Trash thumbnails use the recovery payload** (2026-10-28): the `trash` scheme
   previously fell through network eligibility and decoding, so uncached previews
   depended on the network toggle and PDFs never generated. Treat trash as local

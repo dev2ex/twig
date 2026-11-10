@@ -27,7 +27,8 @@ import java.util.zip.ZipFile
  * - For other types, if the system already has a default opener (one chosen as "always"), use that app's icon;
  * - Otherwise fall back to the generic file icon.
  *
- * App icons are cached by key (apk path / "ext:extension"); resolution runs on a single background thread,
+ * Local package icons are cached by path, size and modification time; other icons use
+ * "pkg:package" / "ext:extension". Resolution runs on a single background thread,
  * and view.tag is checked before filling back in to prevent RecyclerView reuse misalignment.
  */
 object FileIcons {
@@ -185,7 +186,7 @@ object FileIcons {
     fun bind(view: ImageView, file: XFile, onTyped: (() -> Unit)? = null) {
         val base = baseIconRes(file)
         view.setImageResource(base)
-        val key = when {
+        val source = when {
             // "Apps" entry: ask PackageManager for the icon live; no need to parse the apk
             file.scheme == com.twig.app.AppsFileSystem.SCHEME ->
                 appPackageOf(file)?.let { "pkg:$it" } ?: run { view.tag = null; return }
@@ -195,7 +196,12 @@ object FileIcons {
             base == R.drawable.ic_file && sniffOnBind(view.context, file) -> return sniff(view, file, onTyped)
             else -> { view.tag = null; return }
         }
-        fill(view, key)
+        // Use listing metadata without stat calls on the binding thread. Keep the
+        // loader's path separate from the cache identity, including for async replies.
+        val key = if (file.scheme == "file" && (OpenFiles.isApk(file) || OpenFiles.isApkBundle(file))) {
+            "$source:${file.size}:${file.lastModified}"
+        } else source
+        fill(view, key, source)
     }
 
     /**
@@ -235,7 +241,7 @@ object FileIcons {
      */
     fun bindApp(view: ImageView, pkg: String) = fill(view, "pkg:$pkg")
 
-    private fun fill(view: ImageView, key: String) {
+    private fun fill(view: ImageView, key: String, source: String = key) {
         view.tag = key
         synchronized(cache) {
             if (cache.containsKey(key)) {
@@ -245,7 +251,7 @@ object FileIcons {
         }
         val ctx = view.context.applicationContext
         executor.execute {
-            val d = runCatching { load(ctx, key) }.getOrNull()
+            val d = runCatching { load(ctx, source) }.getOrNull()
             synchronized(cache) { cache[key] = d }
             if (d != null) main.post { if (view.tag == key) view.setImageDrawable(d) }
         }
