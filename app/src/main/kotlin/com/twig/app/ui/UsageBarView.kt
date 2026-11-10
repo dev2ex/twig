@@ -19,6 +19,13 @@ class UsageBarView @JvmOverloads constructor(context: Context, attrs: AttributeS
     private val selectionColor = ContextCompat.getColor(context, R.color.selected)
     private val overlapColor = ContextCompat.getColor(context, R.color.action_text)
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // The overlay follows the row's final bounds. View's default AT_MOST
+        // measurement would consume the entire viewport and enlarge a wrap-content row.
+        setMeasuredDimension(resolveSize(suggestedMinimumWidth, widthMeasureSpec),
+            resolveSize(suggestedMinimumHeight, heightMeasureSpec))
+    }
+
     override fun drawableStateChanged() {
         super.drawableStateChanged()
         invalidate()

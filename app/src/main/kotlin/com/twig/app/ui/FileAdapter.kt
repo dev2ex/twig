@@ -1026,7 +1026,8 @@ class FileAdapter(
             b.infoToggle.visibility = if (node is PaneViewModel.FileNode) View.VISIBLE else View.INVISIBLE
             b.infoToggle.setOnClickListener(null)
             b.infoToggle.setOnLongClickListener(null)
-            b.meta.ellipsize = android.text.TextUtils.TruncateAt.END
+            b.meta.ellipsize = if (node is PaneViewModel.FileNode) android.text.TextUtils.TruncateAt.START
+                else android.text.TextUtils.TruncateAt.END
             b.root.setOnTouchListener(null)
             b.indicator.setOnTouchListener(null)
             b.indicator.setOnClickListener(null)

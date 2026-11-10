@@ -650,3 +650,15 @@
   immediately when hiding is turned off. Disabled row callbacks must not toggle switches.
   Use “toolbar” consistently for both labels in every locale. Settings tests cover initial
   hidden state, live toggles, disabled clicks and preservation of the placement choice.
+
+- **Usage backgrounds enlarged rows and binding reset metadata ellipses (2026-11-10 review)**:
+  a plain View consumes the full AT_MOST measurement by default. Adding a match-parent
+  usage overlay to a wrap-content FrameLayout therefore enlarged a 36 dp row to the
+  470 dp viewport in an attached layout, even when its fraction was zero. The overlay
+  now resolves its minimum size on the first pass and follows the row's exact bounds
+  on FrameLayout's second pass. Keep the existing attached PropertiesButtonTest:
+  manually measuring a detached row with an unspecified height did not expose this.
+  The narrow-metadata change also set START ellipsis only in XML while FileAdapter
+  reset it to END on every bind. Reset file-row metadata to START, retaining END
+  for other row types and MIDDLE for restic favorites. Assert the bound TextView in
+  UnixPermissionsRowTest; testing inflated XML alone missed the override.

@@ -178,6 +178,7 @@ class UnixPermissionsRowTest {
                     val permissions = row.findViewById<TextView>(R.id.permissions)
                     val group = row.findViewById<View>(R.id.folderCounts)
                     val metadata = row.findViewById<TextView>(R.id.meta)
+                    assertEquals(android.text.TextUtils.TruncateAt.START, metadata.ellipsize)
                     if (start == null) start = permissions.left
                     assertEquals("text size $textSize, count ${counts[index]}", start, permissions.left)
                     assertEquals("permission icon follows the fixed count slots without an extra gap", group.right, permissions.left)
