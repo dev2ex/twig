@@ -1,0 +1,6 @@
+<!-- Generated from app/src/main/res/drawable/ic_close.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_close</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>

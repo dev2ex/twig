@@ -13,6 +13,8 @@
 **版本 1.18.1**(versionCode 322)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
+**[按钮与手势指南](docs/buttons-and-gestures.zh-CN.md)** —— 按页面查阅图标、点击、长按、双击、滑动与缩放，附面板导航和选择说明。[English](docs/buttons-and-gestures.md)
+
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="横屏双面板">
 </p>

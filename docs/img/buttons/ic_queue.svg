@@ -1,0 +1,6 @@
+<!-- Generated from app/src/main/res/drawable/ic_queue.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_queue</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M15,6H3v2h12V6zM15,10H3v2h12v-2zM3,16h8v-2H3v2zM17,6v8.18c-0.31,-0.11 -0.65,-0.18 -1,-0.18 -1.66,0 -3,1.34 -3,3s1.34,3 3,3 3,-1.34 3,-3V8h3V6h-5z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>

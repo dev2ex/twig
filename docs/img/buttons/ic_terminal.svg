@@ -1,0 +1,7 @@
+<!-- Generated from app/src/main/res/drawable/ic_terminal.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_terminal</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M5,6 L11,12 L5,18" fill="none" stroke="#263238" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill-rule="nonzero" />
+  <path d="M12,17h7v2h-7z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>

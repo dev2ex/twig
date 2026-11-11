@@ -1,0 +1,10 @@
+<!-- Generated from app/src/main/res/drawable/ic_pane_to_left.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_pane_to_left</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <g transform="translate(0 0) translate(12 12) rotate(0) scale(-1 1) translate(-12 -12)">
+    <path d="M3,4h8v10h-8z" fill="#263238" stroke="none" fill-rule="nonzero" />
+    <path d="M13,4h8v10h-8zM14.7,5.7h4.6v6.6h-4.6z" fill="#263238" stroke="none" fill-rule="evenodd" />
+    <path d="M6,17.6h9v-2.8l6,3.7 -6,3.7v-2.8h-9z" fill="#263238" stroke="none" fill-rule="nonzero" />
+  </g>
+</svg>

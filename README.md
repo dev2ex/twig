@@ -15,6 +15,8 @@ restic are all implemented from scratch.
 **Version 1.18.1** (versionCode 322) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
+**[Buttons and Gestures](docs/buttons-and-gestures.md)** — illustrated controls, taps, long presses, double taps, swipes and zoom by screen, with pane navigation and selection guidance. [简体中文](docs/buttons-and-gestures.zh-CN.md)
+
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="Dual pane in landscape">
 </p>

@@ -1,0 +1,6 @@
+<!-- Generated from app/src/main/res/drawable/ic_share_wifi.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_share_wifi</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M1.2012,8.1305A16.8,16.8 0,0 1,22.7988,8.1305L21.1276,10.1222A14.2,14.2 0,0 0,2.8724,10.1222zM4.4794,12.0373A11.7,11.7 0,0 1,19.5206,12.0373L17.8494,14.0290A9.1,9.1 0,0 0,6.1506,14.0290zM7.7576,15.9441A6.6,6.6 0,0 1,16.2424,15.9441L12,21z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>

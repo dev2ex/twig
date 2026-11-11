@@ -1,0 +1,6 @@
+<!-- Generated from app/src/main/res/drawable/ic_add.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_add</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>

@@ -1,0 +1,6 @@
+<!-- Generated from app/src/main/res/drawable/ic_duplicate.xml; run tools/export-button-icons.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="-4 -4 32 32" role="img" aria-labelledby="title">
+  <title id="title">ic_duplicate</title>
+  <rect x="-4" y="-4" width="32" height="32" rx="4" fill="#ffffff" />
+  <path d="M4,2h12v2H4v14H2V4a2,2 0,0 1,2 -2zM8,6h12a2,2 0,0 1,2 2v12a2,2 0,0 1,-2 2H8a2,2 0,0 1,-2 -2V8a2,2 0,0 1,2 -2zM8,8v12h12V8zM13,10h2v3h3v2h-3v3h-2v-3h-3v-2h3z" fill="#263238" stroke="none" fill-rule="nonzero" />
+</svg>
