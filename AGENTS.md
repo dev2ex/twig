@@ -1,6 +1,6 @@
 # Twig — Engineering Notes & Working Guide
 
-> **For human readers**: this file is Twig's engineering notebook. It is written for
+> **For human readers**: this file is Twig's engineering reference. It is written for
 > "the person about to change this code", not for "someone meeting the project for the
 > first time" — for an introduction see [README.md](README.md).
 > The most valuable part is **"Hard-won lessons"**: one file per area under
@@ -20,6 +20,19 @@
 
 A size-first, dual-pane Android file manager, one tree over every source: plain Kotlin + XML
 Views, no Material library, minimal dependencies.
+
+## Documentation maintenance
+
+- Keep guides and design documents accurate for the current implementation. Update existing
+  sections and remove superseded statements; use Git history for the development timeline.
+- Add a lesson only for an independent, non-obvious failure with a lasting prevention rule.
+  Refine or merge the existing entry when revisiting the same issue. Routine implementation,
+  requirement changes and successful test runs do not need lesson entries.
+- Put routine validation results in commit or PR descriptions. Commit a separate test report
+  only when a reproducible experiment or substantial performance comparison merits retention.
+  Avoid repeating the same explanation across this guide, lessons and reports.
+- Release changelogs accumulate by version; ordinary engineering documents are maintained
+  references, not append-only work logs.
 
 ## Build and verify
 
@@ -767,8 +780,8 @@ the root cause and the current solution. They live one file per area under
 **[docs/lessons/](docs/lessons/)**; this is the index, and it is deliberately only a
 pointer: **before changing code in one of these areas, open its file and read it first.**
 Several of these took two or three shipped regressions to pin down, and stepping on them
-again is expensive. When you close out a new incident, append it to the matching file and
-add its symptom here.
+again is expensive. Update the matching lesson for a recurring incident; add a new entry
+only when it captures an independent, lasting lesson. Keep this index to brief navigation hints.
 
 - **[SSH, SFTP and the terminal](docs/lessons/ssh-and-terminal.md)** — every outbound SSHJ
   call (resize included) runs on a background thread and network exceptions are never
