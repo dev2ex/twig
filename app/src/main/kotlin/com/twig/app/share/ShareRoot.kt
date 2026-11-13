@@ -6,6 +6,7 @@ import com.twig.app.Connections
 import com.twig.app.ConnectionStore
 import com.twig.app.R
 import com.twig.app.RemovableVolume
+import com.twig.app.SavedConnection
 import com.twig.app.StorageVolumes
 import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
@@ -51,11 +52,18 @@ class ShareRoot(
      * One entry under the "all sources" virtual root.
      *
      * [segment] is that URL segment and **must be stable** — WebDAV clients save it as a
-     * mount point. Fixed literals (`storage`/`root`/`apps`) or the scheme (servers; derived
-     * deterministically from the connection label) never shift because the user expanded
-     * another server. [label] is display only.
+     * mount point, so it is the name the user sees there: `smb-NAS`, `webdav-192.168.1.5`,
+     * `external-SDCARD`. [alias] is an older segment that still resolves (the segment used
+     * to be the hashed scheme for servers), so a mount point saved before the rename keeps
+     * working. [label] is display only.
      */
-    class Source(val segment: String, val label: String, val scheme: String, val basePath: String)
+    class Source(
+        val segment: String,
+        val label: String,
+        val scheme: String,
+        val basePath: String,
+        val alias: String? = null,
+    )
 
     /**
      * The app's own private directories, canonicalised once. Never served, whatever the
@@ -118,38 +126,94 @@ class ShareRoot(
     fun sources(): List<Source> {
         if (scope !is ShareScope.AllSources) return emptyList()
         val out = ArrayList<Source>()
+        val used = HashSet<String>()
         val conns = ConnectionStore.all(ctx).associateBy { Connections.schemeOf(it) }
+
+        // The non-local backends, collected first: a server whose name is taken by another
+        // server needs a unique segment, and that must not depend on the order the registry
+        // happens to hand them out in.
+        val others = ArrayList<Triple<FileSystem, SavedConnection?, XFile>>()
+        var hasLocal = false
         for (fs in FsRegistry.all()) {
             if (fs.scheme == LOCAL) {
-                val ext = runCatching { Environment.getExternalStorageDirectory().absolutePath }
-                    .getOrNull().orEmpty()
-                if (ext.isNotEmpty()) {
-                    out += Source("storage", ctx.getString(R.string.group_internal_storage), LOCAL, ext)
-                }
-                out += Source("root", ctx.getString(R.string.group_root), LOCAL, "/")
-                out += volumeSources()
+                hasLocal = true
                 continue
             }
             // root() throws = this source is not an independently browsable tree; skip it
             val root = runCatching { fs.root() }.getOrNull() ?: continue
+            others += Triple(fs, conns[fs.scheme], root)
+        }
+        val bases = others.map { serverSegment(it.second, it.first.scheme) }
+        // Include saved but disconnected servers so registry changes cannot rename a mount.
+        val candidates = conns.mapValues { (scheme, conn) -> serverSegment(conn, scheme) }.toMutableMap()
+        others.forEachIndexed { i, (fs, _, _) -> candidates[fs.scheme] = bases[i] }
+        val shared = candidates.values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        val reserved = candidates.values.toSet() + candidates.keys
+
+        if (hasLocal) {
+            val ext = runCatching { Environment.getExternalStorageDirectory().absolutePath }
+                .getOrNull().orEmpty()
+            if (ext.isNotEmpty()) {
+                out += Source("storage", ctx.getString(R.string.group_internal_storage), LOCAL, ext)
+                used += "storage"
+            }
+            out += Source("root", ctx.getString(R.string.group_root), LOCAL, "/")
+            used += "root"
+            for (s in volumeSources()) {
+                out += s
+                used += s.segment
+            }
+        }
+        others.sortedBy { it.first.scheme }.forEach { (fs, conn, root) ->
+            val base = candidates.getValue(fs.scheme)
+            var segment = base
+            // Two servers of the same type with the same name: the hash of the connection
+            // label (which is what the scheme is made of) tells them apart.
+            if (segment in shared) segment = "$segment-${fs.scheme.removePrefix(conn?.type ?: "")}"
+            val suffixBase = "$base-${fs.scheme}"
+            var suffix = 2
+            while (segment in used || (segment != base && segment in reserved) ||
+                (segment != fs.scheme && segment in candidates.keys)) {
+                segment = "$suffixBase-${suffix++}"
+            }
+            used += segment
             out += Source(
-                segment = fs.scheme,
-                label = conns[fs.scheme]?.displayLabel() ?: fs.displayName,
+                segment = segment,
+                label = conn?.displayLabel() ?: fs.displayName,
                 scheme = fs.scheme,
                 basePath = root.path,
+                // The segment used to be the scheme itself; a mount point saved back then
+                // still resolves.
+                alias = fs.scheme,
             )
         }
         return out
     }
 
     /**
+     * The URL segment of a server: its type and its name — `smb-NAS`, `webdav-192.168.1.5`.
+     *
+     * The name is the connection's own name, or its address when it has none (the same
+     * text the path bar shows). The type prefix keeps two servers apart even when they
+     * share a name, and tells the user what kind of server it is at a glance.
+     */
+    private fun serverSegment(conn: SavedConnection?, scheme: String): String {
+        if (conn == null) return scheme
+        val name = sanitizeSegment(conn.shortLabel())
+        return if (name.isEmpty()) conn.type else "${conn.type}-$name"
+    }
+
+    /**
      * Removable volumes as sources.
      *
-     * **The segment is the volume's own directory name** (`/storage/<uuid>` → `vol-<uuid>`):
-     * it is stable across reboots, so a WebDAV client that saved the mount point keeps
-     * working, and it never shifts because another volume appeared. The label is the
-     * system's own name for the volume ("SD card", "USB drive"); two cards with the same
-     * name get their directory name appended, otherwise the page shows two identical rows.
+     * **The segment is `external-` plus the volume's own name** — the same text the app's
+     * tree shows ("SDCARD", "USB drive") — so a WebDAV client that mounts the share shows
+     * that name instead of an internal id. The name is sanitised (a segment may not
+     * contain a path separator: the decoded path is split on "/", so an encoded "%2F" would
+     * come back as one) and **remembered per volume** (see [ShareStore.volumeSegment]): the
+     * system's description of a volume is *localized* ("USB drive" / "USB-накопитель"), so
+     * deriving it fresh every time would move the address as soon as the system language
+     * changed and a saved mount point would 404.
      *
      * **Only volumes the app can open itself.** A volume mounted "invisible to the app"
      * (its path is `/mnt/media_rw/<id>`, readable by root only) needs the privileged
@@ -160,14 +224,40 @@ class ShareRoot(
     private fun volumeSources(): List<Source> {
         val vs = runCatching { volumes() }.getOrDefault(emptyList())
         if (vs.isEmpty()) return emptyList()
-        val duplicateLabels = vs.groupingBy { it.label }.eachCount().filterValues { it > 1 }.keys
-        return vs.mapNotNull { v ->
-            val name = v.path.trimEnd('/').substringAfterLast('/')
-            if (name.isEmpty()) return@mapNotNull null
-            if (!File(v.path).isDirectory) return@mapNotNull null
-            val label = if (v.label in duplicateLabels) "${v.label} ($name)" else v.label
-            Source(segment = "vol-$name", label = label, scheme = LOCAL, basePath = v.path)
+        val open = vs.filter { File(it.path).isDirectory && idOf(it).isNotEmpty() }
+        if (open.isEmpty()) return emptyList()
+        val bases = open.associateWith { sanitizeSegment(it.label) }
+        val shared = bases.values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        val duplicateLabels = open.groupingBy { it.label }.eachCount().filterValues { it > 1 }.keys
+        return open.sortedBy { idOf(it) }.map { v ->
+            val id = idOf(v)
+            val name = bases.getValue(v)
+            // Two volumes with the same name would make the URL ambiguous: they get the
+            // volume's id appended.
+            val preferred = if (name in shared) "$name-$id" else name
+            val segment = EXTERNAL_PREFIX + ShareStore.volumeSegment(ctx, id, preferred)
+            val label = if (v.label in duplicateLabels) "${v.label} ($id)" else v.label
+            Source(segment = segment, label = label, scheme = LOCAL, basePath = v.path)
         }
+    }
+
+    /** The volume's identity: the name of its directory (`/storage/<uuid>` → `<uuid>`). */
+    private fun idOf(v: RemovableVolume): String = v.path.trimEnd('/').substringAfterLast('/')
+
+    /**
+     * Make a display name usable as one URL path segment.
+     *
+     * Everything that is not a letter, a digit, a space or one of `-_.` becomes a dash:
+     * a path separator would survive percent encoding and split the decoded path, and a
+     * colon would be percent-encoded into something unreadable. "." and ".." are dropped —
+     * [segments] rejects them outright.
+     */
+    private fun sanitizeSegment(name: String): String {
+        val cleaned = name.trim()
+            .map { if (it.isLetterOrDigit() || it == ' ' || it == '-' || it == '_' || it == '.') it else '-' }
+            .joinToString("")
+            .trim()
+        return if (cleaned == "." || cleaned == "..") "" else cleaned
     }
 
     /**
@@ -238,7 +328,7 @@ class ShareRoot(
         when (val sc = scope) {
             is ShareScope.AllSources -> {
                 if (segs.isEmpty()) return null // the virtual root has no XFile; callers ask isVirtualRoot first
-                val src = sources().firstOrNull { it.segment == segs[0] } ?: return null
+                val src = sourceFor(segs[0]) ?: return null
                 val fs = runCatching { FsRegistry.of(src.scheme) }.getOrNull() ?: return null
                 return Triple(fs, src.basePath, segs.drop(1))
             }
@@ -247,6 +337,18 @@ class ShareRoot(
                 return Triple(fs, sc.path, segs)
             }
         }
+    }
+
+    /**
+     * The source a URL segment names.
+     *
+     * The readable segment is what the links use (`smb-NAS`), but **the old segment still
+     * resolves**: a server's segment used to be its scheme, and a WebDAV client that saved
+     * that mount point must keep working.
+     */
+    private fun sourceFor(seg: String): Source? {
+        val all = sources()
+        return all.firstOrNull { it.segment == seg } ?: all.firstOrNull { it.alias == seg }
     }
 
     /**
@@ -292,6 +394,9 @@ class ShareRoot(
 
     companion object {
         private const val LOCAL = "file"
+
+        /** The prefix of a removable volume's segment (`external-SDCARD`). */
+        private const val EXTERNAL_PREFIX = "external-"
 
         /**
          * Split a URL path into segments. **`..` is always rejected** (returns null): this

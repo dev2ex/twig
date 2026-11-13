@@ -6,7 +6,10 @@ import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.app.Connections
+import com.twig.app.ConnectionStore
 import com.twig.app.RemovableVolume
+import com.twig.app.SavedConnection
 import com.twig.fs.local.LocalFileSystem
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -158,12 +161,62 @@ class AllSourcesTest {
         assertNull(root().resolve("/nope/whatever"))
     }
 
-    // ---- Removable volumes (issue #64) ----
+    // ---- Server segments ----
 
+    /**
+     * A server is addressed by its type and its name — `smb-NAS`, `webdav-192.168.1.5` —
+     * because that string is what a WebDAV client shows as the mount point. The old
+     * segment (the hashed scheme) still resolves, so a mount point saved before the
+     * rename keeps working.
+     */
+    @Test
+    fun `a server is addressed by its type and name`() {
+        val conn = SavedConnection(type = "smb", host = "192.168.1.10", share = "Public", name = "NAS")
+        ConnectionStore.save(app, conn)
+        register(NamedTreeFs(Connections.schemeOf(conn)))
+        val src = root().sources().first { it.scheme == Connections.schemeOf(conn) }
+        assertEquals("smb-NAS", src.segment)
+        assertNotNull("the readable address works", root().resolve("/smb-NAS"))
+        assertNotNull("the old address still works", root().resolve("/${Connections.schemeOf(conn)}"))
+    }
+
+    /** A server without a name of its own is addressed by its address. */
+    @Test
+    fun `a server without a name is addressed by its address`() {
+        val conn = SavedConnection(type = "webdav", host = "http://192.168.1.5:8080/dav")
+        ConnectionStore.save(app, conn)
+        register(NamedTreeFs(Connections.schemeOf(conn)))
+        val src = root().sources().first { it.scheme == Connections.schemeOf(conn) }
+        assertEquals("webdav-192.168.1.5-8080-dav", src.segment)
+    }
+
+    @Test
+    fun `server addresses survive registry changes and suffix collisions`() {
+        val a = SavedConnection(type = "smb", host = "a", name = "NAS")
+        val b = SavedConnection(type = "smb", host = "b", name = "NAS")
+        val collision = SavedConnection(type = "smb", host = "c",
+            name = "NAS-${Connections.schemeOf(a).removePrefix("smb")}")
+        listOf(a, b, collision).forEach { ConnectionStore.save(app, it) }
+        val schemes = listOf(a, b, collision).map { Connections.schemeOf(it) }
+        schemes.forEach { register(NamedTreeFs(it)) }
+        fun addresses() = root().sources().filter { it.scheme in schemes }.associate { it.scheme to it.segment }
+        val first = addresses()
+        assertEquals(3, first.values.toSet().size)
+        first.forEach { (scheme, segment) -> assertEquals(scheme, root().resolve("/$segment")!!.scheme) }
+        FsRegistry.unregister(schemes[1])
+        assertEquals(first - schemes[1], addresses())
+        register(NamedTreeFs(schemes[1]))
+        assertEquals(first, addresses())
+    }
+
+    // ---- Removable volumes (issue #64) ----
     /**
      * The app's own tree lists the SD card and the USB drive at the top, so "all sources"
      * has to offer them too: a visitor used to see internal storage only, on a device
      * whose card was perfectly visible in the app.
+     *
+     * The segment is `external-` plus the volume's **own name** — that is what a WebDAV
+     * client shows as the mount point, so it has to be the name, not an internal id.
      */
     @Test
     fun `a removable volume is offered as a source and can be entered`() {
@@ -171,14 +224,36 @@ class AllSourcesTest {
         card.mkdirs()
         File(card, "photo.jpg").writeText("x")
         val root = ShareRoot(app, ShareScope.AllSources) {
-            listOf(RemovableVolume(card.absolutePath, "SD card"))
+            listOf(RemovableVolume(card.absolutePath, "Sd256"))
         }
-        val src = root.sources().firstOrNull { it.segment == "vol-card" }
+        val src = root.sources().firstOrNull { it.segment == "external-Sd256" }
         assertNotNull("the card should be a source", src)
-        assertEquals("SD card", src!!.label)
-        val f = root.resolve("/vol-card/photo.jpg")
+        assertEquals("Sd256", src!!.label)
+        val f = root.resolve("/external-Sd256/photo.jpg")
         assertNotNull("the card's contents should be reachable", f)
         assertEquals("photo.jpg", f!!.name)
+    }
+
+    /**
+     * The system's description of a volume is **localized** ("USB drive" / "USB-накопитель"),
+     * so the segment must not be derived from it afresh every time: a language change would
+     * move the address and a saved WebDAV mount point would 404.
+     */
+    @Test
+    fun `the segment of a volume does not move when its name changes`() {
+        val card = File(dir, "stick").apply { mkdirs() }
+        val first = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(card.absolutePath, "USB drive"))
+        }
+        assertEquals("USB drive", first.sources().first { it.segment == "external-USB drive" }.label)
+        // The system language changed: the volume is called something else now
+        val second = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(card.absolutePath, "USB-накопитель"))
+        }
+        val segs = second.sources().map { it.segment }
+        assertTrue("the remembered address must still work", segs.contains("external-USB drive"))
+        assertEquals("the label follows the system", "USB-накопитель",
+            second.sources().first { it.segment == "external-USB drive" }.label)
     }
 
     /**
@@ -191,7 +266,7 @@ class AllSourcesTest {
         val root = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(File(dir, "gone").absolutePath, "Ghost"))
         }
-        assertFalse(root.sources().map { it.segment }.contains("vol-gone"))
+        assertFalse(root.sources().map { it.segment }.contains("external-Ghost"))
     }
 
     /** Two cards with the same system name must not produce two identical rows. */
@@ -202,9 +277,54 @@ class AllSourcesTest {
         val root = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(a.absolutePath, "SD card"), RemovableVolume(b.absolutePath, "SD card"))
         }
-        val labels = root.sources().filter { it.segment.startsWith("vol-") }.map { it.label }
-        assertEquals(2, labels.size)
-        assertEquals(2, labels.toSet().size)
+        val volSources = root.sources().filter { it.segment.startsWith("external-") }
+        assertEquals(2, volSources.size)
+        assertEquals("the addresses have to differ", 2, volSources.map { it.segment }.toSet().size)
+        assertEquals("the labels have to differ", 2, volSources.map { it.label }.toSet().size)
+    }
+
+    @Test
+    fun `volume addresses survive hotplug and never collide with another volume id`() {
+        val a = File(dir, "card-a").apply { mkdirs() }
+        val b = File(dir, "card-b").apply { mkdirs() }
+        val c = File(dir, "card-c").apply { mkdirs() }
+        var attached = listOf(RemovableVolume(a.absolutePath, "SD card"))
+        val share = ShareRoot(app, ShareScope.AllSources) { attached }
+        fun addresses() = share.sources().filter { it.segment.startsWith("external-") }
+            .associate { it.basePath to it.segment }
+        val original = addresses().getValue(a.absolutePath)
+        attached = attached + RemovableVolume(b.absolutePath, "SD card") +
+            RemovableVolume(c.absolutePath, "SD card-card-b")
+        val all = addresses()
+        assertEquals(original, all[a.absolutePath])
+        assertEquals(3, all.values.toSet().size)
+        all.forEach { (path, segment) -> assertEquals(path, share.resolve("/$segment")!!.path) }
+        attached = attached.drop(1)
+        assertEquals(all - a.absolutePath, addresses())
+        attached = attached.reversed() + RemovableVolume(a.absolutePath, "Renamed")
+        assertEquals(all, addresses())
+    }
+
+    @Test
+    fun `a volume with an empty sanitized label keeps its first address`() {
+        val card = File(dir, "empty-label").apply { mkdirs() }
+        var label = ".."
+        val share = ShareRoot(app, ShareScope.AllSources) { listOf(RemovableVolume(card.absolutePath, label)) }
+        val first = share.sources().first { it.basePath == card.absolutePath }.segment
+        label = "New name"
+        assertEquals(first, share.sources().first { it.basePath == card.absolutePath }.segment)
+    }
+
+    /** A volume named like a fixed source must not shadow it. */
+    @Test
+    fun `a volume named like a fixed source does not shadow it`() {
+        val card = File(dir, "card-root").apply { mkdirs() }
+        val root = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(card.absolutePath, "root"))
+        }
+        val segs = root.sources().map { it.segment }
+        assertTrue("the fixed source is still there", segs.contains("root"))
+        assertTrue("the volume got its own address", segs.contains("external-root"))
     }
 
     @Test
@@ -219,6 +339,20 @@ class AllSourcesTest {
     }
 
     // ---- Stubs ----
+
+    /** A backend with a given scheme — stands in for a registered server. */
+    private class NamedTreeFs(override val scheme: String) : FileSystem {
+        override val displayName: String = "Server"
+        override fun root(): XFile = XFile(scheme, "/", isDir = true)
+        override fun resolve(path: String): XFile = XFile(scheme, path, isDir = true)
+        override fun list(dir: XFile): List<XFile> = emptyList()
+        override fun openInput(file: XFile): InputStream = ByteArrayInputStream(ByteArray(0))
+        override fun openOutput(file: XFile, append: Boolean): OutputStream = throw FsException("read-only")
+        override fun mkdir(parent: XFile, name: String): XFile = throw FsException("read-only")
+        override fun delete(file: XFile) = throw FsException("read-only")
+        override fun rename(file: XFile, newName: String): XFile = throw FsException("read-only")
+        override fun exists(file: XFile): Boolean = true
+    }
 
     /** `root()` throws: the class of sources that "must be mounted first", like archives/SAF/share. */
     private class NoRootFs(override val scheme: String, override val displayName: String) : FileSystem {

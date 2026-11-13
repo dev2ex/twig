@@ -123,3 +123,32 @@
   is a StateFlow collected while each activity is started; pausing or destroying one
   activity cannot remove another's subscription. `ShareIconTest` reproduces the old
   failure with overlapping activities and checks all three strips on start and stop.
+
+- **"All sources" missed the removable volumes, and the source segment is a mount point**
+  (2026-11-12, issue #64). Two separate things were wrong, and both only showed up on a
+  device with a card in it:
+  - **The share listed only internal storage and `/`.** A removable volume has its own
+    mount point (`/storage/<uuid>`) and is *not* a subdirectory of internal storage, so it
+    was nowhere in the share's source list — the app's own tree gets those rows from
+    `StorageVolumes`, the share did not. "Root directory" is no way around it either: the
+    share runs every request inside `LocalFileSystem.withoutElevation`, so a LAN visitor
+    can never read a path that needs root/Shizuku. A volume mounted "invisible to the app"
+    (`/mnt/media_rw/<id>`) is therefore **not offered at all** — an entry that always fails
+    is worse than a missing one.
+  - **The URL segment is what a WebDAV client shows as the mount point**, so it has to be a
+    name the user recognises: `smb-NAS`, `webdav-192.168.1.5`, `external-SDCARD`. The
+    segment used to be the hashed scheme (`smb1a2b3c`), which reads as noise on a mount
+    point. The old segment still resolves (it is kept as an alias), so a mount point saved
+    before the rename keeps working.
+  - **A volume's description is localized** ("USB drive" / "USB-накопитель"), so a segment
+    derived from it afresh would *move* when the system language changed and a saved mount
+    point would 404. The final segment a volume gets is remembered (`ShareStore`), keyed by
+    the volume's directory name. Reserve it even while unplugged; recomputing suffixes
+    from the currently attached volumes changes saved mounts on hotplug. Persist empty-name
+    fallbacks too, and check generated suffixes against every reserved address.
+  - Two servers with the same name must not collapse into one address: the hash of the
+    connection label (which is what the scheme is made of) tells them apart — and it has to
+    be applied to *all* of them, not to the second one that happens to come second in the
+    registry, or the address would move when the registry order changes. Include saved but
+    disconnected servers in collision checks and reserve their unsuffixed names and scheme
+    aliases, so a generated suffix cannot shadow a third server's name.

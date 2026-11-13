@@ -82,6 +82,7 @@ data class ShareConfig(
 object ShareStore {
     const val FILE = "twig_share"
     private const val KEY = "config"
+    private const val KEY_SEGMENTS = "volsegs"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -141,4 +142,44 @@ object ShareStore {
         Connections.ofScheme(scheme)?.label()
             ?: ConnectionStore.all(ctx).firstOrNull { Connections.schemeOf(it) == scheme }?.label()
             ?: ""
+
+    // ---- Removable volume segments ----
+
+    /**
+     * Return the volume's reserved segment, assigning a unique one on first use.
+     *
+     * The segment is the volume's own name ("Sd256", "USB drive"), so a WebDAV client
+     * shows that name as the mount point. But the system's description of a volume is
+     * **localized** — the same USB drive is "USB drive" in English and "USB-накопитель" in
+     * Russian — so a segment derived fresh every time would **move** as soon as the system
+     * language changed, and a mount point the user saved would 404. The first segment a
+     * volume gets is therefore remembered, keyed by the volume's id (the name of its
+     * directory, e.g. the UUID under /storage), and reused from then on.
+     */
+    fun volumeSegment(ctx: Context, id: String, preferred: String): String = synchronized(sp(ctx)) {
+        val map = readSegments(ctx)
+        map[id]?.let { return@synchronized it }
+        // Reserve addresses even for unplugged volumes. A later card with the same
+        // display name must never take over a saved WebDAV mount point.
+        var segment = preferred.ifEmpty { id }
+        if (segment in map.values) segment = "$segment-$id"
+        val base = segment
+        var suffix = 2
+        while (segment in map.values) segment = "$base-${suffix++}"
+        map[id] = segment
+        val o = JSONObject()
+        map.forEach { (k, v) -> o.put(k, v) }
+        sp(ctx).edit().putString(KEY_SEGMENTS, o.toString()).apply()
+        segment
+    }
+
+    private fun readSegments(ctx: Context): MutableMap<String, String> {
+        val raw = sp(ctx).getString(KEY_SEGMENTS, null) ?: return mutableMapOf()
+        return runCatching {
+            val o = JSONObject(raw)
+            val out = mutableMapOf<String, String>()
+            o.keys().forEach { k -> o.optString(k).takeIf { it.isNotEmpty() }?.let { out[k] = it } }
+            out
+        }.getOrDefault(mutableMapOf())
+    }
 }
