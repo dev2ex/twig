@@ -5,6 +5,8 @@ import android.os.Environment
 import com.twig.app.Connections
 import com.twig.app.ConnectionStore
 import com.twig.app.R
+import com.twig.app.RemovableVolume
+import com.twig.app.StorageVolumes
 import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -33,7 +35,17 @@ import java.io.File
  * lists every level once, which [DirCache] absorbs — browsing goes level by level anyway, so
  * the ancestors are all cached.
  */
-class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
+class ShareRoot(
+    private val ctx: Context,
+    private val scope: ShareScope,
+    /**
+     * The removable volumes (SD card / USB drive) offered as sources.
+     *
+     * Injectable for tests; production reads [StorageVolumes]' cached list, which the app
+     * keeps up to date (the foreground poll in `MainActivity` re-scans it).
+     */
+    private val volumes: () -> List<RemovableVolume> = { StorageVolumes.cached(ctx) },
+) {
 
     /**
      * One entry under the "all sources" virtual root.
@@ -59,11 +71,16 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
      * server and the process just cold-started (not in FsRegistry yet), reconnect using the
      * stored connection label. Blocking IO; call on a worker thread.
      *
+     * The removable volumes are re-scanned here as well: a card plugged in while the app
+     * was in the background is not in the cache yet, and "all sources" is exactly the mode
+     * where it has to show up.
+     *
      * Failures are not thrown — they surface on the first request as "cannot open + reason"
      * (see the error bar in [WebUi.renderDir]), which is easier to diagnose than a service
      * that refuses to start.
      */
     fun ensureReady() {
+        runCatching { StorageVolumes.refresh(ctx) }
         val s = scope as? ShareScope.Dir ?: return
         if (s.connLabel.isEmpty()) return
         if (FsRegistry.all().any { it.scheme == s.scheme }) return
@@ -90,6 +107,13 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
      * `LocalFileSystem` is `/`, which shows the user `acct`/`apex`/`vendor` and friends,
      * while nine times out of ten `/sdcard` is what they want. This matches the two
      * top-level nodes in the app's own tree.
+     *
+     * ★ **Removable volumes (SD card / USB drive) are sources too** (issue #64). The app's
+     * own tree lists them at the top, but the share offered only internal storage and `/`,
+     * so a visitor saw "internal storage only" on a device whose card and USB drive were
+     * perfectly visible in the app. They are separate volumes with separate mount points
+     * (`/storage/<uuid>`), never a subdirectory of internal storage, so nothing else
+     * exposes them.
      */
     fun sources(): List<Source> {
         if (scope !is ShareScope.AllSources) return emptyList()
@@ -103,6 +127,7 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
                     out += Source("storage", ctx.getString(R.string.group_internal_storage), LOCAL, ext)
                 }
                 out += Source("root", ctx.getString(R.string.group_root), LOCAL, "/")
+                out += volumeSources()
                 continue
             }
             // root() throws = this source is not an independently browsable tree; skip it
@@ -115,6 +140,34 @@ class ShareRoot(private val ctx: Context, private val scope: ShareScope) {
             )
         }
         return out
+    }
+
+    /**
+     * Removable volumes as sources.
+     *
+     * **The segment is the volume's own directory name** (`/storage/<uuid>` → `vol-<uuid>`):
+     * it is stable across reboots, so a WebDAV client that saved the mount point keeps
+     * working, and it never shifts because another volume appeared. The label is the
+     * system's own name for the volume ("SD card", "USB drive"); two cards with the same
+     * name get their directory name appended, otherwise the page shows two identical rows.
+     *
+     * **Only volumes the app can open itself.** A volume mounted "invisible to the app"
+     * (its path is `/mnt/media_rw/<id>`, readable by root only) needs the privileged
+     * fallback — and a LAN visitor never gets that (see `LocalFileSystem.withoutElevation`),
+     * so listing it would produce an entry that always fails. Such a volume is not
+     * offered at all rather than offered and broken.
+     */
+    private fun volumeSources(): List<Source> {
+        val vs = runCatching { volumes() }.getOrDefault(emptyList())
+        if (vs.isEmpty()) return emptyList()
+        val duplicateLabels = vs.groupingBy { it.label }.eachCount().filterValues { it > 1 }.keys
+        return vs.mapNotNull { v ->
+            val name = v.path.trimEnd('/').substringAfterLast('/')
+            if (name.isEmpty()) return@mapNotNull null
+            if (!File(v.path).isDirectory) return@mapNotNull null
+            val label = if (v.label in duplicateLabels) "${v.label} ($name)" else v.label
+            Source(segment = "vol-$name", label = label, scheme = LOCAL, basePath = v.path)
+        }
     }
 
     /**

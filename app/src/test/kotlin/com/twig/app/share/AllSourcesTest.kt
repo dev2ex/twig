@@ -6,6 +6,7 @@ import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
+import com.twig.app.RemovableVolume
 import com.twig.fs.local.LocalFileSystem
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -155,6 +156,55 @@ class AllSourcesTest {
     @Test
     fun `an unknown source segment returns null`() {
         assertNull(root().resolve("/nope/whatever"))
+    }
+
+    // ---- Removable volumes (issue #64) ----
+
+    /**
+     * The app's own tree lists the SD card and the USB drive at the top, so "all sources"
+     * has to offer them too: a visitor used to see internal storage only, on a device
+     * whose card was perfectly visible in the app.
+     */
+    @Test
+    fun `a removable volume is offered as a source and can be entered`() {
+        val card = File(dir, "card")
+        card.mkdirs()
+        File(card, "photo.jpg").writeText("x")
+        val root = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(card.absolutePath, "SD card"))
+        }
+        val src = root.sources().firstOrNull { it.segment == "vol-card" }
+        assertNotNull("the card should be a source", src)
+        assertEquals("SD card", src!!.label)
+        val f = root.resolve("/vol-card/photo.jpg")
+        assertNotNull("the card's contents should be reachable", f)
+        assertEquals("photo.jpg", f!!.name)
+    }
+
+    /**
+     * A volume mounted "invisible to the app" (its path is `/mnt/media_rw/<id>`, root-only)
+     * cannot be listed by a LAN visitor — the privileged fallback is off for them. Such a
+     * volume is not offered at all, rather than offered and always failing.
+     */
+    @Test
+    fun `a volume that cannot be opened is not offered`() {
+        val root = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(File(dir, "gone").absolutePath, "Ghost"))
+        }
+        assertFalse(root.sources().map { it.segment }.contains("vol-gone"))
+    }
+
+    /** Two cards with the same system name must not produce two identical rows. */
+    @Test
+    fun `two volumes with the same label are told apart`() {
+        val a = File(dir, "card-a").apply { mkdirs() }
+        val b = File(dir, "card-b").apply { mkdirs() }
+        val root = ShareRoot(app, ShareScope.AllSources) {
+            listOf(RemovableVolume(a.absolutePath, "SD card"), RemovableVolume(b.absolutePath, "SD card"))
+        }
+        val labels = root.sources().filter { it.segment.startsWith("vol-") }.map { it.label }
+        assertEquals(2, labels.size)
+        assertEquals(2, labels.toSet().size)
     }
 
     @Test
