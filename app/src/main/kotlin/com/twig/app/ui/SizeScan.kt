@@ -19,7 +19,7 @@ internal fun walkLocalForSize(
     dir: XFile,
     maxDepth: Int,
     stopped: () -> Boolean,
-    visit: (XFile) -> Unit,
+    visit: (parent: XFile, file: XFile) -> Unit,
 ) {
     (FsRegistry.of(dir) as LocalFileSystem).walk(dir, maxDepth, ::localSizeEntry, stopped, visit)
 }

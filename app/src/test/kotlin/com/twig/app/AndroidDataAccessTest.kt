@@ -285,7 +285,7 @@ class AndroidDataAccessTest {
     @Test fun `directory scans traverse SAF descendants and existing grants survive a new access instance`() {
         grant()
         val found = mutableListOf<XFile>()
-        fs.walk(root, 4, stopped = { false }, visit = { found += it })
+        fs.walk(root, 4, stopped = { false }, visit = { _, file -> found += file })
         assertEquals(setOf("files", "hello.txt", "nested.txt"), found.map { it.name }.toSet())
         assertEquals(2, fs.listForSize(root) { error("must not stat inaccessible physical paths") }.size)
         assertNotNull(AndroidDataAccess(app).route(root.path))
@@ -370,6 +370,35 @@ class AndroidDataAccessTest {
         assertFalse(fs.canResumeWrites(root))
         assertFalse(fs.moveWithin(root.copy(path = root.path + "/card-source.txt", isDir = false), root, "moved.txt"))
         assertNull(TrashStore(app).plan(listOf(created)).single().volume)
+    }
+
+    @Test @Config(sdk = [29, 34]) fun `usage from original card matches document tree with nested totals and SAF handles`() {
+        val (root, uri) = card()
+        File(provider.base, "files/deep").mkdirs()
+        File(provider.base, "files/deep/large + file.txt").writeText("1234567890")
+        File(provider.base, "empty").mkdirs()
+        val documentRoot = SafFileSystem(app).rootOf(uri)
+        fun scan(file: XFile) = com.twig.app.ui.TreemapScanner(app.cacheDir).let { scanner ->
+            scanner.scanRoot(file).also {
+                assertEquals(6, scanner.scanned)
+                assertEquals(21L, scanner.bytes)
+            }
+        }
+        val native = scan(root)
+        val document = scan(documentRoot)
+        fun summary(entry: com.twig.app.ui.TreemapEntry): List<Any> =
+            entry.children.orEmpty().map { listOf(it.name, it.size, summary(it)) }
+        assertEquals(21L, native.size)
+        assertEquals(summary(document), summary(native))
+        assertEquals(listOf("files", "hello.txt", "empty"), native.children!!.map { it.name })
+        val files = native.children!!.first()
+        assertEquals(16L, files.size)
+        val deep = files.children!!.first()
+        assertEquals(10L, deep.size)
+        val leaf = deep.children!!.single()
+        assertSame(deep, leaf.parent)
+        assertEquals("saf", leaf.file.scheme)
+        assertEquals("1234567890", FsRegistry.of(leaf.file).openInput(leaf.file).bufferedReader().use { it.readText() })
     }
 
     @Test @Config(sdk = [29, 34]) fun `card subfolder grants stay bounded and read only grants and revocation update routing`() {

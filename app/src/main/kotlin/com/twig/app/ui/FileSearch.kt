@@ -67,7 +67,7 @@ fun scanSearch(root: XFile, pattern: String): Flow<XFile> = channelFlow {
         // descend into their directory children (maximum entry depth is 65).
         fs.walk(root, SEARCH_MAX_DEPTH + 1,
             stopped = { context.ensureActive(); count >= SEARCH_MAX_RESULTS },
-        ) { file ->
+        ) { _, file ->
             if (matches(file.name)) {
                 // The walker is synchronous. Preserve backpressure and every hit;
                 // trySend alone would drop results when the collector is slower.

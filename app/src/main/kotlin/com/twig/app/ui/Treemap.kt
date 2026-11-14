@@ -57,17 +57,19 @@ class TreemapScanner(private val cacheDir: java.io.File) {
     }
 
     private fun scanLocal(root: TreemapEntry) {
-        val dirs = HashMap<String, TreemapEntry>()
-        dirs[java.io.File(root.file.path).absolutePath] = root
+        fun key(file: XFile) = file.scheme to
+            if (file.scheme == LocalFileSystem.SCHEME) java.io.File(file.path).absolutePath else file.path
+        val dirs = HashMap<Pair<String, String>, TreemapEntry>()
+        dirs[key(root.file)] = root
         val order = ArrayList<TreemapEntry>().apply { add(root) }
-        walkLocalForSize(root.file, Int.MAX_VALUE, { stop || scanned >= MAX_ENTRIES }) { file ->
-            val parent = dirs[file.parentPath] ?: return@walkLocalForSize
+        walkLocalForSize(root.file, Int.MAX_VALUE, { stop || scanned >= MAX_ENTRIES }) { listingParent, file ->
+            val parent = dirs[key(listingParent)] ?: return@walkLocalForSize
             scanned++
             val size = if (file.isDir) 0L else file.size.coerceAtLeast(0)
             val child = TreemapEntry(file, file.isDir, size, if (file.isDir) ArrayList() else null, parent)
             parent.children!!.add(child)
             if (file.isDir) {
-                dirs[file.path] = child
+                dirs[key(file)] = child
                 order.add(child)
             } else {
                 parent.size += size

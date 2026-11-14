@@ -87,13 +87,17 @@ class LocalFileSystem(
         return children.map(readEntry)
     }
 
-    /** Visits descendants without sorting; unreadable subtrees use one privileged scan. */
+    /**
+     * Visits descendants with their listing parent, without sorting. Provider children
+     * may use opaque document URIs whose parent cannot be derived from their path.
+     * Unreadable native subtrees use one privileged scan.
+     */
     fun walk(
         dir: XFile,
         maxDepth: Int,
         readEntry: (File) -> XFile = ::toXFile,
         stopped: () -> Boolean,
-        visit: (XFile) -> Unit,
+        visit: (parent: XFile, file: XFile) -> Unit,
     ) {
         val pending = ArrayDeque<Pair<XFile, Int>>()
         pending.addLast(dir to 0)
@@ -104,20 +108,22 @@ class LocalFileSystem(
             if (provider != null) {
                 for (file in provider.list(parent)) {
                     if (stopped()) return
-                    visit(file)
+                    visit(parent, file)
                     if (file.isDir && depth + 1 < maxDepth) pending.addLast(file to (depth + 1))
                 }
                 continue
             }
             val children = File(parent.path).listFiles()
             if (children == null) {
-                fallback?.walk(File(parent.path).absolutePath, maxDepth - depth, stopped, visit)
+                fallback?.walk(File(parent.path).absolutePath, maxDepth - depth, stopped) { file ->
+                    visit(XFile(scheme, file.parentPath, true), file)
+                }
                 continue
             }
             for (child in children) {
                 if (stopped()) return
                 val file = readEntry(child)
-                visit(file)
+                visit(parent, file)
                 if (file.isDir && depth + 1 < maxDepth) pending.addLast(file to (depth + 1))
             }
         }

@@ -40,6 +40,14 @@
   `AndroidDataAccessTest` covers Android 10/14, whole-card and subfolder boundaries,
   provider mutations and copy replacement, read-only/revoked access, both pane caches,
   native access and volume aliases.
+  Usage scans must also retain the parent from each listing: the local walker can
+  cross into SAF and return document URIs, whose `parentPath` is not a directory.
+  Reconstructing parents from those URIs discarded every child and showed an empty
+  card despite successful enumeration (#47 follow-up). The walker now reports the
+  listing parent alongside each entry, and the treemap indexes directories by scheme
+  and path. Keep document handles intact for actions; do not rewrite them into native
+  paths. `AndroidDataAccessTest` compares usage through both card entry points on
+  Android 10/14, including nested totals, empty folders and reading a scanned file.
 
 - **Android/data may allow probing a known child while denying enumeration** (2026-10-19):
   the authorization dialog lists user-installed app paths and opens SAF at the exact child.

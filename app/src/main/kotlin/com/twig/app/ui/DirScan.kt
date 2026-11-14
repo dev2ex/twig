@@ -78,7 +78,7 @@ fun scanDirStat(root: XFile, io: CoroutineDispatcher = Dispatchers.IO): Flow<Dir
         val context = coroutineContext
         walkLocalForSize(root, DIR_SCAN_MAX_DEPTH + 1,
             { context.ensureActive(); files + dirs >= DIR_SCAN_MAX_ENTRIES },
-        ) { file ->
+        ) { _, file ->
             if (file.isDir) dirs++ else { files++; bytes += file.size.coerceAtLeast(0) }
             val now = android.os.SystemClock.elapsedRealtime()
             if (now - lastUi > DIR_SCAN_UI_MS) {
