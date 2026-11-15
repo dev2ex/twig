@@ -173,7 +173,7 @@ class CopyDestinationTest {
         launchCompressionPicker()
         choose()
         val form = compressionDialog()
-        assertEquals("payload.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals("source.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
         form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         idle()
         val session = compressionSession()
@@ -743,4 +743,134 @@ class CopyDestinationTest {
         assertFalse(ReflectionHelpers.getField(activity, "ignoringSourceTouch"))
         dispatch(android.view.MotionEvent.ACTION_UP, sourceBounds)
     }
+    @Test fun `structured copy retains its option through destination picking and writes distinct paths`() {
+        val other = File(source.parentFile!!.parentFile, "other/payload.txt").apply { parentFile!!.mkdirs(); writeText("other") }
+        open(files = listOf(entry(source), entry(other)))
+        dialog().findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertTrue(dialog().findViewById<TextView>(R.id.tv_structure_preview)!!.text.contains("source/payload.txt"))
+        launchPicker()
+        controller.recreate()
+        idle()
+        choose()
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        val work = session.work as Transfers.Work.Copy
+        assertEquals(setOf("source/payload.txt", "other/payload.txt"), work.targetPaths.values.toSet())
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("payload", File(target, "source/payload.txt").readText())
+        assertEquals("other", File(target, "other/payload.txt").readText())
+    }
+
+    @Test fun `compression duplicate names require structure and the worker preserves both entries`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
+        val other = File(source.parentFile!!.parentFile, "other/payload.txt").apply { parentFile!!.mkdirs(); writeText("other") }
+        openCompression(listOf(entry(source), entry(other)))
+        assertFalse(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        compressionDialog().findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertTrue(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        idle()
+        val session = compressionSession()
+        val work = session.work as Transfers.Work.Compress
+        assertEquals(setOf("source/payload.txt", "other/payload.txt"), work.targetPaths.values.toSet())
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        java.util.zip.ZipFile(File(work.target.path)).use { zip ->
+            assertEquals("payload", zip.getInputStream(zip.getEntry("source/payload.txt")).bufferedReader().readText())
+            assertEquals("other", zip.getInputStream(zip.getEntry("other/payload.txt")).bufferedReader().readText())
+        }
+    }
+
+    @Test fun `structured toolbar compression names the highest directory and omits it inside the archive`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
+        openCompression()
+        val form = compressionDialog()
+        val name = form.findViewById<android.widget.EditText>(R.id.et_name)!!
+        assertEquals("source.zip", name.text.toString())
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertEquals("source.zip", name.text.toString())
+        assertEquals("payload.txt", form.findViewById<TextView>(R.id.tv_structure_preview)!!.text.toString())
+        launchCompressionPicker()
+        controller.recreate()
+        idle()
+        choose()
+        assertEquals("source.zip", compressionDialog().findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = compressionSession()
+        val work = session.work as Transfers.Work.Compress
+        assertEquals("source.zip", work.target.name)
+        assertEquals("payload.txt", work.targetPaths[entry(source).toUri()])
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        java.util.zip.ZipFile(File(work.target.path)).use { zip ->
+            assertEquals(listOf("payload.txt"), zip.entries().asSequence().map { it.name }.toList())
+        }
+    }
+
+    @Test fun `long pressed selected file names the entire batch and manual names survive structure toggles`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
+        val second = File(source.parentFile, "chosen.jpg").apply { writeText("image") }
+        val files = listOf(entry(source), entry(second))
+        val nodes = files.map { PaneViewModel.FileNode(it, 1, false, false) }
+        val adapter = ReflectionHelpers.getField<FileAdapter>(pane(), "adapter")
+        var committed = false
+        adapter.submitList(nodes) { committed = true }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!committed && System.nanoTime() < deadline) { idle(); Thread.sleep(5) }
+        assertTrue(committed)
+        adapter.setSelection(files)
+        ReflectionHelpers.callInstanceMethod<Unit>(pane(), "onLongClick",
+            ReflectionHelpers.ClassParameter.from(PaneViewModel.Node::class.java, nodes[1]))
+        val menu = org.robolectric.shadows.ShadowDialog.getLatestDialog() as AlertDialog
+        val compress = (0 until menu.listView.adapter.count).map { menu.listView.adapter.getItem(it) as MenuAct }
+            .single { it.label == activity.getString(R.string.strip_compress) }
+        menu.dismiss()
+        compress.run()
+        pane().childFragmentManager.executePendingTransactions()
+        idle()
+        var form = compressionDialog()
+        assertEquals(files, state().draft!!.sources)
+        assertEquals("chosen.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertEquals("chosen.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals(setOf("payload.txt", "chosen.jpg"), state().draft!!.outputPaths().values.toSet())
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("custom.zip")
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = false
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertEquals("custom.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        controller.recreate()
+        idle()
+        form = compressionDialog()
+        assertEquals("custom.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = false
+        assertEquals("custom.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+    }
+
+    @Test fun `structure toggles keep the same directory name in the current archive format`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
+        openCompression()
+        val form = compressionDialog()
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = true
+        assertEquals("source.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.findViewById<CheckBox>(R.id.cb_keep_structure)!!.isChecked = false
+        assertEquals("source.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        form.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+    }
+
 }

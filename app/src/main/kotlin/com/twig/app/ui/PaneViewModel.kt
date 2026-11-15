@@ -550,6 +550,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private val attachedKeys = HashSet<String>()
     private val storageShortcutKeys = HashSet<String>()
 
+    val selection = PaneSelection()
+
     var currentDir: XFile? = null
     /** Most recently selected node key (any type: directory / server / group / favorite / restic). */
     private var currentKey: String? = null
@@ -1058,6 +1060,20 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             k != fk && v.scheme == file.scheme &&
                 v.path.trimEnd('/').ifEmpty { "/" } == parent && children.containsKey(k)
         }?.key ?: fk
+    }
+
+    /** One pass over cached listings for an operation's ancestry, including hidden and mounted rows. */
+    fun sourceParents(): Map<String, XFile> {
+        val result = HashMap<String, XFile>()
+        for ((key, entries) in children) {
+            val parent = mountRoots[key] ?: keyFile[key] ?: continue
+            if (!parent.isDir) continue
+            for (child in entries) {
+                if (child.scheme != parent.scheme || child.toUri() == parent.toUri()) continue
+                if (key in expanded) result[child.toUri()] = parent else result.putIfAbsent(child.toUri(), parent)
+            }
+        }
+        return result
     }
 
     /** A UI-thread snapshot of the real containing directory, including opaque paths. */

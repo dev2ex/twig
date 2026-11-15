@@ -60,6 +60,7 @@ import com.twig.core.CopyEngine
 import com.twig.fs.archive.ArchiveWriter
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
+import com.twig.core.SourceLayout
 import com.twig.core.XFile
 import com.twig.core.isMutable
 import com.twig.core.isWritableDir
@@ -247,6 +248,7 @@ class PaneFragment : Fragment() {
             gridMode = Prefs.thumbsGrid(requireContext()),
             gridNames = Prefs.thumbsGridNames(requireContext()),
             selectFilesByRow = host?.selectFilesByRow == true,
+            selection = viewModel.selection,
             onClick = click@{ node ->
                 viewModel.pathBarExpanded = false
                 renderPathSegments()
@@ -344,6 +346,7 @@ class PaneFragment : Fragment() {
             check.setBounds(0, 0, size, size)
             b.tvSelectionCount.setCompoundDrawablesRelative(null, null, check, null)
         }
+        b.tvSelectionCount.setOnClickListener { if (!mapMode) showCheckedItems() }
         b.tvPath.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
             if (right - left != oldRight - oldLeft && !mapMode) setPathText(viewModel.state.value.currentDir)
         }
@@ -497,6 +500,25 @@ class PaneFragment : Fragment() {
             active || Prefs.dualPane(requireContext()))
         v.alpha = if (active) 1f else 0.5f
         v.setBackgroundColor(androidx.core.content.ContextCompat.getColor(requireContext(), if (active) R.color.path_bar_active else R.color.path_bar))
+    }
+
+    private fun addSelectionReview(actions: ArrayList<MenuAct>) {
+        if (mapMode) return
+        val count = checkedFiles().size
+        if (count > 0) actions.item(getString(R.string.title_selected_count, count), R.drawable.ic_sel_check) { showCheckedItems() }
+    }
+
+    private fun showCheckedItems() {
+        val files = checkedFiles()
+        if (files.isEmpty()) return
+        val keep = BooleanArray(files.size) { true }
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.title_selected_count, files.size))
+            .setMultiChoiceItems(files.map(::displayPath).toTypedArray(), keep) { _, index, checked -> keep[index] = checked }
+            .setNeutralButton(R.string.selection_clear_all) { _, _ -> adapter.clearSelection() }
+            .setNegativeButton(R.string.dialog_cancel, null)
+            .setPositiveButton(R.string.dialog_ok) { _, _ -> adapter.setSelection(files.filterIndexed { index, _ -> keep[index] }) }
+            .show()
     }
 
     private fun updateSelectionCount() {
@@ -1455,27 +1477,43 @@ class PaneFragment : Fragment() {
     fun isReady(): Boolean = view != null && ::adapter.isInitialized
 
     /** Checked items (in treemap mode, prefer the selected tiles on the map); when nothing is checked, fall back to the green-highlighted current node. */
+    private fun sourceParentLookup(): (XFile) -> XFile? {
+        val parents = viewModel.sourceParents()
+        return { parents[it.toUri()] ?: SourceLayout.lexicalParent(it) }
+    }
+
+    private fun normalizedSources(files: List<XFile>): List<XFile> =
+        if (files.size < 2 || files.none { it.isDir }) files.distinctBy { it.toUri() }
+        else SourceLayout.normalize(files, sourceParentLookup())
+
+    private fun sourcePaths(files: List<XFile>): Map<String, String>? = runCatching {
+        SourceLayout.paths(files, sourceParentLookup()) { root ->
+            viewModel.connOf(root.scheme)?.displayLabel()
+                ?: if (root.scheme == "file") getString(R.string.group_internal_storage) else root.name.takeIf { it != "/" } ?: root.scheme
+        }
+    }.getOrNull()
+
     private fun selectionOrCurrent(readOnly: Boolean = false): List<XFile> {
         // Reading may include a favorite or storage root; mutation keeps the VM's root protections.
         val current = viewModel.currentSelection() ?: viewModel.currentDir.takeIf { readOnly }?.let {
             // A filesystem root is readable, but '/' is not a valid destination entry name.
             if (it.name == "/") it.copy(displayName = "root") else it
         }
-        return when {
+        return normalizedSources(when {
             mapMode && mapSelected.isNotEmpty() -> mapSelected.map { it.file }
-            // When the view isn't built yet we can only ask the VM — the check state lives in the adapter, and there can't be any checks at that point.
-            !::adapter.isInitialized -> listOfNotNull(current)
+            // The pane owns checks even while its adapter is being recreated.
+            !::adapter.isInitialized -> viewModel.selection.files.values.toList().ifEmpty { listOfNotNull(current) }
             else -> adapter.selectedItems().ifEmpty { listOfNotNull(current) }
-        }
+        })
     }
 
     fun actionInfo(secondTab: Boolean = false) {
         val targets = selectionOrCurrent(readOnly = true)
         if (targets.isEmpty()) return toast(getString(R.string.msg_no_selection))
         if (targets.size > 1) {
-            val anchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
+            val infoAnchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
             pendingSelectionInfoScroll = true
-            viewModel.toggleSelectionInfo(targets, anchor?.key)
+            viewModel.toggleSelectionInfo(targets, infoAnchor?.key)
         } else {
             if (secondTab) viewModel.showInfo(targets.single(), 1) else viewModel.toggleInfo(targets.single())
         }
@@ -1751,7 +1789,8 @@ class PaneFragment : Fragment() {
         performCopy(sel, move, allowMove = selectionOrCurrent().containsAll(sel), immediate = immediate)
     }
 
-    private fun performCopy(sel: List<XFile>, move: Boolean, allowMove: Boolean = true, immediate: Boolean = false) {
+    private fun performCopy(selected: List<XFile>, move: Boolean, allowMove: Boolean = true, immediate: Boolean = false) {
+        val sel = normalizedSources(selected)
         // Move = copy + delete source. Apps can't be deleted (uninstall is a different thing), and the document tree root
         // can't be deleted (it's a grant, see [isMovableSource]); the action bar's "Move" and batch-after-check bypass the menu,
         // so we catch the failure here rather than failing after the copy completes.
@@ -1775,7 +1814,7 @@ class PaneFragment : Fragment() {
         // Keep the source snapshot while the destination picker is open.
         if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
         val state = destinationState
-        state.prepare(DestinationState.Draft(sel.toList(), dest, move, movable))
+        state.prepare(DestinationState.Draft(sel.toList(), dest, move, movable, relativePaths = sourcePaths(sel)))
         if (dest?.isWritableDir() == true) showDestinationConfirmation() else chooseDestination()
     }
 
@@ -1818,10 +1857,11 @@ class PaneFragment : Fragment() {
         move: Boolean,
         plan0: CopyEngine.Plan?,
         fromClipboard: Boolean = false,
+        targetPaths: Map<String, String> = emptyMap(),
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Copy(sel, dest, move, fromClipboard),
+                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths),
                 if (move) R.string.progress_move else R.string.progress_copy,
                 pathLabel(dest), pathIcon(dest), plan0,
             ),
@@ -1901,11 +1941,27 @@ class PaneFragment : Fragment() {
     }
 
     /** Compression shares destination selection with copy/move, retaining its own form fields. */
-    private fun performCompress(sel: List<XFile>, allowMove: Boolean = true, immediate: Boolean = false) {
+    private fun performCompress(selected: List<XFile>, allowMove: Boolean = true, immediate: Boolean = false) =
+        prepareCompression(selected, allowMove, immediate)
+
+    private fun performCompressFromMenu(selected: List<XFile>, anchor: XFile) =
+        prepareCompression(selected, allowMove = true, immediate = false, nameFrom = anchor)
+
+    private fun prepareCompression(selected: List<XFile>, allowMove: Boolean, immediate: Boolean, nameFrom: XFile? = null) {
+        val sel = normalizedSources(selected)
         if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
         val dest = host?.siblingOf(this)?.viewModel?.currentDir
         val format = Prefs.compressFormat(requireContext())
-        val name = "${defaultArchiveName(sel)}.${format.ext}"
+        val paths = sourcePaths(sel)
+        // Only a shared top-level directory can become the archive's enclosing name.
+        // Independent roots keep their distinguishing prefixes inside the archive.
+        val structureRoot = paths?.values?.firstOrNull()?.substringBefore('/')?.takeIf { root ->
+            sel.all { file ->
+                val path = paths[file.toUri()]
+                path?.startsWith("$root/") == true || (file.isDir && path == root)
+            }
+        }
+        val name = "${nameFrom?.let(::archiveStem) ?: structureRoot ?: defaultArchiveName(sel)}.${format.ext}"
         val parents = sel.map { file ->
             viewModel.renameParent(file) ?: file.takeIf { it.path.startsWith("/") && it.path != "/" }
                 ?.let { XFile(it.scheme, it.parentPath, isDir = true) }
@@ -1916,7 +1972,9 @@ class PaneFragment : Fragment() {
         val level = Prefs.compressLevel(requireContext())
         val draft = DestinationState.Draft(sel.toList(), dest, move = false,
             movable = allowMove && sel.all { it.isMovableSource() },
-            compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory))
+            compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory,
+                structureRoot = structureRoot),
+            relativePaths = paths)
         if (immediate && dest != null && draft.blockReason(dest) == null) {
             startCompress(sel, dest, name, format, false, null, "", level)
             return
@@ -1925,12 +1983,13 @@ class PaneFragment : Fragment() {
         showDestinationConfirmation()
     }
 
+    private fun archiveStem(file: XFile): String =
+        if (file.isDir) file.name else file.name.substringBeforeLast('.', file.name).ifEmpty { file.name }
+
     /** Single item → that item's name (file strips extension); multiple items → containing directory name. */
     private fun defaultArchiveName(sel: List<XFile>): String {
         if (sel.size == 1) {
-            val f = sel[0]
-            val n = f.name
-            return if (f.isDir) n else n.substringBeforeLast('.', n).ifEmpty { n }
+            return archiveStem(sel[0])
         }
         val parent = sel[0].parentPath.trimEnd('/').substringAfterLast('/')
         return parent.ifEmpty { viewModel.currentDir?.name?.trimEnd('/') ?: "" }.ifEmpty { "archive" }
@@ -1947,6 +2006,7 @@ class PaneFragment : Fragment() {
         password: String,
         level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
         hideNames: Boolean = true,
+        targetPaths: Map<String, String> = emptyMap(),
     ) {
         viewLifecycleOwner.lifecycleScope.launch {
             val destFs = FsRegistry.of(dest)
@@ -1961,11 +2021,11 @@ class PaneFragment : Fragment() {
                     .setMessage(getString(R.string.compress_overwrite, name))
                     .setNegativeButton(R.string.dialog_cancel, null)
                     .setPositiveButton(R.string.dialog_ok) { _, _ ->
-                        runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
+                        runCompress(sel, dest, target, format, move, plan0, password, level, hideNames, targetPaths)
                     }
                     .show()
             } else {
-                runCompress(sel, dest, target, format, move, plan0, password, level, hideNames)
+                runCompress(sel, dest, target, format, move, plan0, password, level, hideNames, targetPaths)
             }
         }
     }
@@ -1981,10 +2041,11 @@ class PaneFragment : Fragment() {
         password: String,
         level: ArchiveWriter.Level,
         hideNames: Boolean,
+        targetPaths: Map<String, String>,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }, level, hideNames),
+                Transfers.Work.Compress(sel, dest, target, format, move, password.ifEmpty { null }, level, hideNames, targetPaths),
                 R.string.progress_compress,
                 pathLabel(target), pathIcon(target), plan0,
             ),
@@ -2340,7 +2401,7 @@ class PaneFragment : Fragment() {
     private fun longClickFile(node: PaneViewModel.FileNode) {
         if (node.file.scheme == "trash") {
             val selected = adapter.selectedItems()
-            if (adapter.isSelected(node) && selected.size > 1) { showBatchMenu(selected); return }
+            if (adapter.isSelected(node) && selected.size > 1) { showBatchMenu(selected, node.file); return }
             TrashDialogs(requireContext(), viewLifecycleOwner) { refreshTrashPanes() }.show(node.file, trashFileActions(node))
             return
         }
@@ -2357,7 +2418,7 @@ class PaneFragment : Fragment() {
         // otherwise (not checked, or only it is selected) treat as a normal single-file menu.
         val selItems = adapter.selectedItems()
         if (adapter.isSelected(node) && selItems.size > 1) {
-            showBatchMenu(selItems)
+            showBatchMenu(selItems, node.file)
             return
         }
         // Tree-node-only items (Select / Properties / Refresh / Open as archive) + the generic items shared with the treemap.
@@ -2427,7 +2488,7 @@ class PaneFragment : Fragment() {
         }
         actions.item(getString(R.string.action_clip_add), R.drawable.ic_clipboard) { addToClipboard(listOf(file)) }
         actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) { performCopy(listOf(file), move = false) }
-        actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompress(listOf(file)) }
+        actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompressFromMenu(listOf(file), file) }
         return actions
     }
 
@@ -2436,8 +2497,10 @@ class PaneFragment : Fragment() {
      * Single-file operations such as Open with / Favorite are hidden.
      * The title uses the check count instead of a file name.
      */
-    private fun showBatchMenu(targets: List<XFile>) {
+    private fun showBatchMenu(selected: List<XFile>, anchor: XFile) {
+        val targets = normalizedSources(selected)
         val actions = ArrayList<MenuAct>()
+        addSelectionReview(actions)
         if (targets.all { it.scheme == "trash" && it.path != "/" }) {
             actions.item(getString(R.string.trash_restore), R.drawable.ic_up) {
                 TrashDialogs(requireContext(), viewLifecycleOwner) { adapter.clearSelection(); refreshTrashPanes() }
@@ -2449,9 +2512,9 @@ class PaneFragment : Fragment() {
             }
         }
         actions.item(getString(R.string.file_info), R.drawable.ic_info) {
-            val anchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
+            val infoAnchor = adapter.currentList.filterIsInstance<PaneViewModel.FileNode>().firstOrNull { adapter.isSelected(it) }
             pendingSelectionInfoScroll = true
-            viewModel.toggleSelectionInfo(targets, anchor?.key)
+            viewModel.toggleSelectionInfo(targets, infoAnchor?.key)
         }
         if (targets.all { it.canRead } && targets.none { it.isDir }) {
             actions.item(getString(R.string.action_share), R.drawable.ic_share) { shareFiles(targets) }
@@ -2468,7 +2531,7 @@ class PaneFragment : Fragment() {
         if (targets.all { it.isMovableSource() }) {
             actions.item(getString(R.string.strip_move), R.drawable.ic_move) { performCopy(targets, move = true) }
         }
-        if (targets.all { it.canRead }) actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompress(targets) }
+        if (targets.all { it.canRead }) actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) { performCompressFromMenu(targets, anchor) }
         if (mutable) {
             actions.item(getString(R.string.batch_rename), R.drawable.ic_rename) { performBatchRename(targets) }
             actions.item(getString(R.string.strip_delete), R.drawable.ic_delete, DANGER) { performDelete(targets) }
@@ -2499,6 +2562,7 @@ class PaneFragment : Fragment() {
         sourceNode: PaneViewModel.FileNode? = null,
     ): ArrayList<MenuAct> {
         val actions = ArrayList<MenuAct>()
+        addSelectionReview(actions)
         if (file.isDir) {
             if (file.scheme == "file" || viewModel.isConnScheme(file.scheme)) {
                 actions.item(getString(R.string.treemap_reveal), R.drawable.ic_pane_to_right) {
@@ -2592,7 +2656,7 @@ class PaneFragment : Fragment() {
                 }
             }
             actions.item(getString(R.string.strip_compress), R.drawable.ic_compress) {
-                performCompress(listOf(file))
+                performCompressFromMenu(listOf(file), file)
             }
             if (mutable) {
                 actions.item(getString(R.string.strip_rename), R.drawable.ic_rename) { performRename(file) }

@@ -1274,4 +1274,7 @@
     <string name="settings_current_user_internal_storage_only_desc">アプリのクローンや他の Android ユーザーの内部ストレージへのショートカットを非表示にします。</string>
     <string name="viewer_encoding_auto">自動（設定の優先順位）</string>
     <string name="viewer_encoding_invalid">このファイルを %1$s としてデコードできません。</string>
+    <string name="transfer_keep_structure">フォルダー構造を保持</string>
+    <string name="selection_clear_all">選択をすべて解除</string>
+    <string name="transfer_duplicate_paths">出力パスが重複しています。フォルダー構造を保持するか、選択を変更してください。</string>
 </resources>

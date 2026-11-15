@@ -2,6 +2,7 @@ package com.twig.fs.archive
 
 import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
+import com.twig.core.SourceLayout
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
 import org.junit.Assert.assertArrayEquals
@@ -159,4 +160,66 @@ class ArchiveWriterTest {
         )
         assertFalse(File(out, "replace.zip.twigpart").exists())
     }
+    @Test fun structuredSourcesRoundTripWithoutTheirStorageAncestors() {
+        val a = File(src, "photos/trip/a.txt").apply { parentFile!!.mkdirs(); writeText("trip") }
+        val b = File(src, "downloads/docs/a.txt").apply { parentFile!!.mkdirs(); writeText("docs") }
+        val items = listOf(local(a), local(b))
+        for (format in ArchiveWriter.Format.entries) {
+            val archive = File(out, "structured.${format.ext}")
+            ArchiveWriter.compress(items, local(out), local(archive), format, targetPaths = SourceLayout.paths(items))
+            val fs = if (format == ArchiveWriter.Format.ZIP) zipFs else sevenZFs
+            val root = fs.rootOf(local(archive))
+            val trip = fs.list(root).single { it.name == "trip" }
+            val docs = fs.list(root).single { it.name == "docs" }
+            assertEquals("trip", fs.openInput(fs.list(trip).single()).bufferedReader().use { it.readText() })
+            assertEquals("docs", fs.openInput(fs.list(docs).single()).bufferedReader().use { it.readText() })
+            assertEquals(setOf("trip", "docs"), fs.list(root).map { it.name }.toSet())
+        }
+    }
+
+    @Test fun duplicateFlatEntriesFailWithoutReplacingTheExistingArchive() {
+        val a = File(src, "one/a.txt").apply { parentFile!!.mkdirs(); writeText("one") }
+        val b = File(src, "two/a.txt").apply { parentFile!!.mkdirs(); writeText("two") }
+        for (format in ArchiveWriter.Format.entries) {
+            val archive = File(out, "duplicate.${format.ext}").apply { writeText("original") }
+            org.junit.Assert.assertThrows(com.twig.core.FsException::class.java) {
+                ArchiveWriter.compress(listOf(local(a), local(b)), local(out), local(archive), format)
+            }
+            assertEquals("original", archive.readText())
+            assertFalse(File(out, archive.name + ".twigpart").exists())
+            assertTrue(a.exists())
+            assertTrue(b.exists())
+        }
+    }
+
+    @Test fun syntheticDotDirectoryPacksChildrenWithoutTraversalEntries() {
+        val archive = File(out, "dot.zip")
+        ArchiveWriter.compress(listOf(XFile("file", src.path + "/.", true)), local(out), local(archive), ArchiveWriter.Format.ZIP)
+        java.util.zip.ZipFile(archive).use { zip ->
+            assertTrue(zip.getEntry("hello.txt") != null)
+            assertFalse(zip.entries().asSequence().any { it.name.startsWith("./") || it.name.startsWith("/") })
+        }
+    }
+
+    @Test fun selectedDirectoryCanBePackedAsArchiveRootInBothFormats() {
+        for (format in ArchiveWriter.Format.entries) {
+            val archive = File(out, "contents.${format.ext}")
+            ArchiveWriter.compress(listOf(local(src)), local(out), local(archive), format,
+                targetPaths = mapOf(local(src).toUri() to ""))
+            val fs = if (format == ArchiveWriter.Format.ZIP) zipFs else sevenZFs
+            assertEquals(listOf("dir:true", "dir/a.txt:false", "empty:true", "hello.txt:false"), tree(fs, archive))
+        }
+    }
+
+    @Test fun emptyRelativePathIsRejectedForFilesBeforeTouchingAnExistingArchive() {
+        val item = local(File(src, "hello.txt"))
+        val archive = File(out, "invalid.zip").apply { writeText("original") }
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            ArchiveWriter.compress(listOf(item), local(out), local(archive), ArchiveWriter.Format.ZIP,
+                targetPaths = mapOf(item.toUri() to ""))
+        }
+        assertEquals("original", archive.readText())
+        assertFalse(File(out, "invalid.zip.twigpart").exists())
+    }
+
 }

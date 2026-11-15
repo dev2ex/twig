@@ -256,7 +256,11 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
   the pane-switch button to pin the current directory on the other side and switch to it.
 - Multi-select, cross-pane copy and move with progress and cancellation, mkdir,
   rename, recursive delete, clipboard-style paste, and sharing multiple selected
-  files through the system chooser. The path bar shows the checked-item count.
+  files through the system chooser. Checks span directories; folding clears checks inside that branch. Tap the path-bar count to review or clear the selection.
+  Copy/move and compression offer **Keep directory structure**, starting at the highest
+  selected or containing folders and previewing relative output paths without storage ancestors.
+  Compression names the archive after a single enclosing folder; keeping directory
+  structure omits that folder layer inside it. File-menu compression names the batch after the pressed entry.
   Check or uncheck a starting item, then long-press another item's checkbox in the same
   directory to repeat that action across the whole range in display order, including
   both endpoints, in lists or grids. Items outside the range retain their selection.

@@ -221,6 +221,30 @@ its listing size must still describe the followed stream for copy/resume checks.
   restores accordion folding on the next expansion. Path buttons still collapse the
   selected directory’s descendants. The setting participates in `uiSignature` and
   configuration backups through `twig_prefs`.
+- Checked files belong to a pane-owned `PaneSelection`, keyed by filesystem identity,
+  rather than visible adapter rows. Checks span directories and survive view
+  recreation; folding clears checks for rows that disappear, while other visible branches
+  retain theirs. Aliases share one check. The path-bar count and file context menus open a selection review
+  with individual removal and Clear all, including when the path bar is hidden. Directory checkbox cycles and virtual select-all
+  affect only their branch; range selection stays within displayed siblings.
+  Operations normalize selected ancestors/descendants using cached tree parents (including
+  opaque SAF/media paths), falling back to lexical parents only for absolute paths.
+  Copy/move and compression confirmations offer default-off Keep directory structure and
+  preview relative outputs. `SourceLayout` starts at the highest selected/containing
+  directories, never adding their ancestors: `/photos/trip/a` and `/downloads/docs/b`
+  become `trip/a` and `docs/b`. Repeated anchor names receive stable numbered prefixes.
+  One shared highest directory supplies the action-strip archive name regardless of
+  the structure option; structured compression omits that directory inside the archive. Independent top-level directories
+  retain their prefixes. Compression from a file context menu names the batch after
+  the pressed entry (file stem or full directory name), even when multiple items are
+  checked. Structure/format toggles preserve manually edited names. An empty relative
+  archive path means pack that selected directory’s contents at archive root; files
+  must always have nonempty safe paths.
+  Frozen relative paths travel with the transfer work and its retries; intermediate
+  destination files fail rather than being replaced by directories. Flat compression
+  rejects duplicate top-level names; archive writing rejects duplicate/conflicting entry
+  paths in all formats, keeping an existing archive intact on failure. Destination
+  selection still uses the opposite pane’s current directory, independently of its checks.
 - Returning from the usage treemap keeps the existing tree expansion and adds pane-local
   scan totals: proportional child-row backgrounds using the selection color, recursive directory sizes and descending
   size order within each listing. The scan target has no usage background; selected rows use

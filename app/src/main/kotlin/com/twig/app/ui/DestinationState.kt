@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.twig.app.R
 import com.twig.fs.archive.ArchiveWriter
 import com.twig.core.CopyEngine
+import com.twig.core.SourceLayout
 import com.twig.core.XFile
 import com.twig.core.isWritableDir
 import kotlinx.coroutines.Dispatchers
@@ -53,13 +54,39 @@ class DestinationState : ViewModel() {
         var move: Boolean,
         val movable: Boolean,
         val compression: Compression? = null,
+        val relativePaths: Map<String, String>? = runCatching { SourceLayout.paths(sources) }.getOrNull(),
+        var keepStructure: Boolean = false,
     ) {
+        fun outputPaths(): Map<String, String> {
+            if (!keepStructure) return emptyMap()
+            val root = compression?.structureRoot ?: return relativePaths.orEmpty()
+            return relativePaths.orEmpty().mapValues { (_, path) ->
+                if (path == root) "" else path.removePrefix("$root/")
+            }
+        }
+
+        fun preview(): String = sources.take(4).joinToString("\n") {
+            outputPaths()[it.toUri()]?.ifEmpty { "./" } ?: it.name
+        } + if (sources.size > 4) "\n…" else ""
+
         fun effectiveDestination(): XFile? =
             if (compression?.saveToSource == true) compression.sourceDirectory else destination
 
-        fun blockReason(destination: XFile): Int? =
-            if (!destination.isWritableDir()) R.string.msg_dest_not_writable
-            else FileClipboard.pasteBlockReason(destination, sources, allowSameDirectory = compression != null)
+        fun blockReason(destination: XFile): Int? {
+            if (!destination.isWritableDir()) return R.string.msg_dest_not_writable
+            if (keepStructure && relativePaths == null) return R.string.transfer_duplicate_paths
+            if (compression != null && !keepStructure && sources.map { it.name }.distinct().size != sources.size)
+                return R.string.transfer_duplicate_paths
+            FileClipboard.pasteBlockReason(destination, sources,
+                allowSameDirectory = compression != null || keepStructure)?.let { return it }
+            if (compression == null && keepStructure && destination.path.startsWith("/")) {
+                if (sources.any { source -> source.scheme == destination.scheme &&
+                    destination.path.trimEnd('/') + "/" + outputPaths()[source.toUri()] == source.path })
+                    return R.string.clip_same_dir
+            }
+            return null
+        }
+
     }
 
     class Compression(
@@ -70,6 +97,7 @@ class DestinationState : ViewModel() {
         var hideNames: Boolean = true,
         val sourceDirectory: XFile? = null,
         var saveToSource: Boolean = false,
+        val structureRoot: String? = null,
     )
 
     companion object {

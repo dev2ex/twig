@@ -1304,4 +1304,7 @@
     <string name="settings_current_user_internal_storage_only_desc">隐藏应用分身及其他 Android 用户的内部存储快捷入口。</string>
     <string name="viewer_encoding_auto">自动（按设置中的优先级）</string>
     <string name="viewer_encoding_invalid">无法使用 %1$s 解码此文件。</string>
+    <string name="transfer_keep_structure">保持目录结构</string>
+    <string name="selection_clear_all">清空选择</string>
+    <string name="transfer_duplicate_paths">来源包含重复的输出路径，请开启保持目录结构或调整选择。</string>
 </resources>

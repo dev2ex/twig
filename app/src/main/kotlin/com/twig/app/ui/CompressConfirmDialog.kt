@@ -30,6 +30,14 @@ class CompressConfirmDialog : DialogFragment() {
         if (draft == null || options == null) return AlertDialog.Builder(requireContext()).create()
         val form = DialogCompressBinding.inflate(layoutInflater)
         binding = form
+        form.cbKeepStructure.isSaveEnabled = false
+        form.cbKeepStructure.isChecked = draft.keepStructure
+        form.tvStructurePreview.text = draft.preview()
+        form.cbKeepStructure.setOnCheckedChangeListener { _, checked ->
+            draft.keepStructure = checked
+            form.tvStructurePreview.text = draft.preview()
+            updateDestination()
+        }
         form.etName.setText(options.name)
         form.etPassword.setText(options.password)
         fun updateEncryptionOptions() {
@@ -123,7 +131,7 @@ class CompressConfirmDialog : DialogFragment() {
             state.clear()
             dismiss()
             pane.startCompress(draft.sources, destination, name, options.format, draft.movable && draft.move,
-                plan, password, options.level, options.hideNames)
+                plan, password, options.level, options.hideNames, draft.outputPaths())
         }
         updateDestination()
         form.etName.requestFocus()

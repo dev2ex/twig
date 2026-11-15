@@ -958,4 +958,59 @@ class CopyEngineTest {
         assertEquals("original", target.text("/file.txt"))
     }
 
+    @Test fun `structured transfer creates nested folders and preserves same named sources`() {
+        src.put("/photos/trip/a.txt", "trip")
+        src.put("/downloads/docs/a.txt", "docs")
+        val items = listOf(srcFile("/photos/trip/a.txt"), srcFile("/downloads/docs/a.txt"))
+        val paths = SourceLayout.paths(items)
+        CopyEngine.transfer(items, dstRoot(), false, targetPaths = paths)
+        assertEquals("trip", String(dst.files.getValue("/trip/a.txt")))
+        assertEquals("docs", String(dst.files.getValue("/docs/a.txt")))
+        assertTrue(src.exists(items[0]))
+    }
+
+    @Test fun `structured move preserves skipped sources and retries keep completed roots`() {
+        src.put("/one/a.txt", "one")
+        src.put("/two/a.txt", "two")
+        dst.put("/one/a.txt", "old")
+        val items = listOf(srcFile("/one/a.txt"), srcFile("/two/a.txt"))
+        val checkpoint = TransferCheckpoint()
+        CopyEngine.transfer(items, dstRoot(), true, resolver = { _, _ -> CopyEngine.Decision.SKIP },
+            checkpoint = checkpoint, targetPaths = SourceLayout.paths(items))
+        assertTrue(src.exists(items[0]))
+        assertFalse(src.exists(items[1]))
+        assertEquals("old", String(dst.files.getValue("/one/a.txt")))
+        assertEquals("two", String(dst.files.getValue("/two/a.txt")))
+        // A completed moved root no longer exists at its source; retry must skip it.
+        CopyEngine.transfer(items, dstRoot(), true, resolver = { _, _ -> CopyEngine.Decision.OVERWRITE },
+            plannedBytes = 3, checkpoint = checkpoint, targetPaths = SourceLayout.paths(items))
+        assertFalse(src.exists(items[0]))
+        assertEquals("one", String(dst.files.getValue("/one/a.txt")))
+    }
+
+    @Test fun `structured paths cannot traverse outside target or overwrite an intermediate file`() {
+        src.put("/one/a.txt", "source")
+        val item = srcFile("/one/a.txt")
+        for (path in listOf("../a.txt", "/a.txt", "one/./a.txt", "one//a.txt")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                CopyEngine.transfer(listOf(item), dstRoot(), false, targetPaths = mapOf(item.toUri() to path))
+            }
+        }
+        dst.put("/one", "keep")
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), dstRoot(), true, targetPaths = SourceLayout.paths(listOf(item)))
+        }
+        assertEquals("keep", String(dst.files.getValue("/one")))
+        assertTrue(src.exists(item))
+    }
+
+    @Test fun `structured transfer refuses copying an item onto itself`() {
+        src.put("/one/a.txt", "source")
+        val item = srcFile("/one/a.txt")
+        assertThrows(FsException::class.java) {
+            CopyEngine.transfer(listOf(item), src.root(), true, targetPaths = SourceLayout.paths(listOf(item)))
+        }
+        assertEquals("source", String(src.files.getValue(item.path)))
+    }
+
 }

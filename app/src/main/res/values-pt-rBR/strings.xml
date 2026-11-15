@@ -1274,4 +1274,7 @@
     <string name="settings_current_user_internal_storage_only_desc">Ocultar atalhos do armazenamento interno de apps clonados e de outros usuários do Android.</string>
     <string name="viewer_encoding_auto">Automático (prioridade das configurações)</string>
     <string name="viewer_encoding_invalid">Não foi possível decodificar este arquivo como %1$s.</string>
+    <string name="transfer_keep_structure">Manter estrutura de pastas</string>
+    <string name="selection_clear_all">Limpar seleção</string>
+    <string name="transfer_duplicate_paths">Há caminhos de saída duplicados. Mantenha a estrutura ou altere a seleção.</string>
 </resources>

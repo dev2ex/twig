@@ -1274,4 +1274,7 @@
     <string name="settings_current_user_internal_storage_only_desc">Verknüpfungen zum internen Speicher von App-Klonen und anderen Android-Nutzern ausblenden.</string>
     <string name="viewer_encoding_auto">Automatisch (Priorität aus Einstellungen)</string>
     <string name="viewer_encoding_invalid">Diese Datei kann nicht als %1$s dekodiert werden.</string>
+    <string name="transfer_keep_structure">Ordnerstruktur beibehalten</string>
+    <string name="selection_clear_all">Auswahl leeren</string>
+    <string name="transfer_duplicate_paths">Quellen haben doppelte Zielpfade. Ordnerstruktur aktivieren oder Auswahl ändern.</string>
 </resources>

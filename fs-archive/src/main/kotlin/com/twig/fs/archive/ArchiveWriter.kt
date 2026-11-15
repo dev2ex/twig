@@ -3,6 +3,7 @@ package com.twig.fs.archive
 import com.twig.core.CopyEngine
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
+import com.twig.core.SourceLayout
 import com.twig.core.XFile
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
@@ -70,8 +71,12 @@ object ArchiveWriter {
         password: String? = null,
         level: Level = Level.STANDARD,
         hideNames: Boolean = false,
+        targetPaths: Map<String, String> = emptyMap(),
     ) {
         if (items.isEmpty()) throw FsException("Nothing to compress")
+        require(targetPaths.all { (uri, path) ->
+            SourceLayout.isSafePath(path) || (path.isEmpty() && items.any { it.toUri() == uri && it.isDir })
+        }) { "Invalid archive path" }
         if (items.any { !it.isDir && it.scheme == target.scheme && it.path == target.path }) {
             throw FsException("Choose a different archive name: the target is a selected source file")
         }
@@ -87,6 +92,7 @@ object ArchiveWriter {
             listener, cancelled,
             if (plannedBytes >= 0) plannedBytes else CopyEngine.totalSize(items),
             excluded = listOf(part, target),
+            targetPaths = targetPaths,
         )
         try {
             when (format) {
@@ -167,15 +173,31 @@ object ArchiveWriter {
     }
 
     private fun writeAll(items: List<XFile>, sink: Sink, st: State) {
-        for (item in items) walk(item, "", sink, st)
+        for (item in items) {
+            val path = st.targetPaths[item.toUri()]
+            walk(item, "", sink, st, path)
+        }
     }
 
-    private fun walk(item: XFile, prefix: String, sink: Sink, st: State) {
+    private fun walk(item: XFile, prefix: String, sink: Sink, st: State, targetPath: String? = null) {
         if (st.cancelled.isCancelled()) throw Cancelled()
         // Compressing into ourselves (possible when both panes are parked in the same directory): the growing
         // .twigpart and the same-name old archive it is about to replace are both off-limits as sources
         if (st.excluded.any { it.scheme == item.scheme && it.path == item.path }) return
-        val name = if (prefix.isEmpty()) item.name else "$prefix/${item.name}"
+        // A tar's synthetic '.' directory and filesystem roots represent their children.
+        if (item.isDir && (targetPath == "" || (targetPath == null && item.name in setOf(".", "/")))) {
+            for (child in FsRegistry.of(item).list(item)) walk(child, prefix, sink, st)
+            st.listener?.onItemDone(isDir = true)
+            return
+        }
+        require(SourceLayout.isSafeSegment(item.name)) { "Invalid archive entry: ${item.name}" }
+        val name = targetPath ?: if (prefix.isEmpty()) item.name else "$prefix/${item.name}"
+        val parents = name.split('/').dropLast(1).runningReduce { path, segment -> "$path/$segment" }
+        if (name in st.names || parents.any { st.names[it] == false } ||
+            (!item.isDir && name in st.requiredDirectories))
+            throw FsException("Duplicate archive entry: $name")
+        st.requiredDirectories.addAll(parents)
+        st.names[name] = item.isDir
         if (item.isDir) {
             sink.dir(name, item.lastModified)
             for (child in FsRegistry.of(item).list(item)) walk(child, name, sink, st)
@@ -254,7 +276,10 @@ object ArchiveWriter {
         val total: Long,
         /** Entries that cannot be used as compression sources (the .twigpart being written + the same-name old archive it will replace). */
         val excluded: List<XFile>,
+        val targetPaths: Map<String, String>,
     ) {
+        val names = HashMap<String, Boolean>()
+        val requiredDirectories = HashSet<String>()
         var bytes = 0L
 
         /** Source -> archive stream; progress is aggregated across the whole task; cancel throws [Cancelled] to unwind the recursion. */

@@ -93,7 +93,7 @@ Copy, Move and Compare icons mirror with the active pane; the table shows one di
 | Folder row, icon or expansion arrow | Tap | Normally expand or collapse in place. With Tap rows to select enabled and items already checked, an ordinary folder row toggles selection instead; its icon and arrow still expand or collapse. Confirmed empty folders may have no arrow. |
 | File row or icon | Tap | Normally open the file. With Tap rows to select enabled and items already checked, the row toggles selection instead; the icon still opens it. |
 | File or folder | Long press | Open its context menu, with actions such as Open with, Share, Favourite, Copy and Properties as supported by the source. |
-| Checkbox | Tap | Check or uncheck. In the list, an expanded folder with children cycles through selecting the folder itself → its direct children → clearing the selection. |
+| Checkbox | Tap | Check or uncheck. In the list, an expanded folder with children cycles through selecting the folder itself → its direct children → clearing that branch’s selection. |
 | Checkbox | Long press | Repeat the last check or uncheck action across a range. Both endpoints must share a directory, depth and tree branch. |
 | Transparent area at the far left of a file row | Tap / long press | Toggle that row's properties / open its second tab. See [Hidden properties button](#hidden-properties-button-at-the-left-edge) below for its location. |
 | Favourites or Websites heading | Long press | Enter reordering and drag the handles. Tap outside the handles or press Back to finish; scrolling keeps reordering active. |
@@ -110,7 +110,7 @@ Find **Menu → Settings → Tap rows to select**. It is off by default. When se
 
 **File icons and thumbnails still open files; folder icons and expansion arrows still expand or collapse.** The hidden properties button, checkbox and long-press menu keep their own actions. These row-selection rules apply to list and grid views; roots do not participate in ordinary file multi-selection.
 
-For example, check `a.txt`, then tap the name area of `b.txt` to select it too. Tap its icon to open it instead. Multi-selection is limited to one directory; selecting an item in another directory clears the previous selection.
+For example, check `a.txt`, then tap the name area of `b.txt` to select it too. Tap its icon to open it instead. Checks can span directories and survive view recreation. Folding a folder clears checks inside it, including nested descendants; checks in other visible branches remain. Reopening the folder does not restore cleared checks. Tap the checked-item count in the path bar, or its entry in a file’s context menu, to review the full selection, uncheck individual entries or clear all. Folder checkbox cycles and Select all / none affect only that branch; range selection still requires displayed siblings. Operations process a selected folder once even if some of its descendants are also checked.
 
 ### Hidden properties button at the left edge
 
@@ -138,11 +138,13 @@ Sorting and view mode are independent: a directory can sort by size while stayin
 3. Review the destination path. Choose another directory if needed; dual-pane mode also lets you browse the other pane before confirming.
 4. Confirm and follow progress. Once familiar with the destination, long-press Copy to start directly.
 
+Copy and Move offer **Keep directory structure**, with a preview of relative output paths. It starts at the highest selected or containing directories: `/photos/trip/a.jpg` and `/downloads/docs/b.pdf` become `trip/a.jpg` and `docs/b.pdf`; their ancestors are omitted. Same-named source directories get numbered prefixes. Existing destination entries still use the conflict dialog. The destination is the other pane’s highlighted directory, independently of its checked items.
+
 Move uses the same destination flow and removes source files after transfer. Duplicate makes another copy in each source item's own directory, useful before editing.
 
 ### Pack files and keep the originals
 
-Check the items, tap Compress, choose ZIP or 7z, review the destination and leave Move mode off. Set a password here if needed; encrypted 7z archives can also hide filenames. The long-press shortcut uses no password and keeps the sources.
+Check the items, tap Compress, choose ZIP or 7z, review the destination and leave Move mode off. Set a password here if needed; encrypted 7z archives can also hide filenames. A single highest selected or containing folder supplies the archive name when Compress is opened from the action strip, regardless of **Keep directory structure**. Enabling that option omits the folder layer inside the archive: `trip.zip` contains `a.jpg` and `day2/b.jpg`. Independent top-level folders retain their separate prefixes. Opening Compress from a selected entry’s long-press menu names the whole batch after that entry (a file’s last extension is removed; directory names are kept whole). Manually edited archive names survive structure and format changes. Without it, duplicate top-level names must be resolved by changing the selection or enabling this option. Save beside the sources is available only when they share one writable containing folder. The long-press shortcut uses no password and keeps the sources.
 
 ### Recover deleted files
 

@@ -1274,4 +1274,7 @@
     <string name="settings_current_user_internal_storage_only_desc">Nascondi i collegamenti alla memoria interna delle app clonate e degli altri utenti Android.</string>
     <string name="viewer_encoding_auto">Automatico (priorità delle impostazioni)</string>
     <string name="viewer_encoding_invalid">Impossibile decodificare questo file come %1$s.</string>
+    <string name="transfer_keep_structure">Mantieni la struttura delle cartelle</string>
+    <string name="selection_clear_all">Deseleziona tutto</string>
+    <string name="transfer_duplicate_paths">Percorsi di destinazione duplicati. Mantieni la struttura o modifica la selezione.</string>
 </resources>

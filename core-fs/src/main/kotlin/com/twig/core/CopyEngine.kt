@@ -112,11 +112,13 @@ object CopyEngine {
         plannedBytes: Long = -1, // when the caller has already called plan(), pass it in to avoid a second recursive scan
         checkpoint: TransferCheckpoint? = null,
         targetNames: Map<String, String> = emptyMap(), // Optional names for top-level entries, keyed by source URI.
+        targetPaths: Map<String, String> = emptyMap(), // Frozen relative paths, keyed by source URI.
     ) {
         checkpoint?.failure = null
         val pending = items.filterNot { checkpoint?.completed?.contains("root:" + checkpoint.key(it, destDir)) == true }
         val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(pending), move, checkpoint)
         require(targetNames.values.all(::isSafeName)) { "Invalid destination name" }
+        require(targetPaths.values.all(SourceLayout::isSafePath)) { "Invalid destination path" }
         val destFs = FsRegistry.of(destDir)
         for (item in items) {
             if (task.cancelled.isCancelled() || task.aborted) break
@@ -130,22 +132,38 @@ object CopyEngine {
             try {
                 // Same file system and no same-name conflict at the destination: prefer
                 // in-place move, saving a full copy.
-                val targetName = targetNames[item.toUri()] ?: item.name
-                if (move && item.scheme == destDir.scheme &&
-                    childrenOf(task, destFs, destDir)[targetName] == null &&
-                    destFs.moveWithin(item, destDir, targetName)
+                val parts = targetPaths[item.toUri()]?.split('/') ?: listOf(targetNames[item.toUri()] ?: item.name)
+                var directory = destDir
+                for (segment in parts.dropLast(1)) {
+                    if (task.cancelled.isCancelled()) return
+                    val entries = childrenOf(task, destFs, directory)
+                    val existing = entries[segment]
+                    if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
+                    directory = existing ?: destFs.mkdir(directory, segment).also { entries[segment] = it }
+                }
+                if (item.isDir && item.scheme == directory.scheme && item.path.startsWith("/") &&
+                    (directory.path.trimEnd('/') == item.path.trimEnd('/') ||
+                        directory.path.startsWith(item.path.trimEnd('/') + "/")))
+                    throw FsException("Cannot copy a directory into itself: ${item.name}")
+                val targetName = parts.last()
+                val existing = childrenOf(task, destFs, directory)[targetName]
+                if (existing?.toUri() == item.toUri()) throw FsException("Source and destination are the same: ${item.name}")
+                if (move && item.scheme == directory.scheme &&
+                    existing == null &&
+                    destFs.moveWithin(item, directory, targetName)
                 ) {
+                    task.listed.remove(directory.toUri())
                     checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
                     listener?.onItemDone(item.isDir)
                     continue
                 }
-                val priorKey = checkpoint?.key(item, destDir)
+                val priorKey = checkpoint?.key(item, directory)
                 val needsRefresh = checkpoint != null &&
                     (priorKey in checkpoint.partials || priorKey in checkpoint.outputs)
                 val source = if (needsRefresh && !item.isDir) {
                     FsRegistry.of(item).stat(item.path) ?: throw FsException("Source unavailable: ${item.name}")
                 } else item
-                val complete = copyRecursive(source, destDir, task, targetName)
+                val complete = copyRecursive(source, directory, task, targetName)
                 if (move && complete) FsRegistry.of(item).delete(item)
                 if (complete) checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
             } catch (t: Throwable) {

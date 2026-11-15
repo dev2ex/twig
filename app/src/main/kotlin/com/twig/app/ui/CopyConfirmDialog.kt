@@ -26,6 +26,14 @@ class CopyConfirmDialog : DialogFragment() {
         if (draft?.destination == null) return AlertDialog.Builder(requireContext()).create()
         val form = DialogCopyConfirmBinding.inflate(layoutInflater)
         binding = form
+        form.cbKeepStructure.isSaveEnabled = false
+        form.cbKeepStructure.isChecked = draft.keepStructure
+        form.tvStructurePreview.text = draft.preview()
+        form.cbKeepStructure.setOnCheckedChangeListener { _, checked ->
+            draft.keepStructure = checked
+            form.tvStructurePreview.text = draft.preview()
+            updateDestination()
+        }
         form.tvSrc.text = if (draft.sources.size == 1) draft.sources.single().name
             else getString(R.string.copy_items, draft.sources.size)
         form.cbMove.isChecked = draft.move
@@ -57,7 +65,7 @@ class CopyConfirmDialog : DialogFragment() {
             val plan = state.plan.value
             state.clear()
             dismiss()
-            pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan)
+            pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan, targetPaths = draft.outputPaths())
         }
         updateDestination()
     }

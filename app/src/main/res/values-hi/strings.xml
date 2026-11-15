@@ -1274,4 +1274,7 @@
     <string name="settings_current_user_internal_storage_only_desc">क्लोन किए गए ऐप्स और अन्य Android उपयोगकर्ताओं के आंतरिक स्टोरेज के शॉर्टकट छिपाएँ।</string>
     <string name="viewer_encoding_auto">स्वचालित (सेटिंग की प्राथमिकता)</string>
     <string name="viewer_encoding_invalid">इस फ़ाइल को %1$s के रूप में डिकोड नहीं किया जा सकता।</string>
+    <string name="transfer_keep_structure">फ़ोल्डर संरचना रखें</string>
+    <string name="selection_clear_all">सभी चयन हटाएँ</string>
+    <string name="transfer_duplicate_paths">आउटपुट पथ दोहराए गए हैं। फ़ोल्डर संरचना रखें या चयन बदलें।</string>
 </resources>

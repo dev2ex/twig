@@ -76,6 +76,7 @@ object Transfers {
             val dest: XFile,
             val move: Boolean,
             val fromClipboard: Boolean,
+            val targetPaths: Map<String, String> = emptyMap(),
         ) : Work()
 
         /**
@@ -105,6 +106,7 @@ object Transfers {
             val password: String? = null,
             val level: ArchiveWriter.Level = ArchiveWriter.Level.STANDARD,
             val hideNames: Boolean = true,
+            val targetPaths: Map<String, String> = emptyMap(),
         ) : Work()
     }
 
@@ -364,6 +366,7 @@ object Transfers {
                 is Work.Copy -> CopyEngine.transfer(
                     w.items, w.dest, w.move, listener,
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
+                    targetPaths = w.targetPaths,
                 )
                 is Work.Sync -> {
                     if (w.duplicate && w.targetNames == null) {
@@ -395,7 +398,7 @@ object Transfers {
                 is Work.Compress -> {
                     ArchiveWriter.compress(
                         w.items, w.destDir, w.target, w.format, listener,
-                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password, w.level, w.hideNames,
+                        { s.cancelled.get() }, plan.bytes, ctx.cacheDir, w.password, w.level, w.hideNames, w.targetPaths,
                     )
                     // Only touch the source files on a successful pack; on cancel/failure
                     // the partial output is already gone, so the sources must stay.

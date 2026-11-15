@@ -78,6 +78,7 @@ class FileAdapter(
     private val onInfoLongClick: (PaneViewModel.FileNode) -> Unit = {},
     /** External multi-file picking always selects rows, regardless of the normal selection preference. */
     private val selectFilesByRow: Boolean = false,
+    private val selection: PaneSelection = PaneSelection(),
     private val onSqliteCommand: (SqliteNode, SqliteCommand) -> Unit = { _, _ -> },
     private val onSqlitePage: (SqliteDataNode, Int) -> Unit = { _, _ -> },
     private val onSqliteFilter: (SqliteDataNode, Int) -> Unit = { _, _ -> },
@@ -174,23 +175,23 @@ class FileAdapter(
     var currentKey: String? = null
 
     // Bulk selections retain a predictable fallback anchor.
-    private val selected = LinkedHashSet<String>()
+    private val selected get() = selection.keys
+    private fun selectionKey(node: PaneViewModel.FileNode): String = PaneViewModel.fileKey(node.file)
     private var rangeAnchor: String? = null
     private var rangeSelect = true
 
     private fun resetRangeAnchor() {
-        rangeAnchor = selected.lastOrNull()
+        rangeAnchor = currentList.filterIsInstance<PaneViewModel.FileNode>().lastOrNull { selectionKey(it) in selected }?.key
         rangeSelect = true
     }
-    /** Identifier of the directory containing the current selection (scheme:parentPath); cleared when selecting across directories. */
-    private var selectParent: String? = null
+    fun selectedItems(): List<XFile> {
+        val visible = currentList.filterIsInstance<PaneViewModel.FileNode>()
+            .filter { selectionKey(it) in selected }.map { it.file }.distinctBy { PaneViewModel.fileKey(it) }
+        val live = visible.mapTo(HashSet()) { PaneViewModel.fileKey(it) }
+        return visible + selection.files.filterKeys { it in selected && it !in live }.values
+    }
 
-    fun selectedItems(): List<XFile> =
-        currentList.filterIsInstance<PaneViewModel.FileNode>()
-            .filter { selected.contains(it.key) }
-            .map { it.file }
-
-    fun isSelected(node: PaneViewModel.FileNode): Boolean = selected.contains(node.key)
+    fun isSelected(node: PaneViewModel.FileNode): Boolean = selected.contains(selectionKey(node))
 
     /** Read selection state at click time: selection payloads deliberately keep listeners intact. */
     private fun clickFileRow(node: PaneViewModel.FileNode, ctx: Context) {
@@ -205,7 +206,6 @@ class FileAdapter(
         rangeSelect = true
         if (selected.isEmpty()) return
         selected.clear()
-        selectParent = null
         refreshSelection()
         onSelectionChanged()
     }
@@ -213,29 +213,26 @@ class FileAdapter(
     /**
      * Three-state cycle for the check button (only for "expanded directories"):
      * ① select the parent directory itself → ② switch to selecting the expanded direct children
-     * (excluding the parent) → ③ clear all selections.
+     * (excluding the parent) → ③ clear this branch’s selections.
      * Unexpanded directories / files keep the normal toggle behaviour.
      */
     fun cycleSelection(node: PaneViewModel.FileNode) {
         if (!(node.file.isDir && node.expanded)) return toggleSelection(node)
         val kids = directChildren(node)
         if (kids.isEmpty()) return toggleSelection(node)
-        val parentSelected = selected.contains(node.key)
-        val kidsAllSelected = kids.all { selected.contains(it.key) }
+        val parentSelected = selected.contains(selectionKey(node))
+        val kidsAllSelected = kids.all { selected.contains(selectionKey(it)) }
         when {
             parentSelected -> { // ② parent → children
-                selected.clear()
-                selectParent = "${kids[0].file.scheme}:${kids[0].file.parentPath}"
-                kids.forEach { selected.add(it.key) }
+                selected.remove(selectionKey(node))
+                kids.forEach { selected.add(selectionKey(it)) }
             }
-            kidsAllSelected -> { // ③ children → clear
-                selected.clear()
-                selectParent = null
+            kidsAllSelected -> { // ③ children → clear this branch
+                kids.forEach { selected.remove(selectionKey(it)) }
             }
             else -> { // ① none → parent directory
-                selected.clear()
-                selectParent = "${node.file.scheme}:${node.file.parentPath}"
-                selected.add(node.key)
+                kids.forEach { selected.remove(selectionKey(it)) }
+                selected.add(selectionKey(node))
             }
         }
         resetRangeAnchor()
@@ -263,47 +260,35 @@ class FileAdapter(
     /** Whether this node has selectable direct children (the "Select all" entry under search results / favorites uses this to decide whether to show). */
     fun hasChildren(node: PaneViewModel.Node): Boolean = directChildren(node).isNotEmpty()
 
-    /** Selection for virtual directories (search results / favorites): select/deselect all direct children below —
-     *  two states only, no "select the parent itself" state (the virtual row itself is not an object that can be
-     *  copied or deleted). Results may span multiple real directories, so the "same-directory multi-select" limit
-     *  is not applied — copy / delete operations already work on arbitrary XFile lists, and tree / space-map
-     *  multi-select has long allowed cross-directory selection; see mapSelected in [PaneFragment]. */
+    /** Toggle only this virtual directory’s direct children, preserving checks in other branches. */
     fun toggleChildrenSelection(node: PaneViewModel.Node) {
         val kids = directChildren(node)
         if (kids.isEmpty()) return
-        val allSelected = kids.all { selected.contains(it.key) }
-        selected.clear()
-        selectParent = null
-        if (!allSelected) kids.forEach { selected.add(it.key) }
+        val allSelected = kids.all { selected.contains(selectionKey(it)) }
+        if (allSelected) kids.forEach { selected.remove(selectionKey(it)) }
+        else kids.forEach { selected.add(selectionKey(it)) }
         resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
     }
 
-    /** Replace the current selection wholesale with a batch of files (selected images in the image viewer come
-     *  back to the tree and highlight in sync). Subsequent on-tree selection treats the directory of the first
-     *  file as the "same directory" — cross-directory selections still clear first as usual. */
+    /** Replace all checks, including entries returned by the image viewer. */
     fun setSelection(files: List<XFile>) {
         selected.clear()
         files.forEach { selected.add(PaneViewModel.fileKey(it)) }
-        selectParent = files.firstOrNull()?.let { "${it.scheme}:${it.parentPath}" }
-        if (selected.isEmpty()) selectParent = null
+        files.forEach { selection.files[PaneViewModel.fileKey(it)] = it }
         resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
     }
 
-    /** Toggle selection; only same-directory multi-select allowed, switching directories clears the old selection first. */
+    /** Toggle one source without changing checks in other directories. */
     fun toggleSelection(node: PaneViewModel.FileNode) {
-        val parent = "${node.file.scheme}:${node.file.parentPath}"
-        if (selected.isNotEmpty() && parent != selectParent) {
-            selected.clear() // different directory → cancel previous selection
-        }
-        selectParent = parent
-        if (!selected.add(node.key)) selected.remove(node.key)
+        val key = selectionKey(node)
+        selection.files[key] = node.file
+        if (!selected.add(key)) selected.remove(key)
         rangeAnchor = node.key
         rangeSelect = isSelected(node)
-        if (selected.isEmpty()) selectParent = null
         refreshSelection()
         onSelectionChanged()
     }
@@ -327,12 +312,11 @@ class FileAdapter(
             if (sibling.depth == node.depth && sibling.label == null &&
                 sibling.file.scheme == node.file.scheme && sibling.file.parentPath == node.file.parentPath &&
                 (!selectFilesByRow || !sibling.file.isDir)) {
-                if (rangeSelect) selected.add(sibling.key) else selected.remove(sibling.key)
+                if (rangeSelect) selected.add(selectionKey(sibling)) else selected.remove(selectionKey(sibling))
             }
         }
         // The endpoint becomes the next anchor, including for ranges selected upwards.
         rangeAnchor = node.key
-        if (selected.isEmpty()) selectParent = null
         refreshSelection()
         onSelectionChanged()
         return true
@@ -340,23 +324,22 @@ class FileAdapter(
 
     private val appExpanded = HashMap<String, MutableSet<AppDetails.Kind>>()
 
-    /** Drop selected keys that no longer appear in the tree — collapsing a directory removes its (and its
-     *  expanded sub-directories') rows from the list without going through [toggleSelection], so without this
-     *  the checkbox state would survive a collapse and reappear checked when the directory is re-expanded. */
+    /** Folding a branch clears its checks; other visible branches keep their selection. */
     override fun onCurrentListChanged(
         previousList: MutableList<PaneViewModel.Node>,
         currentList: MutableList<PaneViewModel.Node>,
     ) {
         super.onCurrentListChanged(previousList, currentList)
         appExpanded.keys.retainAll(currentList.filterIsInstance<PaneViewModel.InfoNode>().mapTo(HashSet()) { it.key })
-        if (selected.isEmpty() && rangeAnchor == null) return
-        val liveKeys = currentList.mapTo(HashSet()) { it.key }
+        val files = currentList.filterIsInstance<PaneViewModel.FileNode>()
+        val liveKeys = files.mapTo(HashSet()) { selectionKey(it) }
         val changed = selected.retainAll(liveKeys)
-        if (rangeAnchor !in liveKeys) resetRangeAnchor()
-        if (changed) {
-            if (selected.isEmpty()) selectParent = null
-            onSelectionChanged()
+        selection.files.keys.retainAll(selected)
+        files.forEach {
+            if (selectionKey(it) in selected) selection.files[selectionKey(it)] = it.file
         }
+        if (currentList.none { it.key == rangeAnchor }) rangeAnchor = null
+        if (changed) onSelectionChanged()
     }
 
     override fun getItemViewType(position: Int): Int {
@@ -514,6 +497,10 @@ class FileAdapter(
         }
 
     private fun refreshSelection() {
+        currentList.filterIsInstance<PaneViewModel.FileNode>().forEach {
+            if (selectionKey(it) in selected) selection.files[selectionKey(it)] = it.file
+        }
+        selection.files.keys.retainAll(selected)
         if (itemCount > 0) notifyItemRangeChanged(0, itemCount, PAYLOAD_SELECTION)
     }
 
@@ -632,7 +619,7 @@ class FileAdapter(
         }
 
         fun bindSelection(node: PaneViewModel.FileNode) {
-            val isSel = selected.contains(node.key)
+            val isSel = selected.contains(selectionKey(node))
             b.root.isActivated = isSel
             tintCheck(b.cellCheck, isSel, offAlpha = 0.55f)
         }
@@ -1078,13 +1065,13 @@ class FileAdapter(
             when (node) {
                 is PaneViewModel.FileNode -> {
                     if (node.label != null) return // top-level storage nodes don't take part in multi-select
-                    val isSel = selected.contains(node.key)
+                    val isSel = selected.contains(selectionKey(node))
                     b.root.isActivated = isSel
                     tintCheck(b.check, isSel)
                 }
                 is PaneViewModel.FavoriteNode, is PaneViewModel.SearchNode -> {
                     val kids = directChildren(node)
-                    tintCheck(b.check, kids.isNotEmpty() && kids.all { selected.contains(it.key) })
+                    tintCheck(b.check, kids.isNotEmpty() && kids.all { selected.contains(selectionKey(it)) })
                 }
                 else -> Unit // groups / servers / restic / action rows have no checkbox
             }

@@ -1273,4 +1273,7 @@
     <string name="settings_current_user_internal_storage_only_desc">Ẩn lối tắt bộ nhớ trong của ứng dụng nhân bản và người dùng Android khác.</string>
     <string name="viewer_encoding_auto">Tự động (ưu tiên trong cài đặt)</string>
     <string name="viewer_encoding_invalid">Không thể giải mã tệp này bằng %1$s.</string>
+    <string name="transfer_keep_structure">Giữ cấu trúc thư mục</string>
+    <string name="selection_clear_all">Bỏ chọn tất cả</string>
+    <string name="transfer_duplicate_paths">Đường dẫn đầu ra trùng nhau. Hãy giữ cấu trúc thư mục hoặc thay đổi lựa chọn.</string>
 </resources>
