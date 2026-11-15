@@ -1193,6 +1193,8 @@
     <string name="compress_source_directory">Guardar en la carpeta de origen</string>
     <string name="compress_hide_names">Cifrar nombres de archivo</string>
     <string name="compress_destination_missing">Elige un destino</string>
+    <string name="settings_allow_multiple_expanded_nodes">Permitir varios nodos expandidos</string>
+    <string name="settings_allow_multiple_expanded_nodes_desc">Mantener abiertas otras ramas al expandir una carpeta, archivo comprimido o fuente.</string>
     <string name="settings_auto_tree_indent">Sangría automática del árbol</string>
     <string name="settings_auto_tree_indent_desc">Reduce suavemente la sangría cuando las carpetas superiores salen de la pantalla.</string>
 

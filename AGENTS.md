@@ -214,6 +214,13 @@ its listing size must still describe the followed stream for copy/resume checks.
   update the rows. Expanded local directories stay live through inotify
   (`PaneFragment.syncObservers`); resume also re-lists the current directory on any backend.
   The tree always expands/collapses **in place**, it never "enters" a directory.
+  `Prefs.allowMultipleExpandedNodes` defaults off; enabling it retains other expanded
+  branches across folders, archives, sources and path navigation. Independent visible
+  loads can finish without replacing the selected destination; folding an ancestor or
+  Collapse All prevents pending loads from reopening hidden branches. Disabling it
+  restores accordion folding on the next expansion. Path buttons still collapse the
+  selected directory’s descendants. The setting participates in `uiSignature` and
+  configuration backups through `twig_prefs`.
 - Returning from the usage treemap keeps the existing tree expansion and adds pane-local
   scan totals: proportional child-row backgrounds using the selection color, recursive directory sizes and descending
   size order within each listing. The scan target has no usage background; selected rows use

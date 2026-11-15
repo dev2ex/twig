@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.twig.app.ConnectionStore
 import com.twig.app.Connections
 import com.twig.app.Favorite
+import com.twig.app.Prefs
 import com.twig.app.SavedConnection
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
@@ -292,4 +293,125 @@ class SlowExpandRaceTest {
         advanceUntilIdle()
         org.junit.Assert.assertEquals("every expansion checks for external changes", before + 1, fs.listed.count { it == "/slow" })
     }
+
+    @Test
+    fun `multiple branches remain expanded and disabling restores accordion on next expansion`() = runTest(dispatcher) {
+        assertFalse(Prefs.allowMultipleExpandedNodes(app))
+        val signature = Prefs.uiSignature(app)
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        assertTrue(signature != Prefs.uiSignature(app))
+        vm.revealPath(server("multiple.test"))
+        advanceUntilIdle()
+        vm.toggle(row("slow"))
+        advanceUntilIdle()
+        vm.toggle(row("quick"))
+        advanceUntilIdle()
+        assertTrue(row("slow").expanded)
+        assertTrue(row("quick").expanded)
+
+        vm.toggle(row("slow"))
+        assertFalse(row("slow").expanded)
+        assertTrue(row("quick").expanded)
+        Prefs.setAllowMultipleExpandedNodes(app, false)
+        vm.toggle(row("slow"))
+        advanceUntilIdle()
+        assertTrue(row("slow").expanded)
+        assertFalse(row("quick").expanded)
+    }
+
+    @Test
+    fun `independent slow loads finish without changing the latest selection`() = runTest(dispatcher) {
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        vm.revealPath(server("multiple-race.test"))
+        advanceUntilIdle()
+        vm.io = hold
+        vm.toggle(row("slow"))
+        advanceUntilIdle()
+        vm.io = dispatcher
+        vm.toggle(row("quick"))
+        advanceUntilIdle()
+        hold.release()
+        advanceUntilIdle()
+        assertTrue(row("slow").expanded)
+        assertTrue(row("quick").expanded)
+        org.junit.Assert.assertEquals("/quick", vm.currentDir?.path)
+        org.junit.Assert.assertEquals(row("quick").key, vm.state.value.currentKey)
+    }
+
+    @Test
+    fun `slow server completion expands its branch without replacing destination`() = runTest(dispatcher) {
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        val slow = server("multiple-server-slow.test")
+        vm.revealPath(server("multiple-server-quick.test"))
+        advanceUntilIdle()
+        val serverRow = vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>()
+            .single { Connections.schemeOf(it.conn) == slow.scheme }
+        vm.io = hold
+        vm.toggle(serverRow)
+        advanceUntilIdle()
+        vm.io = dispatcher
+        vm.toggle(row("quick"))
+        advanceUntilIdle()
+        val selected = vm.currentDir
+        hold.release()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>()
+            .single { it.key == serverRow.key }.expanded)
+        org.junit.Assert.assertEquals(selected, vm.currentDir)
+    }
+
+    @Test
+    fun `folding ancestor prevents independent pending child from reopening`() = runTest(dispatcher) {
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        vm.revealPath(server("multiple-fold.test"))
+        advanceUntilIdle()
+        vm.io = hold
+        vm.toggle(row("slow"))
+        advanceUntilIdle()
+        val parent = vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>().single()
+        vm.toggle(parent)
+        assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>().single().expanded)
+        // Reopening the parent must not revive the earlier child request.
+        vm.io = dispatcher
+        vm.toggle(vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>().single())
+        advanceUntilIdle()
+        hold.release()
+        advanceUntilIdle()
+        assertFalse(row("slow").expanded)
+        assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any { it.file.path == "/slow/s.txt" })
+    }
+
+    @Test
+    fun `collapse all abandons every independent pending load`() = runTest(dispatcher) {
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        vm.revealPath(server("multiple-collapse-all.test"))
+        advanceUntilIdle()
+        vm.io = hold
+        vm.toggle(row("slow"))
+        vm.toggle(row("quick"))
+        advanceUntilIdle()
+        vm.collapseAll()
+        hold.release()
+        advanceUntilIdle()
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().none { it.file.path in setOf("/slow", "/quick", "/slow/s.txt", "/quick/q.txt") })
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>().none { it.expanded })
+    }
+
+    @Test
+    fun `reveal retains other branches and path buttons still fold descendants`() = runTest(dispatcher) {
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        val root = server("multiple-reveal.test")
+        vm.revealPath(root.copy(path = "/slow"))
+        advanceUntilIdle()
+        vm.revealPath(root.copy(path = "/quick"))
+        advanceUntilIdle()
+        assertTrue(row("slow").expanded)
+        assertTrue(row("quick").expanded)
+        val parent = vm.pathSegments().first { it.key.startsWith("s:") }
+        vm.selectPathSegment(parent.key)
+        advanceUntilIdle()
+        assertFalse(row("slow").expanded)
+        assertFalse(row("quick").expanded)
+    }
+
 }

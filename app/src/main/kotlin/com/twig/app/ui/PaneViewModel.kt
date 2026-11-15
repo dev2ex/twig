@@ -384,7 +384,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * directory, get tired of waiting and tap open another**, the first one's
      * completion collapses the second one instead (the user sees "the directory I
      * just opened closed itself, and what popped up is the one from before"). The
-     * rule is **the later tap wins**: each tap calls [claimExpand] to claim, and
+     * default rule is **the later tap wins**: each tap calls [claimExpand] to claim, and
      * when an in-flight completion lands and sees it's no longer the one, it only
      * caches the children (instant expand next time), without expanding, without
      * changing the current directory, and without surfacing any error.
@@ -402,6 +402,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * an abandoned huge archive to completion in the background after the row that
      * asked for it has already collapsed or been superseded.
      */
+    // In multiple-branch mode, other visible, non-abandoned requests may also land;
+    // pendingExpand still tracks the latest tap for accordion mode and navigation.
     private var pendingExpand: String? = null
 
     /**
@@ -1184,6 +1186,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
         val node = state.value.rows.firstOrNull { it.key == key } ?: return
         val file = mountRoots[key] ?: keyFile[key]?.takeIf { it.isDir } ?: return
+        val descendants = state.value.rows.dropWhile { it.key != key }.drop(1)
+            .takeWhile { it.depth > node.depth }.mapTo(HashSet()) { it.key }
+        expanded.removeAll(descendants)
         if (key !in expanded && node is FileNode) {
             toggleFile(node)
         } else {
@@ -1380,12 +1385,14 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                     if (mine) {
                         // An externally-opened archive can also act as a destination directory; a mounted
                         // directory simply is one.
-                        (it.mountRoot ?: archive.takeIf { f -> f.isDir })?.let { root -> currentDir = root }
+                        (it.mountRoot ?: archive.takeIf { f -> f.isDir })?.let { root ->
+                            if (currentKey == key) currentDir = root
+                        }
                         if (it.mountRoot != null) {
                             noteChangedIn(XFile(archive.scheme, archive.parentPath, isDir = true))
                         }
                         accordionExpand(key)
-                        focus?.let { file -> scrollKey = EXTERNAL_KEY_PREFIX + fileKey(file) }
+                        if (currentKey == key) focus?.let { file -> scrollKey = EXTERNAL_KEY_PREFIX + fileKey(file) }
                     }
                     rebuild()
                 },
@@ -1475,7 +1482,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val gitKey: String?,
     )
 
-    /** Main thread: merge [RevealPlan] into the tree, and fold up any branch not on the chain per the accordion rule. */
+    /** Main thread: merge [RevealPlan], folding other branches only in accordion mode. */
     private fun applyReveal(plan: RevealPlan) {
         // Locating is also an "expand" — it has to be claimed: otherwise an in-flight
         // expand completing right now would accordionExpand itself, folding up the
@@ -1487,7 +1494,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             expanded.add(key)
         }
         // Fold up every other currently-expanded branch (other root / other server / etc.).
-        synchronized(expanded) { expanded.removeAll { it !in plan.keep } }
+        if (!allowMultipleExpandedNodes()) synchronized(expanded) { expanded.removeAll { it !in plan.keep } }
     }
 
     /** IO: compute the reveal plan (connecting and listing on demand), without writing any VM state. */
@@ -1713,7 +1720,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return connFor(label)?.let { "g:${groupIdFor(it)}" }
     }
 
-    /** Main thread: land a [DescendPlan] and fold away every branch off this chain. */
+    /** Main thread: land a [DescendPlan], folding other branches only in accordion mode. */
     private fun applyDescend(rootChain: Set<String>, plan: DescendPlan) {
         // Same as applyReveal: claim the expansion, or a slower one still in flight
         // lands later and accordions this whole chain shut (see pendingExpand).
@@ -1722,7 +1729,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         plan.expand.forEach { (k, x) -> keyFile[k] = x; expanded.add(k) }
         expanded.addAll(rootChain) // the way down to the root has to stay open too
         val keep = rootChain + plan.expand.map { it.first } + plan.fetched.map { it.key }
-        synchronized(expanded) { expanded.removeAll { it !in keep } }
+        if (!allowMultipleExpandedNodes()) synchronized(expanded) { expanded.removeAll { it !in keep } }
     }
 
     // ---- Recent locations (see [HistoryStore]: records directories, not files) ----
@@ -1807,7 +1814,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (request != revealSequence) return@launch
             revealLoadingKey = null
-            if (!landExpand(loadingKey)) { rebuild(); return@launch }
+            if (!landExpand(loadingKey, independentLoads = false)) { rebuild(); return@launch }
             result.fold(
                 { (repositoryPlan, descend) ->
                     applyReveal(repositoryPlan)
@@ -2154,14 +2161,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Expansion logic ----
 
     /**
-     * Accordion expansion: collapse every node not on this node's ancestor chain
-     * (directories / servers / groups / favorites all participate), keeping only
-     * the "currently selected" expansion chain open across the whole tree.
-     */
-    /**
-     * Claim this tap: any earlier in-flight expansion (if it isn't this same row)
-     * is now abandoned — its spinner is collected immediately and it won't auto-expand
-     * itself when it lands. See [pendingExpand].
+     * Claim this tap. In accordion mode earlier in-flight expansions are abandoned;
+     * multiple-branch mode lets visible requests finish independently. See [pendingExpand].
      *
      * **Every "open this row" entry point must call this**, including the synchronous
      * branch that just expands from cache: synchronous expansion also calls
@@ -2169,27 +2170,42 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * after the fact.
      */
     private fun claimExpand(key: String) {
-        pendingExpand?.takeIf { it != key }?.let { abandoned.add(it) }
+        if (!allowMultipleExpandedNodes()) {
+            abandoned.addAll(loadingKeys.filter { it != key })
+            abandoned.addAll(connecting.filter { it != key })
+            pendingExpand?.takeIf { it != key }?.let { abandoned.add(it) }
+        }
         abandoned.remove(key) // Tapping back on a row we just abandoned: the spinner is reinstated, and the landing counts again.
         pendingExpand = key
     }
 
     /** Asynchronous expansion lands: clear the spinner and answer "does this still count?" (see [pendingExpand]). */
-    private fun landExpand(key: String): Boolean {
+    private fun landExpand(key: String, independentLoads: Boolean = true): Boolean {
+        // Independent loads may finish in any order. A hidden row (its parent was
+        // folded) must not reopen itself when its listing finally arrives.
+        val independent = key !in abandoned &&
+            state.value.rows.any { it.key == key }
         loadingKeys.remove(key)
         connecting.remove(key)
         abandoned.remove(key)
-        return (pendingExpand == key).also { if (it) pendingExpand = null }
+        val latest = pendingExpand == key
+        if (latest) pendingExpand = null
+        return if (independentLoads && allowMultipleExpandedNodes()) independent else latest
     }
 
     /** Should this row show a spinner? Real work is in flight and the user hasn't abandoned it yet (see [abandoned]). */
     private fun busy(key: String): Boolean =
         revealLoadingKey == key || (key !in abandoned && (loadingKeys.contains(key) || connecting.contains(key)))
 
+    private fun allowMultipleExpandedNodes(): Boolean = Prefs.allowMultipleExpandedNodes(getApplication())
+
+    /** Expand a branch, retaining other branches when the setting permits it. */
     private fun accordionExpand(key: String) {
-        val ancestors = ancestorKeysOf(key)
-        // removeAll{} iterates internally; iterating a synchronizedSet must be guarded by the set itself.
-        synchronized(expanded) { expanded.removeAll { it != key && it !in ancestors } }
+        if (!allowMultipleExpandedNodes()) {
+            val ancestors = ancestorKeysOf(key)
+            // Iterating a synchronizedSet must be guarded by the set itself.
+            synchronized(expanded) { expanded.removeAll { it != key && it !in ancestors } }
+        }
         expanded.add(key)
     }
 
@@ -2635,7 +2651,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                                 // is the host file (isDir=false), so the
                                 // `if (isDir)` line above doesn't cover it.
                                 it.mountRoot?.let { root ->
-                                    currentDir = root
+                                    if (currentKey == key) currentDir = root
                                     noteChangedIn(XFile(n.file.scheme, n.file.parentPath, isDir = true))
                                 }
                                 accordionExpand(key)
@@ -2699,7 +2715,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                         {
                             applyRestored(it, expand = mine) // Connection is already up; fall through to normal landing, just skip expanding.
                             if (mine) {
-                                currentDir = keyFile[key] ?: currentDir
+                                if (currentKey == key) currentDir = keyFile[key] ?: currentDir
                                 accordionExpand(key)
                             }
                             rebuild()
@@ -3010,7 +3026,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                         { restored ->
                             applyRestored(restored, expand = mine)
                             if (mine) {
-                                currentDir = keyFile[key] ?: currentDir
+                                if (currentKey == key) currentDir = keyFile[key] ?: currentDir
                                 accordionExpand(key)
                             }
                             rebuild(); onResult(true, null)
@@ -3474,6 +3490,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
         val liveKeys = rows.mapTo(HashSet()) { it.key }
+        if (allowMultipleExpandedNodes()) {
+            // Folding an ancestor abandons hidden loads even if that ancestor is
+            // reopened before IO completes. Tapping the child can reclaim it.
+            abandoned.addAll(loadingKeys.filter { it !in liveKeys })
+            abandoned.addAll(connecting.filter { it !in liveKeys })
+        }
         usageBranches.removeAll { it.anchor !in liveKeys }
         val databases = rows.filterIsInstance<FileNode>().filter { isSqlite(it.file, it.key) }
         sqliteTree.retain(databases.filter { it.expanded }.mapTo(HashSet()) { it.key }, databases.mapTo(HashSet()) { it.key })

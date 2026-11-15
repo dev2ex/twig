@@ -1193,6 +1193,8 @@
     <string name="compress_source_directory">Enregistrer dans le dossier source</string>
     <string name="compress_hide_names">Chiffrer les noms de fichiers</string>
     <string name="compress_destination_missing">Choisissez une destination</string>
+    <string name="settings_allow_multiple_expanded_nodes">Autoriser plusieurs nœuds dépliés</string>
+    <string name="settings_allow_multiple_expanded_nodes_desc">Garder les autres branches ouvertes lors du dépliage d’un dossier, d’une archive ou d’une source.</string>
     <string name="settings_auto_tree_indent">Retrait automatique de l’arborescence</string>
     <string name="settings_auto_tree_indent_desc">Réduire progressivement le retrait lorsque les dossiers parents quittent l’écran.</string>
 

@@ -262,6 +262,12 @@ class SettingsActivity : TwigActivity() {
             set = { Prefs.setRowDivider(this, it) },
         )
         switchRow(
+            getString(R.string.settings_allow_multiple_expanded_nodes),
+            getString(R.string.settings_allow_multiple_expanded_nodes_desc),
+            get = { Prefs.allowMultipleExpandedNodes(this) },
+            set = { Prefs.setAllowMultipleExpandedNodes(this, it) },
+        )
+        switchRow(
             getString(R.string.settings_auto_tree_indent), getString(R.string.settings_auto_tree_indent_desc),
             get = { Prefs.autoTreeIndent(this) },
             set = { Prefs.setAutoTreeIndent(this, it) },
