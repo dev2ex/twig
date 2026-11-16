@@ -768,7 +768,10 @@ extracts RAR archives; it does not implement RAR compression.
 
 ## Contributing
 
-Contributions are welcome. Please read [CLA.md](CLA.md) first — it is short, it
+For bug reports and feature requests, use the [issue template](.github/ISSUE_TEMPLATE/).
+Keep separate requests in separate issues, and close your issue after verifying that a released fix resolves it.
+
+Code contributions are welcome. Please read [CLA.md](CLA.md) first — it is short, it
 does not take your copyright, and it explains why the project needs the right to
 relicense its own code.
 
