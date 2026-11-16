@@ -1,1005 +1,156 @@
-# Twig — Engineering Notes & Working Guide
+# Twig — Engineering Working Guide
 
-> **For human readers**: this file is Twig's engineering reference. It is written for
-> "the person about to change this code", not for "someone meeting the project for the
-> first time" — for an introduction see [README.md](README.md).
-> The most valuable part is **"Hard-won lessons"**: one file per area under
-> [docs/lessons/](docs/lessons/), indexed at the bottom of this file. Every entry is the
-> closing record of a real incident, with the symptom, the wrong diagnosis, the root cause
-> and the current solution. **Before touching the terminal, thumbnails, TS demuxing,
-> privileged access or WiFi sharing, open the matching file and read it first** — several
-> of them took two or three shipped regressions to pin down, and stepping on them again is
-> expensive. Keeping them out of this file is deliberate: what gets loaded every session
-> stays short, and the detail is one read away.
->
-> The file is named `AGENTS.md` because coding agents read it automatically; the content
-> applies to humans just as well. There is deliberately **one** copy — it was duplicated
-> per-agent for a while and the copies drifted a day out of sync. Machine-specific
-> settings (test device address, release directory, …) live in `AGENTS.local.md`, which is
-> not committed.
-
-A size-first, dual-pane Android file manager, one tree over every source: plain Kotlin + XML
-Views, no Material library, minimal dependencies.
+A size-first, dual-pane Android file manager: plain Kotlin + XML Views, no Material
+library, minimal dependencies. Start with [README.md](README.md) for an introduction.
+This file holds shared working rules and navigation to detailed references.
+Machine-specific settings and overrides live in the uncommitted `AGENTS.local.md`;
+read it when present. Keep one shared guide rather than per-agent copies.
 
 ## Documentation maintenance
 
-- Keep guides and design documents accurate for the current implementation. Update existing
-  sections and remove superseded statements; use Git history for the development timeline.
-- Add a lesson only for an independent, non-obvious failure with a lasting prevention rule.
-  Refine or merge the existing entry when revisiting the same issue. Routine implementation,
-  requirement changes and successful test runs do not need lesson entries.
-- Put routine validation results in commit or PR descriptions. Commit a separate test report
-  only when a reproducible experiment or substantial performance comparison merits retention.
-  Avoid repeating the same explanation across this guide, lessons and reports.
-- Release changelogs accumulate by version; ordinary engineering documents are maintained
-  references, not append-only work logs.
+- Keep this file around 150–200 lines: global rules, common commands and task links.
+  Put feature behavior and implementation details in the matching
+  [engineering reference](docs/engineering/); add a short task link here only when needed.
+- Before changing a subsystem, read its engineering reference and matching lessons
+  below. In particular, read the lessons before touching terminal, thumbnails,
+  TS demuxing, privileged access or WiFi sharing code.
+- Update references in place and remove superseded statements. Use Git history for
+  the development timeline; do not append a feature summary here after each change.
+- Add a lesson only for an independent, non-obvious failure with a lasting prevention
+  rule. Refine the existing entry for a recurring incident. Routine implementation,
+  requirement changes and successful tests do not need lesson entries.
+- Put routine validation results in commit or PR descriptions. Retain a separate test
+  report only for a reproducible experiment or substantial performance comparison.
+- Release changelogs accumulate by version; ordinary guides are maintained references.
+  Avoid duplicating explanations between this file, references, lessons and reports.
 
 ## Build and verify
 
 ```bash
-# Build release (R8 + resource shrinking; build-tools pinned to 36.1.0)
-#    ★ There are flavors: full includes RAR and is the one you install; libre is the
-#      F-Droid build.
+# Full includes RAR; libre is the F-Droid flavor. Release uses R8/resource shrinking.
 ./gradlew :app:assembleFullRelease
 
-# Optional NFS build (full/libre both exclude NFS by default; APK suffix: -nfs.apk)
+# Optional NFS build (excluded from both flavors by default)
 ./gradlew :app:assembleFullRelease -PwithNfs=true
 
-# Verify the version with aapt (★ never trust the pipeline's exit code —
-# a failed build can still leave you installing the previous APK)
+# Always verify the actual APK version before installing
 "$ANDROID_HOME"/build-tools/36.1.0/aapt dump badging \
   app/build/outputs/apk/full/release/app-full-release.apk | grep -E "versionName|versionCode"
+
+# Example JVM module tests; choose checks appropriate to the changed modules
+./gradlew :fs-network:test
 ```
 
-- **Verification discipline**: before installing, always confirm with aapt that
-  `versionName` is the build you just made. A failed build once got masked by a
-  pipeline `exit 0`, and an old APK shipped as a new one (the 0.20.3 == 0.20.2 incident).
-- **Version numbers**: `versionCode` (+1) and `versionName` in `app/build.gradle.kts`
-  move **only for a release that actually goes out**, never for a test build. A test build
-  is signed with the debug key (`debugSign=true`) and installs straight over the previous
-  one, so it needs no number of its own — and spending one on a build nobody else receives
-  is exactly how 1.9.1 and 1.9.2 became versions that never existed. Small intermediate
-  iterations within one round of polishing (tweaking a corner radius or spacing back and
-  forth) only need a compile check
-  (`compileFullReleaseKotlin` / `assembleFullRelease`), not a version bump each time.
-  ★ **Which component moves is decided by the changelog, not by the commit types.**
-  Write the changelog first, then read it back: any sentence saying something is *new* or
-  *now possible* makes it a **minor**; a changelog that only corrects behaviour, or only
-  records an internal change, makes it a **patch**. The rule used to be "fixes bump the
-  patch component, features bump the minor one", and it judged the wrong thing — Twig is
-  an app with no callers, so "what kind of work was this" tells a user nothing. It also
-  had no answer for a `build:` or `chore:` release, and it filed 1.8.5 (whose changelog
-  says "No user-visible change") in the same tier as 1.9.3 (a crash on Android 9 and 10).
-  Reading the changelog instead costs nothing: it has to be written anyway, it is the one
-  text the user actually sees, and build or chore work lands on patch by itself because it
-  cannot produce a "this is new" sentence. What no component can express is **urgency** —
-  F-Droid has no "update now" flag, so a crash, data-loss or security fix has to say so in
-  the changelog's first sentence.
-  ★ **Bumping `versionCode` means writing a changelog in the same commit**:
-  `fastlane/metadata/android/{en-US,zh-CN}/changelogs/<the new versionCode>.txt`,
-  500 characters or less, and the file is named after the **versionCode, not the version
-  name**. That is what F-Droid shows as the release note — miss it and that release ships
-  with no description. The rest of the store copy and images live under `fastlane/`,
-  rules in `fastlane/README.md`.
+- Never trust a pipeline's exit code alone: a failed build can leave the previous APK.
+  Confirm `versionName` is the build just made before installing.
+- Test builds do not bump `versionCode` or `versionName`. Small UI iterations need
+  a compile/build check, such as `:app:compileFullReleaseKotlin`.
+- Default combined APKs contain `arm64-v8a` + `x86_64`; per-ABI releases also support
+  `armeabi-v7a`. See the build reference for split options.
+- Keep the configured signing key. Release reads `keystore.properties`; without it
+  the APK is unsigned, with no silent debug-key fallback. `debugSign` in
+  `local.properties` selects debug signing; `-PdebugSign=true|false` overrides it.
+  Updating an installed app requires a matching signing key.
+- Before release work, read [build and release](docs/engineering/build-and-release.md)
+  and [fastlane rules](fastlane/README.md). Write the changelog first: new or newly
+  possible behavior means a minor release; corrections or internal-only changes mean
+  a patch. State crash, data-loss or security urgency in the first sentence.
+- Bump versions only for a release that goes out. A `versionCode` bump must include
+  `fastlane/metadata/android/{en-US,zh-CN}/changelogs/<versionCode>.txt` in the same
+  commit, at most 500 characters per locale.
+- Previews use a committed prerelease version and bilingual changelogs, then
+  `tools/preview.sh`; stable releases use `tools/release.sh`. Both verify APKs and
+  respect signing configuration. `--publish` pushes and publishes; preview publishing
+  creates a Pre-release without changing Latest. `--offline` uses cached dependencies.
+  Device, distribution and notification preferences belong in `AGENTS.local.md`.
 
-What happens after that — which device to install on, where builds get published, how
-you get told about it — is every developer's own preference, so it is deliberately not
-in this file. The setup used on the machine this was written on lives in
-`AGENTS.local.md`, which is not committed.
+## Architecture
 
-For GitHub previews, commit a prerelease version such as `1.16.0-beta.1` and its
-English/Chinese changelogs, then run `tools/preview.sh` to build and verify full/libre
-APKs. Add `--publish` to push the current branch/tag and publish a Pre-release without
-changing Latest. `--notes-file PATH` supplies detailed release notes; `--offline`
-uses cached Gradle dependencies. The script respects the configured signing key and
-uses `tools/verify-apk.py` before publishing. Stable releases use `tools/release.sh`.
+Every backend presents `FileSystem` + `XFile`; cross-backend copy/move uses
+`CopyEngine` with filesystem `openInput()/openOutput()` streams. Each `XFile` has a `scheme`, resolved through
+`FsRegistry`; multiple servers of one kind have distinct schemes. Add a backend via
+its filesystem implementation, keeping UI and copying independent of backend type.
 
-## Build environment
+Capabilities shared by every backend belong in `FileSystem`. Optional capabilities
+use separate interfaces and safe casts with a fallback. See the
+[filesystem contract and module map](docs/engineering/architecture.md) before changing
+backends, capability interfaces or Unix metadata.
 
-- **Release is signed with our own keystore**, whose credentials are read from
-  `keystore.properties` in the repository root (path and passwords are in
-  `AGENTS.local.md`; neither the key nor that file is committed).
-  ★ When the file is missing, release produces an **unsigned** APK rather than silently
-  falling back to the debug config: the AOSP debug key is public, so anyone could sign an
-  APK that installs over the real one, and a silent fallback would bury that trap again
-  with no warning. An unsigned APK is also exactly what F-Droid wants (it signs its own,
-  or does a reproducible-build comparison).
-  ★ The `import java.util.Properties` at the top of `app/build.gradle.kts` cannot be
-  omitted: in the Kotlin DSL, `java` resolves to Gradle's java extension, so writing
-  `java.util.Properties` inline fails with "Unresolved reference: util".
-  ★ `INSTALL_PARSE_FAILED_NO_CERTIFICATES` when installing means exactly one thing:
-  the build found no `keystore.properties` and produced an unsigned APK.
-  ★ **Changing which key signs a build makes it refuse to install over the old one**
-  (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) — the previous install has to be uninstalled
-  first, taking its data with it. This is why test builds are signed with the debug key
-  instead: put `debugSign=true` in `local.properties` (gitignored, so it never reaches
-  another branch) and release is signed with the AOSP debug key, letting a test build
-  install straight over the last one. `-PdebugSign=true|false` overrides the file.
-- ABIs are limited to `arm64-v8a` + `x86_64`; for a store listing use `bundleRelease`
-  to produce an AAB split per device.
-
-## Architecture in one sentence
-
-Every backend (local / archives / FTP / SFTP / SMB / WebDAV / restic) presents the same
-`FileSystem` + `XFile` interface to the UI, and cross-backend copy/move goes through
-`CopyEngine` streaming over `openInput()/openOutput()`. **Adding a backend = adding one
-FileSystem implementation, with zero changes to the UI or to copying.**
-Every `XFile` carries a `scheme`; `FsRegistry.of(scheme)` finds the matching FileSystem.
-Multiple servers of the same kind each get a unique scheme.
-
-**Optional capability interfaces** (`core-fs/MediaServer.kt`): `FileSystem` itself is the
-floor that "every backend must answer"; capabilities that only make sense for a few
-backends get their own interface, implementations opt in with `: PlaybackProgress`, and
-callers always do `FsRegistry.of(file) as? XXX` and fall back to the old path when they
-get null. There are currently seven, most of them added for media servers:
-`PlaybackProgress` (the backend owns playback position), `CoverSource` (the backend has
-posters), `MediaInfoSource`, `LyricsSource`, `SearchSource`, `EpisodeSeries`, `SizeProbe` (the listing
-has no byte count; a row can ask for its own — `:app`'s `SizeProbes` drives it per bound row,
-never per listing).
-Before adding a capability, decide whether *every* backend should be able to answer it —
-if yes it belongs in `FileSystem`, otherwise it goes here; don't make 20 implementations
-each write `= null`.
-
-`UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
-Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
-failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
-folder counts and before size/time, without bind-time filesystem calls.
-`Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic
-notation. Octal labels have an outline shield matching count-icon size, tint and opacity.
-The format choice participates in `uiSignature` and configuration backups. The independent,
-default-off `Prefs.unixPermissions` display setting controls this row only, participates
-in `uiSignature` and is included in configuration backups. The Unix properties tab stays
-available with the setting off. When counts are enabled, reserve both count slots for rows
-with permissions, including files and pending directory counts, when space permits.
-`MetadataRow` reserves the trailing size/time first, then permissions, then both count slots;
-leading groups that do not fit get zero layout bounds without changing their binding visibility.
-They return on widening, and oversized size/time text truncates at the start.
-The counts container exposes its first child's baseline so all metadata
-text aligns across the nested layout. Numeric permissions, UID/GID, access/status-change times and available SELinux context belong in a dedicated
-Unix properties tab, after all other tabs including Hash. Its initial loading tab uses listing metadata only;
-unsupported backends have no Unix tab. General retains modification time and link targets.
-`ctime` is inode status change, never creation time. Symlink attributes describe the link;
-its listing size must still describe the followed stream for copy/resume checks.
-
-### Modules
-
-| Module | Purpose |
-|---|---|
-| `:core-fs` | Pure JVM: `XFile` / `FileSystem` / `FsRegistry` / `CopyEngine` |
-| `:fs-local` | `LocalFileSystem` (java.io.File) + `priv/` privileged fallback (`PrivilegedShell`, shared by root and Shizuku) |
-| `:fs-archive` | `ArchiveFileSystem` base + Zip (read/write, auto-detects GBK) / 7z (read-only) / tar (read-only, entries read by offset slicing) / gz·xz·bz2·zst (`SingleFileSystem`, one entry, stacks into tar.gz; zstd's decoder is injected by `:app` because this module is plain JVM); `ArchiveWriter` packing (zip/7z) across backends; encrypted archives (`ZipAes`/`ZipCrypto`/`ZipWriter`) |
-| `:fs-archive-rar` | `RarFileSystem` (RAR4 + RAR5, read-only). **A separate module purely for licensing** — junrar is non-free and only ships in the full flavor, see [docs/lessons/rar-and-fdroid.md](docs/lessons/rar-and-fdroid.md) |
-| `:fs-network` | `FtpFileSystem` / `SftpFileSystem` (SSHJ) / `WebDavFileSystem` (hand-written PROPFIND) / `S3FileSystem` (hand-written SigV4 + REST) / `JellyfinFileSystem` (Jellyfin + Emby, read-only virtual tree) |
-| `:fs-smb` | `SmbFileSystem` — libsmb2 via NDK/JNI, read/write |
-| `:fs-restic` | Read-only decrypting reader for restic repositories (pure Kotlin) |
-| `:fs-zstd` | zstd JNI: `NativeZstd` (whole-block, restic) + `ZstdInputStream` (streaming, `.zst` archives) |
-| `:git-lite` | Mini git in pure Kotlin (`GitRepo`/`ObjectStore`/`IndexFile`/patience `Diff`) for browsing worktree status and history; worktrees/submodules via `GitLayout` + `WorktreeGitFs` |
-| `:app` | Dual-pane UI, permissions, mutations, viewers, terminal, SAF fallback, WiFi sharing service, website bookmarks and customization |
-
-### Key UI classes (`:app`)
-
-- `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
-  toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
-  single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
-  directory-count subscriptions across Main and both pickers. In Main, toolbar visibility
-  follows orientation unless the default-off `Prefs.hideTitleBarPortrait` hides it in
-  portrait too. Hidden toolbar actions stay pinned above the strip with the same
-  separator, using one column in portrait and two in landscape. Action-strip density
-  still follows orientation. Hiding the toolbar disables and dims its bottom-placement
-  setting without clearing the saved placement; showing it restores that setting immediately.
-  Both settings participate in `uiSignature` and
-  configuration backups. `Prefs.hidePathBarSinglePane` defaults off and hides the address
-  bar whenever the effective layout is single-pane, including both pickers. Dual-pane
-  layouts retain it. The setting participates in `uiSignature` and configuration backups.
-  `Prefs.pathBarAtBottom` defaults off and places each pane’s address bar below its file
-  list in Main and both pickers, independently of toolbar placement and path-bar hiding.
-  Its settings row follows single-pane path-bar hiding; it participates in `uiSignature`
-  and configuration backups.
-- `PaneViewModel` owns the navigation stack and tree expansion; `FileAdapter` renders rows.
-  Tapping the path bar reveals horizontally scrollable path buttons; its source icon toggles
-  the compact display; clicking a tree node also restores it. Buttons have square corners,
-  fill the bar height, omit slash separators and prefer display aliases. Only the selected
-  segment changes background. `pathSegments` uses
-  real tree keys and mount roots, retaining child segments when selecting a parent and
-  replacing them on another branch. `selectPathSegment` opens the selected directory with
-  only its direct children visible and all child directories collapsed, keeping ancestors
-  open; never split SAF/media-server paths. Long press and double tap still edit paths.
-  `TreeIndentation` subtracts the shallowest visible depth from display indentation,
-  with a shared 250 ms transition; partially visible rows retain their depth, and
-  properties cards use their owner's depth. Grid cells retain their full width.
-  `Prefs.autoTreeIndent` defaults on, has a settings-only toggle, participates in
-  `uiSignature` and is backed up with `twig_prefs`. Actual node depths never change.
-  Expanding a directory reuses its cached children immediately, then re-lists in the background
-  (`relistQuietly`) on every backend, including server and favorite roots. Only changed listings
-  update the rows. Expanded local directories stay live through inotify
-  (`PaneFragment.syncObservers`); resume also re-lists the current directory on any backend.
-  The tree always expands/collapses **in place**, it never "enters" a directory.
-  `Prefs.allowMultipleExpandedNodes` defaults off; enabling it retains other expanded
-  branches across folders, archives, sources and path navigation. Independent visible
-  loads can finish without replacing the selected destination; folding an ancestor or
-  Collapse All prevents pending loads from reopening hidden branches. Disabling it
-  restores accordion folding on the next expansion. Path buttons still collapse the
-  selected directory’s descendants. The setting participates in `uiSignature` and
-  configuration backups through `twig_prefs`.
-  Tapping a row's **icon** (not its name or chevron) is the "keep this branch"
-  gesture: a small pin at the icon’s upper-left marks that row as protected from the
-  accordion, so expanding another node does not fold it away (`PaneViewModel.keptOpen` / `toggleKeepingOpen`). The
-  icon is still a toggle — tapping it again collapses the branch and drops the
-  protection, and so do Collapse All and a path-button selection. Explicitly folding
-  any ancestor clears all descendant expansion and protection in either tree mode;
-  reopening shows only direct children while reusing cached listings. The protected node's
-  ancestors stay open as well, otherwise it would be invisible. Capture the clicked
-  row’s ancestor chain when pinning: favorites and source listings can share a file
-  key, and another visible occurrence must not change which ancestors are protected. With the setting above
-  enabled the gesture changes nothing (nothing folds anyway).
-- Checked files belong to a pane-owned `PaneSelection`, keyed by filesystem identity,
-  rather than visible adapter rows. Checks span directories and survive view
-  recreation; folding clears checks for rows that disappear, while other visible branches
-  retain theirs. Aliases share one check. The path-bar count and file context menus open a selection review
-  with individual removal and Clear all, including when the path bar is hidden. Directory checkbox cycles and virtual select-all
-  affect only their branch; range selection stays within displayed siblings.
-  Operations normalize selected ancestors/descendants using cached tree parents (including
-  opaque SAF/media paths), falling back to lexical parents only for absolute paths.
-  Copy/move and compression confirmations offer default-off Keep directory structure and
-  preview relative outputs. `SourceLayout` starts at the highest selected/containing
-  directories, never adding their ancestors: `/photos/trip/a` and `/downloads/docs/b`
-  become `trip/a` and `docs/b`. Repeated anchor names receive stable numbered prefixes.
-  One shared highest directory supplies the action-strip archive name regardless of
-  the structure option; structured compression omits that directory inside the archive. Independent top-level directories
-  retain their prefixes. Compression from a file context menu names the batch after
-  the pressed entry (file stem or full directory name), even when multiple items are
-  checked. Structure/format toggles preserve manually edited names. An empty relative
-  archive path means pack that selected directory’s contents at archive root; files
-  must always have nonempty safe paths.
-  Frozen relative paths travel with the transfer work and its retries; intermediate
-  destination files fail rather than being replaced by directories. Flat compression
-  rejects duplicate top-level names; archive writing rejects duplicate/conflicting entry
-  paths in all formats, keeping an existing archive intact on failure. Destination
-  selection still uses the opposite pane’s current directory, independently of its checks.
-- Returning from the usage treemap keeps the existing tree expansion and adds pane-local
-  scan totals: proportional child-row backgrounds using the selection color, recursive directory sizes and descending
-  size order within each listing. The scan target has no usage background; selected rows use
-  a stronger overlay over the selection background. These snapshots
-  live only in `PaneViewModel`, survive view recreation and never rewrite saved sort settings.
-  Analyzed directories temporarily render all entries as list rows, overriding global and
-  directory grid choices without saving changes; clearing the scan restores those choices.
-  Every descendant's proportion uses the scan target's total as its denominator.
-  Folding/reopening child directories, including accordion folding, retains the scan.
-  Folding the scan target or any ancestor discards that scan; Collapse All clears all scans.
-- Directory counts (`DirectoryCounts`) use separate background workers for direct local
-  storage and other sources. Only attached rows in visible panes request probes;
-  prefetch does not enumerate directories. Detaching/recycling a row, hiding its pane
-  or stopping its screen releases that row's subscription, while another pane's
-  subscription to the same directory remains valid. Pending work without subscribers
-  is dropped. Queued counts follow live adapter positions, from top to bottom in the
-  displayed sort order, including after pane activation or a resort. Local entry
-  processing checks cancellation; an already-running blocking
-  backend call may finish, without holding up the local count worker. Ordinary listings
-  populate the shared cache, and failed reads stay unknown rather than becoming zero.
-  `DirectoryCountSource` optionally provides streaming count-only enumeration. SFTP
-  checks cancellation per entry, skips unused metadata and stops once both visible
-  counts reach 1000 (`999+`); rarer categories still require reaching the end to be exact.
-  Hidden and all-entry counts are cached separately. Never cap ordinary `list` results.
-  Probes have a three-second soft deadline starting when IO begins, excluding queue
-  wait. Streaming/local entry processing checks it; late blocking results are discarded.
-  Timeouts keep existing cache entries, deliver no zero and share the failure cooldown.
-  Ordinary expansion/refresh listings can still populate counts after any duration.
-  Confirmed empty directories hide their row chevron across supported backends,
-  retaining click/destination behavior and arrows for synthetic children. Reuse
-  ordinary listings even with counts disabled; extra nonlocal probes remain opt-in.
-- Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
-  preferences in `Prefs` — all SharedPreferences.
-  Recent locations also record directories used inside restic snapshots, storing the repository
-  connection/path, snapshot selector and internal path rather than a session scheme. Fixed
-  snapshot metadata is frozen for display; `latest` remains a dynamic alias. Restoring reconnects
-  and unlocks as needed, expands the repository chain, then matches snapshot rows by path ID
-  (their display names are dates). Favorites and Recent share the repository unlock resolver;
-  a live unlocked repository needs no password prompt. Missing snapshots/listings report errors
-  without changing the selected directory. Newer navigation or Collapse abandons pending restores.
-  Favorites and websites keep their stored order. Long-pressing either heading offers
-  inline reordering with drag handles; favorite children are temporarily hidden, websites
-  temporarily use list rows even in grid mode, and drops
-  save the order for both panes. A tap outside the drag handles or Back restores normal
-  expansion; scrolling leaves sorting active.
-  `SortDialog` provides separate sorting and view dialogs, each with defaults or overrides
-  for the selected directory. Resetting one leaves the other unchanged.
-  Defaults remain in `twig_sort` / `twig_prefs`; `DirectoryViewStore` stores only explicit
-  directory overrides in `twig_directory_views` (included in `.twigbak`). Sorting and
-  view mode inherit independently. Each has a default-off recursive flag: a directory's own
-  override wins, otherwise the nearest recursive ancestor wins, then the global default.
-  Nonrecursive overrides do not propagate or block more distant recursive ancestors.
-  Resolve once per directory listing/render, without scanning descendants or persisting copies;
-  ordinary paths derive ancestry, while opaque paths use parent links learned from listings.
-  Listing identities (`mountRoots` / `keyFile`) identify the containing directory, including
-  favorites, servers and opaque SAF paths. `FileNode.gridMode` carries its effective view
-  to the adapter; directory overrides are parsed per settings refresh, not per rendered row.
-  Network display paths share `formatLocationPath` / `Format.pathLabel` and use
-  `type://server/path`; aliases follow history, raw addresses are used for favorites and
-  playlist exports. M3U network locations use `type://server/path`; malformed single-slash
-  source addresses are skipped.
-  Internal `scheme:path` keys remain separate from display text.
-- Private space: `PrivateSpace` uses `applicationInfo.dataDir/private_space` through
-  the ordinary local filesystem. The main menu's root-item visibility choices are
-  stored per pane in one dialog with left/right columns. Dragging its handles saves a
-  shared order for configurable roots, including internal storage and one removable-storage
-  slot. The latter renders mounted SD/USB volumes directly, without an extra group row;
-  its per-pane visibility also applies to newly attached volumes. Fixed entries retain their slots. Private space defaults
-  visible; an explicit hidden choice is retained. Root-item and action-panel dialogs
-  offer Reset for their draft order and visibility; only OK persists it, and Cancel
-  retains the saved configuration. Its files are excluded from all
-  system backup/transfer channels, and
-  configuration-only `.twigbak` never includes them. Known ancestors of Twig's data
-  directory get UI-only navigation hints when Android denies enumeration;
-  filesystem copy/compare listings must still fail.
-- Websites: `WebsiteStore` persists per-site options in `twig_websites`; `WebsiteActivity`
-  opens each bookmark in its own reusable document task using the shared WebView profile.
-  `SearchEngine` stores the global search homepage and `{query}` URL template in
-  `twig_prefs` (included in configuration backups). The website heading menu opens
-  `WebSearch.configure`; text viewer/editor, PDF and terminal selection actions use
-  the system `ACTION_WEB_SEARCH` chooser through `WebSearch`. Website and preview WebViews
-  keep their native selection menus. The exported `WebSearchActivity` makes Twig an
-  optional system search handler. Long-pressing the action strip's Search opens this
-  entry explicitly, using Twig's configured homepage without a chooser, in Main and
-  both pickers. `SearchStripItem` retains that gesture while file search is disabled;
-  ordinary taps stay disabled and scrolling cancels the pending long press.
-  After the app lock gate, `WebSearchActivity` uses the configured template
-  and its own `.search` task affinity so system `NEW_TASK` requests cannot bring
-  MainActivity forward instead of returning to the calling website, viewer or external app.
-  Empty queries use the homepage. Only requests handled by Twig share the `twig://search` document task,
-  carrying the requested URL as an extra; reused intents load the new request only
-  after the app lock gate. Bookmarks and externally opened browser pages keep their
-  separate document identities.
-  `TerminalSelectionMenu` replaces Termux's unused More entry with sharing and
-  installed `ACTION_PROCESS_TEXT` handlers. It reads the live selection at click time,
-  passes text as read-only and ignores results; external processing must never write
-  returned text to a terminal session.
-  `WebsiteDialogs` shares its editor with website defaults: new bookmarks copy display
-  options only. UA/JS/CSS/hide/block settings apply globally at runtime; per-site UA overrides
-  the global value, while scripts/styles/selectors/block rules combine with it. Keep raw
-  per-site fields separate from effective settings, including debug edits and browser saves,
-  so global values never become permanent site additions. Open pages observe global changes;
-  locked pages defer applying them until unlock.
-  Each bookmark can opt into `applyToDomain`: external links, system searches and navigation
-  borrow its raw configuration on the exact same hostname, then merge global additions once.
-  Enabling a second bookmark for that host disables the earlier choice; directly opened saved
-  bookmarks retain their own configuration on their saved origin. Resolve again for top-level
-  navigation and history, never for subresources. Keep the document's identity separate from
-  its current page configuration. Domain sharing does not inherit capture/location grants or
-  background execution; headers and Basic credentials retain their original scheme/host/port
-  scope. Temporary and borrowed-page debug edits stay in memory, without rewriting the source
-  bookmark. Prepare changed UAs before intercepted GET loads; history/POST loads that bypass
-  interception finish before changing UA, since changing it mid-load restarts the request.
-  `WebsiteMediaPermissions` handles HTTPS microphone/camera requests with explicit
-  origin-specific consent followed by Android runtime permissions. Grant only selected,
-  recognized capture resources, after the WebView resumes. Saved bookmarks have independent
-  ask/allow/deny policies and may remember prompt decisions for their saved origin only;
-  temporary pages always ask. Foreign frames and redirected origins cannot inherit them.
-  Navigation, WebView cancellation and leaving the foreground invalidate pending requests,
-  except while Android's own permission prompt is active. Camera/microphone hardware stays
-  optional; Chromium audio capture also requires MODIFY_AUDIO_SETTINGS.
-  Set mediaPlaybackRequiresUserGesture=false before loading/restoring website pages:
-  Chromium latches the gesture lock when each media element is created; changing it
-  during permission callbacks does not unlock existing camera preview elements.
-  `WebsiteLocationPermissions` applies the same per-bookmark origin checks to geolocation.
-  Request coarse/fine Android permissions together and accept approximate-only access;
-  never retain decisions in WebView's shared geolocation store (callback retain=false).
-  Website defaults do not inherit these grants. Changing a bookmark's origin resets all
-  three permissions; revoking one refreshes the matching live page.
-  `WebsiteLinkActivity` accepts external HTTP(S) VIEW intents and forwards only the validated
-  URL to a temporary `WebsiteActivity` document using those defaults. Temporary pages enter
-  the bookmark list only through the explicit add action; debug edits stay in memory.
-  `WebsiteCustomization` scopes JS/CSS, hidden selectors,
-  navigation headers and Basic auth to the saved origin. Headers apply to same-origin
-  GET page navigation, not all resources. `WebsiteRequestBlocker` handles manual resource
-  rules, excluding main-frame navigation. `WebsiteDebugPanel` / `WebsiteElementInspector`
-  provide page tools; `WebsiteRemoteDebug` owns the session-only computer debugging switch.
-  `WebsiteDownloads` / `WebsiteDownloadTask` use Twig's picker and transfer service,
-  defaulting to `Downloads/twig`. WebView file uploads also use `PickerActivity`, with
-  single/multiple selection matching the page's request and stream URIs returned to WebView.
-  Opt-in background sessions use `WebsiteBackgroundService`
-  (see [website background execution](docs/lessons/website-background.md)). Basic credentials
-  and header values use `Secrets`; `.twigbak` includes website configuration with those
-  fields decrypted for export and re-encrypted on import, but excludes WebView cookies
-  and sessions. Import restores the website list as a whole, rather than merging entries.
-  Website tasks gate cold starts, reused shortcut intents and resumes with `SecurityUi`;
-  defer reading credentials and loading/restoring pages until unlocked. An opaque cover
-  blocks the live page while prompting without pausing opted-in background execution.
-  While locked, `FLAG_SECURE` prevents screenshots/task snapshots. After unlocking,
-  each website's "Prevent screenshots" option controls it and defaults off,
-  regardless of whether a master password is configured.
-- Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
-  `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
-  The image viewer plays GIF and animated WebP on Android 9+ using the platform decoder;
-  Android 7/8 and image comparison retain static frames. Only the displayed animation
-  owns a decoder, outside the bitmap cache and prefetch. Pause it when leaving the
-  foreground or switching images; never overlay static hi-res regions on live frames.
-  Rotation wraps the live drawable and forwards invalidations. Detach the previous
-  drawable before wrapping it, so ImageView does not clear the new callback chain.
-  Music inside mounted restic repositories and archives uses an in-memory queue
-  (`Playlist.TEMP`), with same-directory siblings and ordinary playback controls.
-  These tracks cannot be favorited, saved into playlists or exported; player exit
-  clears the queue. Resolve them through the live filesystem, without reopening a
-  repository or archive from a persisted descriptor.
-  Continue Watching (`PlaybackStore`) retains a `pendingNext` destination after confirmed
-  local/file-backend episode completion, including automatic ending skips. This is a zero-position
-  destination, never watched progress: quick exits, buffering and failures leave it intact;
-  qualified progress replaces it. Reuse the loaded episode queue, independently of auto-play,
-  and never create it for manual episode changes or server-owned playback. Existing next-episode
-  progress wins. Only durable local/saved-connection locations can become destinations.
-  `Prefs.startVideosWithoutAudio` defaults off and disables audio tracks before preparing each
-  newly opened video/episode. It is a player setting included in `twig_prefs` backups, independent
-  of remembered tracks. Startup policy never records a manual choice; existing audio controls can
-  enable sound for the current video. Disabled audio does not request audio focus; manually
-  enabling a track restores normal focus handling. Audio-only playback is unaffected.
-  **Playback choice memory** (`MediaPrefStore` + `TrackMatch`): the audio track, the subtitle
-  and the picture scaling a user picks by hand are applied again on the next episode and the
-  next time the file is opened (scaling rides along because it has the same scope — every
-  episode of a show shares an aspect ratio — and needs no matching, the mode is the record). Two rules
-  carry it: the record is the track's **identity** (language / label / codec), never its index —
-  episodes order their tracks differently, so an index is a wrong answer waiting to happen —
-  and a match below `TrackMatch.MIN_SCORE` selects **nothing**, because playing an episode in a
-  language nobody asked for is worse than one tap in the dialog. An external subtitle is stored
-  as the tail of its name relative to the video's stem (`.chs.srt`), the only part that is the
-  same for every episode. Scope is per file, falling back per series (`Episodes` prefix, or the
-  queue's first episode for a media server, whose names are titles); only deliberate choices are
-  written, never what the player auto-selected, or one wrong default would be frozen forever.
-  One switch covers all three (`Prefs.rememberMediaPrefs`) — they are one wish, not three.
-  The hex table itself is `HexPane` (one RecyclerView + one `HexSource` + the row rendering),
-  shared by the viewer and `HexCompareActivity`; highlights come from a single `hits` hook, so
-  search hits and byte differences take the same rendering path.
-- File compare: ★ **a listing that fails is unknown, never empty** — `scanCompare` marks such a
-  directory `PairState.ERROR` (no children, sync skips it), and `statSides` / `lookupChild`
-  report failure separately from "not found". Reading a failed listing as empty turned the
-  other side's contents into "extras" that mirror sync deleted (2026-09-17 review).
-  `CompareActivity` (directory tree) dispatches a pair to `ImageCompareActivity`
-  (images) or `DiffActivity` (two-column text). ★ `DiffActivity` **hands binaries and oversized
-  pairs on to `HexCompareActivity`** rather than dead-ending on `diff_binary` — whether a file is
-  binary is only knowable after reading it, so that routing cannot happen back on the compare page.
-  Hex compare aligns **same offset against same offset** with no resynchronisation (`HexDiff`):
-  inserting a byte makes everything after it differ, which is the honest answer for the case this
-  page is for (firmware, headers, patched binaries — structures that keep their offsets).
-  Two constraints that are easy to get wrong, both with tests in `HexDiffTest`:
-  both columns must share **one** bytes-per-row and **one** offset-digit count (otherwise the two
-  offset columns disagree and "the same row on both sides" is a lie), and the shorter file's column
-  is **padded with blank rows** (`HexPane.padTo`) — without that it bottoms out first and, since the
-  columns push their scroll positions onto each other, drags the longer side back up, so the tail
-  difference can never be reached.
-- Git: `GitActivity` (status/history), `DiffActivity` (two-column patience diff);
-  SFTP repositories run git remotely over exec via `SshGitData`.
-- **Terminal → pane** (`TerminalActivity.locateCurrentDir`): "Locate current directory" takes one of
-  two routes, and which one depends on whether the directory is in the pane's tree at all.
-  **In it** — a local path, or a remote one inside the subdirectory the SFTP connection mounts —
-  it is an ordinary `MainActivity.revealIntent`, so the user lands in the tree they know and the pane
-  keeps the result. **Outside it** there is no row to reveal, so `MainActivity.locateIntent` pins the
-  directory on top of the tree like an externally opened archive (`PaneViewModel.mountLocated`) and
-  the back key takes it down, restores what was there and returns to the session — which is why that
-  route does not finish the terminal. Reaching such a path needs a filesystem that can:
-  `Connections.sftpRootTwin` registers a second one for the same server rooted at `/`, kept for the
-  life of the process (a copy in flight resolves its filesystem by scheme on every file).
-  Where the directory itself comes from is its own problem, see
-  [docs/lessons/terminal-local.md](docs/lessons/terminal-local.md).
-- Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
-  `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
-  (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).
-  Plain shared text uses the same destination picker with an editable filename and
-  UTF-8 bytes carried by `ShareSourceFileSystem` as an internal data URI. Incoming
-  data URIs remain forbidden by `IncomingUri`; attachments take precedence over text
-  captions. Text sources are self-contained so retries need no Activity or cache file.
-  File picking, the share destination picker and the main screen share `view_panes.xml`,
-  `PaneLayout` and the `PaneSwitch` toolbar control: single-pane mode uses one continuous
-  track with the strip between panes; dual-pane mode shows both panes around the middle strip.
-  `PickerBrowser` shares both picker screens' navigation, strip actions and pane-switch
-  behavior. File picking also supports locked-source panes and retains its file/path/directory
-  result modes. Each picker keeps independent root visibility and navigation; the toolbar
-  switch or horizontal swipe changes the active pane. Only that pane controls the destination
-  button, through a replaceable `enableOnWritableDir`
-  observer. The active side and edited filename survive Activity recreation.
-  `SortDialog` is shared with the main screen; picker strip actions delegate search
-  and history to the active pane, while compress and WiFi sharing stay hidden.
-  Both pickers follow `Prefs.fullscreen` through `StatusBarFullscreen`, including
-  resume and window-focus changes.
-  Copy/move and compression confirmation default to the other pane's directory
-  but can choose another writable directory directly in the opposite resident pane.
-  Main temporarily pins that pane active and shows a destination bar; source touch,
-  keyboard/accessibility focus and destructive/context actions are blocked while choosing.
-  Copy/move choose missing/read-only defaults first, followed by confirmation; Cancel/Back returns
-  to the source, restoring an existing confirmation or keeping the checked files.
-  Preserve the clipboard independently. A pane-owned in-memory draft retains sources,
-  mode and choosing flags across rotation; process death discards it. Other hosts keep
-  the directory-picker fallback through `PickerActivity`.
-  Confirm only writable targets outside the source directory/subtree, using the shared
-  clipboard destination checks. Compression permits the sources' containing directory,
-  while still rejecting selected directory subtrees. Its separate `CompressConfirmDialog`
-  retains filename, format, move mode and password in the shared `DestinationState` draft;
-  passwords never enter saved view state and are cleared when the draft is discarded.
-  Compression opens its form without a target too; "Save to source folder" uses the
-  known writable common parent and leaves the other target intact until replaced.
-  ZIP/7z offer Fast / Standard / Store, with the level remembered. Password-protected
-  7z defaults to encrypted file names, with an opt-out; ZIP file names stay visible.
-  Long-press transfers remain immediate for valid targets;
-  otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
-  Outgoing system sharing sends directly readable local files and known-size remote
-  files up to 512 KiB directly. If a batch includes a larger or unknown-size nonlocal
-  file, prepare its nonlocal sources in a separate cache as `Transfers.Work.Share`, using `TransferService` and `TransferBox`
-  for progress, cancellation, background execution and notification reopening. A headless
-  `ShareTransfers` fragment only bridges resumed UI to the completed local URIs; there
-  is no separate share dialog/ViewModel. Finished shares retain their cache leases until
-  handoff, independently of ordinary transfer results. Preparation completion suppresses
-  the success toast; notification and vibration follow ordinary operation preferences,
-  except an entirely cached share does not vibrate.
-  Preparation errors still show a toast.
-  External `ACTION_GET_CONTENT` selections in `PickerActivity` use the same preparation
-  policy before returning granted URIs to the caller. Each picker owns its result by a
-  saved ID: other resumed screens cannot consume it or launch a share chooser. Finishing
-  the picker cancels its preparation and releases unclaimed results; internal imports
-  and path/directory selections keep their existing streaming/path behavior.
-  Completed files are reused by scheme/path/name/size/mtime when size and time are
-  known; partial files are removed on failure/cancellation. Cache hits refresh the
-  24-hour idle retention, and the next preparation prunes expired files except those
-  held by an active preparation. "Open with" continues to stream.
-  Incoming `content://` URIs are all carried by `ShareSourceFileSystem` (scheme `share`),
-  whose `openRandom` seeks through `openFileDescriptor` — so archives are parsed
-  streaming without materializing and video can seek.
-  `ViewIntentActivity` is a headless relay: it dispatches by `OpenFiles`' extension rules
-  (falling back to the MIME major type) to the right viewer, while archives go through
-  `MainActivity.mountIntent` → `PaneViewModel.mountExternal` and are mounted at the top
-  of the tree, expanded in place. ★ Do **not** add `FLAG_ACTIVITY_NEW_TASK` when
-  dispatching: the temporary read grant on a `content://` follows the receiving task
-  stack, so in a new stack the viewer throws SecurityException on first read. That is
-  also why base FileSystem registration moved from MainActivity to
-  `TwigApp.registerBaseFs` — these entry points can cold-start the process with no
-  main UI present.
-- Trash: `TrashStore` keeps local shared-storage deletions on their original volume;
-  `DeleteUi` distinguishes recoverable and permanent deletion across pane/viewer/compare
-  entry points. Confirmed deletions and trash purges use `Transfers` / `TransferService`
-  for background progress; cancellation stops between backend calls. `TrashFileSystem` expands in the pane; `TrashDialogs` restores or purges entries. No privileged, SAF or
-  network fallback for recycling. See [trash safety](docs/lessons/trash.md).
-- Security: `secure/Secrets` (two-layer Keystore/master-password encryption of sensitive
-  fields) + `secure/Backup` (`.twigbak` config backup) + `ui/SecurityUi` (dialogs).
-  See [docs/lessons/security.md](docs/lessons/security.md).
-- Themes: AppCompat screens and transparent relays inherit `TwigActivity`, which selects
-  the complete theme before `super.onCreate`. `AppTheme` lifecycle callbacks only track
-  screens for theme changes; do not apply palettes or patch window colors there.
-  OLED has separate opaque and translucent styles. Keep its window background as a
-  resource reference: older `PhoneWindow` versions cannot use an inline color there.
-- Action panel: `StripItems` defines stable action identities; `StripItemsDialog` in
-  the main menu uses drag handles and shared visibility choices.
-  Order and visibility live in `twig_prefs` and are included in configuration backups. `StripGrid.applyItems`
-  reorders existing views while resetting GridLayout specs; retain listeners and
-  orientation changes. `StripGrid` assigns cells from visible order during measurement:
-  GridLayout's automatic placement counts GONE children and leaves gaps. Main and picker screens apply the same configuration, with
-  pickers filtering unsupported actions. Pinned landscape navigation stays fixed.
-  Duplicate defaults to hidden; tapping confirms editable copy names, while holding
-  copies selected entries immediately into their own parents with `_1`, `_2`, … suffixes.
-  Holding Rename applies the same numbering as an immediate rename of the originals.
-  Existing numeric suffixes advance instead of stacking (file_1.txt → file_2.txt). File
-  extensions are retained; dotted directory names stay whole. Duplicate copies use ordinary
-  background transfers and retain their generated names across retries.
-  Properties defaults to hidden and toggles the current/checked items; long-press
-  requests the second page after metadata finishes loading, falling back to Basic
-  for one-page cards. Quit is appended to the default action order and hidden by
-  default; tapping uses the menu confirmation policy, while holding quits immediately.
-- Settings: `SettingsActivity` (a hand-written standalone settings page: display / grid
-  view / thumbnails, no preference library). `Prefs.toolbarAtBottom` defaults off;
-  `ToolbarPlacement` moves the existing browser toolbar below content and matches
-  navigation-bar tint to its background. Main and share-picker screens follow it;
-  the main landscape layout keeps the toolbar hidden and the strip centered.
-  The preference is included in `uiSignature` so returning from settings recreates
-  the main layout while retaining pane ViewModels.
-  `Prefs.backAction` applies only to the main screen after pane-local Back handling:
-  close the screen (default), exit via `confirmExit`, or use the pane's Up action
-  until the tree top, then close the screen or confirm exit (two separate choices).
-  Legacy `exit_on_back=true` maps to Exit;
-  false/absent maps to Close until an explicit choice is saved. Back-triggered exits
-  always require confirmation; explicit exit shortcuts ask only with active tasks.
-  Music keeps its long-press Shuffle exit shortcut.
-  Layout-affecting preferences (row height,
-  grid, thumbnails) go through `Prefs.uiSignature` — `MainActivity.onResume` compares the
-  signature and calls `recreate()` on change; in `PaneFragment.onViewCreated`, **when the
-  VM already has rows, only call `resortAll()` and do not bootstrap again** (after
-  recreate the VM survives, and a second bootstrap is either skipped by an internal guard
-  or breaks position restoration).
-- Transfer retries: failed copy/move/sync operations offer “Retry unfinished items” directly in
-  the failure dialog, along with the exact failing destination and “Skip this item”. Outside
-  touches must not dismiss this dialog or discard its partial files. Skipping
-  continues the remaining entries and keeps the skipped source (including its containing move
-  directory); repeated failures identify the next entry independently. `TransferCheckpoint` belongs
-  to that operation in memory only; there is no task history or persisted queue. Completed roots/files are skipped on retry; owned UUID
-  `.twigpart` siblings retain partial bytes until retry, success, cancellation or dismissal.
-  `ResumableWrite` is an explicit optional capability (local direct paths, FTP, SFTP, SMB1/2/3, NFSv3/v4);
-  other destinations use `SafeWrite` and restart incomplete files. Resume requires known source
-  size and modification time. Original targets survive interrupted writes; only a complete
-  temporary file can replace them. A moving retry must still finish a failed source deletion.
-- Operation completion: `OperationFeedback` tracks resumed Twig activities and checks
-  screen/keyguard state; a detached progress dialog does not mean the app is in the
-  background. Foreground completion notifications and completion vibration are
-  independent, default-off preferences. Background/locked-screen results retain a
-  notification; transfer failures also retain a notification in the foreground, independently of the
-  successful-completion notification preference. Cancellation still suppresses result alerts.
-  Completion also requests a toast regardless of app visibility.
-  Running transfers always keep their progress notification.
-  `Transfers.finish` handles feedback and service shutdown on the main thread before
-  notifying UI observers, which only refresh their views. Never decide whether to
-  post a result from `Transfers.ui`: completion itself clears that observer, making
-  the old worker-thread check race with dismissal of an open progress dialog.
-  Completion vibration uses alarm alert attributes, so silent ringer mode does not
-  suppress it and background completion is allowed. Do not substitute touch usage:
-  Android restricts that usage for background processes. See the
-  [Android haptics guide](https://developer.android.com/develop/ui/views/haptics/haptics-apis).
-- Thumbnails: `Thumbs` (the engine). Two cache layers: an in-memory LruCache and a
-  100 MB disk LRU under `cacheDir/thumbs`; the key is md5(name:size:mtime) and is
-  **path-independent** (moving a file or remounting still hits, changing it invalidates).
-  There used to be an optional "share a `.thumbnails` folder next to the file" layer;
-  it was removed entirely on 2026-08-06. Network images are gated by a preference —
-  when off, only the embedded EXIF thumbnail in the JPEG header is read; PDFs need a
-  seekable real file so they are generated for local files only. Files inside archives
-  count as "network" (the host may live on SMB). Failures get a 60 s cooldown (not a
-  permanent blocklist); the generation queue is FIFO with 2 threads; collapsing a
-  directory calls `cancelPending` to drop its queued work.
-  **App icons do not go through thumbnails** (2026-08-06): icons for APK files and for
-  "Apps" tree entries (scheme `apps`) come straight from `FileIcons` asking the
-  PackageManager (keys `apk <path>` and `pkg:<package>`), asynchronously and with its own
-  cache, unaffected by the thumbnail preference. Routing them through the thumbnail
-  pipeline would only render the same image twice and burn a second copy of disk cache
-  and a queue slot.
-  Package directories in Android/data, Android/media, Android/obb and private app storage
-  use the same installed-app icon cache (`AppPackageFolders` identifies direct children,
-  including local aliases and external-storage SAF documents). Missing apps retain the folder icon.
-- **Network video thumbnails** (★ see [docs/lessons/thumbnails.md](docs/lessons/thumbnails.md) for the full saga): instead of
-  downloading the whole file, Twig parses the container itself to locate the keyframe at
-  1/10 of the duration and downloads only ~2 MB. MP4 parses the moov sample tables
-  (`findKeyframeOffset`); MKV parses EBML (SeekHead → Cues → target Cluster).
-  All four network backends (SMB/WebDAV/SFTP/FTP) implement an efficient `openRandom`
-  (`FileSystem.randomAccessEfficient() == true`), which player seeking benefits from too.
-- Grid view (independent of the thumbnail preference): the same RecyclerView switches to
-  a `GridLayoutManager` and mixes spans — ordinary rows take a full span, file cells take
-  one column, and the column count adapts to the pane width / 96dp. Directories and
-  expandable items (archives) always take a full row, and tree expansion logic is
-  unchanged. Group sorting lives in `PaneViewModel.sortList` and applies **when the
-  thumbnail master switch is on or grid view is on** (tree list and grid are treated
-  alike): directories → [in the grid's "All files" mode: expandable archives] → files
-  that can produce a thumbnail → everything else, with the user's chosen sort inside each
-  group. Archives get their own group only in the "All files" grid — there they are the
-  only full-width row in a sea of cells, and leaving one in the middle would cut the grid
-  in half.
-- SQLite: database files expand into dedicated table nodes; tables expand into a
-  pane-width virtual data grid, with row/column counts and Columns/DDL property tabs.
-  `SqliteSession` owns read-only source leases and bounded typed previews; `SqliteTree`
-  owns cancellable jobs and an eight-page cache per table. Never model tables as writable
-  filesystem directories or use displayed row offsets for future edits. Nonlocal sources
-  use disposable snapshots including WAL; opaque parents come from the tree, and failed
-  sibling listings cannot prove WAL absence. See [SQLite browsing](docs/sqlite-browser.md)
-  for limits, source consistency and the planned editing/query boundaries.
-- Info card: long-press → "Properties" inserts a tab card below the file's row
-  (`PaneViewModel.InfoNode` + a second viewType in FileAdapter); the content comes from
-  `FileInfo` using system APIs only (EXIF / MediaMetadataRetriever / PackageManager;
-  media track details are enumerated with media3's `MetadataRetriever`).
-  **No-full-read rule**: anything requiring a full file read is not fetched automatically
-  — remote APKs show no app info, and the hash tab computes automatically for local files
-  but requires a tap for network ones.
-- Space map (SpaceSniffer-style treemap): `TreemapView` (hand-written squarified layout;
-  pinch zoom is a geometric transform and the font size stays fixed, so zooming in simply
-  reveals more labels) + `TreemapScanner`, **embedded inside PaneFragment** (mapMode
-  replaces the tree in place, it is not a new screen). The back key is routed through
-  `MainActivity.onBackPressed → activePane().handleBack()` (up one level / exit); the
-  block menu and the tree's long-press menu share `commonFileActions`; "Select" on the map
-  stores its multi-selection in `mapSelected`, and the sidebar's copy/move/delete prefer
-  it via `selectionOrCurrent()`; "Show on the other side" is
-  `PaneViewModel.revealPath`, expanding level by level (local and connected server
-  schemes only).
-- **Navigation bar tinted to match the page** (`ui/NavBarTint`, 2026-08-21): the default
-  solid black navigation bar is a jarring black strip at the bottom in the light theme,
-  and even in the dark theme it is a shade off from the list background. Tinting it the
-  same color makes it look transparent. **We do not make it truly transparent** — that
-  requires `setDecorFitsSystemWindows(false)` and handling insets in layout ourselves
-  (the music player page already does exactly that, which is why it does not use this).
-  Two things matter:
-  - **Take the actual background of the bottom-most layer, not `@color/bg`**: the file
-    pane (`fragment_pane`) and both sides of directory compare use `@color/surface`,
-    image compare is pure black, and the terminal uses the accessory key bar's
-    `TermColors.keyBarBg()` (terminal colors are their own scheme, unrelated to the app
-    theme, so its tinting lives in `applyColors()` and follows the scheme). One shade off
-    and you can see the seam.
-  - **★ A light tint is not allowed below API 26**: `SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR`,
-    which darkens the navigation icons, only exists from API 26. On older systems the
-    icons are always white — a light tint means white icons on a white background, so
-    home/back are still there but invisible. In that case keep the system default (black).
-- **WiFi sharing** (`com.twig.app.share`, 0.96.0): Twig's only "others connect to Twig"
-  path. `HttpServer` (HTTP/1.1 on a bare ServerSocket: request parsing, Basic auth,
-  Range, keep-alive, chunked request bodies, 100-continue) + `ShareHandler`
-  (GET/POST for browsers, PROPFIND/PUT/MKCOL/MOVE/COPY/LOCK for WebDAV clients) +
-  `WebUi` (self-contained HTML/CSS/JS with streaming `Multipart` upload) + `ShareRoot`
-  (URL path ↔ XFile) + `Discovery` (UDP probe/response) + `ShareService` (foreground
-  service). The UI is only `ui/ShareDialogs` (config/status dialog + scan dialog), there
-  is no separate Activity; the entry point is in the **action bar** (`as_share`), the icon
-  becomes a filled fan while the service runs (`syncShareIcon`, refresh all three action
-  bars), and the shared scope defaults to the green-highlighted
-  `PaneViewModel.currentDir` — there is no directory picker in the dialog because the
-  entry point sits next to the file tree and the location was already chosen before the
-  dialog opened. A few settled decisions:
-  - **Read-only by default**; every write method's check funnels through
-    `ShareHandler.requireWrite` in one place, not scattered across handlers.
-  - **In "all backends" mode the top-level path segment is the scheme, not the display
-    name**: schemes are globally unique and derived deterministically from the connection
-    label, so once a WebDAV client has saved one as a mount point, paths do not shift
-    because another server got expanded. Display names are used only for the link text
-    in HTML.
-  - **`..` is always rejected** (`ShareRoot.segments` returns null), and uploaded file
-    names are reduced to their last segment — in this feature path traversal means
-    handing out things outside the shared directory.
-  - **`DAV: 2` must be advertised and LOCK must be implemented** (even as a fake lock
-    that does not actually lock): macOS Finder and Windows Explorer mount read-only as
-    soon as they see no LOCK support, which would make writing pointless. Likewise
-    `PROPPATCH` must answer 207 rather than 501, or Finder decides the copy failed and
-    deletes the file it just uploaded.
-  - **The WakeLock is held only while requests are in flight** (`HttpServer`'s `onActive`
-    callback); when idle the foreground service is enough. The WiFi lock, on the other
-    hand, is held for the whole sharing session (once the screen is off and WiFi sleeps,
-    the device disappears from the LAN).
-  - **No START_STICKY**: if the process really was killed, the sockets and threads are
-    gone, and the system restarting the service would only produce an empty shell with
-    `session == null`. Dying with the process is more honest.
-- `CodeHighlighter`: hand-written lexical highlighting, shared by TextViewer and the
-  two-column git `DiffActivity` — diff tokenizes each side's whole text once and then
-  slices per line with `subSequence` (only that way are multi-line comment/string states
-  correct). DiffActivity uses the user's chosen theme when its lightness does not clash
-  with the current system light/dark mode; when it does (e.g. Monokai while the system is
-  light) it temporarily substitutes the matching default (light → GitHub Light,
-  dark → Monokai) so the diff area does not collide with the toolbar/status bar, which
-  still follow the system. This affects only that display, `Prefs.codeTheme` is untouched.
-  `listLeft`/`listRight` backgrounds switch to `theme.bg` and the default row text color
-  to `theme.fg`; added/removed row backgrounds are translucent overlays, so they read as
-  reddish/greenish over any background and no per-theme palette is needed —
-  before 2026-07-28 there was a `diffTheme()` that **unconditionally** fell back to
-  GitHub Light based on background lightness, because the background was not following
-  the theme and dark themes were unreadable. The root cause was the background, not
-  whether the theme should be used.
+Main has two resident `PaneFragment`s; `PaneViewModel` owns navigation and expansion,
+`FileAdapter` renders rows. Trees expand and collapse in place. Detailed behavior is
+in the task references below.
 
 ## Conventions
 
-- **`resolve()` is for navigation; `stat()` is for metadata; `exists()` answers existence**
-  (settled 2026-09-18). Six backends return an optimistic stub from `resolve` (SFTP/SMB never
-  stat, FTP and restic assume a directory, an archive invents one, SAF drops the display name),
-  which is why building a file to write from it produced a directory and trusting its size
-  stopped network audio on the first read. `stat(path): XFile?` is the honest one — real type,
-  size, time, display name, or null. Its default lists the parent and matches **by path**
-  (a media server's name is a title, a SAF path is a URI), and local / archives / restic /
-  SFTP / WebDAV / SAF override it with a real stat. ★ For many entries of one directory, list
-  that directory once instead (`MusicEngine` and `CompareActivity.statSides` batch on purpose).
-- **Size first**: no heavyweight dependencies; if it can be hand-written, hand-write it
-  (WebDAV without an SDK, git reimplemented, restic decrypted ourselves). Before adding a
-  dependency, measure the APK delta.
-- **R8**: obfuscation is on. JNI (libsmb2/zstd) binds by name, so native methods and their
-  class names must be kept; Termux and BouncyCastle are also kept in
-  `app/proguard-rules.pro`. Read that file before changing how those libraries are called.
-- **User-facing text lives in two places**; before adding a string, work out which layer
-  you are in:
-  - Inside `:app` everything goes through `strings.xml` (default English plus all supported
-    locale directories, with identical translatable `name` sets). Native + English language labels
-    (`language_zh`, `language_en`, etc.) are `translatable="false"` and live **only** in
-    the default `values/strings.xml`; only `language_system` is translated. Keep new
-    languages in `LanguagePref` and `xml/locales_config.xml` in sync.
-    `FileInfo`, `GitVfs`, `SafFileSystem` and friends have a Context even though
-    they are not Activities — there are no exceptions.
-  - **Pure JVM modules** (`core-fs` / `fs-*` / `git-lite`, using the `kotlin.jvm` plugin)
-    have no Context and no R, so their messages are **always English**. Their exception
-    messages get toasted to the user through `it.message`, and turning those modules into
-    Android libraries just to localize them would cost the millisecond-fast pure-JVM unit
-    tests — not worth it. If localization is ever really needed, the way is
-    "`FsException` with an error code + a lookup table in the UI layer", not moving
-    resources around.
-- **Commit messages**: English Conventional Commits, `type: task name — summary`
-- **The settings triad**: a new display feature = its own preference (never bolted onto
-  another preference; keep them orthogonal) + a row on the settings page + **only when it
-  is something you flip back and forth** a quick entry in the top-bar menu (decoupling
-  grid from thumbnails in 0.45.0 is where the orthogonality rule came from).
-  - ★ **The menu holds only high-frequency toggles** (settled 2026-08-26): thumbnails,
-    grid view, remember position, fullscreen and theme are things you may flip several
-    times a day; **anything you set once and never touch again belongs on the settings
-    page only** — row height, text size, language and "show hidden files" have all been
-    removed from the menu. The menu is not a mirror of the settings page; every extra
-    item dilutes the few that are genuinely used.
-- **Row height and text size are two independent preferences** (split 2026-08-26,
-  `Prefs.density` / `Prefs.textSize`): previously one setting drove row height, icon size
-  and font size together, so "shorter rows but readable text" was impossible.
-  ★ `textSize` **returns `density(ctx)` when it has never been set** — so the appearance
-  is pixel-identical before and after the split and upgrading users see no jump.
-  ★★ But "fall back to the default" must be cut off **the moment the user changes row
-  height**: `setDensity` first writes the current text size out explicitly (using the
-  density level from *before* the change, so the user sees nothing change), otherwise
-  someone who never touched text size still gets their font size dragged along by row
-  height and **the split accomplishes nothing**. The assertion is in `RowSizeSplitTest`,
-  which measures the bound row height in px and font size in px, not "what the preference
-  reads back as" — the latter is green even on the version where the adapter still derives
-  the font size from density.
-- Unit tests live in each `:fs-*` module's `test` source set (zip/ftp/sftp/webdav/restic/
-  git all have them); run them with e.g. `./gradlew :fs-network:test`.
+- **Size first**: avoid heavyweight dependencies; measure APK impact before adding one.
+- **Filesystem APIs**: `resolve()` navigates and may return an optimistic stub;
+  `stat()` reads real metadata; `exists()` tests existence. For many entries in one
+  directory, list once. Match paths rather than display names. Never interpret a
+  failed listing as empty, especially for comparison, sync or deletion.
+- **R8**: JNI binds by name; preserve native methods and class names. Read
+  [app/proguard-rules.pro](app/proguard-rules.pro) before changing JNI, Termux or
+  BouncyCastle calls.
+- **Settings**: keep display preferences independent and expose them on the settings
+  page. Only frequent toggles get a quick menu entry. Layout-affecting preferences
+  participate in `Prefs.uiSignature`; include persistent configuration in backups.
+  See [UI and settings](docs/engineering/ui-and-settings.md) for recreation behavior.
+- **Commits**: English Conventional Commits, `type: task name — summary`.
+- **Tests**: JVM tests live in the module's `test` source set. Run the checks appropriate
+  to the change; Android UI testing follows the machine-local working conventions.
 
-## Hard-won lessons (read the matching file before changing that code)
+### Language and user-facing text
 
-Each entry is the closing record of a real incident — the symptom, the wrong diagnosis,
-the root cause and the current solution. They live one file per area under
-**[docs/lessons/](docs/lessons/)**; this is the index, and it is deliberately only a
-pointer: **before changing code in one of these areas, open its file and read it first.**
-Several of these took two or three shipped regressions to pin down, and stepping on them
-again is expensive. Update the matching lesson for a recurring incident; add a new entry
-only when it captures an independent, lasting lesson. Keep this index to brief navigation hints.
+- Repository documentation, comments, commit messages and test names/messages use
+  English. Conversation language follows the user's preference.
+- In `:app`, use `strings.xml` with default English and all supported locale directories,
+  keeping identical translatable `name` sets. This includes helpers with a Context,
+  such as `FileInfo`, `GitVfs` and `SafFileSystem`.
+- Native + English language labels (`language_zh`, `language_en`, etc.) are
+  `translatable="false"` and live only in default `values/strings.xml`;
+  `language_system` is translated. Keep `LanguagePref` and `xml/locales_config.xml`
+  synchronized when adding a language.
+- Pure JVM modules (`core-fs`, `fs-*`, `git-lite`) have no Context or R; messages are
+  English. Keep fast JVM tests; future localization should use error codes and UI
+  lookups rather than turning these modules into Android libraries.
 
-- **[SSH, SFTP and the terminal](docs/lessons/ssh-and-terminal.md)** — every outbound SSHJ
-  call (resize included) runs on a background thread and network exceptions are never
-  swallowed: an NMTE poisons the cipher stream, so the connection dies on the *next*
-  packet. No local process is started; the emulator is injected reflectively. Full
-  BouncyCastle must stay.
-  *Explains*: "it disconnects on the first keypress" on every server, htop's blank
-  margins, keystrokes dropped after a reconnect.
-- **[git viewer](docs/lessons/git-viewer.md)** — never use `FileSystem.resolve()` to test
-  existence or type; `.git` may be a *file*, and gitdir ≠ commondir with per-worktree
-  files routed between them. Caching is three layers deep and no refresh reaches the
-  bottom one.
-  *Explains*: empty history/branches/diff with no error, "Worktrees (3)" that expands
-  into nothing, new commits missing after a fetch.
-- **[Thumbnails and frame grabbing](docs/lessons/thumbnails.md)** — never let
-  MediaMetadataRetriever seek by itself over a slow network: parse the container (MP4
-  sample tables, MKV EBML/Cues) and feed it only the keyframe bytes. A fat moov is its own
-  bottleneck: download only the video trak and serve every other child box as a same-size
-  `free` stub, never a shorter moov. An algorithm change that invalidates a cache means
-  renaming the cache directory.
-  *Explains*: 111 MB and 14 s for one thumbnail, green or black frames, a multi-audio 4K
-  release whose thumbnail only appears if you wait and retry, a flat-looking waveform,
-  cover rounding that never shows, slow local FLAC waveforms caused by sending already
-  decoded PCM through a raw codec, ALAC that plays but has no waveform because the
-  platform lacks an ALAC decoder.
-- **[Media playback](docs/lessons/media-playback.md)** — internal media URIs must carry a
-  real extension (`twig:///media.$ext`); M2TS packets are 192 bytes and HDMV stream types
-  collide with the standard registry; never allocate in a `DataSource.read()` hot path;
-  the player needs an explicit `LoadControl` (media3's default buffer is 137MB against a
-  256MB heap, and its small local-playback tier is picked by URI scheme, which `twig://`
-  never matches); AVI needs its samples repaired before any decoder sees them — MP3 is a byte
-  stream to be cut back into frames (with a double-sync check), and MPEG-4 arrives in coding
-  order, sometimes two VOPs to a chunk, sometimes as 1-byte stuffing; episode queues come from
-  the backend first, file names second. Imported songs missing from the live queue
-  during a playlist switch come from deduplicating against the previous queue.
-  *Explains*: playlist info/share doing nothing before metadata loads, music notifications lingering after app exit, history video taps appearing unresponsive before the player opens, fast lyric swipes
-  seeking or toggling the cover, properties stuck loading on a damaged MKV, an AVI that plays as 300 ms of audio, no sound on a TrueHD Blu-ray, "m2ts
-  seeks slowly", black AVI thumbnails, "half my AVIs open at 13 seconds and then freeze",
-  "the picture keeps shaking", "this one plays at two thirds speed", "this one will not open
-  at all and has no thumbnail", the next episode not starting, "4K over the network quits
-  after a while and then the app asks for my master password again".
-- **[Archives](docs/lessons/archives.md)** — adding an entry to a zip **appends**
-  (rewriting means decompressing and recompressing everything); encryption detection must
-  come *after* `rootOf()`; encrypted archives are read-only; expanding an archive selects
-  its root as the paste target; never read a zip with `ZipInputStream` — a STORED entry
-  with a data descriptor has no readable length outside the central directory; "open with
-  another app" on a compressed entry must materialize first, never proxy it (`fastRandom`
-  false means "reopen and skip", not "somewhat slower"); an entry with a `..` segment stays
-  visible and openable — the **copy** is what refuses it (zip slip).
-  *Explains*: 10 GB of I/O to add ten small files, a remote encrypted archive that never
-  asks for a password, "I cannot paste into this archive", an APKPure .xapk that fails to
-  install with "only DEFLATED entries can have EXT descriptor", ZIPs with invalid filename
-  bytes failing with "Error reading Zip content from FileChannelImpl" (#53), a PDF inside an archive
-  that no app (built-in or third-party) can open, followed by the whole tree freezing up
-  and a copy failing with ENOENT until retried.
-- **[WiFi sharing](docs/lessons/wifi-sharing.md)** — read-only by default through one
-  `requireWrite` funnel, `..` always rejected, `DAV: 2` + LOCK or Finder mounts read-only;
-  addressing uses `path` and links are built from `rawPath`. A new mode needs tests *for
-  that mode*. Requests run without the root/Shizuku fallback, and the app's data directory
-  is never served.
-  *Explains*: a corrupt download (multipart boundary), "I copied it and the source
-  vanished", a non-ASCII directory that will not open, buttons squeezed to 1 px.
-- **[Jellyfin / Emby](docs/lessons/jellyfin-emby.md)** — the biggest file, and the one to
-  read in full before touching media servers: the tree follows the server's own
-  organisation, paths are ids so `displayName` must travel everywhere, no metadata request
-  may sit in the streaming path, and the two servers differ on Resume, lyrics and images.
-  Arguments here are settled by `docker run`ning both servers, not by reasoning.
-  *Explains*: "Continue watching is always empty" on Emby, square posters, slow covers,
-  4K stuttering on this backend only, search at the root doing nothing, songs listed
-  as "38", `Unknown Jellyfin directory: /lib`.
-- **[S3](docs/lessons/s3.md)** — the request path is RFC 3986 while object names in
-  responses are *form* encoded (`+` = space) and the continuation token is opaque; the
-  signed string must match the bytes actually sent; never bring in the AWS SDK; abort a
-  failed multipart upload.
-  *Explains*: SignatureDoesNotMatch with no hint, a listing that looks fine and 404s on
-  click, empty directories vanishing after a refresh.
-- **[Privileged access (root / Shizuku)](docs/lessons/privileged-access.md)** — elevation
-  is a fallback inside `LocalFileSystem`, not a new scheme; the stderr drain must not
-  share the exec lock; the extracted `.so` must never be writable even for an instant; the
-  privileged terminal is its own menu item and never falls back silently.
-  One-shot `cat` streams must check the exit status — EOF is not success.
-  `su` has to be a **child of a shell**, never the process the pty was forked into.
-  *Explains*: a command that hangs until timeout, `/sdcard` listing as empty, "the dialog
-  has no options at all", a root process left alive after an upgrade, a file that vanished
-  when moved into a place even root could not write, a root terminal that exits with code 1
-  the moment it opens and prints nothing, `/system` being readable while `/` cannot be listed.
-- **[RAR and F-Droid](docs/lessons/rar-and-fdroid.md)** — `full` and `libre` differ in RAR
-  **alone**; check the scheme via `Archives.RAR_SCHEME`, never `RarFileSystem.SCHEME`; the
-  verification criterion is the dependency graph, not that it compiles. F-Droid's scanner reads
-  the whole tree, so the split alone does not get a build through — the module has to be `rm`'d.
-  Also records every rejected route (unrar-free, porting, clean-room) so they are not researched
-  again, and what reproducible builds took: AGP's dependency-metadata block has to be turned off,
-  and AGP 8.5.2's bundled R8 is not deterministic across machines.
-  *Explains*: "libre has no junrar on its classpath, so why did fdroid build stop on it",
-  "F-Droid's build matches ours in every byte but four".
-- **[Password encryption, config backup and the app lock](docs/lessons/security.md)** —
-  toggling the master password or fingerprint rewrites no field ciphertext; on any crypto
-  failure return the input unchanged; every exported Activity must call `SecurityUi.gate`;
-  views and `lateinit` fields are created in `onCreate` and only data reads go in the gate
-  callback; unlocking must happen before pane initialisation. Only a *permanently* lost
-  Keystore key may regenerate the DEK; exported entries never read the app's own data, and
-  stream URIs are HMAC-signed.
-  *Explains*: a crash right after entering the master password, "after unlocking, WebDAV
-  login fails until I re-save the connection", a password field rendered in plain text,
-  saved archive/sharing passwords included in system backups, document previews fetching tracking pixels,
-  computer WebView debugging still available after its switch is turned off on userdebug systems,
-  authenticated website tasks opening from shortcuts or recents while Twig is locked.
-- **[SAF](docs/lessons/saf.md)** — a SAF path is a whole document URI, so nothing may
-  slice it: ask the tree who contains a row instead of computing a parent. The grant is
-  persistable, so SAF entries are *local* (real fd, pread), not outsiders.
-  *Explains*: music opening in the single-track player, no thumbnails or PDF previews, the
-  green highlight disappearing on "Up", "why is there no *go to the containing folder* here",
-  a local-to-SAF copy creating an empty document but writing to a bogus local path.
-  Removable-volume grants also route the original local entry through SAF when direct access is restricted (#47).
-  External editors need original SAF handles and content-write capability checks to save documents back (#61).
-- **[Trash and deletion](docs/lessons/trash.md)** — sync the recovery record before moving,
-  never replace a failed trash move with permanent deletion, preserve offline/corrupt
-  entries, and purge symlinks without following them.
-  *Explains*: how to recover interrupted moves, why Robolectric needs real lstat semantics,
-  and Android 11 FUSE rejecting no-replace moves with EINVAL.
-- **[Storage](docs/lessons/storage.md)** — shared-profile storage uses the public
-  API before directory enumeration; never assume a clone user id. `getStorageVolumes()` does
-  return invisible removable volumes, the event channels do not fire for them (the foreground UI
-  polls), filter by `isPrimary` rather than `isRemovable`, and `/mnt/media_rw` needs
-  elevation.
-  *Explains*: app-clone storage missing beside Internal Storage (#55; Samsung device
-  verification pending), a USB drive that only appears after restarting the app, internal storage
-  listed twice, capacity reads blocking the UI during device changes, unwanted shared-profile
-  shortcuts (use the settings-only `Prefs.currentUserInternalStorageOnly` switch).
-- **[Terminal: local shell, fonts, zoom](docs/lessons/terminal-local.md)** — only
-  returning to the foreground may arm the size thaw; a terminal font is acceptable only
-  at a 0.5em advance; `attachSession` forks the shell itself; the key bar shares one text
-  size.
-  A local shell reports nothing about itself: the session list's second line is an OSC title,
-  which Android's mksh never writes — the prompt has to write it (the directory, and only the
-  directory), with the escape wrapped in mksh's `\001` delimiters or line editing drifts; a
-  privileged session sources no rc at all unless `$ENV` names one the shell uid can read. Never
-  type such a hook into a *remote* shell: it is echoed, and it lands in that server's history.
-  *Explains*: a garbled screen after screen-off, fat Chinese and a thin `●`, tab
-  completion finding no commands, pinch zoom doing nothing, clipped key labels, a local
-  session whose row stays one line while SSH rows show what is running.
-- **[Tree and adapter](docs/lessons/tree-and-adapter.md)** — a duplicate row key makes
-  DiffUtil pick the wrong row; for async expansion the later tap wins, and "do not
-  accordionExpand" ≠ "do not expand"; writes are gated by `isMutable()` /
-  `isWritableDir()` at six entry points; selection changes use payloads, never
-  `notifyDataSetChanged`. Source-directory imports require read access; reusing the
-  writable-destination gate makes read-only music directories impossible to select.
-  *Explains*: directory-tree labels staying in the system language after an app-language change on Android 11, a fullscreen empty band above the toolbar or beside the landscape cutout (including websites with the status bar hidden), a landscape Terminal button missing without active sessions, the same archive empty in one place, a directory that closes itself, a
-  spinner that never stops, the whole list flickering when you tick a box, collapsing
-  Apps / Installed crashing after an app APK was opened as an archive and restored,
-  the Properties ripple disappearing on the first tap with folder counts enabled,
-  fast pane swipes also clicking a node, website refresh firing midway through a fixed-header page,
-  webpage video fullscreen buttons doing nothing, website fullscreen adding an extra Back step,
-  batch-rename preview columns shifting until scrolling, content-read errors offered as sync differences,
-  external multi-file folder taps selecting entries instead of expanding them.
-- **[Website background execution](docs/lessons/website-background.md)** — skipping
-  WebView.onPause does not protect a cached host process from Android freezing. Opted-in
-  website sessions hold a general foreground service until closed; register from
-  the Lifecycle RESUMED event, share ownership across pages, and never restart stale pages.
-  *Explains*: website music stopping after backgrounding and resuming when the page returns.
-- **[Text handling and editing](docs/lessons/text-handling.md)** — one decoding entry
-  point (`TextCodec`), where order is priority; write back in the encoding the file was
-  read with and never silently substitute `?`; cap highlighting by longest line as well
-  as file size to avoid minified-code measurement ANRs.
-  *Explains*: mojibake in subtitles but not in the viewer, another program showing garbage
-  after you edited one line, an invisible caret, a caret sitting on the last character.
-- **[Other backends and odds and ends](docs/lessons/other-backends.md)** — launcher
-  shortcut icons must not rely on `android:tint` and dynamic shortcuts follow the app's
-  language; libsmb2's context is not thread-safe, so never name a member function `run`;
-  do not SSH into servers to read logs.
-  Saving a connection replaces it in place — the stored order is the sidebar's order, and
-  host keys / tokens are written back the moment a server is expanded.
-  ★ A `ContentProvider` must use `requireNotNull(context)` — `requireContext()` is API 30
-  and nothing warns you below it.
-  *Explains*: a built APK rejected at install with “intent tag may have at most one data scheme”,
-  a white, invisible shortcut icon, an empty long-press menu, an SMB crash
-  while thumbnails load, a server that jumps to the bottom of its group the first time you
-  expand it after importing a backup, "track info closes the music page" on Android 9,
-  an SMB1 cold connection that waits on WORKGROUP but is fast on subsequent access.
+## Engineering references — read for the task
+
+| Area | Reference |
+|---|---|
+| Filesystem contracts, capabilities, Unix metadata, modules | [Architecture](docs/engineering/architecture.md) |
+| Build, signing, versions, preview/stable release workflow | [Build and release](docs/engineering/build-and-release.md) |
+| Pane layout, tree branches, counts, history, directory overrides, grid, properties, treemap | [Panes and rows](docs/engineering/panes.md) |
+| Selection, relative paths, copy/move/compress, compare, pickers, intents, sharing files, trash, retries, feedback | [Operations](docs/engineering/operations.md) |
+| Bookmarks, search, customization, domain settings, permissions, WebView task lifecycle | [Websites](docs/engineering/websites.md) |
+| Viewers, playback, thumbnails, app icons, Git, terminal navigation, highlighting | [Media and tools](docs/engineering/media-and-tools.md) |
+| Themes, action panel, settings, private space, root configuration, security entry points | [UI and settings](docs/engineering/ui-and-settings.md) |
+| HTTP/WebDAV service, discovery, sharing scope, protocol behavior | [WiFi sharing](docs/engineering/wifi-sharing.md) |
+| SQLite consistency, limits, future editing boundaries | [SQLite browser](docs/sqlite-browser.md) |
+| User gestures and buttons | [English](docs/buttons-and-gestures.md) / [Chinese](docs/buttons-and-gestures.zh-CN.md) |
+
+## Hard-won lessons — read before changing the matching area
+
+Lessons record real failures, their causes and lasting prevention rules. Keep this
+index to navigation hints; write incident details in the matching file.
+
+| Area | Lessons |
+|---|---|
+| SSH/SFTP, SSHJ, remote terminal | [SSH and terminal](docs/lessons/ssh-and-terminal.md) |
+| Local/privileged shell, fonts, zoom, directory reporting | [Local terminal](docs/lessons/terminal-local.md) |
+| Root/Shizuku fallback and privileged processes | [Privileged access](docs/lessons/privileged-access.md) |
+| Thumbnail caches, container parsing, network frame grabbing | [Thumbnails](docs/lessons/thumbnails.md) |
+| Media playback, buffering, TS/M2TS/AVI, playlists, episodes | [Media playback](docs/lessons/media-playback.md) |
+| Archive reading/writing, encryption, external opening, path safety | [Archives](docs/lessons/archives.md) |
+| RAR licensing, full/libre, F-Droid, reproducibility | [RAR and F-Droid](docs/lessons/rar-and-fdroid.md) |
+| HTTP/WebDAV serving and sharing safety | [WiFi sharing](docs/lessons/wifi-sharing.md) |
+| Jellyfin/Emby tree, playback, lyrics and image differences | [Jellyfin and Emby](docs/lessons/jellyfin-emby.md) |
+| S3 encoding, signatures, pagination, multipart uploads | [S3](docs/lessons/s3.md) |
+| Encryption, configuration backup, app lock, exported entry points | [Security](docs/lessons/security.md) |
+| SAF URI identity, grants, random access, external editors | [SAF](docs/lessons/saf.md) |
+| Recoverable deletion, recovery records, purge safety | [Trash](docs/lessons/trash.md) |
+| Shared-profile/removable storage, detection and capacity | [Storage](docs/lessons/storage.md) |
+| Tree identity, async expansion, pinning, selection, adapter and window behavior | [Tree and adapter](docs/lessons/tree-and-adapter.md) |
+| Website background execution and foreground-service ownership | [Website background](docs/lessons/website-background.md) |
+| Text decoding/encoding, editor and highlighting limits | [Text handling](docs/lessons/text-handling.md) |
+| Git layouts, worktrees, metadata and cache invalidation | [Git viewer](docs/lessons/git-viewer.md) |
+| Other backends, connection order, launcher/provider compatibility | [Other backends](docs/lessons/other-backends.md) |

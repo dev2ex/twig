@@ -621,7 +621,8 @@ Twig 采用 **GPL-3.0-only**,见 [LICENSE](LICENSE)。
 I have read the CLA (CLA.md) and I agree to its terms.
 ```
 
-实现决策记在 [AGENTS.md](AGENTS.md),那一长串代价高昂的排错记录按领域拆在
+通用协作规则和任务索引见 [AGENTS.md](AGENTS.md)，当前实现参考按领域放在
+[docs/engineering/](docs/engineering/)，代价高昂的排错记录拆在
 [docs/lessons/](docs/lessons/) 下,一个领域一个文件。改终端、缩略图、TS 解复用这类
 子系统之前,先读对应那份。
 

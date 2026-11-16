@@ -778,9 +778,10 @@ To sign, add one line to your pull request description:
 I have read the CLA (CLA.md) and I agree to its terms.
 ```
 
-Implementation decisions and the reasoning behind them are recorded in
-[AGENTS.md](AGENTS.md), and the long list of bugs that were expensive to find lives one
-file per area under [docs/lessons/](docs/lessons/). Read the matching file before
+Shared working rules and the task index are in [AGENTS.md](AGENTS.md). Current
+implementation references live in [docs/engineering/](docs/engineering/), and bugs
+that were expensive to find are documented one file per area under
+[docs/lessons/](docs/lessons/). Read the matching file before
 changing subsystems like the terminal, thumbnails or the TS demuxer.
 
 ---
