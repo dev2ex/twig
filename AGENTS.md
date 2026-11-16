@@ -228,7 +228,9 @@ its listing size must still describe the followed stream for copy/resume checks.
   protection, and so do Collapse All and a path-button selection. Explicitly folding
   any ancestor clears all descendant expansion and protection in either tree mode;
   reopening shows only direct children while reusing cached listings. The protected node's
-  ancestors stay open as well, otherwise it would be invisible. With the setting above
+  ancestors stay open as well, otherwise it would be invisible. Capture the clicked
+  row’s ancestor chain when pinning: favorites and source listings can share a file
+  key, and another visible occurrence must not change which ancestors are protected. With the setting above
   enabled the gesture changes nothing (nothing folds anyway).
 - Checked files belong to a pane-owned `PaneSelection`, keyed by filesystem identity,
   rather than visible adapter rows. Checks span directories and survive view

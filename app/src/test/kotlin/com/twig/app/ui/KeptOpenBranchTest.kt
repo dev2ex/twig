@@ -212,4 +212,53 @@ class KeptOpenBranchTest {
         assertFalse(row("deep").expanded)
         advanceUntilIdle()
     }
+
+    @Test
+    fun `a pinned favorite child keeps its favorite ancestors when another alias is opened`() = runTest(dispatcher) {
+        Prefs.setRootItemOrder(app, listOf("sftp", "fav"))
+        val root = server("favorite-alias.test")
+        vm.revealPath(root)
+        advanceUntilIdle()
+        val favorite = vm.favoriteFrom(root)!!
+        vm.collapseAll()
+        vm.addFavorite(favorite)
+        vm.toggleFavorite(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().single(), null) { _, _ -> }
+        advanceUntilIdle()
+        vm.toggleKeepingOpen(row("alpha"))
+        advanceUntilIdle()
+        vm.revealPath(root.copy(path = "/beta"))
+        advanceUntilIdle()
+        // The source is rendered before Favorites, so the same alpha key now has another visible parent chain.
+        vm.toggle(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().first { it.file.name == "gamma" })
+        advanceUntilIdle()
+        assertTrue("the favorite containing the pinned branch must stay expanded",
+            vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().singleOrNull()?.expanded == true)
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.GroupNode>().single { it.id == "fav" }.expanded)
+    }
+
+    @Test
+    fun `pinning an already duplicated row uses the clicked favorite occurrence and clears on folding it`() = runTest(dispatcher) {
+        Prefs.setRootItemOrder(app, listOf("sftp", "fav"))
+        val root = server("clicked-favorite-alias.test")
+        vm.revealPath(root)
+        advanceUntilIdle()
+        Prefs.setAllowMultipleExpandedNodes(app, true)
+        vm.addFavorite(vm.favoriteFrom(root)!!)
+        vm.toggleFavorite(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().single(), null) { _, _ -> }
+        advanceUntilIdle()
+        Prefs.setAllowMultipleExpandedNodes(app, false)
+        val aliases = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().filter { it.file.name == "alpha" }
+        org.junit.Assert.assertEquals(2, aliases.size)
+        vm.toggleKeepingOpen(aliases.last())
+        advanceUntilIdle()
+        assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().singleOrNull()?.expanded == true)
+        vm.toggleFavorite(vm.state.value.rows.filterIsInstance<PaneViewModel.FavoriteNode>().single(), null) { _, _ -> }
+        advanceUntilIdle()
+        assertTrue("folding the favorite clears the pinned descendant even when its other alias remains visible",
+            vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().filter { it.file.name == "alpha" }
+                .all { !it.keptOpen && !it.expanded })
+        vm.toggle(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().first { it.file.name == "beta" })
+        advanceUntilIdle()
+        assertFalse(vm.state.value.rows.filterIsInstance<PaneViewModel.GroupNode>().single { it.id == "fav" }.expanded)
+    }
 }

@@ -365,7 +365,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * Only consulted in accordion mode (see [allowMultipleExpandedNodes]); with
      * multiple branches allowed, nothing folds in the first place.
      */
-    private val keptOpen = HashSet<String>()
+    // Freeze the clicked occurrence's ancestors: aliases share file keys, but have different parents.
+    private val keptOpen = HashMap<String, Set<String>>()
 
     // Remember rendered parent links even while rows are hidden, including virtual/opaque paths.
     private val expansionParents = HashMap<String, String>()
@@ -1284,7 +1285,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleKeepingOpen(node: Node) {
         val key = node.key
         val wasOpen = synchronized(expanded) { expanded.contains(key) }
-        if (wasOpen) keptOpen.remove(key) else keptOpen.add(key)
+        if (wasOpen) keptOpen.remove(key) else keptOpen[key] = ancestorKeysOf(node)
         toggle(node)
     }
 
@@ -1298,9 +1299,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun keptOpenKeys(): Set<String> {
         if (keptOpen.isEmpty()) return emptySet()
         val keep = HashSet<String>()
-        for (key in keptOpen) {
+        for ((key, ancestors) in keptOpen) {
             keep.add(key)
-            keep.addAll(ancestorKeysOf(key))
+            keep.addAll(ancestors)
         }
         return keep
     }
@@ -2277,8 +2278,12 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         Thumbs.cancelPending(descendantFilesByKey(key))
         SizeProbes.cancelPending(descendantFilesByKey(key))
         val folded = HashSet<String>()
-        val candidates = expandedSnapshot() + keptOpen + loadingKeys + connecting
+        val candidates = expandedSnapshot() + keptOpen.keys + loadingKeys + connecting
         for (candidate in candidates) {
+            if (key in keptOpen[candidate].orEmpty()) {
+                folded.add(candidate)
+                continue
+            }
             var parent: String? = if (includeRoot) candidate else expansionParents[candidate]
             val visited = HashSet<String>()
             while (parent != null && visited.add(parent)) {
@@ -2290,7 +2295,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         expanded.removeAll(folded)
-        keptOpen.removeAll(folded)
+        keptOpen.keys.removeAll(folded)
         abandoned.addAll(folded.filter { it in loadingKeys || it in connecting })
         if (pendingExpand in folded) pendingExpand = null
     }
@@ -2311,6 +2316,23 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Snapshot of [expanded]; anywhere we iterate it, take a snapshot first — don't iterate directly (see field comments). */
     private fun expandedSnapshot(): List<String> = synchronized(expanded) { expanded.toList() }
+
+    /** Use the clicked row occurrence when aliases share a key in the visible tree. */
+    private fun ancestorKeysOf(node: Node): Set<String> {
+        val rows = state.value.rows
+        val index = rows.indexOfFirst { it === node }
+        if (index < 0) return ancestorKeysOf(node.key)
+        val ancestors = HashSet<String>()
+        var depth = node.depth
+        for (i in index - 1 downTo 0) {
+            if (rows[i].depth < depth) {
+                ancestors.add(rows[i].key)
+                depth = rows[i].depth
+                if (depth == 0) break
+            }
+        }
+        return ancestors
+    }
 
     private fun ancestorKeysOf(key: String): Set<String> =
         TreeKeys.ancestorKeys(_state.value.rows.map { TreeKeys.Row(it.key, it.depth) }, key)

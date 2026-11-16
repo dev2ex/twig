@@ -4,6 +4,16 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Pinned favorite children lost their ancestor protection when another alias appeared
+  (2026-11-16)**: the same file key can occur below both a favorite and its source.
+  Recomputing a pin's ancestors with the first matching key in the current rows
+  silently switched the protected chain when the earlier source occurrence became
+  visible, letting Favorites fold. Record the clicked row occurrence's ancestor
+  chain at pin time; explicit folding of that chain must also clear the pin even
+  when a later render associates the shared key with another parent.
+  `KeptOpenBranchTest` covers aliases appearing after pinning, choosing the second
+  already-visible occurrence, and clearing protection by folding the favorite.
+
 - **First restic unlock left the frame on the parent directory (2026-11-05)**:
   snapshots expanded successfully, but `unlockRestic` never selected the repository
   hint row's `currentKey`. Later taps used `toggleRestic`, which already selected it,
