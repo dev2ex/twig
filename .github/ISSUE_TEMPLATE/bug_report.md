@@ -1,6 +1,7 @@
 ---
 name: Bug report
 about: Report a problem with Twig
+labels: [bug]
 ---
 
 Before submitting:

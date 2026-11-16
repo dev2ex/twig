@@ -1,6 +1,7 @@
 ---
 name: Feature request
 about: Suggest a feature or improvement for Twig
+labels: [enhancement]
 ---
 
 Before submitting:
