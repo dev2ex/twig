@@ -249,6 +249,31 @@ class ThumbnailPlaybackProgressTest {
         }
     }
 
+    @Test fun `branch pin stays at upper left after image delivery and clears on reuse`() {
+        val ordinary = video.copy(path = "/missing/unpinned.mp4")
+        seed(video)
+        seed(ordinary)
+        for (grid in 0..1) {
+            val adapter = adapter(grid = grid)
+            adapter.submitList(listOf(node(video).copy(keptOpen = true), node(ordinary)))
+            val holder = bind(adapter)
+            val image = image(holder, grid)
+            assertTrue(image.keptOpen)
+            image.setPadding(0, 0, 0, 0)
+            image.setThumbnailBitmap(black(100, 100))
+            val marked = draw(image, 100, 100)
+            image.keptOpen = false
+            val plain = draw(image, 100, 100)
+            assertFalse("pin must remain visible after thumbnail delivery", marked.sameAs(plain))
+            assertNotEquals(plain.getPixel(7, 7), marked.getPixel(7, 7))
+            assertEquals("pin must leave the bottom-right link badge area free",
+                plain.getPixel(93, 93), marked.getPixel(93, 93))
+            image.keptOpen = true
+            adapter.bindViewHolder(holder, 1)
+            assertFalse("recycled rows must not retain the previous pin", image.keptOpen)
+        }
+    }
+
     @Test fun `hiding history preserves the thumbnail bar and its preference changes the ui signature`() {
         PlaybackStore.save(app, video, 30000L, 120000L)
         PlaybackStore.hideRecent(app)

@@ -90,7 +90,8 @@ Copy, Move and Compare icons mirror with the active pane; the table shows one di
 | Path bar, source icon or expanded path buttons | Long press or double tap | Edit the path to jump directly to a location. Restic locations open a dedicated location dialog. The path bar must be visible and its location editable; pickers sharing this path bar support the gesture too. |
 | Expanded path buttons | Tap a segment | Select that directory with its direct children visible and child directories collapsed; keep ancestors open. |
 | Path bar's source icon | Tap | Toggle the path buttons. |
-| Folder row, icon or expansion arrow | Tap | Normally expand or collapse in place. With Tap rows to select enabled and items already checked, an ordinary folder row toggles selection instead; its icon and arrow still expand or collapse. Confirmed empty folders may have no arrow. |
+| Folder row or expansion arrow | Tap | Normally expand or collapse in place. With Tap rows to select enabled and items already checked, an ordinary folder row toggles selection instead; its arrow still expands or collapses. Confirmed empty folders may have no arrow. |
+| Folder icon | Tap | Expand or collapse the folder **and keep the branch open**: expanding another folder afterwards does not fold this one away. See [Keep a branch open](#keep-a-branch-open) below. |
 | File row or icon | Tap | Normally open the file. With Tap rows to select enabled and items already checked, the row toggles selection instead; the icon still opens it. |
 | File or folder | Long press | Open its context menu, with actions such as Open with, Share, Favourite, Copy and Properties as supported by the source. |
 | Checkbox | Tap | Check or uncheck. In the list, an expanded folder with children cycles through selecting the folder itself → its direct children → clearing that branch’s selection. |
@@ -109,6 +110,14 @@ Find **Menu → Settings → Tap rows to select**. It is off by default. When se
 | Setting on, items already checked | Check or uncheck ordinary files and folders. After unchecking the last item, row taps return to opening or expanding. |
 
 **File icons and thumbnails still open files; folder icons and expansion arrows still expand or collapse.** The hidden properties button, checkbox and long-press menu keep their own actions. These row-selection rules apply to list and grid views; roots do not participate in ordinary file multi-selection.
+
+### Keep a branch open
+
+A small pin at the icon’s upper-left marks a branch you chose to keep open; ancestors kept open along with it have no pin. Tapping a folder's **icon** opens it the ordinary way, but the branch it opens stays open: expanding another folder afterwards does not fold it away, so you can work in two places at once. Tapping the icon again collapses it and gives up that protection, and so do **Collapse All** and selecting a path button. Tapping the folder's name or its expansion arrow keeps the usual one-branch-at-a-time behaviour.
+
+Manually collapsing a parent also folds all its descendants and clears their branch protection. Reopening shows only direct children. This applies with **Allow multiple expanded nodes** enabled too; cached directory listings are retained.
+
+This only matters while the tree folds to a single branch. With **Menu → Settings → Allow multiple expanded nodes** enabled, every branch stays open anyway and the icon does nothing extra.
 
 For example, check `a.txt`, then tap the name area of `b.txt` to select it too. Tap its icon to open it instead. Checks can span directories and survive view recreation. Folding a folder clears checks inside it, including nested descendants; checks in other visible branches remain. Reopening the folder does not restore cleared checks. Tap the checked-item count in the path bar, or its entry in a file’s context menu, to review the full selection, uncheck individual entries or clear all. Folder checkbox cycles and Select all / none affect only that branch; range selection still requires displayed siblings. Operations process a selected folder once even if some of its descendants are also checked.
 

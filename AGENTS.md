@@ -221,6 +221,15 @@ its listing size must still describe the followed stream for copy/resume checks.
   restores accordion folding on the next expansion. Path buttons still collapse the
   selected directory’s descendants. The setting participates in `uiSignature` and
   configuration backups through `twig_prefs`.
+  Tapping a row's **icon** (not its name or chevron) is the "keep this branch"
+  gesture: a small pin at the icon’s upper-left marks that row as protected from the
+  accordion, so expanding another node does not fold it away (`PaneViewModel.keptOpen` / `toggleKeepingOpen`). The
+  icon is still a toggle — tapping it again collapses the branch and drops the
+  protection, and so do Collapse All and a path-button selection. Explicitly folding
+  any ancestor clears all descendant expansion and protection in either tree mode;
+  reopening shows only direct children while reusing cached listings. The protected node's
+  ancestors stay open as well, otherwise it would be invisible. With the setting above
+  enabled the gesture changes nothing (nothing folds anyway).
 - Checked files belong to a pane-owned `PaneSelection`, keyed by filesystem identity,
   rather than visible adapter rows. Checks span directories and survive view
   recreation; folding clears checks for rows that disappear, while other visible branches

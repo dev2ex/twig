@@ -23,6 +23,14 @@ class ThumbnailImageView @JvmOverloads constructor(
     private var thumbnailReady = false
 
     private val linkArrow by lazy { ContextCompat.getDrawable(context, R.drawable.ic_symbolic_link)!! }
+    private val branchPin by lazy { ContextCompat.getDrawable(context, R.drawable.ic_kept_open)!! }
+    var keptOpen = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+
     var symbolicLink = false
         set(value) {
             if (field == value) return
@@ -52,7 +60,7 @@ class ThumbnailImageView @JvmOverloads constructor(
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (!symbolicLink && (!thumbnailReady || playbackFraction <= 0f)) return
+        if (!keptOpen && !symbolicLink && (!thumbnailReady || playbackFraction <= 0f)) return
         val image = drawable ?: return
         imageBounds.set(image.bounds)
         imageMatrix.mapRect(imageBounds)
@@ -60,6 +68,14 @@ class ThumbnailImageView @JvmOverloads constructor(
         if (!imageBounds.intersect(paddingLeft.toFloat(), paddingTop.toFloat(),
                 (width - paddingRight).toFloat(), (height - paddingBottom).toFloat())) return
         if (thumbnailReady && playbackFraction > 0f) drawProgress(canvas)
+        if (keptOpen) {
+            val edge = (minOf(imageBounds.width(), imageBounds.height()) * .46f)
+                .coerceAtMost(14f * resources.displayMetrics.density).toInt()
+            val left = imageBounds.left.toInt()
+            val top = imageBounds.top.toInt()
+            branchPin.setBounds(left, top, left + edge, top + edge)
+            branchPin.draw(canvas)
+        }
         if (symbolicLink) {
             // Match the lower-right emblems in the multicolored folder vectors.
             val edge = (minOf(imageBounds.width(), imageBounds.height()) * .46f)

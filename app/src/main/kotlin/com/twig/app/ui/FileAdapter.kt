@@ -84,6 +84,12 @@ class FileAdapter(
     private val onSqliteFilter: (SqliteDataNode, Int) -> Unit = { _, _ -> },
     private val onSqliteSort: (SqliteDataNode, Int) -> Unit = { _, _ -> },
     private val onSqliteCell: (SqliteDataNode, Int, Int) -> Unit = { _, _, _ -> },
+    /**
+     * Tap on the row's type icon. Defaults to [onClick]; the file tree routes it to
+     * the "keep this branch" gesture (see `PaneViewModel.toggleKeepingOpen`) — the
+     * branch it opens survives the accordion.
+     */
+    private val onIconClick: ((PaneViewModel.Node) -> Unit)? = null,
 ) : ListAdapter<PaneViewModel.Node, RecyclerView.ViewHolder>(DIFF) {
 
     var onItemDrag: ((RecyclerView.ViewHolder) -> Unit)? = null
@@ -572,6 +578,7 @@ class FileAdapter(
             LinkTargets.clear(b.linkTarget)
             b.linkTarget.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp)
             b.thumb.resetThumbnail()
+            b.thumb.keptOpen = (node as? PaneViewModel.FileNode)?.keptOpen == true
             b.thumb.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.thumb.tag = null
             b.thumb.scaleType = ImageView.ScaleType.FIT_CENTER
@@ -990,6 +997,7 @@ class FileAdapter(
             b.check.setOnLongClickListener(null)
             b.check.isLongClickable = false
             b.icon.resetThumbnail()
+            b.icon.keptOpen = (node as? PaneViewModel.FileNode)?.keptOpen == true
             b.icon.symbolicLink = (node as? PaneViewModel.FileNode)?.file?.isSymbolicLink == true
             b.icon.tag = null // cancel any async icon that hasn't filled in yet
             b.icon.setOnClickListener(null)
@@ -1409,7 +1417,7 @@ class FileAdapter(
                 b.check.visibility = View.GONE
             }
 
-            b.icon.setOnClickListener { onClick(node) }
+            b.icon.setOnClickListener { (onIconClick ?: onClick)(node) }
             b.icon.setOnLongClickListener { onLongClick(node); true }
             if (node.expandable) b.indicator.setOnClickListener { onClick(node) }
             b.root.setOnClickListener { clickFileRow(node, ctx) }

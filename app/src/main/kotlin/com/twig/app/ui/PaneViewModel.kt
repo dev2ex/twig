@@ -131,6 +131,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         /** Synthetic children are independent of the directory's visible file count. */
         val hasVirtualChildren: Boolean = false,
         val usage: Usage? = null,
+        /** This row itself was opened with the keep-branch gesture. */
+        val keptOpen: Boolean = false,
     ) : Node {
         override val key: String get() = keyPrefix + fileKey(file)
     }
@@ -352,6 +354,22 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- (2) Main-thread-only ----
 
+    /**
+     * Branches the user opened **from the row's icon** (see [toggleKeepingOpen]).
+     *
+     * The icon is the "keep this branch" gesture: the accordion folds every other
+     * branch away when a new node is expanded, but a branch opened this way survives
+     * that — expanding another node must not fold it away. It only goes away when the
+     * user collapses that node or an ancestor (icon or row), or clears the tree.
+     *
+     * Only consulted in accordion mode (see [allowMultipleExpandedNodes]); with
+     * multiple branches allowed, nothing folds in the first place.
+     */
+    private val keptOpen = HashSet<String>()
+
+    // Remember rendered parent links even while rows are hidden, including virtual/opaque paths.
+    private val expansionParents = HashMap<String, String>()
+
     /** Archive handed in by an external App, pinned at the top of the tree temporarily (see [mountExternal]); only one at a time. */
     private var externalMount: XFile? = null
 
@@ -514,7 +532,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val key = node.key
         currentKey = key
         claimExpand(key)
-        if (expanded.remove(key)) {
+        if (collapseBranch(key)) {
             sqliteTree.close(key)
         } else {
             if (key !in confirmedMaterialize && node.file.scheme != "file" &&
@@ -1202,9 +1220,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rebuild()
         val node = state.value.rows.firstOrNull { it.key == key } ?: return
         val file = mountRoots[key] ?: keyFile[key]?.takeIf { it.isDir } ?: return
-        val descendants = state.value.rows.dropWhile { it.key != key }.drop(1)
-            .takeWhile { it.depth > node.depth }.mapTo(HashSet()) { it.key }
-        expanded.removeAll(descendants)
+        clearExpansionBelow(key, includeRoot = false)
         if (key !in expanded && node is FileNode) {
             toggleFile(node)
         } else {
@@ -1233,7 +1249,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 closeAllInfo()
                 currentKey = node.key
                 currentDir = null // Group heading (LAN/FTP/...) isn't a real directory; clear it so copy/new don't pick up the previously-selected directory.
-                if (!expanded.remove(node.key)) accordionExpand(node.key)
+                if (!collapseBranch(node.key)) accordionExpand(node.key)
                 rebuild()
             }
             is ServerNode -> toggleServer(node)
@@ -1255,6 +1271,38 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             }
             is SearchNode -> closeSearch(node) // Tapping the virtual directory row itself: collapse and remove.
         }
+    }
+
+    /**
+     * Toggle a node **from its row icon** — the "keep this branch" gesture.
+     *
+     * The branch it opens is protected from the accordion (see [keptOpen]): expanding
+     * another node afterwards must not fold it away. Collapsing it again (with the
+     * icon or with the row) drops the protection — the icon is a toggle like the row,
+     * only the *consequence* of opening differs.
+     */
+    fun toggleKeepingOpen(node: Node) {
+        val key = node.key
+        val wasOpen = synchronized(expanded) { expanded.contains(key) }
+        if (wasOpen) keptOpen.remove(key) else keptOpen.add(key)
+        toggle(node)
+    }
+
+    /**
+     * The protected branches plus their ancestor chains.
+     *
+     * The ancestors matter: a protected node whose parent was folded away is not
+     * visible at all, so keeping the node alone would preserve a state nobody can
+     * see (and it would come back expanded when its parent is opened again).
+     */
+    private fun keptOpenKeys(): Set<String> {
+        if (keptOpen.isEmpty()) return emptySet()
+        val keep = HashSet<String>()
+        for (key in keptOpen) {
+            keep.add(key)
+            keep.addAll(ancestorKeysOf(key))
+        }
+        return keep
     }
 
     fun expandGroup(id: String) {
@@ -1510,7 +1558,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             expanded.add(key)
         }
         // Fold up every other currently-expanded branch (other root / other server / etc.).
-        if (!allowMultipleExpandedNodes()) synchronized(expanded) { expanded.removeAll { it !in plan.keep } }
+        // The branches opened from a row icon survive this fold as well (see [keptOpen]).
+        if (!allowMultipleExpandedNodes()) {
+            val keep = plan.keep + keptOpenKeys()
+            synchronized(expanded) { expanded.removeAll { it !in keep } }
+        }
     }
 
     /** IO: compute the reveal plan (connecting and listing on demand), without writing any VM state. */
@@ -1744,7 +1796,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         plan.fetched.forEach { applyRestored(it) }
         plan.expand.forEach { (k, x) -> keyFile[k] = x; expanded.add(k) }
         expanded.addAll(rootChain) // the way down to the root has to stay open too
-        val keep = rootChain + plan.expand.map { it.first } + plan.fetched.map { it.key }
+        val keep = rootChain + plan.expand.map { it.first } + plan.fetched.map { it.key } + keptOpenKeys()
         if (!allowMultipleExpandedNodes()) synchronized(expanded) { expanded.removeAll { it !in keep } }
     }
 
@@ -1907,6 +1959,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         restoring = false
         pendingCurrentDesc = null
         expanded.clear()
+        keptOpen.clear()
         searchState.values.forEach { it.job?.cancel() }
         searchState.clear()
         closeAllInfo()
@@ -1928,26 +1981,24 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         val key = currentKey ?: return
         when {
             key.startsWith("g:") -> {
-                expanded.remove(key)
+                clearExpansionBelow(key)
                 currentKey = null
                 currentDir = null
             }
             key.startsWith("s:") -> {
-                expanded.remove(key)
-                Thumbs.cancelPending(descendantFilesByKey(key))
-                SizeProbes.cancelPending(descendantFilesByKey(key))
+                clearExpansionBelow(key)
                 val conn = serverScheme[key]?.let { schemeToConn[it] }
                 currentKey = conn?.let { "g:${groupIdFor(it)}" }
                 currentDir = null
             }
             key.startsWith("fav:") -> {
-                expanded.remove(key)
+                clearExpansionBelow(key)
                 currentKey = "g:fav"
                 currentDir = null
             }
             else -> {
                 val cur = currentDir ?: return
-                expanded.remove(key)
+                clearExpansionBelow(key)
                 val up = upTarget(key, cur)
                 val parent = up?.second
                 currentDir = parent // When landing on a group row there is no "current directory" — same as the g:/s: branches.
@@ -2215,12 +2266,45 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun allowMultipleExpandedNodes(): Boolean = Prefs.allowMultipleExpandedNodes(getApplication())
 
+    /** Explicit folding forgets the entire subtree's expansion, in either tree mode. */
+    private fun collapseBranch(key: String): Boolean {
+        if (key !in expanded) return false
+        clearExpansionBelow(key)
+        return true
+    }
+
+    private fun clearExpansionBelow(key: String, includeRoot: Boolean = true) {
+        Thumbs.cancelPending(descendantFilesByKey(key))
+        SizeProbes.cancelPending(descendantFilesByKey(key))
+        val folded = HashSet<String>()
+        val candidates = expandedSnapshot() + keptOpen + loadingKeys + connecting
+        for (candidate in candidates) {
+            var parent: String? = if (includeRoot) candidate else expansionParents[candidate]
+            val visited = HashSet<String>()
+            while (parent != null && visited.add(parent)) {
+                if (parent == key) {
+                    folded.add(candidate)
+                    break
+                }
+                parent = expansionParents[parent]
+            }
+        }
+        expanded.removeAll(folded)
+        keptOpen.removeAll(folded)
+        abandoned.addAll(folded.filter { it in loadingKeys || it in connecting })
+        if (pendingExpand in folded) pendingExpand = null
+    }
+
     /** Expand a branch, retaining other branches when the setting permits it. */
     private fun accordionExpand(key: String) {
         if (!allowMultipleExpandedNodes()) {
             val ancestors = ancestorKeysOf(key)
+            // The accordion folds every branch that isn't on the way to the node just
+            // opened — except the ones the user opened from the row icon (see
+            // [keptOpen]): expanding another node must not fold those away.
+            val keep = HashSet(ancestors).apply { add(key); addAll(keptOpenKeys()) }
             // Iterating a synchronizedSet must be guarded by the set itself.
-            synchronized(expanded) { expanded.removeAll { it != key && it !in ancestors } }
+            synchronized(expanded) { expanded.removeAll { it !in keep } }
         }
         expanded.add(key)
     }
@@ -2595,9 +2679,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 Connections.ofScheme(n.file.scheme)?.isMediaServer() == true
         }.getOrDefault(false)
         when {
-            expanded.remove(key) -> {
-                Thumbs.cancelPending(descendantFilesByKey(key))
-                SizeProbes.cancelPending(descendantFilesByKey(key))
+            collapseBranch(key) -> {
                 // When collapsing this directory, also remove the search virtual
                 // directory hanging under it (it doesn't naturally disappear from
                 // rows — its render ignores exp, see addFile — so it would sit
@@ -2682,6 +2764,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                             if (mine && !keepOpen) emitFailure(it, n.file)
                         },
                     )
+                    // The branch didn't end up open (abandoned or failed): an icon
+                    // protection for it would be a promise nobody can keep (see [keptOpen]).
+                    if (!synchronized(expanded) { expanded.contains(key) }) keptOpen.remove(key)
                 }
             }
         }
@@ -2693,9 +2778,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         currentKey = key
         claimExpand(key) // Connecting a server is the slowest expansion — the "later tap wins" rule applies (see pendingExpand).
         when {
-            expanded.remove(key) -> {
-                Thumbs.cancelPending(descendantFilesByKey(key))
-                SizeProbes.cancelPending(descendantFilesByKey(key))
+            collapseBranch(key) -> {
                 // When collapsing a server, also drop any search results hanging under
                 // it (attached-row rendering ignores expansion state — see
                 // addServer/addAttachments), same as toggleFile for a regular
@@ -2844,9 +2927,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         closeAllInfo()
         currentKey = node.key
         claimExpand(node.key)
-        if (expanded.remove(node.key)) {
-            Thumbs.cancelPending(descendantFilesByKey(node.key))
-            SizeProbes.cancelPending(descendantFilesByKey(node.key))
+        if (collapseBranch(node.key)) {
             rebuild()
         } else {
             accordionExpand(node.key); rebuild()
@@ -3016,7 +3097,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         currentKey = key
         claimExpand(key)
         when {
-            expanded.remove(key) -> {
+            collapseBranch(key) -> {
                 dropSearchUnder(key) // Same as toggleServer: drop search results under this row when collapsing.
                 currentDir = keyFile[key] ?: currentDir // A favorite is itself a real directory; sync currentDir to it the same way as toggleServer.
                 rebuild(); onResult(true, null)
@@ -3505,6 +3586,13 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         rows.filterIsInstance<FileNode>().firstOrNull {
             it.key == currentKey && it.file.scheme == currentDir?.scheme && it.file.path == currentDir?.path
         }?.let { currentDir = it.file }
+        val parentStack = ArrayDeque<Node>()
+        for (row in rows) {
+            while (parentStack.isNotEmpty() && parentStack.last().depth >= row.depth) parentStack.removeLast()
+            val parent = parentStack.lastOrNull()
+            if (parent == null) expansionParents.remove(row.key) else expansionParents[row.key] = parent.key
+            parentStack.addLast(row)
+        }
         val liveKeys = rows.mapTo(HashSet()) { it.key }
         if (allowMultipleExpandedNodes()) {
             // Folding an ancestor abandons hidden loads even if that ancestor is
@@ -3549,6 +3637,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             DirectoryCounts.known(file, showHidden),
             if (usageOf(key) != null) 0 else gridMode,
             usage = usageOf(key),
+            keptOpen = exp && key in keptOpen,
             hasVirtualChildren = searchState.containsKey(fileKey) || gitInfo.containsKey(fileKey) ||
                 resticRepos.contains(fileKey) || (AndroidDataAccess.isRoot(file) && file.path !in readableDataRoots),
         )

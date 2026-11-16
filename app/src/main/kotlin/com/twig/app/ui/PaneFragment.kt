@@ -241,6 +241,35 @@ class PaneFragment : Fragment() {
         viewModel.paneIndex = paneIndex
         pendingDestinationSelection = destinationState.checkedSources
         com.twig.app.WebsiteStore.preferences(requireContext()).registerOnSharedPreferenceChangeListener(websiteListener)
+        // A row tap and an icon tap differ in one thing only: the icon opens a branch
+        // that survives the accordion ("keep this branch"), the row stays a plain
+        // toggle. Everything else is shared.
+        fun handleClick(node: PaneViewModel.Node, keepOpen: Boolean) {
+            viewModel.pathBarExpanded = false
+            renderPathSegments()
+            if (host?.onPickNode(node) == true) return
+            when (node) {
+                is PaneViewModel.FileNode ->
+                    if (node.expandable) {
+                        if (keepOpen) viewModel.toggleKeepingOpen(node) else viewModel.toggle(node)
+                    } else if (node.file.scheme != "trash" || node.file.canRead) open(node.file)
+                is PaneViewModel.WebsiteNode -> startActivity(WebsiteActivity.intent(requireContext(), node.site.id))
+                is PaneViewModel.ActionNode ->
+                    if (node.id == "add_website") WebsiteDialogs.edit(requireContext())
+                    else if (node.id.startsWith(AndroidDataAccess.ACTION_PREFIX))
+                        askDataAccess(XFile("file", node.id.removePrefix(AndroidDataAccess.ACTION_PREFIX), true))
+                    else if (node.id.startsWith("add_")) host?.onAddServer(node.id.removePrefix("add_"))
+                is PaneViewModel.ResticNode -> when {
+                    node.connecting -> Unit // Unlocking in progress — don't show the password dialog again / don't stack another unlock.
+                    node.unlocked -> viewModel.toggleRestic(node)
+                    else -> unlockRestic(node)
+                }
+                is PaneViewModel.FavoriteNode -> onFavoriteClick(node)
+                is PaneViewModel.CompareNode ->
+                    CompareActivity.startSaved(requireContext(), node.session.id)
+                else -> viewModel.toggle(node)
+            }
+        }
         adapter = FileAdapter(
             density = Prefs.density(requireContext()),
             textSize = Prefs.textSize(requireContext()),
@@ -249,36 +278,13 @@ class PaneFragment : Fragment() {
             gridNames = Prefs.thumbsGridNames(requireContext()),
             selectFilesByRow = host?.selectFilesByRow == true,
             selection = viewModel.selection,
-            onClick = click@{ node ->
-                viewModel.pathBarExpanded = false
-                renderPathSegments()
-                if (host?.onPickNode(node) == true) return@click
-                when (node) {
-                    is PaneViewModel.FileNode ->
-                        if (node.expandable) viewModel.toggle(node)
-                        else if (node.file.scheme != "trash" || node.file.canRead) open(node.file)
-                    is PaneViewModel.WebsiteNode -> startActivity(WebsiteActivity.intent(requireContext(), node.site.id))
-                    is PaneViewModel.ActionNode ->
-                        if (node.id == "add_website") WebsiteDialogs.edit(requireContext())
-                        else if (node.id.startsWith(AndroidDataAccess.ACTION_PREFIX))
-                            askDataAccess(XFile("file", node.id.removePrefix(AndroidDataAccess.ACTION_PREFIX), true))
-                        else if (node.id.startsWith("add_")) host?.onAddServer(node.id.removePrefix("add_"))
-                    is PaneViewModel.ResticNode -> when {
-                        node.connecting -> Unit // Unlocking in progress — don't show the password dialog again / don't stack another unlock.
-                        node.unlocked -> viewModel.toggleRestic(node)
-                        else -> unlockRestic(node)
-                    }
-                    is PaneViewModel.FavoriteNode -> onFavoriteClick(node)
-                    is PaneViewModel.CompareNode ->
-                        CompareActivity.startSaved(requireContext(), node.session.id)
-                    else -> viewModel.toggle(node)
-                }
-            },
+            onClick = { node -> handleClick(node, keepOpen = false) },
             onLongClick = { node ->
                 if (host?.isChoosingDestination() == true) Unit
                 else if (host?.shortcutResult != null) host?.onPickNode(node)
                 else onLongClick(node)
             },
+            onIconClick = { node -> handleClick(node, keepOpen = true) },
             onSelectionChanged = {
                 updateSelectionCount()
                 host?.onSelectionChanged()
