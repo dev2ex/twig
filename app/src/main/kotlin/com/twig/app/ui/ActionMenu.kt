@@ -21,7 +21,7 @@ import com.twig.app.R
  * Icons are **tinted in code**: the project's vector drawables come with
  * `android:tint="@color/white"` (set up for the toolbar), so when dropped
  * into a dialog they end up pure white and invisible; the default tint is
- * [R.color.menu_icon] (which follows the light/dark theme), and irreversible
+ * [R.color.menu_icon] (which shares the action strip's primary color), and irreversible
  * actions like delete / uninstall are tinted with [DANGER] — those are the
  * entries the menu user should recognise at a glance.
  */

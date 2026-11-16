@@ -26,8 +26,7 @@
     <color name="cmp_only">#64B5F6</color>
     <color name="cmp_only_bg">#332196F3</color>
     <color name="cmp_missing_bg">#0DFFFFFF</color>
-    <!-- Long-press menu icons: default shares the body-text gray; irreversible actions (delete / uninstall) are colored red on their own -->
-    <color name="menu_icon">#BDBDBD</color>
+    <!-- Destructive menu actions keep their warning color in the dark theme. -->
     <color name="menu_icon_danger">#EF5350</color>
     <color name="media_dir">#C4C7C5</color>
     <!-- PDF reader backdrop: a white page has to separate from it, so it cannot be surface/bg -->

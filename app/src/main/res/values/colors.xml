@@ -31,8 +31,8 @@
     <color name="cmp_only">#1565C0</color>
     <color name="cmp_only_bg">#E4F0FC</color>
     <color name="cmp_missing_bg">#EFEFEF</color>
-    <!-- Long-press menu icons: default shares the body-text gray; irreversible actions (delete / uninstall) are colored red on their own -->
-    <color name="menu_icon">#5F6368</color>
+    <!-- Long-press menu icons share the action strip's tint; destructive actions keep their warning color. -->
+    <color name="menu_icon">@color/primary</color>
     <color name="menu_icon_danger">#D32F2F</color>
     <color name="media_dir">#5F6368</color>
 
