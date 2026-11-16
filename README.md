@@ -12,7 +12,7 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
-**Version 1.18.1** (versionCode 322) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.18.2** (versionCode 323) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 **[Buttons and Gestures](docs/buttons-and-gestures.md)** — illustrated controls, taps, long presses, double taps, swipes and zoom by screen, with pane navigation and selection guidance. [简体中文](docs/buttons-and-gestures.zh-CN.md)
@@ -233,7 +233,7 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 ### New in 1.18
 
 - **SQLite browsing:** expand databases into tables and read-only data grids. Search across tables, sort columns, filter values or comparisons, run read-only SQL, inspect BLOBs in hex and export selected columns to CSV. See [SQLite browsing](docs/sqlite-browser.md) for source and size limits.
-- **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the toolbar or the single-pane address bar.
+- **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the toolbar or the single-pane address bar, or place the address bar below the file list.
 - **More storage roots:** internal and removable storage can be hidden or reordered; additional shared-profile storage roots appear beside primary storage when available.
 - **Recent restic locations** restore directories inside snapshots, unlocking the repository when needed. The latest-snapshot alias follows the newest snapshot.
 - **Animated images:** GIF and animated WebP play in the image viewer on Android 9+.
@@ -243,6 +243,8 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 - **Optional NFS:** the dedicated arm64 full APK supports NFSv3/v4 browsing, writes and resumable transfers. Ordinary full/libre APKs exclude NFS.
 
 ### Browsing
+
+- **Keep branches open:** tap a folder icon to pin its branch while opening others; tap it again to collapse and unpin. Display settings can also allow multiple expanded branches without pinning.
 
 - **One complete tree.** Top-level nodes include internal storage, root, private space,
   removable storage, trash, LAN (SMB), FTP, SSH, WebDAV, S3, media servers, document trees,
