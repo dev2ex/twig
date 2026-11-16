@@ -2,6 +2,7 @@ package com.twig.app.share
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.twig.core.StorageSpace
 import com.twig.core.FsRegistry
 import com.twig.fs.local.LocalFileSystem
 import org.junit.After
@@ -61,7 +62,8 @@ class ShareServerTest {
     }
 
     /** Starts the server; [readOnly] decides whether write methods pass or get 403. */
-    private fun start(readOnly: Boolean = true, password: String = "", scopeDir: File = dir) {
+    private fun start(readOnly: Boolean = true, password: String = "", scopeDir: File = dir,
+                      space: ((String) -> StorageSpace?)? = null) {
         port = ServerSocket(0).use { it.localPort } // borrow a free port number
         val cfg = ShareConfig(
             scope = ShareScope.Dir("file", scopeDir.path, "share"),
@@ -69,7 +71,7 @@ class ShareServerTest {
             port = port,
             password = password,
         )
-        val root = ShareRoot(app, cfg.scope)
+        val root = if (space == null) ShareRoot(app, cfg.scope) else ShareRoot(app, cfg.scope, localSpace = space)
         val auth = if (cfg.needsAuth) HttpServer.BasicAuth(cfg.authUser, cfg.password) else null
         server = HttpServer(port, auth, ShareHandler(app, cfg, root)).also { it.start() }
     }
@@ -316,6 +318,75 @@ class ShareServerTest {
         assertEquals(200, r.status)
         assertTrue("Finder/Explorer will only write once they see class 2", r.headers["dav"]!!.contains("2"))
         assertTrue(r.headers["allow"]!!.contains("PROPFIND"))
+    }
+
+    private fun propfindBody(properties: String) =
+        "<d:propfind xmlns:d=\"DAV:\">$properties</d:propfind>".toByteArray()
+
+    @Test
+    fun `quotas are opt in and unknown properties get their own 404 propstat`() {
+        var calls = 0
+        start(space = { calls++; StorageSpace(40, 60) })
+        val default = request("PROPFIND", "/", listOf("Depth: 0"))
+        assertFalse(default.text.contains("quota-available-bytes"))
+        assertEquals(0, calls)
+        val r = request("PROPFIND", "/", listOf("Depth: 0"), propfindBody("""
+            <d:prop><d:quota-available-bytes/><d:quota-used-bytes/>
+              <x:quota-used-bytes xmlns:x="urn:other"/><plain/></d:prop>
+        """.trimIndent()))
+        assertEquals(207, r.status)
+        assertTrue(r.text.contains("<D:quota-available-bytes>40</D:quota-available-bytes>"))
+        assertTrue(r.text.contains("<D:quota-used-bytes>60</D:quota-used-bytes>"))
+        assertTrue(r.text.contains("HTTP/1.1 404 Not Found"))
+        assertFalse(r.text.contains("displayname"))
+        val doc = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(r.body.inputStream())
+        assertEquals(2, doc.getElementsByTagNameNS("DAV:", "propstat").length)
+        assertEquals("", doc.getElementsByTagNameNS("urn:other", "quota-used-bytes").item(0).textContent)
+        assertEquals(1, doc.getElementsByTagNameNS("", "plain").length)
+        request("PROPFIND", "/", listOf("Depth: 0"), propfindBody("<d:prop><d:quota-used-bytes/></d:prop>"))
+        assertEquals("repeat quota reads use the short cache", 1, calls)
+    }
+
+    @Test
+    fun `allprop excludes quotas but include and propname expose them`() {
+        var calls = 0
+        start(space = { calls++; StorageSpace(0, 100) })
+        val all = request("PROPFIND", "/", listOf("Depth: 0"), propfindBody("<d:allprop/>"))
+        assertTrue(all.text.contains("displayname"))
+        assertFalse(all.text.contains("quota-used-bytes"))
+        assertEquals(0, calls)
+        val included = request("PROPFIND", "/", listOf("Depth: 0"), propfindBody(
+            "<d:allprop/><d:include><d:quota-available-bytes/></d:include>"))
+        assertTrue(included.text.contains("<D:quota-available-bytes>0</D:quota-available-bytes>"))
+        assertTrue(included.text.contains("displayname"))
+        assertFalse(included.text.contains("quota-used-bytes"))
+        val names = request("PROPFIND", "/", listOf("Depth: 0"), propfindBody("<d:propname/>"))
+        assertTrue(names.text.contains("<D:quota-used-bytes></D:quota-used-bytes>"))
+        assertFalse(names.text.contains(">100<"))
+    }
+
+    @Test
+    fun `unknown capacity is a property 404 and never a zero`() {
+        start(space = { null })
+        val r = request("PROPFIND", "/", listOf("Depth: 0"), propfindBody(
+            "<d:prop><d:displayname/><d:quota-available-bytes/><d:quota-used-bytes/></d:prop>"))
+        assertEquals(207, r.status)
+        assertTrue(r.text.contains("HTTP/1.1 200 OK"))
+        assertTrue(r.text.contains("HTTP/1.1 404 Not Found"))
+        assertFalse(r.text.contains(">0<"))
+    }
+
+    @Test
+    fun `propfind rejects malformed oversized and entity-bearing XML`() {
+        start()
+        for (body in listOf("<broken", "x".repeat(65_537), """
+            <!DOCTYPE d:propfind [<!ENTITY x SYSTEM "file:///etc/passwd">]>
+            <d:propfind xmlns:d="DAV:"><d:prop>&x;</d:prop></d:propfind>
+        """.trimIndent())) {
+            assertEquals(400, request("PROPFIND", "/", body = body.toByteArray()).status)
+        }
+        assertEquals(207, request("PROPFIND", "/").status)
     }
 
     @Test
@@ -665,11 +736,39 @@ class ShareServerTest {
     // ---- All-sources mode ----
 
     /** Starts an "all sources" server (differs from [start] only in scope). */
-    private fun startAll() {
+    private fun startAll(space: ((String) -> StorageSpace?)? = null,
+                         volumes: List<com.twig.app.RemovableVolume> = emptyList()) {
         port = ServerSocket(0).use { it.localPort }
         val cfg = ShareConfig(scope = ShareScope.AllSources, readOnly = true, port = port)
-        server = HttpServer(port, null, ShareHandler(app, cfg, ShareRoot(app, cfg.scope)))
-            .also { it.start() }
+        val root = if (space == null) ShareRoot(app, cfg.scope)
+            else ShareRoot(app, cfg.scope, localSpace = space, volumes = { volumes })
+        server = HttpServer(port, null, ShareHandler(app, cfg, root)).also { it.start() }
+    }
+
+    @Test
+    fun `Twig client reads distinct shared volume capacities without an aggregate virtual root`() {
+        val card = File(dir, "card").apply { mkdirs() }
+        val usb = File(dir, "usb").apply { mkdirs() }
+        val reads = mutableListOf<String>()
+        startAll(space = { path ->
+            reads += path
+            when (path) {
+                card.path -> StorageSpace(40, 60)
+                usb.path -> StorageSpace(0, 200)
+                else -> null
+            }
+        }, volumes = listOf(com.twig.app.RemovableVolume(card.path, "SDCARD"),
+            com.twig.app.RemovableVolume(usb.path, "USB")))
+        val client = com.twig.fs.network.WebDavFileSystem(
+            com.twig.fs.network.DavConfig("http://127.0.0.1:$port"))
+        val entries = client.list(client.root()).associateBy { it.name }
+        assertEquals(null, client.knownStorageSpace(client.root()))
+        assertEquals(StorageSpace(40, 60), client.knownStorageSpace(entries.getValue("external-SDCARD")))
+        assertEquals(StorageSpace(0, 200), client.knownStorageSpace(entries.getValue("external-USB")))
+        assertTrue(reads.contains(card.path))
+        assertTrue(reads.contains(usb.path))
+        client.list(client.root())
+        assertEquals("each source has its own cached sample", 1, reads.count { it == card.path })
     }
 
     @Test

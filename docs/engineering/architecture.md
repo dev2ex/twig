@@ -24,6 +24,12 @@ Before adding a capability, decide whether *every* backend should be able to ans
 if yes it belongs in `FileSystem`, otherwise it goes here; don't make 20 implementations
 each write `= null`.
 
+`StorageSpaceSource` (`core-fs/StorageSpaceSource.kt`) optionally exposes the capacity
+or quota applying to a directory, with available/used byte counts and a checked total.
+Its blocking query is for worker threads; `knownStorageSpace` is a listing-populated,
+IO-free snapshot for rendering. Unsupported or invalid quota data stays null, not
+zero. Protocol behavior is documented in [WiFi sharing](wifi-sharing.md#storage-capacity-over-webdav).
+
 `UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
 Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
 failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after

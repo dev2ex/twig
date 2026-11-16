@@ -32,6 +32,7 @@ import com.twig.app.SortSpec
 import com.twig.app.StorageVolumes
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
+import com.twig.core.StorageSpaceSource
 import com.twig.core.XFile
 import com.twig.fs.archive.ArchiveFileSystem
 import com.twig.fs.archive.ArchivePasswordException
@@ -3655,7 +3656,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         // A directory with a search result hangs shows the chevron as "expanded" (even if not actually expanded) — visually echoing the search-result virtual directory below; this only affects the icon, the actual children list is still only fetched/rendered when exp is true, so a collapsed directory that starts a search won't also show its original files/dirs below.
         rows += FileNode(
             file, depth, expandable, exp || searchState.containsKey(key),
-            label, capacity, busy(key) || sqliteTree.loading(key), rowPrefix,
+            label, capacity ?: remoteCapacity(file), busy(key) || sqliteTree.loading(key), rowPrefix,
             DirectoryCounts.known(file, showHidden),
             if (usageOf(key) != null) 0 else gridMode,
             usage = usageOf(key),
@@ -3904,7 +3905,9 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
     private fun addServer(rows: MutableList<Node>, conn: SavedConnection) {
         val key = "s:${conn.label()}"
         val exp = expanded.contains(key)
-        rows += ServerNode(conn, exp, busy(key), serverInfo[conn.label()])
+        val capacity = keyFile[key]?.let { remoteCapacity(it) }
+        rows += ServerNode(conn, exp, busy(key), listOfNotNull(serverInfo[conn.label()], capacity)
+            .takeIf { it.isNotEmpty() }?.joinToString("  "))
         // Info cards / search results hang under it like a regular directory row (key based on the server root directory), same as [addFavorite].
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) addListedFiles(rows, key, 2)
@@ -3914,6 +3917,15 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Get a string resource (multi-language: follows AppCompatDelegate's current locale). */
     private fun str(id: Int, vararg args: Any): String = LanguagePref.appContext(getApplication()).getString(id, *args)
+
+    private fun remoteCapacity(file: XFile): String? {
+        // The endpoint and its immediate source/drive directories are capacity entry points.
+        // Use backend paths so expanding or pinning a deeper folder cannot promote its label.
+        if (!file.isDir || '/' in file.path.trim('/')) return null
+        val source = runCatching { FsRegistry.of(file) }.getOrNull() as? StorageSpaceSource
+        val space = source?.knownStorageSpace(file) ?: return null
+        return str(R.string.capacity_format, Format.size(space.available), Format.size(space.total))
+    }
 
     private data class CapacitySample(val bytes: Pair<Long, Long>?, val checkedAt: Long)
     private val capacities = HashMap<String, CapacitySample>()

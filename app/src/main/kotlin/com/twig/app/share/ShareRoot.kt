@@ -2,6 +2,7 @@ package com.twig.app.share
 
 import android.content.Context
 import android.os.Environment
+import android.os.StatFs
 import com.twig.app.Connections
 import com.twig.app.ConnectionStore
 import com.twig.app.R
@@ -10,6 +11,8 @@ import com.twig.app.SavedConnection
 import com.twig.app.StorageVolumes
 import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
+import com.twig.core.StorageSpace
+import com.twig.core.StorageSpaceSource
 import com.twig.core.XFile
 import java.io.File
 
@@ -39,6 +42,13 @@ import java.io.File
 class ShareRoot(
     private val ctx: Context,
     private val scope: ShareScope,
+    private val localSpace: (String) -> StorageSpace? = { path ->
+        val stat = StatFs(path)
+        val available = stat.availableBytes
+        val total = stat.totalBytes
+        if (total <= 0 || available < 0 || available > total) null
+        else StorageSpace(available, total - available)
+    },
     /**
      * The removable volumes (SD card / USB drive) offered as sources.
      *
@@ -289,6 +299,27 @@ class ShareRoot(
         // every row of a large directory is not free.
         if (!holdsPrivate(file)) return all
         return all.filterNot { isPrivate(it) }
+    }
+
+    private data class SpaceSample(val space: StorageSpace?, val at: Long = System.nanoTime())
+    private val spaces = object : LinkedHashMap<XFile, SpaceSample>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<XFile, SpaceSample>?) = size > 256
+    }
+
+    /** Ordinary app access only; the request boundary also disables local elevation. */
+    fun storageSpace(file: XFile): StorageSpace? {
+        if (!file.isDir || isPrivate(file)) return null
+        // Ignore changing listing metadata when identifying the queried directory.
+        val key = XFile(file.scheme, file.path, isDir = true)
+        synchronized(spaces) {
+            spaces[key]?.let { if (System.nanoTime() - it.at < 10_000_000_000L) return it.space }
+        }
+        val space = runCatching {
+            if (file.scheme == LOCAL) localSpace(file.path)
+            else (FsRegistry.of(file) as? StorageSpaceSource)?.storageSpace(file)
+        }.getOrNull()
+        synchronized(spaces) { spaces[key] = SpaceSample(space) }
+        return space
     }
 
     /** Whether the whole source can be written (read-only sources — restic/7z/RAR/apps/git view — are stopped here). */

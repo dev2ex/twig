@@ -182,3 +182,13 @@ stores its multi-selection in `mapSelected`, and the sidebar's copy/move/delete 
 it via `selectionOrCurrent()`; "Show on the other side" is
 `PaneViewModel.revealPath`, expanding level by level (local and connected server
 schemes only).
+
+## Storage capacity labels
+
+Local internal/removable/root shortcuts read available/total capacity asynchronously,
+with independent in-flight reads and a ten-second success/failure cooldown. Connected
+WebDAV server rows and their immediate top-level directories render `StorageSpaceSource`
+listing snapshots using the same capacity format; deeper folders retain ordinary metadata,
+including when pinned. Unsupported servers retain ordinary metadata.
+Remote labels update on listing/refresh. See [WiFi sharing](wifi-sharing.md#storage-capacity-over-webdav)
+for quota semantics and protocol behavior.

@@ -3,6 +3,8 @@ package com.twig.fs.network
 import com.twig.core.FileSystem
 import com.twig.core.FsException
 import com.twig.core.RandomSource
+import com.twig.core.StorageSpace
+import com.twig.core.StorageSpaceSource
 import com.twig.core.XFile
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,7 +19,6 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.URI
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -42,7 +43,7 @@ data class DavConfig(
 class WebDavFileSystem(
     private val config: DavConfig,
     override val scheme: String = SCHEME,
-) : FileSystem {
+) : FileSystem, StorageSpaceSource {
 
     override val displayName: String = "WebDAV (${config.baseUrl})"
 
@@ -69,10 +70,52 @@ class WebDavFileSystem(
 
     override fun resolve(path: String): XFile = XFile(scheme, path, isDir = true)
 
+    private data class SpaceSample(val value: StorageSpace?, val at: Long = System.nanoTime())
+    private val spaces = object : LinkedHashMap<String, SpaceSample>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, SpaceSample>?) = size > 256
+    }
+
+    override fun knownStorageSpace(dir: XFile): StorageSpace? = synchronized(spaces) {
+        spaces[dir.path.trimEnd('/')]?.value
+    }
+
+    override fun storageSpace(dir: XFile): StorageSpace? {
+        synchronized(spaces) {
+            spaces[dir.path.trimEnd('/')]?.let {
+                if (System.nanoTime() - it.at < 10_000_000_000L) return it.value
+            }
+        }
+        val url = urlOf(dir.path, dir = true)
+        val req = request(url)
+            .method("PROPFIND", SPACE_BODY.toRequestBody("text/xml; charset=utf-8".toMediaType()))
+            .header("Depth", "0").build()
+        http.newCall(req).execute().use {
+            if (it.code != 207) return null
+            val bytes = it.body?.bytes() ?: return null
+            parseMultistatus(bytes.inputStream(), dir.path, URI(url).path, cacheSpace = true)
+        }
+        return knownStorageSpace(dir)
+    }
+
+    private fun readSpace(response: Element): StorageSpace? {
+        val values = HashMap<String, Long>()
+        val stats = response.getElementsByTagNameNS(DAV_NS, "propstat")
+        for (i in 0 until stats.length) {
+            val stat = stats.item(i) as Element
+            if (textOf(stat, "status")?.split(' ')?.getOrNull(1) != "200") continue
+            for (name in listOf("quota-available-bytes", "quota-used-bytes")) {
+                textOf(stat, name)?.toLongOrNull()?.takeIf { it >= 0 }?.let { values[name] = it }
+            }
+        }
+        val available = values["quota-available-bytes"] ?: return null
+        val used = values["quota-used-bytes"] ?: return null
+        return if (available <= Long.MAX_VALUE - used) StorageSpace(available, used) else null
+    }
+
     override fun list(dir: XFile): List<XFile> {
         val url = urlOf(dir.path, dir = true)
         val req = request(url)
-            .method("PROPFIND", PROPFIND_BODY.toRequestBody("text/xml; charset=utf-8".toMediaType()))
+            .method("PROPFIND", LIST_BODY.toRequestBody("text/xml; charset=utf-8".toMediaType()))
             .header("Depth", "1")
             .build()
         val resp = try {
@@ -104,7 +147,7 @@ class WebDavFileSystem(
                     e,
                 )
             }
-            return parseMultistatus(bytes.inputStream(), dir.path, selfPath = URI(url).path)
+            return parseMultistatus(bytes.inputStream(), dir.path, selfPath = URI(url).path, cacheSpace = true)
         }
     }
 
@@ -230,19 +273,30 @@ class WebDavFileSystem(
     }.getOrNull()
 
     /** [selfPath] is the request's own URL path, whose entry is dropped (a listing must not contain the directory itself); null keeps everything. */
-    private fun parseMultistatus(input: InputStream, dirPath: String, selfPath: String?): List<XFile> {
+    private fun parseMultistatus(input: InputStream, dirPath: String, selfPath: String?, cacheSpace: Boolean = false): List<XFile> {
         val doc = SafeXml.parse(input, namespaceAware = true)
         val selfNorm = selfPath?.trimEnd('/')
 
         val out = ArrayList<XFile>()
+        var ownSpace: SpaceSample? = null
         val responses = doc.getElementsByTagNameNS(DAV_NS, "response")
         for (i in 0 until responses.length) {
             val resp = responses.item(i) as Element
             val hrefRaw = textOf(resp, "href") ?: continue
             // Some servers return full URLs; always take the path part and decode it
             val hrefPath = runCatching { URI(hrefRaw).path ?: hrefRaw }.getOrDefault(hrefRaw)
-            val decoded = URLDecoder.decode(hrefPath, "UTF-8").trimEnd('/')
-            if (selfNorm != null && decoded == selfNorm) continue // skip the directory itself
+            val decoded = hrefPath.trimEnd('/')
+            val own = selfNorm != null && decoded == selfNorm
+            val entryPath = if (own) dirPath else join(dirPath, decoded.substringAfterLast('/'))
+            if (cacheSpace) {
+                val space = readSpace(resp)
+                if (own) ownSpace = SpaceSample(space)
+                else synchronized(spaces) {
+                    if (space == null) spaces.remove(entryPath.trimEnd('/'))
+                    else spaces[entryPath.trimEnd('/')] = SpaceSample(space)
+                }
+            }
+            if (own) continue // Keep the self capacity, but omit the directory from its listing.
 
             val name = decoded.substringAfterLast('/')
             if (name.isEmpty()) continue
@@ -260,6 +314,8 @@ class WebDavFileSystem(
                 ),
             )
         }
+        // Keep the current mount's sample even when a large listing fills the bounded cache.
+        ownSpace?.let { sample -> synchronized(spaces) { spaces[dirPath.trimEnd('/')] = sample } }
         out.sortWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
         return out
     }
@@ -289,5 +345,12 @@ class WebDavFileSystem(
               </d:prop>
             </d:propfind>
         """.trimIndent()
+        private val SPACE_BODY = """
+            <d:propfind xmlns:d="DAV:"><d:prop>
+              <d:quota-available-bytes/><d:quota-used-bytes/>
+            </d:prop></d:propfind>
+        """.trimIndent()
+        private val LIST_BODY = PROPFIND_BODY.replace("<d:resourcetype/>",
+            "<d:resourcetype/><d:quota-available-bytes/><d:quota-used-bytes/>")
     }
 }

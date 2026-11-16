@@ -21,11 +21,10 @@ entry point sits next to the file tree and the location was already chosen befor
 dialog opened. A few settled decisions:
 - **Read-only by default**; every write method's check funnels through
   `ShareHandler.requireWrite` in one place, not scattered across handlers.
-- **In "all backends" mode the top-level path segment is the scheme, not the display
-  name**: schemes are globally unique and derived deterministically from the connection
-  label, so once a WebDAV client has saved one as a mount point, paths do not shift
-  because another server got expanded. Display names are used only for the link text
-  in HTML.
+- **In "all backends" mode top-level segments are stable source addresses**, such as
+  `webdav-NAS` and `external-SDCARD`. Connection collisions use deterministic suffixes;
+  old scheme addresses remain aliases. Removable-volume addresses are persisted so
+  localization and hotplug do not change saved mount points.
 - **`..` is always rejected** (`ShareRoot.segments` returns null), and uploaded file
   names are reduced to their last segment — in this feature path traversal means
   handing out things outside the shared directory.
@@ -41,3 +40,26 @@ dialog opened. A few settled decisions:
 - **No START_STICKY**: if the process really was killed, the sockets and threads are
   gone, and the system restarting the service would only produce an empty shell with
   `session == null`. Dying with the process is more honest.
+
+## Storage capacity over WebDAV
+
+`PROPFIND` supports empty-body/allprop, explicit prop, allprop/include and propname
+selection. Unsupported requested properties are returned in a separate 404 propstat;
+malformed XML, DTDs and bodies over 64 KiB receive 400. Existing ordinary properties
+remain available, and capacity is never included in plain allprop responses.
+
+RFC 4331 `DAV:quota-available-bytes` and `DAV:quota-used-bytes` describe the capacity
+or quota applying to a collection, not its recursive file size. Local collections use
+ordinary app-access `StatFs`; remote sources can opt into `StorageSpaceSource`.
+The all-sources virtual root has no aggregate capacity. Each source reports its own
+volume, and unavailable capacity stays unknown (404), including blocked/private paths.
+Queries use a bounded ten-second cache, including failures. Read-only sharing can still
+report physical capacity; capacity information does not grant write access.
+
+Twig's WebDAV client requests quotas with its existing Depth:1 directory listing,
+caches successful quota propstats for the directory itself and children, and renders
+known values on the endpoint and its immediate top-level directories as available/total
+using the existing localized capacity text. Deeper folders retain ordinary metadata.
+Rendering never triggers network IO. Total means available plus used, so quota-based servers
+show the allocated quota rather than a physical drive's size. Refreshing/relisting
+updates snapshots. Ordinary stat/exists requests do not ask for quotas.

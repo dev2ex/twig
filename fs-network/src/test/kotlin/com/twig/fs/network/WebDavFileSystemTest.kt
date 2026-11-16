@@ -1,5 +1,6 @@
 package com.twig.fs.network
 
+import com.twig.core.StorageSpace
 import com.twig.core.XFile
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -63,6 +64,86 @@ class WebDavFileSystemTest {
         assertEquals("PROPFIND", req.method)
         assertEquals("1", req.getHeader("Depth"))
         assertTrue(req.getHeader("Authorization")!!.startsWith("Basic "))
+    }
+
+    private fun quotaResponse(available: String, used: String, status: Int = 200): String = """
+        <d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/dav/</d:href>
+            <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop>
+              <d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+            <d:propstat><d:prop><d:quota-available-bytes>$available</d:quota-available-bytes>
+              <d:quota-used-bytes>$used</d:quota-used-bytes></d:prop>
+              <d:status>HTTP/1.1 $status Status</d:status></d:propstat>
+          </d:response>
+          <d:response><d:href>/dav/SD+card%2520/</d:href><d:propstat><d:prop>
+            <d:resourcetype><d:collection/></d:resourcetype>
+            <d:quota-available-bytes>0</d:quota-available-bytes>
+            <d:quota-used-bytes>60</d:quota-used-bytes>
+          </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+        </d:multistatus>
+    """.trimIndent()
+
+    @Test
+    fun listingCachesRootAndChildQuotasWithoutExtraRequests() {
+        server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse("40", "60")))
+        val child = fs.list(fs.root()).single()
+        assertEquals("/SD+card%20", child.path)
+        assertEquals(StorageSpace(40, 60), fs.knownStorageSpace(fs.root()))
+        assertEquals(StorageSpace(0, 60), fs.knownStorageSpace(child))
+        assertEquals(100L, fs.storageSpace(fs.root())!!.total)
+        assertEquals(1, server.requestCount)
+        val req = server.takeRequest()
+        assertEquals("1", req.getHeader("Depth"))
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("quota-available-bytes"))
+        assertTrue(body.contains("quota-used-bytes"))
+    }
+
+    @Test
+    fun largeListingsRetainRootCapacityAndStatDoesNotEraseIt() {
+        val extra = (1..300).joinToString("") { i -> """
+            <d:response><d:href>/dav/dir$i/</d:href><d:propstat><d:prop>
+              <d:resourcetype><d:collection/></d:resourcetype>
+              <d:quota-available-bytes>1</d:quota-available-bytes>
+              <d:quota-used-bytes>1</d:quota-used-bytes>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+        """.trimIndent() }
+        server.enqueue(MockResponse().setResponseCode(207).setBody(
+            quotaResponse("40", "60").replace("</d:multistatus>", "$extra</d:multistatus>")))
+        assertEquals(301, fs.list(fs.root()).size)
+        assertEquals(StorageSpace(40, 60), fs.knownStorageSpace(fs.root()))
+        server.takeRequest()
+        server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse("", "")))
+        fs.stat("/dir1")
+        assertEquals(StorageSpace(40, 60), fs.knownStorageSpace(fs.root()))
+        assertTrue(!server.takeRequest().body.readUtf8().contains("quota-available-bytes"))
+    }
+
+    @Test
+    fun quotasRejectFailedPropertiesInvalidValuesAndOverflow() {
+        for ((available, used, status) in listOf(
+            Triple("40", "60", 404), Triple("-1", "60", 200),
+            Triple("unlimited", "60", 200), Triple(Long.MAX_VALUE.toString(), "1", 200),
+        )) {
+            server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse(available, used, status)))
+            fs.list(fs.root())
+            assertEquals(null, fs.knownStorageSpace(fs.root()))
+        }
+        server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse("40", "60")))
+        fs.list(fs.root())
+        assertEquals(StorageSpace(40, 60), fs.knownStorageSpace(fs.root()))
+        server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse("", "")))
+        fs.list(fs.root())
+        assertEquals(null, fs.knownStorageSpace(fs.root()))
+    }
+
+    @Test
+    fun uncachedQuotaUsesDepthZeroAndUnsupportedQuotaStaysUnknown() {
+        server.enqueue(MockResponse().setResponseCode(207).setBody(quotaResponse("", "", 404)))
+        assertEquals(null, fs.storageSpace(fs.root()))
+        assertEquals(null, fs.storageSpace(fs.root()))
+        assertEquals(1, server.requestCount)
+        assertEquals("0", server.takeRequest().getHeader("Depth"))
     }
 
     @Test

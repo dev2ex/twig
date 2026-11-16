@@ -75,6 +75,54 @@ class StorageCapacityTest {
         }
     }
 
+    @Test fun `only remote top level rows render known quotas without performing capacity IO`() = runTest(main) {
+        val scheme = "capacity-test"
+        val remoteRoot = com.twig.core.XFile(scheme, "/", isDir = true)
+        val card = com.twig.core.XFile(scheme, "/SDCARD", isDir = true)
+        val unknown = com.twig.core.XFile(scheme, "/unknown", isDir = true)
+        val nested = com.twig.core.XFile(scheme, "/SDCARD/photos", isDir = true)
+        val fs = object : com.twig.core.FileSystem by com.twig.fs.local.LocalFileSystem(),
+            com.twig.core.StorageSpaceSource {
+            override val scheme = remoteRoot.scheme
+            override fun root() = remoteRoot
+            override fun list(dir: com.twig.core.XFile) = when (dir.path) {
+                "/" -> listOf(card, unknown)
+                card.path -> listOf(nested)
+                else -> emptyList()
+            }
+            override fun knownStorageSpace(dir: com.twig.core.XFile) =
+                if (dir.path in setOf(card.path, nested.path)) com.twig.core.StorageSpace(0, 2048) else null
+            override fun storageSpace(dir: com.twig.core.XFile): com.twig.core.StorageSpace? =
+                error("rendering must never query remote capacity")
+        }
+        com.twig.core.FsRegistry.register(fs)
+        val pane = PaneViewModel(app).apply { io = StandardTestDispatcher(testScheduler) }
+        try {
+            pane.mountLocated(remoteRoot, "Remote")
+            runCurrent()
+            val rows = pane.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            val capacity = rows.first { it.file == card }.capacity
+            assertEquals(app.getString(com.twig.app.R.string.capacity_format,
+                com.twig.app.Format.size(0), com.twig.app.Format.size(2048)), capacity)
+            assertNull(rows.first { it.file == unknown }.capacity)
+            assertNull(rows.first { it.file == remoteRoot }.capacity)
+            pane.toggle(rows.first { it.file == card })
+            runCurrent()
+            val expanded = pane.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+            assertNotNull(expanded.first { it.file == card }.capacity)
+            assertNull("nested folders retain ordinary metadata even when quota is known",
+                expanded.first { it.file == nested }.capacity)
+            pane.mountLocated(nested, "Pinned folder")
+            runCurrent()
+            assertNull("pinning a nested folder must not turn it into a drive label",
+                pane.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
+                    .first { it.file == nested }.capacity)
+        } finally {
+            pane.viewModelScope.cancel()
+            com.twig.core.FsRegistry.unregister(scheme)
+        }
+    }
+
     @Test fun `a blocked mount does not block rendering or another capacity read`() = runTest(main) {
         val started = CountDownLatch(1)
         val otherRead = CountDownLatch(1)

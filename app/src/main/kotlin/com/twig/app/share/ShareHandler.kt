@@ -229,6 +229,10 @@ class ShareHandler(
     // ---- WebDAV ----
 
     private fun propfind(req: HttpRequest, res: HttpResponder) {
+        val selection = try { DavPropfind.read(req.body) } catch (_: Exception) {
+            res.send(400, "text/plain", "Invalid PROPFIND body".toByteArray())
+            return
+        }
         val depth = req.depth(def = 1)
         val sb = StringBuilder(4096)
         sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<D:multistatus xmlns:D=\"DAV:\">")
@@ -237,12 +241,13 @@ class ShareHandler(
         if (root.isVirtualRoot(req.path)) {
             // The virtual root itself has no XFile; assemble a collection
             // entry by hand, with the sources as children
-            appendResponse(sb, hrefOf(base, dir = true), "/", true, 0, 0)
+            appendResponse(sb, hrefOf(base, dir = true), "/", true, 0, 0, selection)
             if (depth > 0) {
                 for (s in root.sources()) {
                     appendResponse(
                         sb, hrefOf("$base/${HttpServer.encodeSegment(s.segment)}", dir = true),
-                        s.label, true, 0, 0,
+                        s.label, true, 0, 0, selection,
+                        XFile(s.scheme, s.basePath, isDir = true),
                     )
                 }
             }
@@ -250,14 +255,14 @@ class ShareHandler(
             val file = target(req, res) ?: return
             appendResponse(
                 sb, hrefOf(base, dir = file.isDir), file.name,
-                file.isDir, file.size, file.lastModified,
+                file.isDir, file.size, file.lastModified, selection, file,
             )
             if (depth > 0 && file.isDir) {
-                val children = runCatching { root.list(file) }.getOrElse { emptyList() }
+                val children = root.list(file)
                 for (c in children) {
                     appendResponse(
                         sb, hrefOf("$base/${HttpServer.encodeSegment(c.name)}", dir = c.isDir), c.name,
-                        c.isDir, c.size, c.lastModified,
+                        c.isDir, c.size, c.lastModified, selection, c,
                     )
                 }
             }
@@ -273,22 +278,49 @@ class ShareHandler(
         isDir: Boolean,
         size: Long,
         mtime: Long,
+        selection: DavPropfind,
+        file: XFile? = null,
     ) {
+        val props = linkedMapOf(
+            "displayname" to xml(name),
+            "resourcetype" to if (isDir) "<D:collection/>" else "",
+        )
+        if (!isDir) {
+            props["getcontentlength"] = maxOf(0L, size).toString()
+            props["getcontenttype"] = xml(Mime.of(name))
+        }
+        if (mtime > 0) props["getlastmodified"] = HttpResponder.httpDate(mtime)
+        val ordinary = props.keys.toSet()
+        // RFC 4331 excludes quotas from allprop unless explicitly included.
+        val quotaRequested = selection.namesOnly || selection.properties.any {
+            it.namespace == "DAV:" && it.name in setOf("quota-available-bytes", "quota-used-bytes")
+        }
+        if (quotaRequested && file != null) root.storageSpace(file)?.let {
+            props["quota-available-bytes"] = it.available.toString()
+            props["quota-used-bytes"] = it.used.toString()
+        }
+        val requested = LinkedHashSet<DavPropfind.Property>()
+        if (selection.all || selection.namesOnly) {
+            (if (selection.namesOnly) props.keys else ordinary).forEach {
+                requested += DavPropfind.Property("DAV:", it)
+            }
+        }
+        requested += selection.properties
         sb.append("\n <D:response>\n  <D:href>").append(xml(href)).append("</D:href>")
-        sb.append("\n  <D:propstat>\n   <D:prop>")
-        sb.append("\n    <D:displayname>").append(xml(name)).append("</D:displayname>")
-        if (isDir) {
-            sb.append("\n    <D:resourcetype><D:collection/></D:resourcetype>")
-        } else {
-            sb.append("\n    <D:resourcetype/>")
-            sb.append("\n    <D:getcontentlength>").append(maxOf(0L, size)).append("</D:getcontentlength>")
-            sb.append("\n    <D:getcontenttype>").append(xml(Mime.of(name))).append("</D:getcontenttype>")
+        for (found in listOf(true, false)) {
+            val group = requested.filter { (it.namespace == "DAV:" && props.containsKey(it.name)) == found }
+            if (group.isEmpty()) continue
+            sb.append("\n  <D:propstat>\n   <D:prop>")
+            for (prop in group) {
+                sb.append("\n    ").append(prop.xml(if (selection.namesOnly || !found) "" else props[prop.name].orEmpty()))
+            }
+            sb.append("\n   </D:prop>\n   <D:status>HTTP/1.1 ")
+                .append(if (found) "200 OK" else "404 Not Found")
+                .append("</D:status>\n  </D:propstat>")
         }
-        if (mtime > 0) {
-            sb.append("\n    <D:getlastmodified>").append(HttpResponder.httpDate(mtime))
-                .append("</D:getlastmodified>")
-        }
-        sb.append("\n   </D:prop>\n   <D:status>HTTP/1.1 200 OK</D:status>\n  </D:propstat>\n </D:response>")
+        // An empty explicit prop request still describes a successful resource.
+        if (requested.isEmpty()) sb.append("\n  <D:propstat><D:prop/><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
+        sb.append("\n </D:response>")
     }
 
     /**
