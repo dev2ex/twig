@@ -10,10 +10,14 @@
 一个要「进去」的界面。原生 Kotlin + XML View,不引入 Material 库,依赖压到最低。
 能手写就手写——WebDAV、S3 签名、git、restic 全部从零实现。
 
+**Twig 永远开源，无广告，不追踪你，也不收集你的任何数据。**
+
+如果你喜欢 Twig，或它对你有所帮助，欢迎点一颗 ⭐。你的支持对我很有意义。
+
 **版本 1.18.2**(versionCode 323)· minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-**[按钮与手势指南](docs/buttons-and-gestures.zh-CN.md)** —— 按页面查阅图标、点击、长按、双击、滑动与缩放，附面板导航和选择说明。[English](docs/buttons-and-gestures.md)
+[下载](#下载) · [按钮与手势指南](docs/buttons-and-gestures.zh-CN.md) · [支持](#支持)
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="横屏双面板">
@@ -210,6 +214,7 @@ Bouncy Castle 数据中有 1.16 MiB 来自 `picnic` 后量子签名算法的三�
 
 ### 1.18 新增功能
 
+- **保留展开分支：** 点击目录图标可固定该分支，展开其他目录时仍保留；再次点击会收起并取消固定。显示设置也可允许多个分支同时展开，无需逐个固定。
 - **SQLite 浏览：**数据库就地展开为表与只读数据网格，可跨表搜索、按列排序、筛选值或比较条件、执行只读 SQL、以十六进制查看 BLOB，并将选定列导出为 CSV。来源及大小限制见 [SQLite 浏览说明](docs/sqlite-browser.md)。
 - **路径按钮：**点击地址栏展开祖先路径按钮，点击父目录可显示其直接子项。祖先滚出屏幕后，自动树缩进回收横向空间。显示设置可隐藏工具栏或单面板地址栏，也可将地址栏放在文件列表底部。
 - **更多存储入口：**内部存储与可移动存储可隐藏及排序；可用时，额外的共享配置文件存储入口显示在主存储旁。
@@ -221,8 +226,6 @@ Bouncy Castle 数据中有 1.16 MiB 来自 `picnic` 后量子签名算法的三�
 - **可选 NFS：**专用 arm64 full 安装包支持 NFSv3/v4 浏览、写入与断点续传；常规 full/libre 安装包不包含 NFS。
 
 ### 浏览
-
-- **保留展开分支：**点击目录图标可固定该分支，展开其他目录时仍保留；再次点击会收起并取消固定。显示设置也可允许多个分支同时展开，无需逐个固定。
 
 - **一棵完整的树。** 顶级节点包括内部存储、根目录、私有空间、可移动存储、回收站、
   局域网(SMB)、FTP、SSH、WebDAV、S3、媒体服务器、文档树、收藏、网站和已安装应用。
@@ -621,6 +624,23 @@ I have read the CLA (CLA.md) and I agree to its terms.
 实现决策记在 [AGENTS.md](AGENTS.md),那一长串代价高昂的排错记录按领域拆在
 [docs/lessons/](docs/lessons/) 下,一个领域一个文件。改终端、缩略图、TS 解复用这类
 子系统之前,先读对应那份。
+
+---
+
+## 支持
+
+如果你愿意进一步支持 Twig，可以请我喝杯咖啡，或添一点 AI tokens ☕。感谢你支持我继续开发和维护 Twig。
+
+欢迎通过以下地址进行加密货币捐赠：
+
+| 网络 | 币种 | 地址 |
+|---|---|---|
+| Dogecoin 主网 | DOGE | `DKuB8U1mCgxepHPRDasC79bWJjEbT4GsxG` |
+| Bitcoin 主网 - Native SegWit（P2WPKH） | BTC | `bc1qepsfhwedg0e204j4m942j76dpe6j3u4mkwlu4w` |
+| Solana 主网 | SOL、USDC、USDT | `4K74BKZZ9hmxZ1ezdA2XYLdjEkabXdkBJfpCR7UHFAJP` |
+| EVM 兼容网络 | ETH、USDC、USDT、DOGE | `0x23Ccd95046dda8eE07a485e3A6449cbc42ee8De5` |
+
+EVM 支持 Ethereum、Base、Arbitrum、BNB Chain。
 
 ---
 

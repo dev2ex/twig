@@ -12,10 +12,14 @@ Native Kotlin and XML views, no Material library, minimal dependencies. When
 something can reasonably be written by hand, it is: WebDAV, S3 signing, git and
 restic are all implemented from scratch.
 
+**Twig will always be open source. No ads, no tracking, and no collection of any of your data.**
+
+If you enjoy Twig or find it useful, consider giving it a ⭐. Your support means a lot to me.
+
 **Version 1.18.2** (versionCode 323) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
-**[Buttons and Gestures](docs/buttons-and-gestures.md)** — illustrated controls, taps, long presses, double taps, swipes and zoom by screen, with pane navigation and selection guidance. [简体中文](docs/buttons-and-gestures.zh-CN.md)
+[Download](#download) · [Buttons and Gestures](docs/buttons-and-gestures.md) · [Support](#support)
 
 <p align="center">
   <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/02-dual-pane.png" width="88%" alt="Dual pane in landscape">
@@ -232,6 +236,7 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 
 ### New in 1.18
 
+- **Keep branches open:** tap a folder icon to pin its branch while opening others; tap it again to collapse and unpin. Display settings can also allow multiple expanded branches without pinning.
 - **SQLite browsing:** expand databases into tables and read-only data grids. Search across tables, sort columns, filter values or comparisons, run read-only SQL, inspect BLOBs in hex and export selected columns to CSV. See [SQLite browsing](docs/sqlite-browser.md) for source and size limits.
 - **Path buttons:** tap the address bar to reveal ancestor buttons; tap a parent to show its direct children. Automatic tree indentation reclaims space as ancestors scroll away. Display settings can hide the toolbar or the single-pane address bar, or place the address bar below the file list.
 - **More storage roots:** internal and removable storage can be hidden or reordered; additional shared-profile storage roots appear beside primary storage when available.
@@ -243,8 +248,6 @@ The compression dialog remembers the last ZIP/7z format and Fast / Standard / St
 - **Optional NFS:** the dedicated arm64 full APK supports NFSv3/v4 browsing, writes and resumable transfers. Ordinary full/libre APKs exclude NFS.
 
 ### Browsing
-
-- **Keep branches open:** tap a folder icon to pin its branch while opening others; tap it again to collapse and unpin. Display settings can also allow multiple expanded branches without pinning.
 
 - **One complete tree.** Top-level nodes include internal storage, root, private space,
   removable storage, trash, LAN (SMB), FTP, SSH, WebDAV, S3, media servers, document trees,
@@ -779,6 +782,23 @@ Implementation decisions and the reasoning behind them are recorded in
 [AGENTS.md](AGENTS.md), and the long list of bugs that were expensive to find lives one
 file per area under [docs/lessons/](docs/lessons/). Read the matching file before
 changing subsystems like the terminal, thumbnails or the TS demuxer.
+
+---
+
+## Support
+
+If you would like to support Twig further, you can buy me a coffee—or a few more AI tokens ☕. Thank you for helping me keep developing and maintaining Twig.
+
+Cryptocurrency donations are welcome at the addresses below:
+
+| Network | Currency | Address |
+|---|---|---|
+| Dogecoin mainnet | DOGE | `DKuB8U1mCgxepHPRDasC79bWJjEbT4GsxG` |
+| Bitcoin mainnet — Native SegWit (P2WPKH) | BTC | `bc1qepsfhwedg0e204j4m942j76dpe6j3u4mkwlu4w` |
+| Solana mainnet | SOL, USDC, USDT | `4K74BKZZ9hmxZ1ezdA2XYLdjEkabXdkBJfpCR7UHFAJP` |
+| EVM-compatible networks | ETH, USDC, USDT, DOGE | `0x23Ccd95046dda8eE07a485e3A6449cbc42ee8De5` |
+
+Supported EVM networks: Ethereum, Base, Arbitrum and BNB Chain.
 
 ---
 
