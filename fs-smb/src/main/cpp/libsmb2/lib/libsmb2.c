@@ -184,6 +184,7 @@ smb2_close_context(struct smb2_context *smb2)
 
         smb2->message_id = 0;
         smb2->session_id = 0;
+        smb2->session_flags = 0;
         smb2->tree_id_top = 0;
         smb2->tree_id_cur = 0;
         smb2->tree_id[0] = 0xdeadbeef;
@@ -715,9 +716,27 @@ session_setup_cb(struct smb2_context *smb2, int status,
                 return;
         }
 
+        smb2->session_flags = rep->session_flags;
+        /* Some servers omit IS_NULL, especially with SMB 2.1. The NTLM
+         * security context still tells us that authentication was anonymous. */
+        if (smb2->sec == SMB2_SEC_NTLMSSP && smb2->password == NULL) {
+                smb2->session_flags |= SMB2_SESSION_FLAG_IS_NULL;
+        }
         if (rep->session_flags & SMB2_SESSION_FLAG_IS_ENCRYPT_DATA) {
                 smb2->seal = 1;
                 smb2->sign = 0;
+        }
+
+        /* Guest/null sessions have no shared key. Never relax a signing or
+         * encryption requirement to make one connect. */
+        if ((smb2->session_flags & (SMB2_SESSION_FLAG_IS_GUEST | SMB2_SESSION_FLAG_IS_NULL)) &&
+            (smb2->sign || smb2->seal ||
+             (smb2->security_mode & SMB2_NEGOTIATE_SIGNING_REQUIRED))) {
+                smb2_close_context(smb2);
+                smb2_set_error(smb2, "Guest or anonymous session cannot satisfy required signing or encryption");
+                c_data->cb(smb2, -EACCES, NULL, c_data->cb_data);
+                free_c_data(smb2, c_data);
+                return;
         }
 
 #ifdef HAVE_LIBKRB5
@@ -738,7 +757,8 @@ session_setup_cb(struct smb2_context *smb2, int status,
 #endif
 
 
-        if (smb2->sign || smb2->seal || smb2->dialect == SMB2_VERSION_0311) {
+        if (!(smb2->session_flags & (SMB2_SESSION_FLAG_IS_GUEST | SMB2_SESSION_FLAG_IS_NULL)) &&
+            (smb2->sign || smb2->seal || smb2->dialect == SMB2_VERSION_0311)) {
                 uint8_t zero_key[SMB2_KEY_SIZE] = {0};
                 int have_valid_session_key = 1;
 

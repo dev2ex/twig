@@ -66,6 +66,27 @@ its listing size must still describe the followed stream for copy/resume checks.
 | `:git-lite` | Mini git in pure Kotlin (`GitRepo`/`ObjectStore`/`IndexFile`/patience `Diff`) for browsing worktree status and history; worktrees/submodules via `GitLayout` + `WorktreeGitFs` |
 | `:app` | Dual-pane UI, permissions, mutations, viewers, terminal, SAF fallback, WiFi sharing service, website bookmarks and customization |
 
+## SMB authentication
+
+SMB2/3 uses the bundled libsmb2; SMB1 is an explicit, separate backend, never an
+automatic downgrade after a connection failure. New connections leave the username
+blank. Blank username and password request anonymous authentication; an explicit
+`guest` with a blank password remains a guest login. Saved credentials are preserved.
+The native credential bridge passes a NULL password only for anonymous access, not
+for named accounts with empty passwords.
+
+Session setup retains guest/anonymous flags, including locally known anonymous NTLM
+authentication when a server omits its flag. Those sessions have no signing key and
+are excluded from SMB3.1.1's mandatory TREE_CONNECT signing rule. Required signing
+or encryption still rejects guest/anonymous sessions; authenticated sessions retain
+normal signing/encryption. Connection teardown clears the session flags.
+
+`python3 tools/test_smb_guest.py` builds the vendored library and tests disposable
+`dperson/samba` fixtures on Linux. It covers SMB2.1/3.1.1, guest and anonymous
+connections, share enumeration, file operations, named authentication, and client/server
+signing and encryption requirements. It requires a cached Docker image and does not
+publish ports or mount host directories.
+
 ## Navigation and metadata APIs
 
 **`resolve()` is for navigation; `stat()` is for metadata; `exists()` answers existence**

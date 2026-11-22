@@ -699,7 +699,10 @@ smb2_queue_pdu(struct smb2_context *smb2, struct smb2_pdu *pdu)
                 }
 
                 if (smb2->sign ||
-                    (p->header.command == SMB2_TREE_CONNECT && smb2->dialect == SMB2_VERSION_0311 && !smb2->seal)) {
+                    /* MS-SMB2 3.2.4.2.4 excludes guest and anonymous sessions
+                     * from the SMB 3.1.1 TREE_CONNECT signing requirement. */
+                    (p->header.command == SMB2_TREE_CONNECT && smb2->dialect == SMB2_VERSION_0311 && !smb2->seal &&
+                     !(smb2->session_flags & (SMB2_SESSION_FLAG_IS_GUEST | SMB2_SESSION_FLAG_IS_NULL)))) {
                         if (smb2_pdu_add_signature(smb2, p) < 0) {
                                 smb2_set_error(smb2, "Failure to add "
                                                "signature. %s",

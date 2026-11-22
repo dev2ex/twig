@@ -96,6 +96,19 @@
   crash (hit while reading thumbnails concurrently).
 - **zstd/aircompressor**: uses `Unsafe`, which is nominally risky on newer devices; keep an eye on
   restic/zstd when changing test hardware.
+- **SMB3.1.1 TREE_CONNECT signing excludes guest and anonymous sessions** (2026-11-23, #41).
+  Passwordless router access failed even with an explicit share name. A local
+  `dperson/samba` fixture reproduced a disconnect with `Bad SMB2 signature`:
+  libsmb2 signed TREE_CONNECT for every SMB3.1.1 session, including guest sessions
+  with no shared signing key. Preserve the successful session's flags and apply
+  the guest/anonymous exception from MS-SMB2 3.2.4.2.4; do not solve this by forcing
+  SMB2.1 or disabling signing for authenticated accounts. A blank username/password
+  must reach NTLM as anonymous (NULL password), whereas a named empty-password
+  account must retain an empty string. Some servers omit IS_NULL with SMB2.1, so
+  also retain the authentication context's anonymous identity. Mandatory signing
+  or encryption must still reject guest/anonymous sessions. The Docker regressions
+  live in `tools/test_smb_guest.py`; a Samba reproduction establishes the mechanism,
+  while the reporter's ksmbd server still needs verification with a fixed APK.
 - **SMB rename failures must publish the compound's first NT status** (2026-11-04).
   Renaming a physical restic repository directory over SMB failed with an empty toast.
   The vendored libsmb2 rename callbacks accumulated a failure status but never called

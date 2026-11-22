@@ -1051,7 +1051,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
                     edit,
                     SavedConnection(
                         "smb", host, share = share,
-                        user = d.etUser.text.toString().trim().ifEmpty { "guest" },
+                        user = d.etUser.text.toString().trim(),
                         password = d.etPass.text.toString(),
                         domain = d.etDomain.text.toString().trim(),
                         name = d.etName.text.toString().trim(),

@@ -13,6 +13,7 @@ extern "C" {
 }
 
 #include <fcntl.h>
+#include "smb_credentials.h"
 
 #define TAG "TwigSmbJNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -50,9 +51,7 @@ Java_com_twig_fs_smb_NativeSmbClient_nativeConnect(
         return 0;
     }
 
-    if (user)   smb2_set_user(ctx, user);
-    if (pass)   smb2_set_password(ctx, pass);
-    if (domain) smb2_set_domain(ctx, domain);
+    twig_smb_set_credentials(ctx, user, pass, domain);
     smb2_set_security_mode(ctx, SMB2_NEGOTIATE_SIGNING_ENABLED);
 
     int ret = smb2_connect_share(ctx, host, share, nullptr);

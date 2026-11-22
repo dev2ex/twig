@@ -16,7 +16,8 @@ data class SmbConfig(
      * nothing about a path.
      */
     val share: String = "",
-    val user: String = "guest",
+    /** Empty username and password select anonymous access; explicit guest stays a guest login. */
+    val user: String = "",
     val password: String = "",
     /** Optional authentication domain; an ordinary workgroup does not need one. */
     val domain: String = "",
