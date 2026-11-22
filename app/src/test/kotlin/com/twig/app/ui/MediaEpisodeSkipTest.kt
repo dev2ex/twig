@@ -31,12 +31,16 @@ class MediaEpisodeSkipTest {
     )
     private var position = 0L
     private var playing = true
+    private var playWhenReady = true
     private var playbackState = androidx.media3.common.Player.STATE_READY
     private val seeks = mutableListOf<Long>()
     private val fakePlayer = Proxy.newProxyInstance(ExoPlayer::class.java.classLoader,
         arrayOf(ExoPlayer::class.java)) { _, method, args ->
         when (method.name) {
             "getPlaybackState" -> playbackState
+            "getPlayWhenReady" -> playWhenReady
+            "pause" -> { playing = false; playWhenReady = false; null }
+            "play" -> { playing = true; playWhenReady = true; null }
             "getDuration" -> 1_800_000L
             "getCurrentPosition" -> position
             "isPlaying", "isCurrentMediaItemSeekable" -> playing
@@ -52,6 +56,10 @@ class MediaEpisodeSkipTest {
     } as ExoPlayer
 
     private fun setup(index: Int = 0) {
+        val ctx: Context = ApplicationProvider.getApplicationContext()
+        val binding = ActivityMediaPlayerBinding.inflate(LayoutInflater.from(ContextThemeWrapper(ctx, R.style.Theme_Twig)))
+        ReflectionHelpers.setField(activity, "b", binding)
+        Prefs.setAutoNextEpisode(ctx, false)
         ReflectionHelpers.setField(activity, "file", files[index])
         ReflectionHelpers.setField(activity, "queue", files)
         ReflectionHelpers.setField(activity, "queueIndex", index)
@@ -88,7 +96,7 @@ class MediaEpisodeSkipTest {
         assertEquals(listOf(90_000L), seeks)
     }
 
-    @Test fun `last episode ends at tail mark and removes stale resume even after a recent seek`() {
+    @Test fun `last episode pauses at tail mark and removes stale resume even after a recent seek`() {
         setup(index = 1)
         val ctx: Context = ApplicationProvider.getApplicationContext()
         Prefs.setResumePlayback(ctx, true)
@@ -96,12 +104,55 @@ class MediaEpisodeSkipTest {
         PlaybackStore.save(ctx, files[1], 600_000, 1_800_000)
         assertEquals(600_000L, PlaybackStore.positionFor(ctx, files[1]))
         position = 1_680_000
-        assertTrue(apply())
-        assertTrue(activity.isFinishing)
+        assertFalse(apply())
+        assertFalse(activity.isFinishing)
         ReflectionHelpers.callInstanceMethod<Unit>(activity, "saveProgress",
             ReflectionHelpers.ClassParameter.from(com.twig.core.PlayState::class.java, com.twig.core.PlayState.STOP))
         assertEquals(0L, PlaybackStore.positionFor(ctx, files[1]))
         assertTrue(seeks.isEmpty()) // Completing must not fetch credits over the network.
+    }
+
+    @Test fun `looping at the ending repeats this episode and reapplies the opening skip`() {
+        setup()
+        ReflectionHelpers.setField(activity, "loopVideo", true)
+        position = 1_680_000
+        assertFalse(apply())
+        assertFalse(activity.isFinishing)
+        assertEquals(listOf(0L), seeks)
+        assertTrue(playing)
+        assertFalse(apply())
+        assertEquals(listOf(0L, 90_000L), seeks)
+        assertEquals(0, ReflectionHelpers.getField<Int>(activity, "queueIndex"))
+    }
+
+    @Test fun `natural ending stays open and play restarts even with playWhenReady still true`() {
+        setup(index = 1)
+        playbackState = androidx.media3.common.Player.STATE_ENDED
+        playing = false
+        position = 1_800_000
+        ReflectionHelpers.callInstanceMethod<Boolean>(activity, "completePlayback")
+        assertFalse(activity.isFinishing)
+        assertTrue(seeks.isEmpty())
+        val binding = ReflectionHelpers.getField<ActivityMediaPlayerBinding>(activity, "b")
+        assertEquals(View.VISIBLE, binding.controls.visibility)
+        assertEquals(View.VISIBLE, binding.btnLoop.visibility)
+        playWhenReady = true // ExoPlayer may retain this flag at natural EOF.
+        ReflectionHelpers.callInstanceMethod<Unit>(activity, "toggle")
+        assertEquals(listOf(0L), seeks)
+        assertTrue(playing)
+    }
+
+    @Test fun `natural ending loops before automatic next episode`() {
+        setup()
+        val ctx: Context = ApplicationProvider.getApplicationContext()
+        Prefs.setAutoNextEpisode(ctx, true)
+        ReflectionHelpers.setField(activity, "loopVideo", true)
+        playbackState = androidx.media3.common.Player.STATE_ENDED
+        position = 1_800_000
+        assertFalse(ReflectionHelpers.callInstanceMethod<Boolean>(activity, "completePlayback"))
+        assertEquals(listOf(0L), seeks)
+        assertEquals(0, ReflectionHelpers.getField<Int>(activity, "queueIndex"))
+        assertFalse(activity.isFinishing)
     }
 
     private fun save() = ReflectionHelpers.callInstanceMethod<Unit>(activity, "saveProgress",
@@ -247,15 +298,19 @@ class MediaEpisodeSkipTest {
         position = 1_600_000
         assertFalse(apply())
         position = 1_680_000
-        assertTrue(apply())
-        assertTrue(activity.isFinishing)
+        assertFalse(apply())
+        assertFalse(activity.isFinishing)
+        assertFalse(playing)
+        assertTrue(ReflectionHelpers.getField<Boolean>(activity, "skippedEnding"))
     }
 
     @Test fun `saved ending becomes active when loading another playback`() {
         markEnding()
         assertFalse(apply())
         ReflectionHelpers.callInstanceMethod<Unit>(activity, "loadSkipMarks")
-        assertTrue(apply())
-        assertTrue(activity.isFinishing)
+        assertFalse(apply())
+        assertFalse(activity.isFinishing)
+        assertFalse(playing)
+        assertTrue(ReflectionHelpers.getField<Boolean>(activity, "skippedEnding"))
     }
 }

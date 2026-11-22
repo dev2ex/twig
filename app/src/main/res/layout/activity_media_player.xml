@@ -112,6 +112,20 @@
         app:titleTextColor="@color/white"
         app:navigationIcon="@drawable/ic_up" />
 
+    <ImageButton
+        android:id="@+id/btn_loop"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="64dp"
+        android:layout_marginEnd="12dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:padding="12dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_repeat"
+        android:tint="@color/white"
+        android:contentDescription="@string/settings_slideshow_loop" />
+
     <!-- Three stacked rows: elapsed/total, the seek bar on a line of its own (a full-width
          track is far easier to hit than one squeezed between four widgets), then the buttons.
          Track controls sit on the left, playback controls in the middle, and display controls

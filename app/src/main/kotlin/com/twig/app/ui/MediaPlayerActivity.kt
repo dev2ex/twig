@@ -93,6 +93,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private lateinit var b: ActivityMediaPlayerBinding
     private lateinit var file: XFile
     private var isVideo = false
+    private var loopVideo = false
 
     private var player: ExoPlayer? = null
     private var fsSrc: RandomSource? = null // share a single SMB-dedicated connection, seek that reopens DataSource costs zero
@@ -261,6 +262,18 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         file = XFile(scheme, path, isDir = false, size = size, displayName = name)
         isVideo = intent.getBooleanExtra(EXTRA_AS_VIDEO, false) || OpenFiles.isVideo(file)
 
+        loopVideo = savedInstanceState?.getBoolean("loop_video") ?: false
+        syncLoopButton()
+        b.btnLoop.setOnClickListener {
+            loopVideo = !loopVideo
+            syncLoopButton()
+        }
+        b.toolbar.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            (b.btnLoop.layoutParams as android.widget.FrameLayout.LayoutParams).also {
+                val top = b.toolbar.bottom + (8 * resources.displayMetrics.density).toInt()
+                if (it.topMargin != top) { it.topMargin = top; b.btnLoop.layoutParams = it }
+            }
+        }
         b.toolbar.title = name
         b.toolbar.setNavigationOnClickListener { finish() }
         @Suppress("DEPRECATION") setTaskDescription(ActivityManager.TaskDescription(name))
@@ -497,17 +510,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
                     }
                     Player.STATE_ENDED -> {
                         android.util.Log.d("twig", "player: ended pos=${p.currentPosition} dur=${p.duration}")
-                        b.btnPlay.setImageResource(R.drawable.ic_play)
-                        if (remote == null) saveProgress()
-                        if (com.twig.app.Prefs.autoNextEpisode(this@MediaPlayerActivity) &&
-                            queueIndex in 0 until queue.size - 1
-                        ) {
-                            playAt(queueIndex + 1)
-                        } else {
-                            // Nothing plays next: leave instead of parking on the last frame.
-                            // onPause/onDestroy save the (end) position as usual.
-                            finish()
-                        }
+                        completePlayback()
                     }
                     else -> {}
                 }
@@ -798,6 +801,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             PlaybackConnection.closeLater(fsSrc)
             fsSrc = null
             loadSource(p, if (isVideo) b.surface.holder else null, fallbackStage >= 2, retryPositionMs)
+        } else if (p.playbackState == Player.STATE_ENDED || skippedEnding) {
+            restartVideo()
         } else if (p.playWhenReady) {
             stopRetries()
         } else {
@@ -1660,6 +1665,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private fun setControlsVisible(show: Boolean) {
         val v = if (show) View.VISIBLE else View.GONE
         b.toolbar.visibility = v
+        b.btnLoop.visibility = if (show && isVideo) View.VISIBLE else View.GONE
         b.controls.visibility = v
         syncSubtitleInset() // a hidden bar gets no layout pass, so the restore has to happen here
         scheduleControlsHide()
@@ -1878,7 +1884,51 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
             autoHide = true, holdMs = 1000)
     }
 
-    /** Stop this ticker when switching episodes or finishing the final episode. */
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("loop_video", loopVideo)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun syncLoopButton() {
+        b.btnLoop.visibility = if (isVideo && b.toolbar.visibility == View.VISIBLE) View.VISIBLE else View.GONE
+        b.btnLoop.setImageResource(if (loopVideo) R.drawable.ic_repeat_one else R.drawable.ic_repeat)
+        b.btnLoop.imageTintList = ColorStateList.valueOf(
+            ContextCompat.getColor(this, if (loopVideo) R.color.accent else R.color.white),
+        )
+        b.btnLoop.isSelected = loopVideo
+    }
+
+    private fun restartVideo() {
+        val p = player ?: return
+        skippedEnding = false
+        episodeCompleted = false
+        headApplied = false
+        tailArmed = true
+        playbackWanted = true
+        p.seekTo(0)
+        p.play()
+    }
+
+    /** Returns true only when switching episodes takes ownership of the ticker. */
+    private fun completePlayback(): Boolean {
+        saveProgress()
+        if (isVideo && loopVideo) {
+            restartVideo()
+        } else if (com.twig.app.Prefs.autoNextEpisode(this) && queueIndex in 0 until queue.lastIndex) {
+            playAt(queueIndex + 1)
+            return true
+        } else if (isVideo) {
+            stopRetries()
+            b.loading.visibility = View.GONE
+            b.btnPlay.setImageResource(R.drawable.ic_play)
+            setControlsVisible(true)
+        } else {
+            finish()
+        }
+        return false
+    }
+
+    /** Stop this ticker only when switching episodes. */
     private fun applyEpisodeSkip(): Boolean {
         val p = player ?: return false
         if (skipScope() == null || scrubbing || gesture == Gesture.SEEK || !p.isPlaying ||
@@ -1893,8 +1943,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         if (tail != null && tailArmed && p.currentPosition >= tail) {
             // An explicit ending mark completes the episode without reading the credits.
             skippedEnding = true
-            if (queueIndex < queue.lastIndex) playAt(queueIndex + 1) else finish()
-            return true
+            return completePlayback()
         }
         return false
     }

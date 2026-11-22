@@ -19,6 +19,11 @@ Music inside mounted restic repositories and archives uses an in-memory queue
 These tracks cannot be favorited, saved into playlists or exported; player exit
 clears the queue. Resolve them through the live filesystem, without reopening a
 repository or archive from a persisted descriptor.
+The video player has a session-only loop toggle floating below the toolbar at the
+right, sharing control visibility and the music player's repeat icons. It defaults off
+and survives activity recreation. Looping repeats the current video before auto-next;
+opening/ending skip marks apply on every pass. With looping off, auto-next follows its
+setting; otherwise playback stays open with controls visible, and Play restarts from zero.
 Continue Watching (`PlaybackStore`) retains a `pendingNext` destination after confirmed
 local/file-backend episode completion, including automatic ending skips. This is a zero-position
 destination, never watched progress: quick exits, buffering and failures leave it intact;
