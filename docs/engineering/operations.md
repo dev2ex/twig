@@ -56,6 +56,11 @@ difference can never be reached.
 Interop with other apps: two ways in (`SEND` → `ShareTargetActivity` "copy to…";
 `VIEW` → `ViewIntentActivity` "open with Twig") and one way out
 (`OpenFiles.openWith` exposes a streaming `content://` via `StreamProvider`).
+Outgoing opens use `ACTION_VIEW` so readers remain visible even when editors are
+installed. Writable local/SAF documents and text retain write permission to the
+original; SAF uses its original document URI. The forced chooser and shortcut app
+list also include edit-only components once, dispatched with `ACTION_EDIT`.
+Network/archive and other read-only handoffs do not offer edit-only targets.
 Plain shared text uses the same destination picker with an editable filename and
 UTF-8 bytes carried by `ShareSourceFileSystem` as an internal data URI. Incoming
 data URIs remain forbidden by `IncomingUri`; attachments take precedence over text

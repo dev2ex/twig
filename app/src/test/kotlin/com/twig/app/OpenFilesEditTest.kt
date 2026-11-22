@@ -80,7 +80,7 @@ class OpenFilesEditTest {
 
     @Test fun `local document grants editing and writes the original file`() {
         val intent = OpenFiles.externalIntent(app, file())
-        assertEquals(Intent.ACTION_EDIT, intent.action)
+        assertEquals(Intent.ACTION_VIEW, intent.action)
         assertTrue(writable(intent))
         assertEquals(intent.data, intent.clipData!!.getItemAt(0).uri)
         replace(stream, intent.data!!)
@@ -91,7 +91,7 @@ class OpenFilesEditTest {
         for (name in listOf("notes.txt", "data.json", "config.yaml", "script.py", "README.md")) {
             local = File(app.cacheDir, name).apply { writeText("original") }
             val intent = OpenFiles.externalIntent(app, file())
-            assertEquals(name, Intent.ACTION_EDIT, intent.action)
+            assertEquals(name, Intent.ACTION_VIEW, intent.action)
             assertTrue(name, writable(intent))
             replace(stream, intent.data!!)
             assertEquals(name, "edited", local.readText())
@@ -101,7 +101,7 @@ class OpenFilesEditTest {
     @Test fun `SAF text files retain the original URI and content write requirements`() {
         val text = saf.copy(displayName = "notes.txt")
         val intent = OpenFiles.externalIntent(app, text)
-        assertEquals(Intent.ACTION_EDIT, intent.action)
+        assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(uri, intent.data)
         assertTrue(writable(intent))
         replace(documents, intent.data!!)
@@ -132,7 +132,7 @@ class OpenFilesEditTest {
 
     @Test fun `SAF hands over the original document with write permission`() {
         val intent = OpenFiles.externalIntent(app, saf)
-        assertEquals(Intent.ACTION_EDIT, intent.action)
+        assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(uri, intent.data)
         assertTrue(writable(intent))
         replace(documents, intent.data!!)
@@ -166,14 +166,44 @@ class OpenFilesEditTest {
         }
     }
 
-    @Test fun `normal and forced chooser openings prefer editing when a handler exists`() {
+    @Test fun `PDF chooser keeps readers and edit-only apps with writable original handles`() {
         val host = activity()
-        handler(OpenFiles.externalIntent(host, file()), "Editor")
+        local = File(app.cacheDir, "document.pdf").apply { writeText("original") }
+        shadowOf(android.webkit.MimeTypeMap.getSingleton())
+            .addExtensionMimeTypeMapping("pdf", "application/pdf")
+        val view = OpenFiles.externalIntent(host, file())
+        handler(view, "PdfReader")
+        handler(view, "Office")
+        val edit = Intent(view).setAction(Intent.ACTION_EDIT)
+        handler(edit, "Office")
+        handler(edit, "EditOnly")
         assertTrue(OpenFiles.openWith(host, file()))
-        assertEquals(Intent.ACTION_EDIT, shadowOf(host).nextStartedActivity.action)
+        assertEquals(Intent.ACTION_VIEW, shadowOf(host).nextStartedActivity.action)
         assertTrue(OpenFiles.openWith(host, file(), forceChooser = true))
         val chooser = shadowOf(host).nextStartedActivity
-        assertEquals(Intent.ACTION_EDIT, chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!.action)
+        val target = chooser.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+        assertEquals(Intent.ACTION_VIEW, target.action)
+        assertEquals("application/pdf", target.type)
+        assertTrue(writable(target))
+        val extras = chooser.getParcelableArrayExtra(Intent.EXTRA_INITIAL_INTENTS)!!.map { it as Intent }
+        assertEquals(listOf("EditOnly"), extras.map { it.component!!.className })
+        val editor = extras.single()
+        assertEquals(Intent.ACTION_EDIT, editor.action)
+        assertEquals(target.data, editor.data)
+        assertEquals(target.clipData!!.getItemAt(0).uri, editor.clipData!!.getItemAt(0).uri)
+        assertTrue(writable(editor))
+        replace(stream, editor.data!!)
+        assertEquals("edited", local.readText())
+    }
+
+    @Test fun `read-only chooser does not offer edit-only apps`() {
+        val host = activity()
+        val file = file().copy(scheme = "webdav:test")
+        handler(Intent(OpenFiles.externalIntent(host, file)).setAction(Intent.ACTION_EDIT), "EditOnly")
+        assertTrue(OpenFiles.openWith(host, file, forceChooser = true))
+        val chooser = shadowOf(host).nextStartedActivity
+        assertNull(chooser.getParcelableArrayExtra(Intent.EXTRA_INITIAL_INTENTS))
+        assertTrue(OpenFiles.resolveViewers(host, file).isEmpty())
     }
 
     @Test fun `apps handling only VIEW can still open writable documents`() {
@@ -190,12 +220,15 @@ class OpenFilesEditTest {
 
     @Test fun `shortcut candidates include editors and viewers once and dispatch the right action`() {
         val host = activity()
-        val edit = OpenFiles.externalIntent(host, file())
+        val edit = OpenFiles.externalIntent(host, file()).setAction(Intent.ACTION_EDIT)
         handler(edit, "Editor")
         handler(Intent(edit).setAction(Intent.ACTION_VIEW), "Editor")
         handler(Intent(edit).setAction(Intent.ACTION_VIEW), "Viewer")
-        assertEquals(listOf("Editor", "Viewer"), OpenFiles.resolveViewers(host, file()).map { it.activityInfo.name })
+        handler(edit, "EditOnly")
+        assertEquals(listOf("Editor", "Viewer", "EditOnly"), OpenFiles.resolveViewers(host, file()).map { it.activityInfo.name })
         assertTrue(OpenFiles.openWithComponent(host, file(), ComponentName("office.test", "Editor")))
+        assertEquals(Intent.ACTION_VIEW, shadowOf(host).nextStartedActivity.action)
+        assertTrue(OpenFiles.openWithComponent(host, file(), ComponentName("office.test", "EditOnly")))
         assertEquals(Intent.ACTION_EDIT, shadowOf(host).nextStartedActivity.action)
     }
 

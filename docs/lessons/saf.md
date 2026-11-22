@@ -8,8 +8,10 @@
   `OpenFiles` used `ACTION_VIEW` with a read grant for every source, and `StreamProvider`
   rejected writes. A Nextcloud document opened through SAF therefore could not save back
   in Collabora, even though another file manager could save the same document. Writable
-  local/SAF documents and text files now prefer `ACTION_EDIT`, with a `VIEW` fallback for apps without
-  edit handlers. SAF hands over the original document URI, including for native paths
+  local/SAF documents and text files retain write permission with `ACTION_VIEW`.
+  Do not prefer `ACTION_EDIT` for the general chooser: it excludes ordinary readers
+  whenever an editor is installed (#69). Add explicit `EDIT` targets only for components
+  without a `VIEW` handler, and only when the original handle supports writing. SAF hands over the original document URI, including for native paths
   routed through a document-tree grant. Check both the persisted write grant and
   `Document.FLAG_SUPPORTS_WRITE`: `XFile.canWrite` also includes rename/delete capability
   and does not prove content can be overwritten. Cover `isText` as well as `isDoc`;

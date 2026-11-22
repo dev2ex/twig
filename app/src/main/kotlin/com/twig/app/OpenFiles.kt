@@ -227,7 +227,7 @@ object OpenFiles {
                 edit = true
             }
         }
-        return Intent(if (edit) Intent.ACTION_EDIT else Intent.ACTION_VIEW).apply {
+        return Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(target, mimeOf(file.name))
             clipData = ClipData.newRawUri(file.name, target)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -235,48 +235,50 @@ object OpenFiles {
         }
     }
 
-    /** System resolver/default app, or a forced chooser. Fall back for view-only apps. */
+    /** VIEW keeps readers visible; writable documents also offer edit-only components. */
     fun openWith(context: Context, file: XFile, forceChooser: Boolean = false): Boolean {
         val intent = externalIntent(context, file)
-        fun launch(): Boolean = try {
-            context.startActivity(if (forceChooser) {
-                Intent.createChooser(intent, context.getString(R.string.open_with_external))
-            } else intent)
+        val target = if (forceChooser) {
+            Intent.createChooser(intent, context.getString(R.string.open_with_external)).apply {
+                val editors = editOnlyViewers(context, intent).map {
+                    Intent(intent).setAction(Intent.ACTION_EDIT).setComponent(componentOf(it))
+                }
+                if (editors.isNotEmpty()) putExtra(Intent.EXTRA_INITIAL_INTENTS, editors.toTypedArray())
+            }
+        } else intent
+        return try {
+            context.startActivity(target)
             true
         } catch (_: ActivityNotFoundException) {
             false
         }
-        // A chooser can launch even when its target action has no handlers.
-        if (intent.action == Intent.ACTION_EDIT && viewers(context, intent).isEmpty()) {
-            intent.action = Intent.ACTION_VIEW
-        }
-        if (launch()) return true
-        if (intent.action != Intent.ACTION_EDIT) return false
-        intent.action = Intent.ACTION_VIEW
-        return launch()
     }
 
     private fun viewers(context: Context, intent: Intent): List<ResolveInfo> =
         context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             .filter { it.activityInfo.packageName != context.packageName }
 
-    /** Editors first, followed by view-only apps, with each component offered once. */
-    fun resolveViewers(context: Context, file: XFile): List<ResolveInfo> {
-        val intent = externalIntent(context, file)
-        val preferred = viewers(context, intent)
-        val fallback = if (intent.action == Intent.ACTION_EDIT) {
-            viewers(context, Intent(intent).setAction(Intent.ACTION_VIEW))
-        } else emptyList()
-        return (preferred + fallback).distinctBy { it.activityInfo.packageName to it.activityInfo.name }
+    private fun componentOf(info: ResolveInfo): ComponentName =
+        ComponentName(info.activityInfo.packageName, info.activityInfo.name)
+
+    private fun editOnlyViewers(context: Context, intent: Intent): List<ResolveInfo> {
+        if (intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION == 0) return emptyList()
+        val viewComponents = viewers(context, intent).map(::componentOf).toSet()
+        return viewers(context, Intent(intent).setAction(Intent.ACTION_EDIT))
+            .filter { componentOf(it) !in viewComponents }.distinctBy(::componentOf)
     }
 
-    /** Open with one specific app, using EDIT only when that component handles it. */
+    /** Readers first, followed by edit-only apps, with each component offered once. */
+    fun resolveViewers(context: Context, file: XFile): List<ResolveInfo> {
+        val intent = externalIntent(context, file)
+        return (viewers(context, intent) + editOnlyViewers(context, intent)).distinctBy(::componentOf)
+    }
+
+    /** Use EDIT only for writable documents and components that do not handle VIEW. */
     fun openWithComponent(context: Context, file: XFile, component: ComponentName): Boolean {
         val intent = externalIntent(context, file)
-        if (intent.action == Intent.ACTION_EDIT && viewers(context, intent).none {
-                it.activityInfo.packageName == component.packageName && it.activityInfo.name == component.className
-            }) {
-            intent.action = Intent.ACTION_VIEW
+        if (editOnlyViewers(context, intent).any { componentOf(it) == component }) {
+            intent.action = Intent.ACTION_EDIT
         }
         intent.component = component
         return try {
