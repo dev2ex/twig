@@ -66,6 +66,53 @@ class WebDavFileSystemTest {
         assertTrue(req.getHeader("Authorization")!!.startsWith("Basic "))
     }
 
+    private fun sourceListing(scope: String = "all-sources", status: Int = 200,
+                              namespace: String = TwigDavSources.NAMESPACE,
+                              markerOnChild: Boolean = false): String {
+        fun marker() = "<t:scope xmlns:t=\"$namespace\">$scope</t:scope>"
+        return """
+            <d:multistatus xmlns:d="DAV:">
+              <d:response><d:href>/dav/</d:href><d:propstat><d:prop>
+                <d:resourcetype><d:collection/></d:resourcetype>
+                ${if (!markerOnChild) marker() else ""}
+              </d:prop><d:status>HTTP/1.1 $status Status</d:status></d:propstat></d:response>
+              <d:response><d:href>/dav/SMB-NAS-West/</d:href><d:propstat><d:prop>
+                <d:resourcetype><d:collection/></d:resourcetype>
+                ${if (markerOnChild) marker() else ""}
+              </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+            </d:multistatus>
+        """.trimIndent()
+    }
+
+    @Test fun sourceNamesRequireSuccessfulScopeOnEndpointAndRetainRealPaths() {
+        server.enqueue(MockResponse().setResponseCode(207).setBody(sourceListing()))
+        val child = fs.list(fs.root()).single()
+        assertEquals("/SMB-NAS-West", child.path)
+        assertEquals("SMB-NAS-West", child.name)
+        assertEquals(com.twig.core.SourcePresentation("smb", "NAS-West"), fs.sourcePresentation(child))
+        assertEquals(null, fs.sourcePresentation(child.copy(path = "/photos/SMB-NAS-West")))
+        assertEquals(null, fs.sourcePresentation(child.copy(isDir = false)))
+        assertEquals(null, fs.sourcePresentation(child.copy(path = "/Unknown-name")))
+        assertTrue(server.takeRequest().body.readUtf8().contains("urn:twig:share"))
+        for (body in listOf(sourceListing(scope = "directory"), sourceListing(status = 404),
+            sourceListing(namespace = "urn:other"), sourceListing(markerOnChild = true), quotaResponse("1", "2"))) {
+            server.enqueue(MockResponse().setResponseCode(207).setBody(body))
+            fs.list(fs.root())
+            assertEquals(null, fs.sourcePresentation(child))
+        }
+    }
+
+    @Test fun sourcePrefixesPreserveNamesAndOnlyRecognizeKnownCompletePrefixes() {
+        val cases = mapOf("Internal-Storage" to "internal", "External-SD-card" to "external",
+            "Root" to "root", "Apps" to "apps", "Trash" to "trash", "SMB-NAS" to "smb",
+            "SFTP-host" to "sftp", "WebDAV-server" to "webdav", "S3-bucket" to "s3")
+        cases.forEach { (name, type) -> assertEquals(type, TwigDavSources.parse(name)?.type) }
+        assertEquals("SD-card", TwigDavSources.parse("External-SD-card")?.name)
+        listOf("SMB-", "SMB", "SMBish-name", "Root-other", "unknown-NAS").forEach {
+            assertEquals(null, TwigDavSources.parse(it))
+        }
+    }
+
     private fun quotaResponse(available: String, used: String, status: Int = 200): String = """
         <d:multistatus xmlns:d="DAV:">
           <d:response><d:href>/dav/</d:href>

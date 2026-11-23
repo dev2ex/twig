@@ -5,6 +5,7 @@ import com.twig.core.CopyEngine
 import com.twig.core.FsRegistry
 import com.twig.core.SafeWrite
 import com.twig.core.XFile
+import com.twig.fs.network.TwigDavSources
 import com.twig.fs.local.LocalFileSystem
 import java.io.OutputStream
 
@@ -241,7 +242,7 @@ class ShareHandler(
         if (root.isVirtualRoot(req.path)) {
             // The virtual root itself has no XFile; assemble a collection
             // entry by hand, with the sources as children
-            appendResponse(sb, hrefOf(base, dir = true), "/", true, 0, 0, selection)
+            appendResponse(sb, hrefOf(base, dir = true), "/", true, 0, 0, selection, allSources = true)
             if (depth > 0) {
                 for (s in root.sources()) {
                     appendResponse(
@@ -280,6 +281,7 @@ class ShareHandler(
         mtime: Long,
         selection: DavPropfind,
         file: XFile? = null,
+        allSources: Boolean = false,
     ) {
         val props = linkedMapOf(
             "displayname" to xml(name),
@@ -299,20 +301,31 @@ class ShareHandler(
             props["quota-available-bytes"] = it.available.toString()
             props["quota-used-bytes"] = it.used.toString()
         }
+        val scopeProperty = DavPropfind.Property(
+            TwigDavSources.NAMESPACE, TwigDavSources.PROPERTY,
+        )
         val requested = LinkedHashSet<DavPropfind.Property>()
         if (selection.all || selection.namesOnly) {
             (if (selection.namesOnly) props.keys else ordinary).forEach {
                 requested += DavPropfind.Property("DAV:", it)
             }
         }
+        if (allSources && (selection.all || selection.namesOnly)) requested += scopeProperty
         requested += selection.properties
         sb.append("\n <D:response>\n  <D:href>").append(xml(href)).append("</D:href>")
         for (found in listOf(true, false)) {
-            val group = requested.filter { (it.namespace == "DAV:" && props.containsKey(it.name)) == found }
+            val group = requested.filter {
+                ((it.namespace == "DAV:" && props.containsKey(it.name)) || (allSources && it == scopeProperty)) == found
+            }
             if (group.isEmpty()) continue
             sb.append("\n  <D:propstat>\n   <D:prop>")
             for (prop in group) {
-                sb.append("\n    ").append(prop.xml(if (selection.namesOnly || !found) "" else props[prop.name].orEmpty()))
+                val value = when {
+                    selection.namesOnly || !found -> ""
+                    prop == scopeProperty -> TwigDavSources.ALL
+                    else -> props[prop.name].orEmpty()
+                }
+                sb.append("\n    ").append(prop.xml(value))
             }
             sb.append("\n   </D:prop>\n   <D:status>HTTP/1.1 ")
                 .append(if (found) "200 OK" else "404 Not Found")

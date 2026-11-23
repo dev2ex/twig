@@ -42,7 +42,32 @@ object FileIcons {
     /** Target edge for a decoded [bundleIcon]; the largest row icon is well under this. */
     private const val ICON_PX = 128
 
+    fun sharedSource(file: XFile): com.twig.core.SourcePresentation? =
+        (runCatching { com.twig.core.FsRegistry.of(file) }.getOrNull() as? com.twig.core.SourcePresentationSource)
+            ?.sourcePresentation(file)
+
+    fun displayName(ctx: android.content.Context, file: XFile): String {
+        val source = sharedSource(file) ?: return file.name
+        return when (source.type) {
+            "internal" -> ctx.getString(R.string.group_internal_storage)
+            "root" -> ctx.getString(R.string.group_root)
+            "apps" -> ctx.getString(R.string.apps_root)
+            "trash" -> ctx.getString(R.string.trash_title)
+            else -> source.name
+        }
+    }
+
+    fun sharedSourceIconRes(file: XFile): Int? = sharedSource(file)?.let {
+        when (it.type) {
+            "root" -> R.drawable.ic_storage_root
+            "internal" -> R.drawable.ic_storage
+            "external" -> removableIconRes(it.name)
+            else -> sourceIconOfType(it.type)
+        }
+    }
+
     fun baseIconRes(file: XFile): Int {
+        sharedSourceIconRes(file)?.let { return it }
         // Extensionless file whose head was already read: iconed as what it turned out to be.
         val sniffed = com.twig.app.FileSniff.cached(file)
         return if (sniffed.isNullOrEmpty()) byName(file) else byName(com.twig.app.FileSniff.typedTwin(file, sniffed))

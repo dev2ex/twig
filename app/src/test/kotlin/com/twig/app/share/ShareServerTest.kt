@@ -755,6 +755,8 @@ class ShareServerTest {
             when (path) {
                 card.path -> StorageSpace(40, 60)
                 usb.path -> StorageSpace(0, 200)
+                "/" -> StorageSpace(30, 70)
+                android.os.Environment.getExternalStorageDirectory().absolutePath -> StorageSpace(20, 80)
                 else -> null
             }
         }, volumes = listOf(com.twig.app.RemovableVolume(card.path, "SDCARD"),
@@ -763,8 +765,13 @@ class ShareServerTest {
             com.twig.fs.network.DavConfig("http://127.0.0.1:$port"))
         val entries = client.list(client.root()).associateBy { it.name }
         assertEquals(null, client.knownStorageSpace(client.root()))
-        assertEquals(StorageSpace(40, 60), client.knownStorageSpace(entries.getValue("external-SDCARD")))
-        assertEquals(StorageSpace(0, 200), client.knownStorageSpace(entries.getValue("external-USB")))
+        assertEquals(StorageSpace(20, 80), client.knownStorageSpace(entries.getValue("Internal-Storage")))
+        assertEquals(StorageSpace(30, 70), client.knownStorageSpace(entries.getValue("Root")))
+        assertEquals("internal", client.sourcePresentation(entries.getValue("Internal-Storage"))?.type)
+        assertEquals("root", client.sourcePresentation(entries.getValue("Root"))?.type)
+        assertEquals("SDCARD", client.sourcePresentation(entries.getValue("External-SDCARD"))?.name)
+        assertEquals(StorageSpace(40, 60), client.knownStorageSpace(entries.getValue("External-SDCARD")))
+        assertEquals(StorageSpace(0, 200), client.knownStorageSpace(entries.getValue("External-USB")))
         assertTrue(reads.contains(card.path))
         assertTrue(reads.contains(usb.path))
         client.list(client.root())
@@ -772,12 +779,35 @@ class ShareServerTest {
     }
 
     @Test
+    fun `scope marker belongs only to the all-sources virtual root`() {
+        startAll()
+        val body = """<d:propfind xmlns:d="DAV:" xmlns:t="urn:twig:share"><d:prop><t:scope/></d:prop></d:propfind>""".toByteArray()
+        val root = request("PROPFIND", "/", listOf("Depth: 0"), body)
+        assertEquals(207, root.status)
+        assertTrue(root.text.contains(">all-sources</P:scope>"))
+        assertTrue(root.text.contains("HTTP/1.1 200 OK"))
+        val child = request("PROPFIND", "/Internal-Storage/", listOf("Depth: 0"), body)
+        assertFalse(child.text.contains(">all-sources</P:scope>"))
+        assertTrue(child.text.contains("HTTP/1.1 404 Not Found"))
+    }
+
+    @Test
+    fun `single directory shares do not enable source presentation`() {
+        File(dir, "SMB-NAS").mkdirs()
+        start()
+        val client = com.twig.fs.network.WebDavFileSystem(
+            com.twig.fs.network.DavConfig("http://127.0.0.1:$port"))
+        val child = client.list(client.root()).first { it.name == "SMB-NAS" }
+        assertEquals(null, client.sourcePresentation(child))
+    }
+
+    @Test
     fun `the all-sources home page lists each source`() {
         startAll()
         val r = request("GET", "/")
         assertEquals(200, r.status)
-        assertTrue("internal storage should be present", r.text.contains("href=\"/storage/\""))
-        assertTrue("the root directory should be present", r.text.contains("href=\"/root/\""))
+        assertTrue("internal storage should be present", r.text.contains("href=\"/Internal-Storage/\""))
+        assertTrue("the root directory should be present", r.text.contains("href=\"/Root/\""))
     }
 
     @Test
@@ -795,8 +825,8 @@ class ShareServerTest {
         startAll()
         val r = request("PROPFIND", "/", listOf("Depth: 1"))
         assertEquals(207, r.status)
-        assertTrue(r.text.contains("<D:href>/storage/</D:href>"))
-        assertTrue(r.text.contains("<D:href>/root/</D:href>"))
+        assertTrue(r.text.contains("<D:href>/Internal-Storage/</D:href>"))
+        assertTrue(r.text.contains("<D:href>/Root/</D:href>"))
     }
 
     @Test

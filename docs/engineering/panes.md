@@ -199,3 +199,12 @@ listing snapshots using the same capacity format; deeper folders retain ordinary
 including when pinned. Unsupported servers retain ordinary metadata.
 Remote labels update on listing/refresh. See [WiFi sharing](wifi-sharing.md#storage-capacity-over-webdav)
 for quota semantics and protocol behavior.
+
+### Shared Twig source rows
+
+A marked Twig all-sources WebDAV endpoint presents its immediate source directories
+with their source icons and prefix-free labels through `SourcePresentationSource`.
+Internal storage, root, apps and trash use the local UI language. Paths and file names
+keep their full canonical addresses; ordinary WebDAV directories are unchanged.
+Available/total capacity remains visible on shared internal storage and root rows.
+See [WiFi sharing](wifi-sharing.md#source-presentation-over-webdav) for the wire contract.

@@ -6,6 +6,8 @@ import com.twig.core.RandomSource
 import com.twig.core.StorageSpace
 import com.twig.core.StorageSpaceSource
 import com.twig.core.XFile
+import com.twig.core.SourcePresentation
+import com.twig.core.SourcePresentationSource
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -43,7 +45,14 @@ data class DavConfig(
 class WebDavFileSystem(
     private val config: DavConfig,
     override val scheme: String = SCHEME,
-) : FileSystem, StorageSpaceSource {
+) : FileSystem, StorageSpaceSource, SourcePresentationSource {
+
+    @Volatile private var allSources = false
+
+    override fun sourcePresentation(file: XFile): SourcePresentation? {
+        if (!allSources || !file.isDir || file.scheme != scheme || file.parentPath != "/" || file.path == "/") return null
+        return TwigDavSources.parse(file.path.trimEnd('/').substringAfterLast('/'))
+    }
 
     override val displayName: String = "WebDAV (${config.baseUrl})"
 
@@ -147,7 +156,7 @@ class WebDavFileSystem(
                     e,
                 )
             }
-            return parseMultistatus(bytes.inputStream(), dir.path, selfPath = URI(url).path, cacheSpace = true)
+            return parseMultistatus(bytes.inputStream(), dir.path, selfPath = URI(url).path, cacheSpace = true, readScope = true)
         }
     }
 
@@ -273,13 +282,29 @@ class WebDavFileSystem(
     }.getOrNull()
 
     /** [selfPath] is the request's own URL path, whose entry is dropped (a listing must not contain the directory itself); null keeps everything. */
-    private fun parseMultistatus(input: InputStream, dirPath: String, selfPath: String?, cacheSpace: Boolean = false): List<XFile> {
+    private fun parseMultistatus(input: InputStream, dirPath: String, selfPath: String?, cacheSpace: Boolean = false, readScope: Boolean = false): List<XFile> {
         val doc = SafeXml.parse(input, namespaceAware = true)
         val selfNorm = selfPath?.trimEnd('/')
 
         val out = ArrayList<XFile>()
         var ownSpace: SpaceSample? = null
         val responses = doc.getElementsByTagNameNS(DAV_NS, "response")
+        // Only the endpoint's own successful property may enable source-name interpretation.
+        if (readScope && selfPath != null && dirPath == "/") {
+            allSources = (0 until responses.length).any { i ->
+                val response = responses.item(i) as Element
+                val href = textOf(response, "href") ?: return@any false
+                val path = runCatching { URI(href).path }.getOrNull() ?: return@any false
+                if (path.trimEnd('/') != selfNorm) return@any false
+                val stats = response.getElementsByTagNameNS(DAV_NS, "propstat")
+                (0 until stats.length).any { j ->
+                    val stat = stats.item(j) as Element
+                    val values = stat.getElementsByTagNameNS(TwigDavSources.NAMESPACE, TwigDavSources.PROPERTY)
+                    textOf(stat, "status")?.split(' ')?.getOrNull(1) == "200" &&
+                        values.length == 1 && values.item(0).textContent.trim() == TwigDavSources.ALL
+                }
+            }
+        }
         for (i in 0 until responses.length) {
             val resp = responses.item(i) as Element
             val hrefRaw = textOf(resp, "href") ?: continue
@@ -351,6 +376,7 @@ class WebDavFileSystem(
             </d:prop></d:propfind>
         """.trimIndent()
         private val LIST_BODY = PROPFIND_BODY.replace("<d:resourcetype/>",
-            "<d:resourcetype/><d:quota-available-bytes/><d:quota-used-bytes/>")
+            "<d:resourcetype/><d:quota-available-bytes/><d:quota-used-bytes/>" +
+                "<t:scope xmlns:t=\"${TwigDavSources.NAMESPACE}\"/>")
     }
 }

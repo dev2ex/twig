@@ -88,10 +88,20 @@ class AllSourcesTest {
     @Test
     fun `local storage splits into internal storage and root directory entries`() {
         val segs = root().sources().map { it.segment }
-        assertTrue(segs.contains("storage"))
-        assertTrue(segs.contains("root"))
+        assertTrue(segs.contains("Internal-Storage"))
+        assertTrue(segs.contains("Root"))
         // there should not also be a bare "file" source (its root is "/", which shows the user nothing but system directories)
         assertFalse(segs.contains("file"))
+    }
+
+    @Test
+    fun `fixed source names are capitalized and their old addresses still resolve`() {
+        register(NamedTreeFs("apps"))
+        register(NamedTreeFs("trash"))
+        for (name in listOf("Root", "Apps", "Trash")) {
+            assertTrue(root().sources().any { it.segment == name })
+            assertEquals(root().resolve("/$name"), root().resolve("/" + name.lowercase()))
+        }
     }
 
     @Test
@@ -140,7 +150,8 @@ class AllSourcesTest {
 
     @Test
     fun `the internal storage source resolves to the external storage directory`() {
-        val src = root().sources().first { it.segment == "storage" }
+        val src = root().sources().first { it.segment == "Internal-Storage" }
+        assertEquals(root().resolve("/Internal-Storage"), root().resolve("/storage"))
         val f = root().resolve("/storage")
         assertNotNull(f)
         assertEquals(src.basePath, f!!.path)
@@ -164,7 +175,7 @@ class AllSourcesTest {
     // ---- Server segments ----
 
     /**
-     * A server is addressed by its type and its name — `smb-NAS`, `webdav-192.168.1.5` —
+     * A server is addressed by its type and its name — `SMB-NAS`, `WebDAV-192.168.1.5` —
      * because that string is what a WebDAV client shows as the mount point. The old
      * segment (the hashed scheme) still resolves, so a mount point saved before the
      * rename keeps working.
@@ -175,9 +186,10 @@ class AllSourcesTest {
         ConnectionStore.save(app, conn)
         register(NamedTreeFs(Connections.schemeOf(conn)))
         val src = root().sources().first { it.scheme == Connections.schemeOf(conn) }
-        assertEquals("smb-NAS", src.segment)
-        assertNotNull("the readable address works", root().resolve("/smb-NAS"))
+        assertEquals("SMB-NAS", src.segment)
+        assertNotNull("the readable address works", root().resolve("/SMB-NAS"))
         assertNotNull("the old address still works", root().resolve("/${Connections.schemeOf(conn)}"))
+        assertNotNull("the lowercase readable address still works", root().resolve("/smb-NAS"))
     }
 
     /** A server without a name of its own is addressed by its address. */
@@ -187,7 +199,7 @@ class AllSourcesTest {
         ConnectionStore.save(app, conn)
         register(NamedTreeFs(Connections.schemeOf(conn)))
         val src = root().sources().first { it.scheme == Connections.schemeOf(conn) }
-        assertEquals("webdav-192.168.1.5-8080-dav", src.segment)
+        assertEquals("WebDAV-192.168.1.5-8080-dav", src.segment)
     }
 
     @Test
@@ -202,7 +214,10 @@ class AllSourcesTest {
         fun addresses() = root().sources().filter { it.scheme in schemes }.associate { it.scheme to it.segment }
         val first = addresses()
         assertEquals(3, first.values.toSet().size)
-        first.forEach { (scheme, segment) -> assertEquals(scheme, root().resolve("/$segment")!!.scheme) }
+        first.forEach { (scheme, segment) ->
+            assertEquals(scheme, root().resolve("/$segment")!!.scheme)
+            assertEquals(scheme, root().resolve("/" + segment.replaceFirst("SMB-", "smb-"))!!.scheme)
+        }
         FsRegistry.unregister(schemes[1])
         assertEquals(first - schemes[1], addresses())
         register(NamedTreeFs(schemes[1]))
@@ -215,7 +230,7 @@ class AllSourcesTest {
      * has to offer them too: a visitor used to see internal storage only, on a device
      * whose card was perfectly visible in the app.
      *
-     * The segment is `external-` plus the volume's **own name** — that is what a WebDAV
+     * The segment is `External-` plus the volume's **own name** — that is what a WebDAV
      * client shows as the mount point, so it has to be the name, not an internal id.
      */
     @Test
@@ -226,10 +241,11 @@ class AllSourcesTest {
         val root = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(card.absolutePath, "Sd256"))
         }
-        val src = root.sources().firstOrNull { it.segment == "external-Sd256" }
+        val src = root.sources().firstOrNull { it.segment == "External-Sd256" }
         assertNotNull("the card should be a source", src)
         assertEquals("Sd256", src!!.label)
-        val f = root.resolve("/external-Sd256/photo.jpg")
+        assertEquals(root.resolve("/External-Sd256"), root.resolve("/external-Sd256"))
+        val f = root.resolve("/External-Sd256/photo.jpg")
         assertNotNull("the card's contents should be reachable", f)
         assertEquals("photo.jpg", f!!.name)
     }
@@ -245,15 +261,15 @@ class AllSourcesTest {
         val first = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(card.absolutePath, "USB drive"))
         }
-        assertEquals("USB drive", first.sources().first { it.segment == "external-USB drive" }.label)
+        assertEquals("USB drive", first.sources().first { it.segment == "External-USB drive" }.label)
         // The system language changed: the volume is called something else now
         val second = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(card.absolutePath, "USB-накопитель"))
         }
         val segs = second.sources().map { it.segment }
-        assertTrue("the remembered address must still work", segs.contains("external-USB drive"))
+        assertTrue("the remembered address must still work", segs.contains("External-USB drive"))
         assertEquals("the label follows the system", "USB-накопитель",
-            second.sources().first { it.segment == "external-USB drive" }.label)
+            second.sources().first { it.segment == "External-USB drive" }.label)
     }
 
     /**
@@ -266,7 +282,7 @@ class AllSourcesTest {
         val root = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(File(dir, "gone").absolutePath, "Ghost"))
         }
-        assertFalse(root.sources().map { it.segment }.contains("external-Ghost"))
+        assertFalse(root.sources().map { it.segment }.contains("External-Ghost"))
     }
 
     /** Two cards with the same system name must not produce two identical rows. */
@@ -277,7 +293,7 @@ class AllSourcesTest {
         val root = ShareRoot(app, ShareScope.AllSources) {
             listOf(RemovableVolume(a.absolutePath, "SD card"), RemovableVolume(b.absolutePath, "SD card"))
         }
-        val volSources = root.sources().filter { it.segment.startsWith("external-") }
+        val volSources = root.sources().filter { it.segment.startsWith("External-") }
         assertEquals(2, volSources.size)
         assertEquals("the addresses have to differ", 2, volSources.map { it.segment }.toSet().size)
         assertEquals("the labels have to differ", 2, volSources.map { it.label }.toSet().size)
@@ -290,7 +306,7 @@ class AllSourcesTest {
         val c = File(dir, "card-c").apply { mkdirs() }
         var attached = listOf(RemovableVolume(a.absolutePath, "SD card"))
         val share = ShareRoot(app, ShareScope.AllSources) { attached }
-        fun addresses() = share.sources().filter { it.segment.startsWith("external-") }
+        fun addresses() = share.sources().filter { it.segment.startsWith("External-") }
             .associate { it.basePath to it.segment }
         val original = addresses().getValue(a.absolutePath)
         attached = attached + RemovableVolume(b.absolutePath, "SD card") +
@@ -323,8 +339,8 @@ class AllSourcesTest {
             listOf(RemovableVolume(card.absolutePath, "root"))
         }
         val segs = root.sources().map { it.segment }
-        assertTrue("the fixed source is still there", segs.contains("root"))
-        assertTrue("the volume got its own address", segs.contains("external-root"))
+        assertTrue("the fixed source is still there", segs.contains("Root"))
+        assertTrue("the volume got its own address", segs.contains("External-root"))
     }
 
     @Test

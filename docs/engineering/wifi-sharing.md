@@ -22,8 +22,8 @@ dialog opened. A few settled decisions:
 - **Read-only by default**; every write method's check funnels through
   `ShareHandler.requireWrite` in one place, not scattered across handlers.
 - **In "all backends" mode top-level segments are stable source addresses**, such as
-  `webdav-NAS` and `external-SDCARD`. Connection collisions use deterministic suffixes;
-  old scheme addresses remain aliases. Removable-volume addresses are persisted so
+  `WebDAV-NAS` and `External-SDCARD`. Connection collisions use deterministic suffixes;
+  old scheme addresses and previous lowercase source addresses remain aliases. Removable-volume addresses are persisted so
   localization and hotplug do not change saved mount points.
 - **`..` is always rejected** (`ShareRoot.segments` returns null), and uploaded file
   names are reduced to their last segment — in this feature path traversal means
@@ -40,6 +40,24 @@ dialog opened. A few settled decisions:
 - **No START_STICKY**: if the process really was killed, the sockets and threads are
   gone, and the system restarting the service would only produce an empty shell with
   `session == null`. Dying with the process is more honest.
+
+## Source presentation over WebDAV
+
+The all-sources virtual root exposes `{urn:twig:share}scope` with value `all-sources`.
+It is included in allprop/propname or an explicit request and absent (404 when requested)
+on ordinary directories and single-directory shares. Other clients can ignore this property.
+The source addresses use `Internal-Storage`, `External-<volume name>`, `Root`, `Apps`,
+`Trash`, and protocol prefixes such as `SMB-`, `SFTP-`, `WebDAV-` and `S3-`.
+Unknown backend schemes retain their original addresses. Old addresses still resolve using
+the previous collision rules, including duplicate connection names and volume addresses.
+
+The WebDAV client requests the scope marker with its existing listing. Only a successful
+marker on the endpoint itself enables source presentation for its immediate directories.
+`SourcePresentationSource` supplies display-only type/name information without IO;
+file names and paths stay intact for copying, navigation, and addressing. File rows and
+grid names show the suffix with the corresponding source icon. Internal storage, root,
+apps and trash reuse the client's localized labels. Unknown names, deeper directories,
+and ordinary WebDAV endpoints keep their original presentation. No extra tree level is added.
 
 ## Storage capacity over WebDAV
 
@@ -58,7 +76,8 @@ report physical capacity; capacity information does not grant write access.
 
 Twig's WebDAV client requests quotas with its existing Depth:1 directory listing,
 caches successful quota propstats for the directory itself and children, and renders
-known values on the endpoint and its immediate top-level directories as available/total
+known values on the endpoint and its immediate top-level directories (including shared
+internal storage and `Root`) as available/total
 using the existing localized capacity text. Deeper folders retain ordinary metadata.
 Rendering never triggers network IO. Total means available plus used, so quota-based servers
 show the allocated quota rather than a physical drive's size. Refreshing/relisting

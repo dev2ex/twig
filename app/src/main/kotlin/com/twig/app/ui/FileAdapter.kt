@@ -567,7 +567,7 @@ class FileAdapter(
                 b.cellName.visibility = View.VISIBLE
                 b.cellName.text = when (node) {
                     is PaneViewModel.WebsiteNode -> node.site.name
-                    is PaneViewModel.FileNode -> node.file.name
+                    is PaneViewModel.FileNode -> node.label ?: FileIcons.displayName(ctx, node.file)
                     else -> return
                 }
                 b.cellName.setTextSize(TypedValue.COMPLEX_UNIT_SP, metaSp + 0.5f)
@@ -1309,7 +1309,7 @@ class FileAdapter(
             b.infoToggle.setOnClickListener { onInfo(node) }
             b.infoToggle.setOnLongClickListener { onInfoLongClick(node); true }
 
-            b.name.text = node.label ?: file.name
+            b.name.text = node.label ?: FileIcons.displayName(ctx, file)
             if (file.scheme == com.twig.app.AppsFileSystem.SCHEME) bindApp(file)
             if (file.isSymbolicLink) LinkTargets.bind(b.sub, file)
             file.unixMode?.takeIf { node.depth > 0 && Prefs.unixPermissions(ctx) }?.let { mode ->
@@ -1347,6 +1347,7 @@ class FileAdapter(
             // (the thumbnail route stretches the icon cell to thumbDp and even taller for posters);
             // here we only handle what this row itself should look like.
             val dpi = ctx.resources.displayMetrics.density
+            val sharedSourceIcon = FileIcons.sharedSourceIconRes(file)
             when {
                 // Labeled roots distinguish internal storage, / and removable media.
                 // A picker locked to a server still uses that server's source icon.
@@ -1356,6 +1357,7 @@ class FileAdapter(
                 )
                 file.scheme.startsWith("git") && file.path == "/" ->
                     b.icon.setImageResource(R.drawable.ic_git)
+                sharedSourceIcon != null -> b.icon.setImageResource(sharedSourceIcon)
                 file.isDir -> {
                     // Directories on media servers are all virtual (albums / artists / libraries…), give them a distinguishable icon
                     val mediaIcon = FileIcons.mediaDirIcon(file)

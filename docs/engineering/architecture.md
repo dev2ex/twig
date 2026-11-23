@@ -30,6 +30,10 @@ Its blocking query is for worker threads; `knownStorageSpace` is a listing-popul
 IO-free snapshot for rendering. Unsupported or invalid quota data stays null, not
 zero. Protocol behavior is documented in [WiFi sharing](wifi-sharing.md#storage-capacity-over-webdav).
 
+`SourcePresentationSource` (`core-fs/SourcePresentation.kt`) optionally supplies IO-free,
+display-only source type/name information. It never changes `XFile.name` or paths;
+Twig WebDAV uses it for the immediate source rows of a marked all-sources endpoint.
+
 `UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
 Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
 failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after

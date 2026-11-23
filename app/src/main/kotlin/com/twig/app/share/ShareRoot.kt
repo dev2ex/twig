@@ -14,6 +14,7 @@ import com.twig.core.FsRegistry
 import com.twig.core.StorageSpace
 import com.twig.core.StorageSpaceSource
 import com.twig.core.XFile
+import com.twig.fs.network.TwigDavSources
 import java.io.File
 
 /**
@@ -62,8 +63,8 @@ class ShareRoot(
      * One entry under the "all sources" virtual root.
      *
      * [segment] is that URL segment and **must be stable** — WebDAV clients save it as a
-     * mount point, so it is the name the user sees there: `smb-NAS`, `webdav-192.168.1.5`,
-     * `external-SDCARD`. [alias] is an older segment that still resolves (the segment used
+     * mount point, so it is the name the user sees there: `SMB-NAS`, `WebDAV-192.168.1.5`,
+     * `External-SDCARD`. [alias] is an older segment that still resolves (the segment used
      * to be the hashed scheme for servers), so a mount point saved before the rename keeps
      * working. [label] is display only.
      */
@@ -133,7 +134,11 @@ class ShareRoot(
      * (`/storage/<uuid>`), never a subdirectory of internal storage, so nothing else
      * exposes them.
      */
-    fun sources(): List<Source> {
+    fun sources(): List<Source> = sources(legacy = false)
+
+    // Reuse the previous collision algorithm for old addresses, including duplicate names.
+    // Legacy names are resolved only; directory listings always advertise canonical names.
+    private fun sources(legacy: Boolean): List<Source> {
         if (scope !is ShareScope.AllSources) return emptyList()
         val out = ArrayList<Source>()
         val used = HashSet<String>()
@@ -153,9 +158,9 @@ class ShareRoot(
             val root = runCatching { fs.root() }.getOrNull() ?: continue
             others += Triple(fs, conns[fs.scheme], root)
         }
-        val bases = others.map { serverSegment(it.second, it.first.scheme) }
+        val bases = others.map { serverSegment(it.second, it.first.scheme, legacy) }
         // Include saved but disconnected servers so registry changes cannot rename a mount.
-        val candidates = conns.mapValues { (scheme, conn) -> serverSegment(conn, scheme) }.toMutableMap()
+        val candidates = conns.mapValues { (scheme, conn) -> serverSegment(conn, scheme, legacy) }.toMutableMap()
         others.forEachIndexed { i, (fs, _, _) -> candidates[fs.scheme] = bases[i] }
         val shared = candidates.values.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
         val reserved = candidates.values.toSet() + candidates.keys
@@ -164,12 +169,12 @@ class ShareRoot(
             val ext = runCatching { Environment.getExternalStorageDirectory().absolutePath }
                 .getOrNull().orEmpty()
             if (ext.isNotEmpty()) {
-                out += Source("storage", ctx.getString(R.string.group_internal_storage), LOCAL, ext)
-                used += "storage"
+                out += Source(if (legacy) "storage" else "Internal-Storage", ctx.getString(R.string.group_internal_storage), LOCAL, ext)
+                used += out.last().segment
             }
-            out += Source("root", ctx.getString(R.string.group_root), LOCAL, "/")
-            used += "root"
-            for (s in volumeSources()) {
+            out += Source(if (legacy) "root" else "Root", ctx.getString(R.string.group_root), LOCAL, "/")
+            used += out.last().segment
+            for (s in volumeSources(legacy)) {
                 out += s
                 used += s.segment
             }
@@ -201,22 +206,23 @@ class ShareRoot(
     }
 
     /**
-     * The URL segment of a server: its type and its name — `smb-NAS`, `webdav-192.168.1.5`.
+     * The URL segment of a server: its type and its name — `SMB-NAS`, `WebDAV-192.168.1.5`.
      *
      * The name is the connection's own name, or its address when it has none (the same
      * text the path bar shows). The type prefix keeps two servers apart even when they
      * share a name, and tells the user what kind of server it is at a glance.
      */
-    private fun serverSegment(conn: SavedConnection?, scheme: String): String {
-        if (conn == null) return scheme
+    private fun serverSegment(conn: SavedConnection?, scheme: String, legacy: Boolean): String {
+        if (conn == null) return if (!legacy && scheme in setOf("apps", "trash")) TwigDavSources.prefix(scheme) else scheme
         val name = sanitizeSegment(conn.shortLabel())
-        return if (name.isEmpty()) conn.type else "${conn.type}-$name"
+        val type = if (legacy) conn.type else TwigDavSources.prefix(conn.type)
+        return if (name.isEmpty()) type else "$type-$name"
     }
 
     /**
      * Removable volumes as sources.
      *
-     * **The segment is `external-` plus the volume's own name** — the same text the app's
+     * **The segment is `External-` plus the volume's own name** — the same text the app's
      * tree shows ("SDCARD", "USB drive") — so a WebDAV client that mounts the share shows
      * that name instead of an internal id. The name is sanitised (a segment may not
      * contain a path separator: the decoded path is split on "/", so an encoded "%2F" would
@@ -231,7 +237,7 @@ class ShareRoot(
      * so listing it would produce an entry that always fails. Such a volume is not
      * offered at all rather than offered and broken.
      */
-    private fun volumeSources(): List<Source> {
+    private fun volumeSources(legacy: Boolean): List<Source> {
         val vs = runCatching { volumes() }.getOrDefault(emptyList())
         if (vs.isEmpty()) return emptyList()
         val open = vs.filter { File(it.path).isDirectory && idOf(it).isNotEmpty() }
@@ -245,7 +251,7 @@ class ShareRoot(
             // Two volumes with the same name would make the URL ambiguous: they get the
             // volume's id appended.
             val preferred = if (name in shared) "$name-$id" else name
-            val segment = EXTERNAL_PREFIX + ShareStore.volumeSegment(ctx, id, preferred)
+            val segment = (if (legacy) "external-" else EXTERNAL_PREFIX) + ShareStore.volumeSegment(ctx, id, preferred)
             val label = if (v.label in duplicateLabels) "${v.label} ($id)" else v.label
             Source(segment = segment, label = label, scheme = LOCAL, basePath = v.path)
         }
@@ -373,13 +379,14 @@ class ShareRoot(
     /**
      * The source a URL segment names.
      *
-     * The readable segment is what the links use (`smb-NAS`), but **the old segment still
+     * The readable segment is what the links use (`SMB-NAS`), but **the old segment still
      * resolves**: a server's segment used to be its scheme, and a WebDAV client that saved
      * that mount point must keep working.
      */
     private fun sourceFor(seg: String): Source? {
         val all = sources()
         return all.firstOrNull { it.segment == seg } ?: all.firstOrNull { it.alias == seg }
+            ?: sources(legacy = true).firstOrNull { it.segment == seg }
     }
 
     /**
@@ -426,8 +433,8 @@ class ShareRoot(
     companion object {
         private const val LOCAL = "file"
 
-        /** The prefix of a removable volume's segment (`external-SDCARD`). */
-        private const val EXTERNAL_PREFIX = "external-"
+        /** The prefix of a removable volume's segment (`External-SDCARD`). */
+        private const val EXTERNAL_PREFIX = "External-"
 
         /**
          * Split a URL path into segments. **`..` is always rejected** (returns null): this
