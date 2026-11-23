@@ -1505,8 +1505,8 @@ class FileAdapter(
         /**
          * Three-segment row for app entries: the main title keeps only the app name (the version number and
          * .apk/.xapk suffix in the file name are for when you copy it out; squeezing them after the name in the
-         * list is harder to read); the version number is moved to the right end of the main title, and the package
-         * name goes to the subtitle on the next line. Category directories ("installed" / "system") have no package
+         * list is harder to read); the version stays at the right end of the title, capped at a third
+         * of the available width with end ellipsis. The package name goes on the next line. Category directories ("installed" / "system") have no package
          * name, so they are unaffected.
          */
         private fun bindApp(file: XFile) {

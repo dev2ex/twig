@@ -13,6 +13,11 @@ including Arabic file names. Row titles, including root/group names, saved serve
 names and Add actions, align to the left edge of their title box regardless of text
 direction. Other screens keep their locale-directed layout.
 
+App list rows keep the version to the right of the name. `AppTitleRow` caps the
+version at one third of the available title width with end ellipsis, preserving
+space for the name even in narrow panes. Short versions keep their natural width;
+the package name remains on the next line.
+
 `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
 toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
 single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and

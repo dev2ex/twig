@@ -43,8 +43,8 @@
             android:layout_marginEnd="6dp"
             android:orientation="vertical">
 
-            <!-- Main title row: file name (shown in full, may wrap, no ellipsis) + version number at the right end (app entries only) -->
-            <LinearLayout
+            <!-- Keep the name and bounded app version on the same line. -->
+            <com.twig.app.ui.AppTitleRow
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal">
@@ -65,10 +65,11 @@
                     android:layout_height="wrap_content"
                     android:layout_marginStart="6dp"
                     android:singleLine="true"
+                    android:ellipsize="end"
                     android:textColor="@color/text_secondary"
                     android:textSize="10sp"
                     android:visibility="gone" />
-            </LinearLayout>
+            </com.twig.app.ui.AppTitleRow>
 
             <!-- Subtitle: app package name or symbolic-link target. -->
             <TextView
