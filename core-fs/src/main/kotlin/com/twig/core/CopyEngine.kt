@@ -53,6 +53,7 @@ object CopyEngine {
         var bytes = 0L
         var files = 0
         var dirs = 0
+        val readers = HashMap<String, ReadBatch>()
         fun checkCancelled() {
             if (cancelled.isCancelled()) throw java.util.concurrent.CancellationException("Size planning cancelled")
         }
@@ -60,15 +61,21 @@ object CopyEngine {
             checkCancelled()
             if (f.isDir) {
                 dirs++
-                for (c in FsRegistry.of(f).list(f)) walk(c)
+                val fs = FsRegistry.of(f)
+                val reader = if (fs is ReadBatchSource) readers.getOrPut(f.scheme) { fs.openReadBatch() } else fs
+                for (c in reader.list(f)) walk(c)
             } else {
                 files++
                 bytes += f.size
             }
         }
-        items.forEach { walk(it) }
-        checkCancelled()
-        return Plan(bytes, files, dirs)
+        try {
+            items.forEach { walk(it) }
+            checkCancelled()
+            return Plan(bytes, files, dirs)
+        } finally {
+            for (reader in readers.values) runCatching { reader.close() }
+        }
     }
 
     /** Estimate total bytes for a batch (used by the progress bar); directories are accumulated recursively. */
@@ -87,6 +94,24 @@ object CopyEngine {
         var aborted = false // user picked "Cancel" in the conflict dialog
         /** Cache of destination directory listings (dir uri -> name -> entry), to avoid re-listing remote dirs per file. */
         val listed = HashMap<String, MutableMap<String, XFile>>()
+        val readers = HashMap<String, ReadBatch>()
+
+        fun source(file: XFile, destination: XFile): FileSystem {
+            val fs = FsRegistry.of(file)
+            // Mutating an archive while reading it must keep the ordinary fresh-reader path.
+            return if (!move && file.scheme != destination.scheme && fs is ReadBatchSource)
+                readers.getOrPut(file.scheme) { fs.openReadBatch() } else fs
+        }
+
+        fun order(files: List<XFile>, destination: XFile): List<XFile> {
+            if (files.isEmpty() || cancelled.isCancelled()) return files
+            val batch = source(files.first(), destination) as? ReadBatch ?: return files
+            if (files.map { it.scheme }.distinct().size != 1 ||
+                files.map { it.parentPath }.distinct().size != 1 || files.map { it.name }.distinct().size != files.size) return files
+            // Ordering is optional. Report a failed archive open inside the normal
+            // per-item attempt so its checkpoint can still be retried or skipped.
+            return try { batch.order(files) } catch (_: Exception) { files }
+        }
     }
 
     /** Existing entries of a destination directory (cached; newly created entries are added for later conflict / same-name checks). */
@@ -120,60 +145,67 @@ object CopyEngine {
         require(targetNames.values.all(::isSafeName)) { "Invalid destination name" }
         require(targetPaths.values.all(SourceLayout::isSafePath)) { "Invalid destination path" }
         val destFs = FsRegistry.of(destDir)
-        for (item in items) {
-            if (task.cancelled.isCancelled() || task.aborted) break
-            // Refused, not fatal: the rest of the batch still copies (see [isSafeName])
-            if (!isSafeName(item.name)) { listener?.onRefused(item); continue }
-            if (checkpoint?.completed?.contains("root:" + checkpoint.key(item, destDir)) == true) continue
-            if (checkpoint?.isSkipped(item, destDir) == true) {
-                skipItem(item, task)
-                continue
-            }
-            try {
-                // Same file system and no same-name conflict at the destination: prefer
-                // in-place move, saving a full copy.
-                val parts = targetPaths[item.toUri()]?.split('/') ?: listOf(targetNames[item.toUri()] ?: item.name)
-                var directory = destDir
-                for (segment in parts.dropLast(1)) {
-                    if (task.cancelled.isCancelled()) return
-                    val entries = childrenOf(task, destFs, directory)
-                    val existing = entries[segment]
-                    if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
-                    directory = existing ?: destFs.mkdir(directory, segment).also { entries[segment] = it }
-                }
-                if (item.isDir && item.scheme == directory.scheme && item.path.startsWith("/") &&
-                    (directory.path.trimEnd('/') == item.path.trimEnd('/') ||
-                        directory.path.startsWith(item.path.trimEnd('/') + "/")))
-                    throw FsException("Cannot copy a directory into itself: ${item.name}")
-                val targetName = parts.last()
-                val existing = childrenOf(task, destFs, directory)[targetName]
-                if (existing?.toUri() == item.toUri()) throw FsException("Source and destination are the same: ${item.name}")
-                if (move && item.scheme == directory.scheme &&
-                    existing == null &&
-                    destFs.moveWithin(item, directory, targetName)
-                ) {
-                    task.listed.remove(directory.toUri())
-                    checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
-                    listener?.onItemDone(item.isDir)
+        try {
+            val canOrder = targetNames.isEmpty() && targetPaths.isEmpty() && pending.size == items.size &&
+                pending.none { checkpoint?.isSkipped(it, destDir) == true }
+            val ordered = if (canOrder) task.order(items, destDir) else items
+            for (item in ordered) {
+                if (task.cancelled.isCancelled() || task.aborted) break
+                // Refused, not fatal: the rest of the batch still copies (see [isSafeName])
+                if (!isSafeName(item.name)) { listener?.onRefused(item); continue }
+                if (checkpoint?.completed?.contains("root:" + checkpoint.key(item, destDir)) == true) continue
+                if (checkpoint?.isSkipped(item, destDir) == true) {
+                    skipItem(item, task)
                     continue
                 }
-                val priorKey = checkpoint?.key(item, directory)
-                val needsRefresh = checkpoint != null &&
-                    (priorKey in checkpoint.partials || priorKey in checkpoint.outputs)
-                val source = if (needsRefresh && !item.isDir) {
-                    FsRegistry.of(item).stat(item.path) ?: throw FsException("Source unavailable: ${item.name}")
-                } else item
-                val complete = copyRecursive(source, directory, task, targetName)
-                if (move && complete) FsRegistry.of(item).delete(item)
-                if (complete) checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
-            } catch (t: Throwable) {
-                if (checkpoint != null && checkpoint.failure == null) {
-                    val key = checkpoint.key(item, destDir)
-                    val name = checkpoint.partials[key]?.name ?: checkpoint.outputs[key]?.name ?: item.name
-                    checkpoint.failure = TransferCheckpoint.Failure(item, destDir, name)
+                try {
+                    // Same file system and no same-name conflict at the destination: prefer
+                    // in-place move, saving a full copy.
+                    val parts = targetPaths[item.toUri()]?.split('/') ?: listOf(targetNames[item.toUri()] ?: item.name)
+                    var directory = destDir
+                    for (segment in parts.dropLast(1)) {
+                        if (task.cancelled.isCancelled()) return
+                        val entries = childrenOf(task, destFs, directory)
+                        val existing = entries[segment]
+                        if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
+                        directory = existing ?: destFs.mkdir(directory, segment).also { entries[segment] = it }
+                    }
+                    if (item.isDir && item.scheme == directory.scheme && item.path.startsWith("/") &&
+                        (directory.path.trimEnd('/') == item.path.trimEnd('/') ||
+                            directory.path.startsWith(item.path.trimEnd('/') + "/")))
+                        throw FsException("Cannot copy a directory into itself: ${item.name}")
+                    val targetName = parts.last()
+                    val existing = childrenOf(task, destFs, directory)[targetName]
+                    if (existing?.toUri() == item.toUri()) throw FsException("Source and destination are the same: ${item.name}")
+                    if (move && item.scheme == directory.scheme &&
+                        existing == null &&
+                        destFs.moveWithin(item, directory, targetName)
+                    ) {
+                        task.listed.remove(directory.toUri())
+                        checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
+                        listener?.onItemDone(item.isDir)
+                        continue
+                    }
+                    val priorKey = checkpoint?.key(item, directory)
+                    val needsRefresh = checkpoint != null &&
+                        (priorKey in checkpoint.partials || priorKey in checkpoint.outputs)
+                    val source = if (needsRefresh && !item.isDir) {
+                        FsRegistry.of(item).stat(item.path) ?: throw FsException("Source unavailable: ${item.name}")
+                    } else item
+                    val complete = copyRecursive(source, directory, task, targetName)
+                    if (move && complete) FsRegistry.of(item).delete(item)
+                    if (complete) checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
+                } catch (t: Throwable) {
+                    if (checkpoint != null && checkpoint.failure == null) {
+                        val key = checkpoint.key(item, destDir)
+                        val name = checkpoint.partials[key]?.name ?: checkpoint.outputs[key]?.name ?: item.name
+                        checkpoint.failure = TransferCheckpoint.Failure(item, destDir, name)
+                    }
+                    throw t
                 }
-                throw t
             }
+        } finally {
+            for (reader in task.readers.values) runCatching { reader.close() }
         }
         listener?.onDone()
     }
@@ -209,7 +241,7 @@ object CopyEngine {
             task.listener?.onRefused(src)
             return false
         }
-        val srcFs = FsRegistry.of(src)
+        val srcFs = task.source(src, destDir)
         val destFs = FsRegistry.of(destDir)
         val siblings = childrenOf(task, destFs, destDir)
         val existing = siblings[attempt.targetName]
@@ -220,7 +252,7 @@ object CopyEngine {
             else destFs.mkdir(destDir, attempt.targetName).also { siblings[it.name] = it }
             attempt.targetName = newDir.name
             var complete = true
-            for (child in srcFs.list(src)) {
+            for (child in task.order(srcFs.list(src), newDir)) {
                 if (!copyRecursive(child, newDir, task)) complete = false
                 if (task.cancelled.isCancelled() || task.aborted) return false
             }
@@ -283,8 +315,8 @@ object CopyEngine {
                     partial = partial.copy(name = name, replacing = replacing)
                     checkpoint.partial(key, partial)
                 }
-                // List rather than stat: stat's default deliberately hides listing failures.
-                val current = destFs.list(destDir).firstOrNull { it.path == partial.file.path }
+                // This lookup propagates failures; the general stat default hides them.
+                val current = destFs.findWriteEntries(destDir, setOf(partial.file.name)).firstOrNull { it.path == partial.file.path }
                 val offset = current?.size ?: 0L
                 if (offset < 0 || offset > src.size) throw FsException("Invalid partial size for ${src.name}")
                 task.bytes += offset
@@ -308,7 +340,7 @@ object CopyEngine {
                         if (copied != src.size) throw FsException("Short copy of ${src.name}: $copied of ${src.size} bytes")
                     }
                 }
-                val after = destFs.list(destDir)
+                val after = destFs.findWriteEntries(destDir, setOf(partial.file.name, name))
                 val staged = after.firstOrNull { it.path == partial.file.path }
                 if (staged == null || staged.isDir || staged.size != src.size) {
                     throw FsException("Incomplete destination for ${src.name}")
@@ -365,12 +397,27 @@ object CopyEngine {
         initial: Long = 0,
     ): Long {
         var fileCopied = initial
-        val done = pipe(input, output, { task.cancelled.isCancelled() || task.aborted }) { n ->
+        val onChunk: (Int) -> Unit = { n ->
             fileCopied += n
             task.bytes += n
             task.listener?.onFileBytes(fileCopied, srcSize)
             task.listener?.onBytes(task.bytes, task.total)
         }
+        // Starting a thread and allocating 3 MiB per tiny entry costs more than its IO.
+        val done = if (srcSize in 0..SMALL_FILE_SIZE) {
+            val buffer = ByteArray(srcSize.coerceIn(8192, SMALL_FILE_SIZE).toInt())
+            var complete = true
+            while (true) {
+                if (task.cancelled.isCancelled() || task.aborted) { complete = false; break }
+                val n = try { input.read(buffer) } catch (t: Throwable) {
+                    throw t as? RuntimeException ?: FsException("Read failed: ${t.message}", t)
+                }
+                if (n < 0) break
+                output.write(buffer, 0, n)
+                onChunk(n)
+            }
+            complete
+        } else pipe(input, output, { task.cancelled.isCancelled() || task.aborted }, onChunk)
         return if (done) fileCopied else -1
     }
 
@@ -464,4 +511,5 @@ object CopyEngine {
 
     private const val DEFAULT_BUFFER_SIZE = 1 shl 20 // 1 MB: SMB3 single-read ceiling is usually >= 1 MB; large blocks amortise round trips
     private const val PIPE_DEPTH = 3               // pipeline buffer chunk count (peak memory ~3 MB)
+    private const val SMALL_FILE_SIZE = 64L * 1024
 }

@@ -23,18 +23,28 @@ class CopyConfirmDialog : DialogFragment() {
         val draft = state.draft
         // Pending sources depend on live filesystem registrations. After process death,
         // discard the draft rather than reconstructing or operating on another selection.
-        if (draft?.destination == null) return AlertDialog.Builder(requireContext()).create()
+        if (draft == null) return AlertDialog.Builder(requireContext()).create()
         val form = DialogCopyConfirmBinding.inflate(layoutInflater)
         binding = form
+        form.cbSourceDirectory.isSaveEnabled = false
+        form.cbSourceDirectory.visibility = if (draft.extraction == null) View.GONE else View.VISIBLE
+        form.cbSourceDirectory.isChecked = draft.extraction?.saveToSource == true
+        form.cbSourceDirectory.isEnabled = draft.extraction?.sourceDirectory?.let { draft.blockReason(it) == null } == true
+        form.cbSourceDirectory.setOnCheckedChangeListener { _, checked ->
+            draft.extraction?.saveToSource = checked
+            updateDestination()
+        }
         form.cbKeepStructure.isSaveEnabled = false
         form.cbKeepStructure.isChecked = draft.keepStructure
+        form.cbKeepStructure.visibility = if (draft.extraction == null) View.VISIBLE else View.GONE
+        form.tvDestinationLabel.setText(if (draft.extraction == null) R.string.copy_to else R.string.extract_to)
         form.tvStructurePreview.text = draft.preview()
         form.cbKeepStructure.setOnCheckedChangeListener { _, checked ->
             draft.keepStructure = checked
             form.tvStructurePreview.text = draft.preview()
             updateDestination()
         }
-        form.tvSrc.text = if (draft.sources.size == 1) draft.sources.single().name
+        form.tvSrc.text = draft.extraction?.archive?.name ?: if (draft.sources.size == 1) draft.sources.single().name
             else getString(R.string.copy_items, draft.sources.size)
         form.cbMove.isChecked = draft.move
         form.cbMove.visibility = if (draft.movable) View.VISIBLE else View.GONE
@@ -43,7 +53,7 @@ class CopyConfirmDialog : DialogFragment() {
             state.plan.collect { binding?.tvSize?.text = it?.let { Format.size(it.bytes) } ?: "…" }
         }
         return AlertDialog.Builder(requireContext())
-            .setTitle(R.string.copy_title)
+            .setTitle(if (draft.extraction == null) R.string.copy_title else R.string.extract_to)
             .setView(form.root)
             .setNegativeButton(R.string.dialog_cancel) { _, _ -> state.clear() }
             .setPositiveButton(R.string.dialog_ok, null)
@@ -52,7 +62,7 @@ class CopyConfirmDialog : DialogFragment() {
 
     override fun onStart() {
         super.onStart()
-        if (state.draft?.destination == null) { dismiss(); return }
+        if (state.draft == null) { dismiss(); return }
         val form = binding ?: return
         val dialog = requireDialog() as AlertDialog
         form.destinationPicker.root.setOnClickListener {
@@ -65,7 +75,9 @@ class CopyConfirmDialog : DialogFragment() {
             val plan = state.plan.value
             state.clear()
             dismiss()
-            pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan, targetPaths = draft.outputPaths())
+            pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan,
+                targetPaths = draft.outputPaths(), extraction = draft.extraction != null,
+                destinationFolder = draft.extraction?.folderName)
         }
         updateDestination()
     }
@@ -73,16 +85,16 @@ class CopyConfirmDialog : DialogFragment() {
     internal fun updateDestination(): XFile? {
         val form = binding ?: return null
         val draft = state.draft ?: return null
-        val destination = draft.destination ?: return null
-        form.destinationPicker.tvDest.text = pane.displayPath(destination)
-        form.destinationPicker.ivDest.setImageResource(FileIcons.sourceIconRes(destination.scheme))
+        val destination = draft.effectiveDestination()
+        form.destinationPicker.tvDest.text = destination?.let(pane::displayPath) ?: getString(R.string.compress_destination_missing)
+        form.destinationPicker.ivDest.setImageResource(destination?.let { FileIcons.sourceIconRes(it.scheme) } ?: R.drawable.ic_folder)
         form.destinationPicker.root.contentDescription = getString(R.string.copy_choose_destination) + ": " + form.destinationPicker.tvDest.text
-        val reason = draft.blockReason(destination)
+        val reason = destination?.let(draft::blockReason)
         form.tvDestError.text = reason?.let(::getString)
         form.tvDestError.visibility = if (reason == null) View.GONE else View.VISIBLE
         (dialog as? AlertDialog)?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled =
-            reason == null
-        return destination.takeIf { reason == null }
+            destination != null && reason == null
+        return destination?.takeIf { reason == null }
     }
 
     override fun onCancel(dialog: DialogInterface) {

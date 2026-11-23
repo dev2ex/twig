@@ -94,10 +94,32 @@ retains filename, format, move mode and password in the shared `DestinationState
 passwords never enter saved view state and are cleared when the draft is discarded.
 Compression opens its form without a target too; "Save to source folder" uses the
 known writable common parent and leaves the other target intact until replaced.
+Without a usable opposite-pane target, it defaults on when that parent is writable;
+the form stays open instead of entering destination selection automatically.
 ZIP/7z offer Fast / Standard / Store, with the level remembered. Password-protected
 7z defaults to encrypted file names, with an opt-out; ZIP file names stay visible.
 Long-press transfers remain immediate for valid targets;
 otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
+
+The archive context menu offers **Extract to…**, using the same destination draft,
+clickable path field and opposite-pane chooser as copying/compression. The default
+destination is the other pane's current writable directory. With no usable target,
+show the confirmation form and default "Save to source folder" on when the archive's
+own parent is writable; otherwise leave confirmation disabled until a target is chosen.
+Picking a different location clears source-folder mode; cancelling the picker preserves
+it, including across rotation. One top-level file or directory extracts directly into
+the chosen destination. Multiple top-level entries extract inside a folder named after
+the archive without its extension (including `.tar.gz` and similar compound extensions).
+A conventional `./` prefix is an archive root, not a single enclosing directory.
+Create/merge that folder only in the confirmed background transfer, and use the actual
+folder for retry checkpoints. A same-named file is never replaced by that folder.
+Preserve internal directories and keep the source archive. Passwords and nested-archive materialization follow the existing mount policy,
+without expanding or navigating the source tree. Compressed tar formats automatically
+continue through the tar layer. Extraction uses ordinary background copy work, including
+conflicts, cancellation, progress and retries. Archive-entry copies also benefit from
+the shared read batch. Small files (up to 64 KiB) copy on the transfer thread; larger
+streams retain the pipelined reader.
+
 Outgoing system sharing sends directly readable local files and known-size remote
 files up to 512 KiB directly. If a batch includes a larger or unknown-size nonlocal
 file, prepare its nonlocal sources in a separate cache as `Transfers.Work.Share`, using `TransferService` and `TransferBox`

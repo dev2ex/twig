@@ -83,6 +83,26 @@ class PaneViewModelArchivePasswordTest {
     private fun innerNames() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>()
         .map { it.file.name }
 
+    @Test fun `extraction unlocks without expanding or navigating the source tree`() = runTest(dispatcher) {
+        vm.bootstrap(listOf("file\t${ext.path}"))
+        advanceUntilIdle()
+        val node = archiveNode()
+        val before = vm.currentDir
+        try {
+            vm.extractionSources(node.file)
+            org.junit.Assert.fail("Encrypted extraction needs a password")
+        } catch (_: com.twig.fs.archive.ArchivePasswordException) { }
+        var unlocked = false
+        vm.unlockArchive(node.file, PASSWORD, save = false, expand = false) { unlocked = it }
+        advanceUntilIdle()
+        assertTrue(unlocked)
+        val contents = vm.extractionSources(node.file)
+        assertEquals(listOf("inside.txt"), contents.map { it.name })
+        assertEquals("boo!", zipFs().openInput(contents.single()).bufferedReader().use { it.readText() })
+        assertEquals(before, vm.currentDir)
+        assertFalse(innerNames().contains("inside.txt"))
+    }
+
     @Test
     fun `expanding an encrypted archive requests a password instead of popping up an English error`() = runTest(dispatcher) {
         vm.bootstrap(listOf("file\t${ext.path}"))

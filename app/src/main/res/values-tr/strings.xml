@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Klasör yapısını koru</string>
     <string name="selection_clear_all">Seçimi temizle</string>
     <string name="transfer_duplicate_paths">Yinelenen çıktı yolları var. Klasör yapısını koruyun veya seçimi değiştirin.</string>
+    <string name="extract_to">Şuraya çıkart…</string>
+    <string name="progress_extract">Çıkartılıyor…</string>
 </resources>

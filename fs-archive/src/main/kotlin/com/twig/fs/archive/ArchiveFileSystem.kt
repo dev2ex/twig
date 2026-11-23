@@ -18,7 +18,40 @@ import java.io.OutputStream
  * Read-only by default; formats that can write (e.g. zip) override the write operations.
  * Hosts can be local files or registered remote sources with positional reads.
  */
-abstract class ArchiveFileSystem : FileSystem {
+abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
+
+    protected interface ArchiveReader : java.io.Closeable {
+        val entries: List<ArchiveEntry>
+        fun open(inner: String): InputStream
+        fun order(files: List<XFile>): List<XFile> = files
+    }
+
+    protected open fun openReader(archivePath: String): ArchiveReader = object : ArchiveReader {
+        override val entries = readEntries(archivePath)
+        override fun open(inner: String) = openEntry(archivePath, inner)
+        override fun close() = Unit
+    }
+
+    override fun openReadBatch(): com.twig.core.ReadBatch = object : com.twig.core.ReadBatch,
+        FileSystem by this@ArchiveFileSystem {
+        private val readers = LinkedHashMap<String, ArchiveReader>()
+        private fun reader(path: String) = readers.getOrPut(archiveOf(path)) { openReader(archiveOf(path)) }
+        override fun list(dir: XFile) = listEntries(dir, reader(dir.path).entries)
+        override fun openInput(file: XFile) = reader(file.path).open(innerOf(file.path))
+        override fun order(files: List<XFile>): List<XFile> =
+            if (files.isNotEmpty() && files.map { archiveOf(it.path) }.distinct().size == 1)
+                reader(files.first().path).order(files) else files
+        override fun openRandom(file: XFile) = super<com.twig.core.ReadBatch>.openRandom(file)
+        override fun close() {
+            try {
+                var failure: Throwable? = null
+                for (reader in readers.values) try { reader.close() } catch (t: Throwable) {
+                    if (failure == null) failure = t else failure.addSuppressed(t)
+                }
+                failure?.let { throw it }
+            } finally { readers.clear() }
+        }
+    }
 
     /** One entry inside an archive. `name` is '/'-separated; directory names end with '/'. */
     protected data class ArchiveEntry(
@@ -163,6 +196,10 @@ abstract class ArchiveFileSystem : FileSystem {
     }
 
     override fun list(dir: XFile): List<XFile> {
+        return listEntries(dir, entries(archiveOf(dir.path)))
+    }
+
+    private fun listEntries(dir: XFile, entries: List<ArchiveEntry>): List<XFile> {
         val archive = archiveOf(dir.path)
         val inner = innerOf(dir.path)
         val prefix = if (inner.isEmpty()) "" else "$inner/"
@@ -170,7 +207,7 @@ abstract class ArchiveFileSystem : FileSystem {
         val dirNames = LinkedHashSet<String>()
         val files = LinkedHashMap<String, ArchiveEntry>()
 
-        for (e in entries(archive)) {
+        for (e in entries) {
             val name = normalize(e)
             if (!name.startsWith(prefix) || name == prefix) continue
             val remainder = name.substring(prefix.length)

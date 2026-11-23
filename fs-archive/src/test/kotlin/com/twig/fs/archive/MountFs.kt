@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal class MountFs(private val rootDir: File) : FileSystem {
     val opens = AtomicInteger()
+    val closes = AtomicInteger()
 
     override val scheme = "remote"
     override val displayName = "Remote"
@@ -54,7 +55,7 @@ internal class MountFs(private val rootDir: File) : FileSystem {
                 return raf.read(buffer, offset, length)
             }
             override fun length() = raf.length()
-            override fun close() = raf.close()
+            override fun close() { raf.close(); closes.incrementAndGet() }
         }
     }
 }

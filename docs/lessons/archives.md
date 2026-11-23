@@ -4,6 +4,15 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Archive extraction must share readers across the batch (2026-11-23)**: reopening
+  ZIP for each entry reparsed every filename, and reopening a solid 7z decoder
+  repeatedly decompressed preceding files. Per-file 3 MiB buffers/threads and full
+  destination-directory validation scans amplified the cost for tiny files. Keep
+  indexes/decoders scoped to one read batch, with close-on-failure/cancellation;
+  preserve the fresh-reader path when mutating the source archive. Regression tests
+  should count archive channels and verify bytes, including backward solid-block
+  reads and retries, rather than assert unstable elapsed-time thresholds.
+
 - **Packing (`ArchiveWriter`, 2026-08-01)**: source and destination are only ever touched
   through `openInput()/openOutput()`, exactly like `CopyEngine`, so a combination like
   "SMB directory → local zip" costs nothing extra. Key points:

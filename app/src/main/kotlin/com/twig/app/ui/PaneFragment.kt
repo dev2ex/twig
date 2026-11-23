@@ -1834,7 +1834,7 @@ class PaneFragment : Fragment() {
         if (picked) {
             draft.destination = XFile(scheme!!, path!!, true,
                 displayName = data.getStringExtra(PickerActivity.EXTRA_PICKED_NAME))
-            draft.compression?.saveToSource = false
+            draft.usePickedDestination()
         }
         val confirm = picked || state.returnToConfirmation
         state.returnToConfirmation = false
@@ -1846,7 +1846,11 @@ class PaneFragment : Fragment() {
         val confirmation = childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) as? androidx.fragment.app.DialogFragment
         destinationState.returnToConfirmation = confirmation != null
         confirmation?.dismiss()
-        val title = if (destinationState.draft?.compression == null) R.string.copy_to else R.string.compress_save_to
+        val title = when {
+            destinationState.draft?.extraction != null -> R.string.extract_to
+            destinationState.draft?.compression != null -> R.string.compress_save_to
+            else -> R.string.copy_to
+        }
         destinationPicker.launch(PickerActivity.dirIntent(requireContext(), getString(title)))
     }
 
@@ -1864,12 +1868,14 @@ class PaneFragment : Fragment() {
         plan0: CopyEngine.Plan?,
         fromClipboard: Boolean = false,
         targetPaths: Map<String, String> = emptyMap(),
+        extraction: Boolean = false,
+        destinationFolder: String? = null,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths),
-                if (move) R.string.progress_move else R.string.progress_copy,
-                pathLabel(dest), pathIcon(dest), plan0,
+                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths, destinationFolder),
+                if (extraction) R.string.progress_extract else if (move) R.string.progress_move else R.string.progress_copy,
+                pathLabel(dest) + destinationFolder?.let { "/$it" }.orEmpty(), pathIcon(dest), plan0,
             ),
         )
     }
@@ -1981,6 +1987,8 @@ class PaneFragment : Fragment() {
             compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory,
                 structureRoot = structureRoot),
             relativePaths = paths)
+        draft.compression?.saveToSource = dest?.let { draft.blockReason(it) == null } != true &&
+            sourceDirectory?.let { draft.blockReason(it) == null } == true
         if (immediate && dest != null && draft.blockReason(dest) == null) {
             startCompress(sel, dest, name, format, false, null, "", level)
             return
@@ -2066,7 +2074,7 @@ class PaneFragment : Fragment() {
      */
     private var pwDialogFor: String? = null
 
-    private fun askArchivePassword(archive: XFile) {
+    private fun askArchivePassword(archive: XFile, afterUnlock: (() -> Unit)? = null) {
         val key = "${archive.scheme}:${archive.path}"
         if (pwDialogFor == key) return
         val ctx = context ?: return
@@ -2075,10 +2083,56 @@ class PaneFragment : Fragment() {
             ctx, archive.name,
             onDismiss = { pwDialogFor = null },
         ) { text, save ->
-            viewModel.unlockArchive(archive, text, save) { ok ->
-                if (ok || _b == null) return@unlockArchive
+            viewModel.unlockArchive(archive, text, save, expand = afterUnlock == null) { ok ->
+                if (_b == null) return@unlockArchive
+                if (ok) { afterUnlock?.invoke(); return@unlockArchive }
                 toast(getString(R.string.archive_wrong_pw))
-                askArchivePassword(archive)
+                askArchivePassword(archive, afterUnlock)
+            }
+        }
+    }
+
+    /** Extract archive contents with the same destination draft and picker as copying. */
+    private fun performExtract(archive: XFile, original: XFile = archive, materializeConfirmed: Boolean = false) {
+        if (destinationState.draft != null) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                if (!materializeConfirmed && viewModel.extractionNeedsMaterialization(archive)) {
+                    val message = if (archive.size > 0)
+                        getString(R.string.archive_confirm_materialize, archive.name, Format.size(archive.size))
+                    else getString(R.string.archive_confirm_materialize_unknown, archive.name)
+                    AlertDialog.Builder(requireContext()).setMessage(message)
+                        .setNegativeButton(R.string.dialog_cancel, null)
+                        .setPositiveButton(R.string.dialog_ok) { _, _ -> performExtract(archive, original, true) }
+                        .show()
+                    return@launch
+                }
+                val sources = viewModel.extractionSources(archive)
+                // tar.gz and its shorthand forms extract the tar's contents in one action.
+                if (FsRegistry.of(com.twig.fs.archive.Archives.schemeFor(archive)!!) is com.twig.fs.archive.SingleFileSystem &&
+                    sources.size == 1 && sources.single().extension == "tar") {
+                    performExtract(sources.single(), original)
+                    return@launch
+                }
+                val dest = host?.siblingOf(this@PaneFragment)?.viewModel?.currentDir
+                val sourceDirectory = (viewModel.renameParent(original) ?: withContext(Dispatchers.IO) {
+                    FsRegistry.of(original).parentOf(original)
+                })?.takeIf { it.isWritableDir() }
+                if (destinationState.draft != null) return@launch
+                noteSourceDirs(listOf(original))
+                val draft = DestinationState.Draft(sources, dest, move = false, movable = false,
+                    relativePaths = emptyMap(), extraction = DestinationState.Extraction(original, sourceDirectory,
+                        folderName = DestinationState.Extraction.folderName(original, sources.size)))
+                draft.extraction?.saveToSource = dest?.let { draft.blockReason(it) == null } != true &&
+                    sourceDirectory?.let { draft.blockReason(it) == null } == true
+                destinationState.prepare(draft)
+                showDestinationConfirmation()
+            } catch (t: kotlinx.coroutines.CancellationException) {
+                throw t
+            } catch (t: com.twig.fs.archive.ArchivePasswordException) {
+                askArchivePassword(archive) { performExtract(archive, original, materializeConfirmed) }
+            } catch (t: Exception) {
+                toast(t.message ?: getString(R.string.err_failed))
             }
         }
     }
@@ -2652,6 +2706,11 @@ class PaneFragment : Fragment() {
         if (includeCopy) {
             actions.item(getString(R.string.strip_copy), R.drawable.ic_copy) {
                 performCopy(listOf(file), move = false)
+            }
+            val archiveScheme = com.twig.fs.archive.Archives.schemeFor(file)
+            if (file.canRead && archiveScheme != null &&
+                runCatching { FsRegistry.of(archiveScheme) is com.twig.fs.archive.ArchiveFileSystem }.getOrDefault(false)) {
+                actions.item(getString(R.string.extract_to), R.drawable.ic_file_archive) { performExtract(file) }
             }
         }
         if (includeEdit) {

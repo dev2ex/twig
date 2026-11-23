@@ -140,6 +140,181 @@ class CopyDestinationTest {
         FileClipboard.setMove(false)
     }
 
+    private fun extractionArchive(entries: List<Pair<String, String>> =
+        listOf("payload.txt" to "root", "sub/deep.txt" to "nested")): File =
+        File(source.parentFile, "bundle.zip").also { archive ->
+        java.util.zip.ZipOutputStream(archive.outputStream()).use { out ->
+            for ((name, text) in entries) {
+                out.putNextEntry(java.util.zip.ZipEntry(name))
+                out.write(text.toByteArray())
+                out.closeEntry()
+            }
+        }
+    }
+
+    private fun openExtraction(archive: File) {
+        FsRegistry.register(com.twig.fs.archive.ZipFileSystem())
+        val node = PaneViewModel.FileNode(entry(archive), 1, false, false)
+        ReflectionHelpers.callInstanceMethod<Unit>(pane(), "onLongClick",
+            ReflectionHelpers.ClassParameter.from(PaneViewModel.Node::class.java, node))
+        val menu = org.robolectric.shadows.ShadowDialog.getLatestDialog() as AlertDialog
+        val action = (0 until menu.listView.adapter.count).map { menu.listView.adapter.getItem(it) as MenuAct }
+            .single { it.label == activity.getString(R.string.extract_to) }
+        menu.dismiss()
+        action.run()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (state().draft == null && System.nanoTime() < deadline) { idle(); Thread.sleep(5) }
+        pane().childFragmentManager.executePendingTransactions()
+        idle()
+        assertNotNull(state().draft)
+    }
+
+    @Test fun `extract menu reuses copy destination picking and preserves the archive tree`() {
+        val archive = extractionArchive()
+        openExtraction(archive)
+        assertEquals(target.path, state().draft!!.destination!!.path)
+        assertEquals(archive.path, state().draft!!.extraction!!.archive.path)
+        assertEquals(android.view.View.GONE, dialog().findViewById<CheckBox>(R.id.cb_move)!!.visibility)
+        assertEquals(android.view.View.GONE, dialog().findViewById<CheckBox>(R.id.cb_keep_structure)!!.visibility)
+        assertEquals(activity.getString(R.string.extract_to), dialog().findViewById<TextView>(R.id.tv_destination_label)!!.text)
+        launchPicker()
+        assertEquals(activity.getString(R.string.extract_to),
+            activity.findViewById<TextView>(R.id.tv_copy_destination_label).text.toString())
+        controller.recreate()
+        idle()
+        choose()
+        assertEquals(archive.path, state().draft!!.extraction!!.archive.path)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        assertEquals(R.string.progress_extract, session.titleRes)
+        assertFalse((session.work as Transfers.Work.Copy).move)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("root", File(target, "bundle/payload.txt").readText())
+        assertEquals("nested", File(target, "bundle/sub/deep.txt").readText())
+        assertFalse(File(target, archive.name).exists())
+        assertTrue(archive.exists())
+    }
+
+    @Test fun `extracting compressed tar continues through the tar layer`() {
+        FsRegistry.register(com.twig.fs.archive.SingleFileSystem.gzip())
+        FsRegistry.register(com.twig.fs.archive.TarFileSystem())
+        val archive = File(source.parentFile, "bundle.tgz")
+        // Independent USTAR + gzip fixture containing sub/file.txt.
+        archive.writeBytes(java.util.Base64.getDecoder().decode(
+            "H4sIAAAAAAAC/+3PQQrCQBAEwH1KXmBmNfifFRWEgMFsQH/v6kXwriBWXXroSzPzsuuPp/GwqteaPiSa7TA8s3nPiLx53Y8+xzpH6iJ9wTLXcmnz6T+157up3MZz2ScAAAAAAAAAAAB+xx3zWZaVACgAAA=="))
+        openExtraction(archive)
+        assertEquals(archive.path, state().draft!!.extraction!!.archive.path)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("tar payload", File(target, "sub/file.txt").readText())
+        assertFalse(File(target, "bundle.tar").exists())
+        assertTrue(archive.exists())
+    }
+
+    @Test fun `extract without a destination defaults to the source and picker cancellation preserves it`() {
+        val archive = extractionArchive()
+        FileClipboard.put(listOf(entry(source)))
+        val clipboard = FileClipboard.state.value
+        pane(1).viewModel.currentDir = null
+        openExtraction(archive)
+        assertFalse(activity.isChoosingDestination())
+        assertTrue(dialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals(archive.parentFile!!.path, state().draft!!.effectiveDestination()!!.path)
+        launchPicker()
+        controller.recreate()
+        idle()
+        cancelPicker()
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        assertNull(state().draft)
+        assertFalse(File(archive.parentFile, "bundle").exists())
+        assertEquals(clipboard, FileClipboard.state.value)
+        assertNull(Transfers.active)
+        assertTrue(archive.exists())
+    }
+
+    @Test fun `extract source default can switch off and accept a picked destination`() {
+        val archive = extractionArchive(listOf("only.txt" to "single"))
+        pane(1).viewModel.currentDir = null
+        openExtraction(archive)
+        val check = dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!
+        assertTrue(check.isChecked)
+        check.isChecked = false
+        assertFalse(dialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertNull(state().draft!!.effectiveDestination())
+        launchPicker()
+        choose()
+        assertFalse(dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals(target.path, state().draft!!.effectiveDestination()!!.path)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        assertNull((session.work as Transfers.Work.Copy).destinationFolder)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start(); worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("single", File(target, "only.txt").readText())
+        assertFalse(File(target, "bundle").exists())
+    }
+
+    @Test fun `multiple root entries extract beside the source inside the archive named folder`() {
+        val archive = extractionArchive()
+        pane(1).viewModel.currentDir = null
+        openExtraction(archive)
+        assertTrue(dialog().findViewById<TextView>(R.id.tv_structure_preview)!!.text.contains("bundle/"))
+        controller.recreate()
+        idle()
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals("bundle", state().draft!!.extraction!!.folderName)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        val work = session.work as Transfers.Work.Copy
+        assertEquals(archive.parentFile!!.path, work.dest.path)
+        assertEquals("bundle", work.destinationFolder)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start(); worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("root", File(archive.parentFile, "bundle/payload.txt").readText())
+        assertEquals("nested", File(archive.parentFile, "bundle/sub/deep.txt").readText())
+        assertTrue(archive.exists())
+    }
+
+    @Test fun `a single directory extracts directly and a dot prefix is treated as the archive root`() {
+        val archive = extractionArchive(listOf("one/a.txt" to "a", "one/b.txt" to "b"))
+        openExtraction(archive)
+        assertNull(state().draft!!.extraction!!.folderName)
+        dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        extractionArchive(listOf("./a.txt" to "a", "./b.txt" to "b"))
+        openExtraction(archive)
+        assertEquals(2, state().draft!!.sources.size)
+        assertEquals("bundle", state().draft!!.extraction!!.folderName)
+    }
+
+    @Test fun `archive folder names remove compound tar compression extensions`() {
+        for (name in listOf("bundle.tar.gz", "bundle.tar.xz", "bundle.tgz", "bundle.zip", "bundle.7z")) {
+            val archive = XFile("file", "/$name", false)
+            assertEquals("bundle", DestinationState.Extraction.folderName(archive, 2))
+            assertNull(DestinationState.Extraction.folderName(archive, 1))
+        }
+    }
+
     @Test fun `missing destination can be picked and copied without selecting the other pane`() {
         pane(1).viewModel.currentDir = null
         open()
@@ -169,10 +344,13 @@ class CopyDestinationTest {
         Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.ZIP)
         pane(1).viewModel.currentDir = null
         openCompression()
-        assertFalse(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertTrue(compressionDialog().getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
+        assertTrue(compressionDialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals(source.parentFile!!.path, state().draft!!.effectiveDestination()!!.path)
         launchCompressionPicker()
         choose()
         val form = compressionDialog()
+        assertFalse(form.findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
         assertEquals("source.zip", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
         form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         idle()

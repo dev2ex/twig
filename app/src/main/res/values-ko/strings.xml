@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">폴더 구조 유지</string>
     <string name="selection_clear_all">모두 선택 해제</string>
     <string name="transfer_duplicate_paths">출력 경로가 중복됩니다. 폴더 구조를 유지하거나 선택 항목을 변경하세요.</string>
+    <string name="extract_to">압축 풀 위치…</string>
+    <string name="progress_extract">압축 푸는 중…</string>
 </resources>

@@ -1276,4 +1276,6 @@
     <string name="transfer_keep_structure">Giữ cấu trúc thư mục</string>
     <string name="selection_clear_all">Bỏ chọn tất cả</string>
     <string name="transfer_duplicate_paths">Đường dẫn đầu ra trùng nhau. Hãy giữ cấu trúc thư mục hoặc thay đổi lựa chọn.</string>
+    <string name="extract_to">Giải nén đến…</string>
+    <string name="progress_extract">Đang giải nén…</string>
 </resources>

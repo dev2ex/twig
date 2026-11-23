@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Ordnerstruktur beibehalten</string>
     <string name="selection_clear_all">Auswahl leeren</string>
     <string name="transfer_duplicate_paths">Quellen haben doppelte Zielpfade. Ordnerstruktur aktivieren oder Auswahl ändern.</string>
+    <string name="extract_to">Entpacken nach…</string>
+    <string name="progress_extract">Wird entpackt…</string>
 </resources>

@@ -70,10 +70,31 @@ class ZipFileSystem(
 
     override fun readEntries(archivePath: String): List<ArchiveEntry> {
         openZip(archivePath).use { zf ->
-            return zf.entries.asSequence().map {
-                ArchiveEntry(zf.names[it], it.isDirectory, if (it.isDirectory) 0L else it.size, it.time)
-            }.toList()
+            return archiveEntries(zf)
         }
+    }
+
+    private fun archiveEntries(zf: OpenZip) = zf.entries.map {
+        ArchiveEntry(zf.names[it], it.isDirectory, if (it.isDirectory) 0L else it.size, it.time)
+    }
+
+    override fun openReader(archivePath: String): ArchiveReader {
+        val zf = openZip(archivePath)
+        return try {
+            val byName = zf.entries.filterNot { it.isDirectory }.groupBy {
+                zf.names[it].replace('\\', '/').trimEnd('/')
+            }.mapValues { it.value.first() }
+            object : ArchiveReader {
+                override val entries = archiveEntries(zf)
+                override fun open(inner: String): InputStream {
+                    val entry = byName[inner] ?: throw FsException("No such file in archive: $inner")
+                    return if (entry.generalPurposeBit.usesEncryption())
+                        openEncrypted(archivePath, entry, requirePassword(archivePath))
+                    else zf.getInputStream(entry)
+                }
+                override fun close() = zf.close()
+            }
+        } catch (t: Throwable) { zf.close(); throw t }
     }
 
     /** (archive!/entry) -> STORED slice; null means the entry is compressed. Shared by probing and mounting so the directory is not re-parsed. */

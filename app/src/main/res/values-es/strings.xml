@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Conservar estructura de carpetas</string>
     <string name="selection_clear_all">Borrar selección</string>
     <string name="transfer_duplicate_paths">Hay rutas de salida duplicadas. Conserva la estructura o cambia la selección.</string>
+    <string name="extract_to">Extraer en…</string>
+    <string name="progress_extract">Extrayendo…</string>
 </resources>

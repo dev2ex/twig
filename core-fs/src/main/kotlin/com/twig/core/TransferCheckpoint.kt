@@ -6,6 +6,10 @@ import java.io.OutputStream
 interface ResumableWrite {
     fun canResumeWrites(directory: XFile): Boolean = true
     fun appendPartial(file: XFile): OutputStream
+
+    /** Exact child lookups for staging validation; listing failures must propagate. */
+    fun findWriteEntries(directory: XFile, names: Set<String>): List<XFile> =
+        (this as FileSystem).list(directory).filter { it.name in names }
 }
 
 /** Owned by one transfer, reused only by its manual retries. Never infer completion from file size. */

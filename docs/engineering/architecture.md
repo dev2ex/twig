@@ -11,6 +11,18 @@ FileSystem implementation, with zero changes to the UI or to copying.**
 Every `XFile` carries a `scheme`; `FsRegistry.of(scheme)` finds the matching FileSystem.
 Multiple servers of the same kind each get a unique scheme.
 
+`ReadBatchSource` optionally supplies a task-owned `ReadBatch` filesystem for repeated
+reads. `CopyEngine` uses it for copying across different schemes, closes it on success,
+cancellation or failure, and retains ordinary readers for moves and same-scheme writes.
+Archive batches retain one listing/index per archive; ZIP shares its parsed names and
+seekable reader, and 7z shares its decoder. Distinct 7z siblings use physical archive
+order to reduce decoder rewinds; interleaved directory trees or backward reads can
+still restart a solid block. Readers belong to a transfer, never to a global cache
+or another viewer. Recursive size planning also closes its own batch snapshot.
+`ResumableWrite.findWriteEntries` validates owned partials and destination conflicts;
+the default lists and propagates failures, while local storage inspects the named child
+without repeatedly enumerating a growing directory.
+
 **Optional capability interfaces** (`core-fs/MediaServer.kt`): `FileSystem` itself is the
 floor that "every backend must answer"; capabilities that only make sense for a few
 backends get their own interface, implementations opt in with `: PlaybackProgress`, and

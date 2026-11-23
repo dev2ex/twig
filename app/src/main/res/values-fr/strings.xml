@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Conserver la structure des dossiers</string>
     <string name="selection_clear_all">Tout désélectionner</string>
     <string name="transfer_duplicate_paths">Des chemins de sortie sont en double. Conservez la structure ou modifiez la sélection.</string>
+    <string name="extract_to">Extraire vers…</string>
+    <string name="progress_extract">Extraction…</string>
 </resources>

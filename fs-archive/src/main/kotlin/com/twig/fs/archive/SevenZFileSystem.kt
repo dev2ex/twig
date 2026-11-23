@@ -49,6 +49,38 @@ class SevenZFileSystem : ArchiveFileSystem() {
         return list
     }
 
+    override fun openReader(archivePath: String): ArchiveReader {
+        val sz = try { openSz(archivePath) } catch (t: Throwable) {
+            throw asPasswordIssue(archivePath, t) ?: t
+        }
+        return try {
+            val all = sz.entries.toList()
+            val byName = all.filterNot { it.isDirectory }.groupBy { it.name.replace('\\', '/') }
+                .mapValues { it.value.first() }
+            val positions = HashMap<String, Int>()
+            for ((index, entry) in all.withIndex()) {
+                var path = entry.name.replace('\\', '/').removePrefix("/").trimEnd('/')
+                while (path.isNotEmpty()) {
+                    positions.putIfAbsent(path, index)
+                    if ('/' !in path) break
+                    path = path.substringBeforeLast('/')
+                }
+            }
+            object : ArchiveReader {
+                override val entries = all.map { e ->
+                    ArchiveEntry(e.name, e.isDirectory, if (e.isDirectory) 0L else e.size,
+                        if (e.hasLastModifiedDate) e.lastModifiedDate.time else 0L)
+                }
+                override fun open(inner: String): InputStream = try {
+                    sz.getInputStream(byName[inner] ?: throw FsException("No such file in 7z archive: $inner"))
+                } catch (t: Throwable) { throw asPasswordIssue(archivePath, t) ?: t }
+                override fun order(files: List<com.twig.core.XFile>) =
+                    files.sortedBy { positions[innerOf(it.path)] ?: Int.MAX_VALUE }
+                override fun close() = sz.close()
+            }
+        } catch (t: Throwable) { sz.close(); throw asPasswordIssue(archivePath, t) ?: t }
+    }
+
     override fun openEntry(archivePath: String, inner: String): InputStream {
         val sz = try {
             openSz(archivePath)

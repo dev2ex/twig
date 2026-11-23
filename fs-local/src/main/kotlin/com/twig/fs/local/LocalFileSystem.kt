@@ -174,6 +174,18 @@ class LocalFileSystem(
     override fun canResumeWrites(directory: XFile): Boolean =
         directory.scheme == scheme && documents(directory) == null
 
+    override fun findWriteEntries(directory: XFile, names: Set<String>): List<XFile> {
+        documents(directory)?.let { fs -> return fs.list(directory).filter { it.name in names } }
+        val parent = File(directory.path)
+        // A failed inspection is unknown, not a missing child. Keep the elevated
+        // listing fallback and its errors for directories Java cannot inspect.
+        if (!parent.isDirectory || !parent.canRead()) return list(directory).filter { it.name in names }
+        return names.mapNotNull { name ->
+            val child = File(parent, name)
+            if (child.exists() || readLink(child.path) != null) toXFile(child) else null
+        }
+    }
+
     override fun appendPartial(file: XFile): OutputStream = openOutput(file, true)
 
     override fun openOutput(file: XFile, append: Boolean): OutputStream {

@@ -1276,4 +1276,6 @@
     <string name="transfer_keep_structure">保留目錄結構</string>
     <string name="selection_clear_all">清空選取</string>
     <string name="transfer_duplicate_paths">來源包含重複的輸出路徑，請開啟保留目錄結構或調整選取。</string>
+    <string name="extract_to">解壓縮至…</string>
+    <string name="progress_extract">正在解壓縮…</string>
 </resources>

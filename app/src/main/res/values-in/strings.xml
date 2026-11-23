@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Pertahankan struktur folder</string>
     <string name="selection_clear_all">Hapus pilihan</string>
     <string name="transfer_duplicate_paths">Jalur keluaran duplikat. Pertahankan struktur folder atau ubah pilihan.</string>
+    <string name="extract_to">Ekstrak ke…</string>
+    <string name="progress_extract">Mengekstrak…</string>
 </resources>

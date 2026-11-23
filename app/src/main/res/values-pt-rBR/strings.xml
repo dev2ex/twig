@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Manter estrutura de pastas</string>
     <string name="selection_clear_all">Limpar seleção</string>
     <string name="transfer_duplicate_paths">Há caminhos de saída duplicados. Mantenha a estrutura ou altere a seleção.</string>
+    <string name="extract_to">Extrair para…</string>
+    <string name="progress_extract">Extraindo…</string>
 </resources>

@@ -77,6 +77,7 @@ object Transfers {
             val move: Boolean,
             val fromClipboard: Boolean,
             val targetPaths: Map<String, String> = emptyMap(),
+            val destinationFolder: String? = null,
         ) : Work()
 
         /**
@@ -314,8 +315,19 @@ object Transfers {
                     runCatching { FsRegistry.of(partial.file).delete(partial.file) }
                 }
             }
+            val copyDestination = (s.work as? Work.Copy)?.let { work ->
+                val name = work.destinationFolder
+                if (name == null || s.cancelled.get()) work.dest else {
+                    require(com.twig.core.SourceLayout.isSafeSegment(name)) { ctx.getString(R.string.batch_invalid_name, name) }
+                    val fs = FsRegistry.of(work.dest)
+                    val existing = fs.list(work.dest).firstOrNull { it.name == name }
+                    if (existing != null && !existing.isDir)
+                        throw com.twig.core.FsException(ctx.getString(R.string.err_goto_not_dir, name))
+                    existing ?: fs.mkdir(work.dest, name)
+                }
+            }
             val pairs = when (val w = s.work) {
-                is Work.Copy -> w.items.map { it to w.dest }
+                is Work.Copy -> w.items.map { it to requireNotNull(copyDestination) }
                 is Work.Sync -> w.pairs
                 else -> emptyList()
             }
@@ -364,7 +376,7 @@ object Transfers {
                 }
                 is Work.Download -> w.task.execute(ctx, w.dest, listener, isCancelled = { s.cancelled.get() })
                 is Work.Copy -> CopyEngine.transfer(
-                    w.items, w.dest, w.move, listener,
+                    w.items, requireNotNull(copyDestination), w.move, listener,
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                     targetPaths = w.targetPaths,
                 )

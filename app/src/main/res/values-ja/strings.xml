@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">フォルダー構造を保持</string>
     <string name="selection_clear_all">選択をすべて解除</string>
     <string name="transfer_duplicate_paths">出力パスが重複しています。フォルダー構造を保持するか、選択を変更してください。</string>
+    <string name="extract_to">展開先…</string>
+    <string name="progress_extract">展開中…</string>
 </resources>

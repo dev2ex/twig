@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">फ़ोल्डर संरचना रखें</string>
     <string name="selection_clear_all">सभी चयन हटाएँ</string>
     <string name="transfer_duplicate_paths">आउटपुट पथ दोहराए गए हैं। फ़ोल्डर संरचना रखें या चयन बदलें।</string>
+    <string name="extract_to">यहाँ निकालें…</string>
+    <string name="progress_extract">निकाला जा रहा है…</string>
 </resources>

@@ -1281,4 +1281,6 @@
     <string name="transfer_keep_structure">الحفاظ على بنية المجلدات</string>
     <string name="selection_clear_all">إلغاء تحديد الكل</string>
     <string name="transfer_duplicate_paths">مسارات الإخراج مكررة. حافظ على بنية المجلدات أو غيّر التحديد.</string>
+    <string name="extract_to">استخراج إلى…</string>
+    <string name="progress_extract">جارٍ الاستخراج…</string>
 </resources>

@@ -1277,4 +1277,6 @@
     <string name="transfer_keep_structure">Mantieni la struttura delle cartelle</string>
     <string name="selection_clear_all">Deseleziona tutto</string>
     <string name="transfer_duplicate_paths">Percorsi di destinazione duplicati. Mantieni la struttura o modifica la selezione.</string>
+    <string name="extract_to">Estrai in…</string>
+    <string name="progress_extract">Estrazione…</string>
 </resources>

@@ -56,6 +56,7 @@ class DestinationState : ViewModel() {
         val compression: Compression? = null,
         val relativePaths: Map<String, String>? = runCatching { SourceLayout.paths(sources) }.getOrNull(),
         var keepStructure: Boolean = false,
+        val extraction: Extraction? = null,
     ) {
         fun outputPaths(): Map<String, String> {
             if (!keepStructure) return emptyMap()
@@ -66,11 +67,20 @@ class DestinationState : ViewModel() {
         }
 
         fun preview(): String = sources.take(4).joinToString("\n") {
-            outputPaths()[it.toUri()]?.ifEmpty { "./" } ?: it.name
+            val path = outputPaths()[it.toUri()]?.ifEmpty { "./" } ?: it.name
+            extraction?.folderName?.let { folder -> "$folder/$path" } ?: path
         } + if (sources.size > 4) "\n…" else ""
 
-        fun effectiveDestination(): XFile? =
-            if (compression?.saveToSource == true) compression.sourceDirectory else destination
+        fun effectiveDestination(): XFile? = when {
+            compression?.saveToSource == true -> compression.sourceDirectory
+            extraction?.saveToSource == true -> extraction.sourceDirectory
+            else -> destination
+        }
+
+        fun usePickedDestination() {
+            compression?.saveToSource = false
+            extraction?.saveToSource = false
+        }
 
         fun blockReason(destination: XFile): Int? {
             if (!destination.isWritableDir()) return R.string.msg_dest_not_writable
@@ -87,6 +97,24 @@ class DestinationState : ViewModel() {
             return null
         }
 
+    }
+
+    class Extraction(
+        val archive: XFile,
+        val sourceDirectory: XFile?,
+        var saveToSource: Boolean = false,
+        val folderName: String? = null,
+    ) {
+        companion object {
+            fun folderName(archive: XFile, itemCount: Int): String? {
+                if (itemCount <= 1) return null
+                var stem = archive.name.substringBeforeLast('.', archive.name)
+                if (archive.extension in setOf("gz", "xz", "bz2", "zst") && stem.endsWith(".tar", ignoreCase = true))
+                    stem = stem.dropLast(4)
+                return stem.map { if (it == '/' || it == '\\' || it.isISOControl()) '_' else it }
+                    .joinToString("").takeIf(SourceLayout::isSafeSegment) ?: "archive"
+            }
+        }
     }
 
     class Compression(

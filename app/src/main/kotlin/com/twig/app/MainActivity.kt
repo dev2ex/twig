@@ -730,7 +730,11 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val draft = source?.destinationState?.draft ?: return null
         val target = siblingOf(source)?.viewModel?.currentDir
         val reason = if (target == null) R.string.msg_dest_not_writable else draft.blockReason(target)
-        b.tvCopyDestinationLabel.setText(if (draft.compression == null) R.string.copy_to else R.string.compress_save_to)
+        b.tvCopyDestinationLabel.setText(when {
+            draft.extraction != null -> R.string.extract_to
+            draft.compression != null -> R.string.compress_save_to
+            else -> R.string.copy_to
+        })
         b.tvCopyDestinationLabel.visibility = if (target != null && reason == null) View.VISIBLE else View.GONE
         b.tvCopyDestination.text = when {
             target == null -> getString(R.string.picker_hint_dir, getString(R.string.copy_use_destination))
@@ -748,7 +752,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val draft = state.draft ?: return
         if (!cancelled) {
             draft.destination = renderDestination() ?: return
-            draft.compression?.saveToSource = false
+            draft.usePickedDestination()
         }
         val confirm = !cancelled || state.returnToConfirmation
         state.choosingDestination = false

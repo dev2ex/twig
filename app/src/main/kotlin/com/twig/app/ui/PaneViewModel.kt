@@ -3355,7 +3355,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * [file]; if not, return false so the UI can ask again.
      * [save] decides whether to persist it ([Prefs.setArchivePassword]).
      */
-    fun unlockArchive(file: XFile, password: String, save: Boolean, onResult: (Boolean) -> Unit) {
+    fun unlockArchive(file: XFile, password: String, save: Boolean, expand: Boolean = true, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val ok = runCatching {
                 withContext(io) {
@@ -3370,9 +3370,26 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             if (!ok) return@launch
             if (save) Prefs.setArchivePassword(getApplication(), archivePwKey(file), password)
             // The previous expansion failed, so its children aren't cached — go through the full mount again here.
-            children.remove(fileKey(file))
-            expandFileNode(file)
+            if (expand) {
+                children.remove(fileKey(file))
+                expandFileNode(file)
+            }
         }
+    }
+
+    /** Same mounting, saved passwords and nested-archive cache policy as tree expansion. */
+    internal suspend fun extractionSources(file: XFile): List<XFile> = withContext(io) {
+        var contents = listChildren(file).children
+        // A tar's conventional ./ prefix is its root, not an enclosing directory.
+        while (contents.size == 1 && contents.single().isDir && contents.single().name == ".") {
+            val root = contents.single()
+            contents = FsRegistry.of(root).list(root)
+        }
+        contents
+    }
+
+    internal suspend fun extractionNeedsMaterialization(file: XFile): Boolean = withContext(io) {
+        materializeConfirmNeeded(file, fileKey(file)) != null
     }
 
     /** Password storage key: use the **file the user tapped** (not the cache copy's path), so changing device cache doesn't break it. */
