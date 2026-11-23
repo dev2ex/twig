@@ -1280,4 +1280,6 @@
     <string name="extract_to">यहाँ निकालें…</string>
     <string name="progress_extract">निकाला जा रहा है…</string>
     <string name="msg_metadata_not_preserved">%1$d आइटम की कुछ विशेषताएँ सुरक्षित नहीं रखी जा सकीं।</string>
+    <string name="transfer_preserve_permissions">अनुमतियाँ और स्वामी बनाए रखें</string>
+    <string name="transfer_preserve_permissions_hint">स्वामी केवल संगत स्थानों के बीच बनाए रखा जाता है।</string>
 </resources>

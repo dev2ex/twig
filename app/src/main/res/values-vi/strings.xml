@@ -1279,4 +1279,6 @@
     <string name="extract_to">Giải nén đến…</string>
     <string name="progress_extract">Đang giải nén…</string>
     <string name="msg_metadata_not_preserved">Không thể giữ lại một số thuộc tính của %1$d mục.</string>
+    <string name="transfer_preserve_permissions">Giữ quyền và chủ sở hữu</string>
+    <string name="transfer_preserve_permissions_hint">Chỉ giữ chủ sở hữu giữa các vị trí tương thích.</string>
 </resources>

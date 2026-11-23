@@ -1279,4 +1279,6 @@
     <string name="extract_to">解壓縮至…</string>
     <string name="progress_extract">正在解壓縮…</string>
     <string name="msg_metadata_not_preserved">%1$d 個項目的部分屬性無法保留。</string>
+    <string name="transfer_preserve_permissions">保留權限和擁有者</string>
+    <string name="transfer_preserve_permissions_hint">僅在相容的位置之間保留擁有者。</string>
 </resources>

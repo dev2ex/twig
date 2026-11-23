@@ -1316,4 +1316,6 @@
     <string name="extract_to">Распаковать в…</string>
     <string name="progress_extract">Распаковка…</string>
     <string name="msg_metadata_not_preserved">Не удалось сохранить некоторые атрибуты %1$d элементов.</string>
+    <string name="transfer_preserve_permissions">Сохранять права и владельца</string>
+    <string name="transfer_preserve_permissions_hint">Владелец сохраняется только между совместимыми расположениями.</string>
 </resources>

@@ -46,6 +46,9 @@ class CopyConfirmDialog : DialogFragment() {
         }
         form.tvSrc.text = draft.extraction?.archive?.name ?: if (draft.sources.size == 1) draft.sources.single().name
             else getString(R.string.copy_items, draft.sources.size)
+        form.cbPreservePermissions.isSaveEnabled = false
+        form.cbPreservePermissions.isChecked = draft.preservePermissions
+        form.cbPreservePermissions.setOnCheckedChangeListener { _, checked -> draft.preservePermissions = checked }
         form.cbMove.isChecked = draft.move
         form.cbMove.visibility = if (draft.movable) View.VISIBLE else View.GONE
         form.cbMove.setOnCheckedChangeListener { _, checked -> draft.move = checked }
@@ -77,7 +80,8 @@ class CopyConfirmDialog : DialogFragment() {
             dismiss()
             pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan,
                 targetPaths = draft.outputPaths(), extraction = draft.extraction != null,
-                destinationFolder = draft.extraction?.folderName, streamingTar = draft.extraction?.streamingTar)
+                destinationFolder = draft.extraction?.folderName, streamingTar = draft.extraction?.streamingTar,
+                preservePermissions = draft.preservePermissions)
         }
         updateDestination()
     }

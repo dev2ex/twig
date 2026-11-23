@@ -115,8 +115,15 @@ files fail the staged archive rather than producing malformed data. ACLs, xattrs
 SELinux labels and hard-link identity are not preserved. Android shared storage can
 only supply the metadata its filesystem exposes.
 
-Copy/overwrite and archive extraction share metadata restoration. Permission bits and
-modification times are preserved across sources where the destination supports them.
+Copy/move and extraction confirmations offer **Preserve permissions and owner**, default
+unchecked for each new operation; the choice is not stored in preferences or backups.
+Immediate transfers, clipboard pastes, duplicates and comparison copies leave it off.
+The draft retains the current choice across rotation and destination selection, and background
+work freezes it for retries. Modification times remain best effort regardless of this option, including directories after their children. With the option
+off, source Unix attributes are not queried or copied, timestamp failures produce no attribute
+warning and do not prevent move-source deletion. Native in-place moves retain their attributes.
+Copy/overwrite and archive extraction share metadata restoration when enabled. Permission bits
+are preserved across sources where the destination supports them.
 Numeric UID/GID are applied only within a known shared ownership domain: local-to-local,
 or SFTP connections to the same host/port/account even with different connection roots. Different
 hosts and archives do not establish that namespace; archived UID/GID remain recorded but

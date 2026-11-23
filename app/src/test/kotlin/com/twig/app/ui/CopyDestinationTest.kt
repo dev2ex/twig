@@ -169,6 +169,40 @@ class CopyDestinationTest {
         assertNotNull(state().draft)
     }
 
+    @Test fun `permission preservation defaults off and survives destination changes and retries`() {
+        open()
+        val checkbox = dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!
+        assertFalse(checkbox.isChecked)
+        checkbox.isChecked = true
+        launchPicker()
+        controller.recreate()
+        idle()
+        choose()
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!.isChecked)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        assertTrue((session.work as Transfers.Work.Copy).preservePermissions)
+        val retry = Transfers.retrySession(session, false)
+        assertTrue((retry.work as Transfers.Work.Copy).preservePermissions)
+    }
+
+    @Test fun `new confirmations reset permission preservation`() {
+        open()
+        dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!.isChecked = true
+        dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        open()
+        assertFalse(dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!.isChecked)
+        dialog().getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        openExtraction(extractionArchive())
+        assertFalse(dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!.isChecked)
+        dialog().findViewById<CheckBox>(R.id.cb_preserve_permissions)!!.isChecked = true
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        assertTrue((requireNotNull(Transfers.active).work as Transfers.Work.Copy).preservePermissions)
+        assertFalse(activity.getSharedPreferences("twig_prefs", 0).contains("preserve_transfer_permissions"))
+    }
+
     @Test fun `extract menu reuses copy destination picking and preserves the archive tree`() {
         val archive = extractionArchive()
         openExtraction(archive)

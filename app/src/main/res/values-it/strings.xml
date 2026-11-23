@@ -1280,4 +1280,6 @@
     <string name="extract_to">Estrai in…</string>
     <string name="progress_extract">Estrazione…</string>
     <string name="msg_metadata_not_preserved">Impossibile conservare alcuni attributi di %1$d elementi.</string>
+    <string name="transfer_preserve_permissions">Mantieni permessi e proprietario</string>
+    <string name="transfer_preserve_permissions_hint">Il proprietario viene mantenuto solo tra posizioni compatibili.</string>
 </resources>

@@ -1284,4 +1284,6 @@
     <string name="extract_to">استخراج إلى…</string>
     <string name="progress_extract">جارٍ الاستخراج…</string>
     <string name="msg_metadata_not_preserved">تعذّر الاحتفاظ ببعض السمات لعدد %1$d من العناصر.</string>
+    <string name="transfer_preserve_permissions">الاحتفاظ بالأذونات والمالك</string>
+    <string name="transfer_preserve_permissions_hint">يُحتفظ بالمالك بين المواقع المتوافقة فقط.</string>
 </resources>

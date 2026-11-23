@@ -1359,4 +1359,6 @@
     <string name="extract_to">Extract to…</string>
     <string name="progress_extract">Extracting…</string>
     <string name="msg_metadata_not_preserved">Some attributes could not be preserved for %1$d item(s).</string>
+    <string name="transfer_preserve_permissions">Preserve permissions and owner</string>
+    <string name="transfer_preserve_permissions_hint">Owners are preserved only between compatible locations.</string>
 </resources>

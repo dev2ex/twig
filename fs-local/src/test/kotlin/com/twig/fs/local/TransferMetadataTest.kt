@@ -39,6 +39,51 @@ class TransferMetadataTest {
         FsRegistry.register(fs)
     }
 
+    @Test fun disabledPermissionsSkipSourceMetadataAndKeepTimestamps() {
+        val src = tmp.newFile("timestamp-only").apply { writeText("data"); setLastModified(1600000000000) }
+        val out = tmp.newFolder("out")
+        val source = object : FileSystem by fs, UnixMetadataSource {
+            override val scheme = "metadata-off"
+            override fun unixMetadata(file: XFile, includeContext: Boolean): UnixMetadata? =
+                error("Disabled permission preservation must not read source Unix metadata")
+            override fun openInput(file: XFile) = fs.openInput(file.copy(scheme = fs.scheme))
+        }
+        FsRegistry.register(source)
+        try {
+            CopyEngine.transfer(listOf(XFile(source.scheme, src.path, false, src.length(), src.lastModified())),
+                fs.resolve(out.path), false, preservePermissions = false)
+            val attrs = written.single().second
+            assertNull(attrs.mode)
+            assertNull(attrs.uid)
+            assertNull(attrs.gid)
+            assertEquals(src.lastModified(), File(out, src.name).lastModified())
+        } finally { FsRegistry.unregister(source.scheme) }
+    }
+
+    @Test fun timestampFailureWithPermissionsDisabledDoesNotRetainMoveSource() {
+        val src = tmp.newFile("moving").apply { writeText("data"); setLastModified(1600000000000) }
+        val out = tmp.newFolder("out")
+        val source = object : FileSystem by fs {
+            override val scheme = "timestamp-only-move"
+            override fun openInput(file: XFile) = fs.openInput(file.copy(scheme = fs.scheme))
+            override fun delete(file: XFile) = fs.delete(file.copy(scheme = fs.scheme))
+        }
+        val denied = object : FileSystem by fs, UnixMetadataWrite {
+            override fun applyMetadata(file: XFile, attributes: TransferAttributes) = MetadataResult(false)
+            override fun createSymbolicLink(parent: XFile, name: String, target: String): XFile = error("Not needed")
+        }
+        FsRegistry.register(source)
+        FsRegistry.register(denied)
+        try {
+            val checkpoint = TransferCheckpoint()
+            CopyEngine.transfer(listOf(XFile(source.scheme, src.path, false, src.length(), src.lastModified())),
+                fs.resolve(out.path), true, checkpoint = checkpoint, preservePermissions = false)
+            assertFalse(src.exists())
+            assertEquals("data", File(out, src.name).readText())
+            assertTrue(checkpoint.metadataFailures.isEmpty())
+        } finally { FsRegistry.unregister(source.scheme); FsRegistry.register(fs) }
+    }
+
     @Test fun directoryPermissionsAndTimesAreAppliedAfterChildrenAndLinksAreNotFollowed() {
         val src = tmp.newFolder("source")
         val data = File(src, "run").apply { writeText("executable") }

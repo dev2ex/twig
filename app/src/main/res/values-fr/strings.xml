@@ -1280,4 +1280,6 @@
     <string name="extract_to">Extraire vers…</string>
     <string name="progress_extract">Extraction…</string>
     <string name="msg_metadata_not_preserved">Certains attributs de %1$d éléments n’ont pas pu être conservés.</string>
+    <string name="transfer_preserve_permissions">Conserver les permissions et le propriétaire</string>
+    <string name="transfer_preserve_permissions_hint">Le propriétaire est conservé uniquement entre emplacements compatibles.</string>
 </resources>

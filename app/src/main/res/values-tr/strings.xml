@@ -1280,4 +1280,6 @@
     <string name="extract_to">Şuraya çıkart…</string>
     <string name="progress_extract">Çıkartılıyor…</string>
     <string name="msg_metadata_not_preserved">%1$d öğenin bazı öznitelikleri korunamadı.</string>
+    <string name="transfer_preserve_permissions">İzinleri ve sahibi koru</string>
+    <string name="transfer_preserve_permissions_hint">Sahip yalnızca uyumlu konumlar arasında korunur.</string>
 </resources>

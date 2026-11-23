@@ -1280,4 +1280,6 @@
     <string name="extract_to">展開先…</string>
     <string name="progress_extract">展開中…</string>
     <string name="msg_metadata_not_preserved">%1$d 件の項目の一部の属性を保持できませんでした。</string>
+    <string name="transfer_preserve_permissions">権限と所有者を保持</string>
+    <string name="transfer_preserve_permissions_hint">所有者は互換性のある場所の間でのみ保持します。</string>
 </resources>

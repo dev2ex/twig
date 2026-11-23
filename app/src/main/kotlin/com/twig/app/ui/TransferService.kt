@@ -79,6 +79,7 @@ object Transfers {
             val targetPaths: Map<String, String> = emptyMap(),
             val destinationFolder: String? = null,
             val streamingTar: XFile? = null,
+            val preservePermissions: Boolean = false,
         ) : Work()
 
         /**
@@ -92,6 +93,7 @@ object Transfers {
             val pairs: List<Pair<XFile, XFile>>,
             val move: Boolean,
             val duplicate: Boolean = false,
+            val preservePermissions: Boolean = false,
         ) : Work() {
             // Keep generated destinations stable across retries, including partially copied directories.
             var targetNames: Map<String, String>? = null
@@ -387,10 +389,12 @@ object Transfers {
                 is Work.Copy -> if (streamingTar != null) CopyEngine.transferSequential(
                     com.twig.fs.archive.StreamingTar.open(streamingTar) { s.cancelled.get() },
                     requireNotNull(copyDestination), listener, { s.cancelled.get() }, resolverFor(s), s.checkpoint,
+                    preservePermissions = w.preservePermissions,
                 ) else CopyEngine.transfer(
                     w.items, requireNotNull(copyDestination), w.move, listener,
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                     targetPaths = w.targetPaths,
+                    preservePermissions = w.preservePermissions,
                 )
                 is Work.Sync -> {
                     if (w.duplicate && w.targetNames == null) {
@@ -415,6 +419,7 @@ object Transfers {
                             srcs, dest, w.move, offset,
                             { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                             targetNames = w.targetNames.orEmpty(),
+                            preservePermissions = w.preservePermissions,
                         )
                         base += lastCopied
                     }

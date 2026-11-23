@@ -1280,4 +1280,6 @@
     <string name="extract_to">Entpacken nach…</string>
     <string name="progress_extract">Wird entpackt…</string>
     <string name="msg_metadata_not_preserved">Bei %1$d Elementen konnten einige Attribute nicht beibehalten werden.</string>
+    <string name="transfer_preserve_permissions">Berechtigungen und Eigentümer beibehalten</string>
+    <string name="transfer_preserve_permissions_hint">Eigentümer werden nur zwischen kompatiblen Speicherorten übernommen.</string>
 </resources>

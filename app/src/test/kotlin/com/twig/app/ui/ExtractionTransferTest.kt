@@ -43,8 +43,9 @@ class ExtractionTransferTest {
         assertFalse(worker.isAlive)
     }
 
-    private fun session(items: List<XFile>) = Transfers.Session(
-        Transfers.Work.Copy(items, local.resolve(target.path), false, false, destinationFolder = "bundle"),
+    private fun session(items: List<XFile>, preservePermissions: Boolean = false) = Transfers.Session(
+        Transfers.Work.Copy(items, local.resolve(target.path), false, false, destinationFolder = "bundle",
+            preservePermissions = preservePermissions),
         R.string.progress_extract, target.path + "/bundle", R.drawable.ic_folder, null)
 
     @Test fun retryReusesTheWrapperAndSkipsPreviouslyCompletedFiles() {
@@ -78,7 +79,7 @@ class ExtractionTransferTest {
             override fun applyMetadata(file: XFile, attributes: com.twig.core.TransferAttributes) = com.twig.core.MetadataResult(false)
             override fun createSymbolicLink(parent: XFile, name: String, target: String): XFile = error("Not needed")
         })
-        val work = session(source.list(source.root()).map { it.copy(unixMode = 0x1ED) })
+        val work = session(source.list(source.root()).map { it.copy(unixMode = 0x1ED) }, preservePermissions = true)
         execute(work)
         assertTrue(work.finished.toString(), work.finished!!.isSuccess)
         assertEquals("content", File(target, "bundle/data").readText())

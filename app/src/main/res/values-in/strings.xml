@@ -1280,4 +1280,6 @@
     <string name="extract_to">Ekstrak ke…</string>
     <string name="progress_extract">Mengekstrak…</string>
     <string name="msg_metadata_not_preserved">Beberapa atribut untuk %1$d item tidak dapat dipertahankan.</string>
+    <string name="transfer_preserve_permissions">Pertahankan izin dan pemilik</string>
+    <string name="transfer_preserve_permissions_hint">Pemilik hanya dipertahankan antar lokasi yang kompatibel.</string>
 </resources>

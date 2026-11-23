@@ -1310,4 +1310,6 @@
     <string name="extract_to">解压到…</string>
     <string name="progress_extract">正在解压…</string>
     <string name="msg_metadata_not_preserved">%1$d 个项目的部分属性未能保留。</string>
+    <string name="transfer_preserve_permissions">保留权限和所有者</string>
+    <string name="transfer_preserve_permissions_hint">仅在兼容的位置之间保留所有者。</string>
 </resources>

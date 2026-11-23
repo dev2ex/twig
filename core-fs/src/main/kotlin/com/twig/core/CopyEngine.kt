@@ -93,6 +93,7 @@ object CopyEngine {
         val total: Long,
         val move: Boolean,
         val checkpoint: TransferCheckpoint?,
+        val preservePermissions: Boolean,
         val sequential: SequentialSource? = null,
     ) {
         var bytes = 0L
@@ -105,6 +106,8 @@ object CopyEngine {
 
         fun restore(fs: FileSystem, file: XFile, attributes: TransferAttributes): MetadataResult {
             val result = TransferMetadata.apply(fs, file, attributes)
+            // Timestamp-only failures keep the historical best-effort behavior.
+            if (!preservePermissions) return result.copy(complete = true)
             if (result.complete) checkpoint?.metadataFailures?.remove(file.toUri())
             else {
                 checkpoint?.metadataFailures?.add(file.toUri())
@@ -140,10 +143,11 @@ object CopyEngine {
         cancelled: Cancelled = Cancelled { false },
         resolver: ConflictResolver = ConflictResolver { _, _ -> Decision.OVERWRITE },
         checkpoint: TransferCheckpoint? = null,
+        preservePermissions: Boolean = true,
     ) {
         source.use {
             checkpoint?.failure = null
-            val task = Task(listener, cancelled, resolver, 0, false, checkpoint, source)
+            val task = Task(listener, cancelled, resolver, 0, false, checkpoint, preservePermissions, source)
             val destFs = FsRegistry.of(destDir)
             while (!cancelled.isCancelled() && !task.aborted) {
                 val entry = source.next() ?: break
@@ -210,10 +214,11 @@ object CopyEngine {
         checkpoint: TransferCheckpoint? = null,
         targetNames: Map<String, String> = emptyMap(), // Optional names for top-level entries, keyed by source URI.
         targetPaths: Map<String, String> = emptyMap(), // Frozen relative paths, keyed by source URI.
+        preservePermissions: Boolean = true,
     ) {
         checkpoint?.failure = null
         val pending = items.filterNot { checkpoint?.completed?.contains("root:" + checkpoint.key(it, destDir)) == true }
-        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(pending), move, checkpoint)
+        val task = Task(listener, cancelled, resolver, if (plannedBytes >= 0) plannedBytes else totalSize(pending), move, checkpoint, preservePermissions)
         require(targetNames.values.all(::isSafeName)) { "Invalid destination name" }
         require(targetPaths.values.all(SourceLayout::isSafePath)) { "Invalid destination path" }
         val destFs = FsRegistry.of(destDir)
@@ -318,7 +323,8 @@ object CopyEngine {
         val siblings = childrenOf(task, destFs, destDir)
         val existing = siblings[attempt.targetName]
 
-        val attributes = TransferMetadata.read(srcFs, src).forDestination(destFs)
+        val attributes = if (task.preservePermissions) TransferMetadata.read(srcFs, src).forDestination(destFs)
+            else TransferAttributes(modified = src.lastModified.takeIf { it > 0 })
         if (src.isSymbolicLink) return copyLink(src, destDir, srcFs, destFs, siblings, attributes, task, attempt)
         if (src.isDir) {
             if (existing?.isSymbolicLink == true) throw FsException("Destination directory is a symbolic link: ${existing.name}")
@@ -384,7 +390,7 @@ object CopyEngine {
         task.listener?.onFile(src)
         // RENAME picked a free name, so only OVERWRITE still has something to protect.
         val replacing = siblings[name]
-        val restore = if (replacing != null && !replacing.isSymbolicLink &&
+        val restore = if (task.preservePermissions && replacing != null && !replacing.isSymbolicLink &&
             (attributes.mode == null || attributes.uid == null || attributes.gid == null))
             attributes.withFallback(TransferMetadata.read(destFs, replacing, refresh = true)) else attributes
         // Replacing ends with delete(existing), which is recursive — a file must never

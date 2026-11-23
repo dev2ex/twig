@@ -1871,10 +1871,11 @@ class PaneFragment : Fragment() {
         extraction: Boolean = false,
         destinationFolder: String? = null,
         streamingTar: XFile? = null,
+        preservePermissions: Boolean = false,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths, destinationFolder, streamingTar),
+                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths, destinationFolder, streamingTar, preservePermissions),
                 if (extraction) R.string.progress_extract else if (move) R.string.progress_move else R.string.progress_copy,
                 pathLabel(dest) + destinationFolder?.let { "/$it" }.orEmpty(), pathIcon(dest), plan0,
             ),

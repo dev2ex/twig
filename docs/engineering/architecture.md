@@ -66,7 +66,9 @@ filters numeric ownership by `UnixMetadataSource.ownershipDomain` before applyin
 Local hooks use Android syscalls with the existing privileged fallback; SFTP uses SETSTAT
 for regular entries and never follows a link to set attributes. Metadata failure preserves
 completed content and is recorded separately from write failure. Directories are restored
-after their descendants; sequential tar defers directory restoration until EOF.
+after their descendants; sequential tar defers directory restoration until EOF. Transfer
+confirmations default permission/owner preservation off; timestamp-only transfers skip source
+Unix metadata queries and retain best-effort modification times without attribute warnings.
 `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
 folder counts and before size/time, without bind-time filesystem calls.
 `Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic

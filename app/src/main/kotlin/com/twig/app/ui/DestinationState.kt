@@ -69,6 +69,7 @@ class DestinationState : ViewModel() {
         val relativePaths: Map<String, String>? = runCatching { SourceLayout.paths(sources) }.getOrNull(),
         var keepStructure: Boolean = false,
         val extraction: Extraction? = null,
+        var preservePermissions: Boolean = false,
     ) {
         fun outputPaths(): Map<String, String> {
             if (!keepStructure) return emptyMap()

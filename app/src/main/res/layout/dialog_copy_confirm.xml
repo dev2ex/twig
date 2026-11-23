@@ -78,6 +78,19 @@
             android:textColor="@color/text_secondary"
             android:textSize="13sp" />
         <CheckBox
+            android:id="@+id/cb_preserve_permissions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/transfer_preserve_permissions"
+            android:textSize="14sp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/transfer_preserve_permissions_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+        <CheckBox
             android:id="@+id/cb_move"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
