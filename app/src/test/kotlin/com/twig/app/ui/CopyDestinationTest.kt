@@ -204,6 +204,8 @@ class CopyDestinationTest {
         FsRegistry.register(com.twig.fs.archive.SingleFileSystem.gzip())
         FsRegistry.register(com.twig.fs.archive.TarFileSystem())
         val archive = File(source.parentFile, "bundle.tgz")
+        val cache = com.twig.app.CacheDirs.dir(activity, com.twig.app.CacheDirs.ARCHIVES)
+        val before = cache.listFiles().orEmpty().map { it.name }.toSet()
         // Independent USTAR + gzip fixture containing sub/file.txt.
         archive.writeBytes(java.util.Base64.getDecoder().decode(
             "H4sIAAAAAAAC/+3PQQrCQBAEwH1KXmBmNfifFRWEgMFsQH/v6kXwriBWXXroSzPzsuuPp/GwqteaPiSa7TA8s3nPiLx53Y8+xzpH6iJ9wTLXcmnz6T+157up3MZz2ScAAAAAAAAAAAB+xx3zWZaVACgAAA=="))
@@ -218,8 +220,83 @@ class CopyDestinationTest {
         idle()
         assertTrue(session.finished.toString(), session.finished!!.isSuccess)
         assertEquals("tar payload", File(target, "sub/file.txt").readText())
+        assertEquals(archive.path, (session.work as Transfers.Work.Copy).streamingTar!!.path)
+        assertNull(session.plan)
+        assertEquals(before, cache.listFiles().orEmpty().map { it.name }.toSet())
         assertFalse(File(target, "bundle.tar").exists())
         assertTrue(archive.exists())
+    }
+
+    @Test fun `streaming tar preserves source defaults and the multiple root wrapper`() {
+        FsRegistry.register(com.twig.fs.archive.SingleFileSystem.gzip())
+        val archive = File(source.parentFile, "bundle.tar.gz")
+        archive.writeBytes(java.util.Base64.getDecoder().decode(
+            "H4sIAAAAAAAC/+3TPQrCQBCA0TmKJ5CoyXqe+Ac2EbIreHxXK9HaoOS9ZoZppvr6ZbmV+K6mSm37nNX7rLqX/XFP2/UqFk1M4JpLP9aXMU+n85hLMFe7n+g/ffa/0f8U8nF/GQ46AAAAAAAAAAD4V3dkWq4sACgAAA=="))
+        pane(1).viewModel.currentDir = null
+        openExtraction(archive)
+        assertTrue(dialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isChecked)
+        assertEquals("bundle", state().draft!!.extraction!!.folderName)
+        assertNull(state().plan.value)
+        launchPicker()
+        controller.recreate()
+        idle()
+        choose()
+        assertEquals(archive.path, state().draft!!.extraction!!.streamingTar!!.path)
+        dialog().getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val session = requireNotNull(Transfers.active)
+        val worker = Thread { Transfers.execute(activity, session) {} }
+        worker.start()
+        worker.join(5000)
+        assertFalse(worker.isAlive)
+        idle()
+        assertTrue(session.finished.toString(), session.finished!!.isSuccess)
+        assertEquals("first", File(target, "bundle/a.txt").readText())
+        assertEquals("second", File(target, "bundle/b.txt").readText())
+        assertFalse(File(target, "bundle.tar").exists())
+    }
+
+    @Test fun `streaming tar preflight can be cancelled without creating a destination draft`() {
+        FsRegistry.register(com.twig.fs.archive.SingleFileSystem.gzip())
+        val archive = File(source.parentFile, "blocked.tar.gz").apply { writeBytes(byteArrayOf(31, -117)) }
+        val originalFs = FsRegistry.of("file")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        FsRegistry.register(object : com.twig.core.FileSystem by originalFs {
+            override fun openInput(file: XFile): java.io.InputStream {
+                if (file.path != archive.path) return originalFs.openInput(file)
+                return object : java.io.FilterInputStream(originalFs.openInput(file)) {
+                    override fun read(b: ByteArray, off: Int, len: Int): Int {
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                        return super.read(b, off, len)
+                    }
+                    override fun close() { super.close(); closed.countDown() }
+                }
+            }
+        })
+        try {
+            val file = entry(archive)
+            ReflectionHelpers.callInstanceMethod<Void>(pane(), "performExtract",
+                ReflectionHelpers.ClassParameter.from(XFile::class.java, file),
+                ReflectionHelpers.ClassParameter.from(XFile::class.java, file),
+                ReflectionHelpers.ClassParameter.from(Boolean::class.javaPrimitiveType, false))
+            idle()
+            assertTrue(entered.await(5, TimeUnit.SECONDS))
+            val loading = org.robolectric.shadows.ShadowDialog.getLatestDialog() as AlertDialog
+            assertEquals(activity.getString(R.string.info_loading),
+                loading.findViewById<TextView>(android.R.id.message)!!.text.toString())
+            loading.cancel()
+            release.countDown()
+            assertTrue(closed.await(5, TimeUnit.SECONDS))
+            idle()
+            assertNull(state().draft)
+            assertNull(Transfers.active)
+            assertFalse(activity.isChoosingDestination())
+        } finally {
+            release.countDown()
+            FsRegistry.register(originalFs)
+        }
     }
 
     @Test fun `extract without a destination defaults to the source and picker cancellation preserves it`() {

@@ -89,6 +89,7 @@ object CopyEngine {
         val total: Long,
         val move: Boolean,
         val checkpoint: TransferCheckpoint?,
+        val sequential: SequentialSource? = null,
     ) {
         var bytes = 0L
         var aborted = false // user picked "Cancel" in the conflict dialog
@@ -97,6 +98,7 @@ object CopyEngine {
         val readers = HashMap<String, ReadBatch>()
 
         fun source(file: XFile, destination: XFile): FileSystem {
+            sequential?.let { if (it.scheme == file.scheme) return it }
             val fs = FsRegistry.of(file)
             // Mutating an archive while reading it must keep the ordinary fresh-reader path.
             return if (!move && file.scheme != destination.scheme && fs is ReadBatchSource)
@@ -111,6 +113,54 @@ object CopyEngine {
             // Ordering is optional. Report a failed archive open inside the normal
             // per-item attempt so its checkpoint can still be retried or skipped.
             return try { batch.order(files) } catch (_: Exception) { files }
+        }
+    }
+
+    /** Copy entries in physical order without indexing or materializing the source. Owns [source]. */
+    fun transferSequential(
+        source: SequentialSource,
+        destDir: XFile,
+        listener: ProgressListener? = null,
+        cancelled: Cancelled = Cancelled { false },
+        resolver: ConflictResolver = ConflictResolver { _, _ -> Decision.OVERWRITE },
+        checkpoint: TransferCheckpoint? = null,
+    ) {
+        source.use {
+            checkpoint?.failure = null
+            val task = Task(listener, cancelled, resolver, 0, false, checkpoint, source)
+            val destFs = FsRegistry.of(destDir)
+            while (!cancelled.isCancelled() && !task.aborted) {
+                val entry = source.next() ?: break
+                val file = entry.file
+                val parts = entry.components
+                if (checkpoint?.isSourceSkipped(file) == true) { skipItem(file, task); continue }
+                if (parts.isEmpty() || parts.any { !isSafeName(it) || it == "." }) {
+                    listener?.onRefused(file)
+                    continue
+                }
+                var directory = destDir
+                try {
+                    for (segment in parts.dropLast(1)) {
+                        if (cancelled.isCancelled()) return
+                        val children = childrenOf(task, destFs, directory)
+                        val existing = children[segment]
+                        if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
+                        directory = existing ?: destFs.mkdir(directory, segment).also { children[segment] = it }
+                    }
+                    val rootKey = checkpoint?.let { "root:" + it.key(file, directory) }
+                    if (rootKey != null && checkpoint?.completed?.contains(rootKey) == true || checkpoint?.isSkipped(file, directory) == true) {
+                        skipItem(file, task)
+                        continue
+                    }
+                    if (copyRecursive(file, directory, task, parts.last())) {
+                        if (rootKey != null) checkpoint?.complete(rootKey)
+                    }
+                } catch (t: Throwable) {
+                    checkpoint?.let { if (it.failure == null) it.failure = TransferCheckpoint.Failure(file, directory, parts.last()) }
+                    throw t
+                }
+            }
+            listener?.onDone()
         }
     }
 

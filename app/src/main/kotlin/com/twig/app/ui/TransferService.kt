@@ -78,6 +78,7 @@ object Transfers {
             val fromClipboard: Boolean,
             val targetPaths: Map<String, String> = emptyMap(),
             val destinationFolder: String? = null,
+            val streamingTar: XFile? = null,
         ) : Work()
 
         /**
@@ -326,6 +327,7 @@ object Transfers {
                     existing ?: fs.mkdir(work.dest, name)
                 }
             }
+            val streamingTar = (s.work as? Work.Copy)?.streamingTar
             val pairs = when (val w = s.work) {
                 is Work.Copy -> w.items.map { it to requireNotNull(copyDestination) }
                 is Work.Sync -> w.pairs
@@ -334,13 +336,13 @@ object Transfers {
             val remaining = if (pairs.isEmpty()) s.work.items else pairs.filter { (src, dest) ->
                 "root:" + s.checkpoint.key(src, dest) !in s.checkpoint.completed
             }.map { it.first }
-            val plan = s.plan
+            val plan = if (streamingTar != null) CopyEngine.Plan(0, 0, 0) else s.plan
                 ?: s.work.takeIf { s.isDelete }?.let { w ->
                     CopyEngine.Plan(0, w.items.count { !it.isDir }, w.items.count { it.isDir })
                 }
                 ?: runCatching { CopyEngine.plan(remaining) }.getOrNull()
                 ?: CopyEngine.Plan(0, 0, 0)
-            s.plan = plan
+            s.plan = plan.takeIf { streamingTar == null }
             s.dirsLeft = plan.dirs
             s.filesLeft = plan.files
             post(s)
@@ -375,7 +377,10 @@ object Transfers {
                     }
                 }
                 is Work.Download -> w.task.execute(ctx, w.dest, listener, isCancelled = { s.cancelled.get() })
-                is Work.Copy -> CopyEngine.transfer(
+                is Work.Copy -> if (streamingTar != null) CopyEngine.transferSequential(
+                    com.twig.fs.archive.StreamingTar.open(streamingTar) { s.cancelled.get() },
+                    requireNotNull(copyDestination), listener, { s.cancelled.get() }, resolverFor(s), s.checkpoint,
+                ) else CopyEngine.transfer(
                     w.items, requireNotNull(copyDestination), w.move, listener,
                     { s.cancelled.get() }, resolverFor(s), plan.bytes, s.checkpoint,
                     targetPaths = w.targetPaths,

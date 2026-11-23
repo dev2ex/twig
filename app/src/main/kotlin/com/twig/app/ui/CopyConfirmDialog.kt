@@ -77,7 +77,7 @@ class CopyConfirmDialog : DialogFragment() {
             dismiss()
             pane.startTransfer(draft.sources, destination, draft.movable && draft.move, plan,
                 targetPaths = draft.outputPaths(), extraction = draft.extraction != null,
-                destinationFolder = draft.extraction?.folderName)
+                destinationFolder = draft.extraction?.folderName, streamingTar = draft.extraction?.streamingTar)
         }
         updateDestination()
     }

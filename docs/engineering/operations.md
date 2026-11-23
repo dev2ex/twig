@@ -113,9 +113,21 @@ the archive without its extension (including `.tar.gz` and similar compound exte
 A conventional `./` prefix is an archive root, not a single enclosing directory.
 Create/merge that folder only in the confirmed background transfer, and use the actual
 folder for retry checkpoints. A same-named file is never replaced by that folder.
-Preserve internal directories and keep the source archive. Passwords and nested-archive materialization follow the existing mount policy,
-without expanding or navigating the source tree. Compressed tar formats automatically
-continue through the tar layer. Extraction uses ordinary background copy work, including
+Preserve internal directories and keep the source archive. Passwords and nested-archive
+materialization follow the existing mount policy, without expanding or navigating the
+source tree. **Extract to…** on compressed tar (`tar.gz`/xz/bz2/zst and shorthand
+extensions) uses sequential decompression directly into the destination, with no full
+tar cache. A cancellable preflight scans tar headers until a second distinct top-level
+entry is found; a genuinely single-root archive needs a full scan. This preflight may
+decompress data but never stores it. Confirmed extraction opens a fresh forward stream,
+so even interleaved directories need only one source pass. Tree browsing retains its
+random-access mount/materialization policy.
+
+Streaming extraction shows per-file progress and an indeterminate overall total rather
+than scanning every entry just to calculate totals. It validates the compression trailer
+before reporting success. Retries replay the stream to find entries, skip completed
+writes and resume owned partials; they do not seek backward in compressed input.
+Extraction uses ordinary background copy work, including
 conflicts, cancellation, progress and retries. Archive-entry copies also benefit from
 the shared read batch. Small files (up to 64 KiB) copy on the transfer thread; larger
 streams retain the pipelined reader.

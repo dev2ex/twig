@@ -1,6 +1,8 @@
 package com.twig.fs.archive
 
 import com.twig.core.FsException
+import com.twig.core.FsRegistry
+import com.twig.core.XFile
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import org.tukaani.xz.SeekableInputStream
@@ -18,11 +20,12 @@ import java.util.zip.GZIPInputStream
  * These are not archives. There is one data stream inside and nothing else — no file
  * names, no directories, no table of contents. So they are mounted as "an archive with
  * exactly one entry", named after the host with the compression extension stripped:
- * `foo.tar.gz` opens to `foo.tar`, and expanding *that* gives the real tar. Two nested
- * mounts are all tar.gz needs, with no special case anywhere — and the app layer already
+ * `foo.tar.gz` opens to `foo.tar`, and expanding *that* gives the real tar. For tree
+ * browsing, two nested mounts expose tar.gz, and the app layer already
  * materialises a nested archive whose host cannot seek cheaply
  * (`PaneViewModel.archiveTarget`, keyed off [fastRandom] being false), so the inner tar
  * is walked over a real local file instead of re-inflating the gzip stream per seek.
+ * Explicit extraction instead uses [StreamingTar] and [openDecoded] without a tar cache.
  *
  * **Whether the uncompressed size is free depends on the format, and all three answer
  * differently.** Everything below reads a handful of bytes from the head or tail and
@@ -84,6 +87,14 @@ class SingleFileSystem private constructor(
         // local files and remote hosts alike. 64 KB on top because all three decoders
         // pull in small bites and the remote channel would otherwise round-trip per bite.
         val ins = BufferedInputStream(Channels.newInputStream(openChannel(archivePath)), 1 shl 16)
+        return decode(ins)
+    }
+
+    /** Sequential extraction needs no seekable host, mount registration or local cache. */
+    fun openDecoded(file: XFile): InputStream =
+        decode(BufferedInputStream(FsRegistry.of(file).openInput(file), 1 shl 16))
+
+    private fun decode(ins: InputStream): InputStream {
         return try {
             when (codec) {
                 // All three read concatenated streams (`cat a.gz b.gz` is legal for every

@@ -29,6 +29,7 @@ class DestinationState : ViewModel() {
     fun prepare(draft: Draft) {
         clear()
         this.draft = draft
+        if (draft.extraction?.streamingTar != null) return
         planning = viewModelScope.launch {
             plan.value = withContext(Dispatchers.IO) {
                 val context = currentCoroutineContext()
@@ -66,10 +67,17 @@ class DestinationState : ViewModel() {
             }
         }
 
-        fun preview(): String = sources.take(4).joinToString("\n") {
-            val path = outputPaths()[it.toUri()]?.ifEmpty { "./" } ?: it.name
-            extraction?.folderName?.let { folder -> "$folder/$path" } ?: path
-        } + if (sources.size > 4) "\n…" else ""
+        fun preview(): String {
+            extraction?.streamingProbe?.let { probe ->
+                return probe.roots.joinToString("\n") { name ->
+                    extraction.folderName?.let { "$it/$name" } ?: name
+                } + if (probe.complete) "" else "\n…"
+            }
+            return sources.take(4).joinToString("\n") {
+                val path = outputPaths()[it.toUri()]?.ifEmpty { "./" } ?: it.name
+                extraction?.folderName?.let { folder -> "$folder/$path" } ?: path
+            } + if (sources.size > 4) "\n…" else ""
+        }
 
         fun effectiveDestination(): XFile? = when {
             compression?.saveToSource == true -> compression.sourceDirectory
@@ -88,7 +96,7 @@ class DestinationState : ViewModel() {
             if (compression != null && !keepStructure && sources.map { it.name }.distinct().size != sources.size)
                 return R.string.transfer_duplicate_paths
             FileClipboard.pasteBlockReason(destination, sources,
-                allowSameDirectory = compression != null || keepStructure)?.let { return it }
+                allowSameDirectory = compression != null || extraction != null || keepStructure)?.let { return it }
             if (compression == null && keepStructure && destination.path.startsWith("/")) {
                 if (sources.any { source -> source.scheme == destination.scheme &&
                     destination.path.trimEnd('/') + "/" + outputPaths()[source.toUri()] == source.path })
@@ -104,6 +112,8 @@ class DestinationState : ViewModel() {
         val sourceDirectory: XFile?,
         var saveToSource: Boolean = false,
         val folderName: String? = null,
+        val streamingTar: XFile? = null,
+        val streamingProbe: com.twig.fs.archive.StreamingTar.Probe? = null,
     ) {
         companion object {
             fun folderName(archive: XFile, itemCount: Int): String? {

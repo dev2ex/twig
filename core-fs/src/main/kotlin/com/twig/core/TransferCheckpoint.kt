@@ -20,6 +20,8 @@ class TransferCheckpoint {
     private val skipped = linkedSetOf<String>()
     fun skip(failed: Failure) { skipped.add(locationKey(failed.source, failed.directory)) }
     fun isSkipped(source: XFile, directory: XFile): Boolean = locationKey(source, directory) in skipped
+    /** Sequential entry identities are unique within their one transfer, even before parents exist. */
+    internal fun isSourceSkipped(source: XFile): Boolean = skipped.any { it.startsWith(source.toUri() + "\u0000") }
     private fun locationKey(source: XFile, directory: XFile) = source.toUri() + "\u0000" + directory.toUri()
 
     val completed = linkedSetOf<String>()

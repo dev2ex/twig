@@ -23,6 +23,12 @@ or another viewer. Recursive size planning also closes its own batch snapshot.
 the default lists and propagates failures, while local storage inspects the named child
 without repeatedly enumerating a growing directory.
 
+`SequentialSource` supplies one current entry at a time without a filesystem registry
+mount. `CopyEngine.transferSequential` owns its lifetime, processes physical archive
+order, and shares copy conflicts, staging writes and checkpoints. Entry identities must
+remain stable on retry and distinguish duplicate paths; only the current entry may
+be opened. Streaming compressed-tar extraction uses this path instead of a cached tar.
+
 **Optional capability interfaces** (`core-fs/MediaServer.kt`): `FileSystem` itself is the
 floor that "every backend must answer"; capabilities that only make sense for a few
 backends get their own interface, implementations opt in with `: PlaybackProgress`, and

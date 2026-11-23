@@ -1870,10 +1870,11 @@ class PaneFragment : Fragment() {
         targetPaths: Map<String, String> = emptyMap(),
         extraction: Boolean = false,
         destinationFolder: String? = null,
+        streamingTar: XFile? = null,
     ) {
         launchSession(
             Transfers.Session(
-                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths, destinationFolder),
+                Transfers.Work.Copy(sel, dest, move, fromClipboard, targetPaths, destinationFolder, streamingTar),
                 if (extraction) R.string.progress_extract else if (move) R.string.progress_move else R.string.progress_copy,
                 pathLabel(dest) + destinationFolder?.let { "/$it" }.orEmpty(), pathIcon(dest), plan0,
             ),
@@ -2097,7 +2098,8 @@ class PaneFragment : Fragment() {
         if (destinationState.draft != null) return
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                if (!materializeConfirmed && viewModel.extractionNeedsMaterialization(archive)) {
+                val streaming = com.twig.fs.archive.StreamingTar.supports(archive)
+                if (!streaming && !materializeConfirmed && viewModel.extractionNeedsMaterialization(archive)) {
                     val message = if (archive.size > 0)
                         getString(R.string.archive_confirm_materialize, archive.name, Format.size(archive.size))
                     else getString(R.string.archive_confirm_materialize_unknown, archive.name)
@@ -2107,9 +2109,23 @@ class PaneFragment : Fragment() {
                         .show()
                     return@launch
                 }
-                val sources = viewModel.extractionSources(archive)
+                val probe = if (streaming) {
+                    val job = kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job]
+                    val loading = AlertDialog.Builder(requireContext())
+                        .setTitle(R.string.extract_to)
+                        .setMessage(R.string.info_loading)
+                        .setNegativeButton(R.string.dialog_cancel) { _, _ -> job?.cancel() }
+                        .setOnCancelListener { job?.cancel() }
+                        .show()
+                    try {
+                        withContext(Dispatchers.IO) {
+                            com.twig.fs.archive.StreamingTar.probe(archive) { job?.isActive == false }
+                        }
+                    } finally { loading.dismiss() }
+                } else null
+                val sources = if (streaming) listOf(archive) else viewModel.extractionSources(archive)
                 // tar.gz and its shorthand forms extract the tar's contents in one action.
-                if (FsRegistry.of(com.twig.fs.archive.Archives.schemeFor(archive)!!) is com.twig.fs.archive.SingleFileSystem &&
+                if (!streaming && FsRegistry.of(com.twig.fs.archive.Archives.schemeFor(archive)!!) is com.twig.fs.archive.SingleFileSystem &&
                     sources.size == 1 && sources.single().extension == "tar") {
                     performExtract(sources.single(), original)
                     return@launch
@@ -2122,7 +2138,8 @@ class PaneFragment : Fragment() {
                 noteSourceDirs(listOf(original))
                 val draft = DestinationState.Draft(sources, dest, move = false, movable = false,
                     relativePaths = emptyMap(), extraction = DestinationState.Extraction(original, sourceDirectory,
-                        folderName = DestinationState.Extraction.folderName(original, sources.size)))
+                        folderName = DestinationState.Extraction.folderName(original, probe?.roots?.size ?: sources.size),
+                        streamingTar = archive.takeIf { streaming }, streamingProbe = probe))
                 draft.extraction?.saveToSource = dest?.let { draft.blockReason(it) == null } != true &&
                     sourceDirectory?.let { draft.blockReason(it) == null } == true
                 destinationState.prepare(draft)
