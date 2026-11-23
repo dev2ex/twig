@@ -6,6 +6,13 @@ Update this reference in place when behavior changes.
 
 ## Pane layout
 
+The shared `fragment_pane` keeps left-to-right geometry in every locale: tree
+indentation, icons, selection buttons, grid order and path segments retain their
+positions in Main and both pickers. Text retains Android's bidirectional rendering,
+including Arabic file names. Row titles, including root/group names, saved server
+names and Add actions, align to the left edge of their title box regardless of text
+direction. Other screens keep their locale-directed layout.
+
 `MainActivity` + two resident `PaneFragment`s (ViewPager2 was dropped; visibility
 toggling + fling gestures). `Prefs.paneLayout` chooses follow-orientation (default),
 single or dual panes; `Prefs.dualPane` drives visibility, focus, swipe handling and
