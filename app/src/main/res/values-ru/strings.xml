@@ -1315,4 +1315,5 @@
     <string name="transfer_duplicate_paths">Пути назначения повторяются. Сохраните структуру папок или измените выбор.</string>
     <string name="extract_to">Распаковать в…</string>
     <string name="progress_extract">Распаковка…</string>
+    <string name="msg_metadata_not_preserved">Не удалось сохранить некоторые атрибуты %1$d элементов.</string>
 </resources>

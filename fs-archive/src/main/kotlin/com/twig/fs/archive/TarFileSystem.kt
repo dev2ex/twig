@@ -66,7 +66,7 @@ class TarFileSystem : ArchiveFileSystem() {
                 val name = e.name.replace('\\', '/')
                 // Sparse entries are stored in pieces with holes between them; only the
                 // library knows how to reassemble one, so they are left off the fast path.
-                if (!e.isDirectory && !e.isSparse && e.dataOffset >= 0) {
+                if (!e.isDirectory && !e.isLink && !e.isSparse && e.dataOffset >= 0) {
                     // Later wins, matching openEntry's "same name twice" rule below
                     slices[name] = Slice(e.dataOffset, e.size)
                 }
@@ -75,6 +75,8 @@ class TarFileSystem : ArchiveFileSystem() {
                     isDir = e.isDirectory,
                     size = if (e.isDirectory) 0L else e.size,
                     time = timeOf(e),
+                    mode = e.mode, uid = e.longUserId, gid = e.longGroupId,
+                    linkTarget = e.linkName.takeIf { e.isSymbolicLink },
                 )
             }
         }
@@ -171,6 +173,7 @@ class TarFileSystem : ArchiveFileSystem() {
             // list() collapses them (LinkedHashMap overwrite), so the two agree.
             val e = tar.entries.lastOrNull { !it.isDirectory && it.name.replace('\\', '/') == inner }
                 ?: throw FsException("No such file in tar archive: $inner")
+            if (e.isLink) throw FsException("Hard links cannot be extracted: ${e.name}")
             val input = tar.getInputStream(e)
             return object : FilterInputStream(input) {
                 override fun close() {

@@ -1279,4 +1279,5 @@
     <string name="transfer_duplicate_paths">Yinelenen çıktı yolları var. Klasör yapısını koruyun veya seçimi değiştirin.</string>
     <string name="extract_to">Şuraya çıkart…</string>
     <string name="progress_extract">Çıkartılıyor…</string>
+    <string name="msg_metadata_not_preserved">%1$d öğenin bazı öznitelikleri korunamadı.</string>
 </resources>

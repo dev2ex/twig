@@ -6,6 +6,9 @@ import com.twig.core.FsException
 import com.twig.core.XFile
 import com.twig.core.UnixMetadata
 import com.twig.core.UnixMetadataSource
+import com.twig.core.UnixMetadataWrite
+import com.twig.core.TransferAttributes
+import com.twig.core.MetadataResult
 import com.twig.core.RandomSource
 import com.twig.fs.local.priv.PrivilegedFs
 import com.twig.fs.local.priv.PrivilegedShell
@@ -27,10 +30,13 @@ class LocalFileSystem(
     override val displayName: String = "Local storage",
     private val readLink: (String) -> String? = { symbolicLinkTarget?.invoke(it) },
     private val readUnix: (String) -> UnixMetadata? = { unixMetadataReader?.invoke(it) },
+    private val writeMetadata: (String, TransferAttributes) -> MetadataResult? = { path, attributes -> unixMetadataWriter?.invoke(path, attributes) },
+    private val writeLink: (String, String) -> Boolean = { path, target -> symbolicLinkWriter?.invoke(path, target) ?: false },
     private val readContext: (String) -> String? = { selinuxContextReader?.invoke(it) },
-) : FileSystem, com.twig.core.ResumableWrite, UnixMetadataSource {
+) : FileSystem, com.twig.core.ResumableWrite, UnixMetadataSource, UnixMetadataWrite {
 
     override val scheme: String = SCHEME
+    override val ownershipDomain = "local"
 
     override fun root(): XFile = toXFile(rootDir)
 
@@ -280,9 +286,34 @@ class LocalFileSystem(
         return !parent.canRead()
     }
 
-    override fun setModifiedTime(file: XFile, time: Long): Boolean =
-        documents(file)?.setModifiedTime(file, time)
-            ?: (File(file.path).setLastModified(time) || fallback?.setModifiedTime(file.path, time) == true)
+    override fun setModifiedTime(file: XFile, time: Long): Boolean {
+        documents(file)?.let { return it.setModifiedTime(file, time) }
+        if (file.isSymbolicLink || readLink(file.path) != null) return false
+        return File(file.path).setLastModified(time) || fallback?.setModifiedTime(file.path, time) == true
+    }
+
+    override fun applyMetadata(file: XFile, attributes: TransferAttributes): MetadataResult {
+        documents(file)?.let { return com.twig.core.TransferMetadata.apply(it, file, attributes) }
+        val direct = writeMetadata(file.path, attributes) ?: run {
+            val link = file.isSymbolicLink || readLink(file.path) != null
+            val time = attributes.modified?.takeUnless { link }?.let { File(file.path).setLastModified(it) } ?: false
+            MetadataResult(attributes.mode == null && attributes.uid == null && attributes.gid == null &&
+                (attributes.modified == null || link || time), time, if (time) File(file.path).lastModified() else null)
+        }
+        if (direct.complete) return direct
+        val elevated = fallback?.applyMetadata(file.path, attributes) ?: return direct
+        return MetadataResult(elevated.complete, direct.modified || elevated.modified, elevated.modifiedTime ?: direct.modifiedTime)
+    }
+
+    override fun createSymbolicLink(parent: XFile, name: String, target: String): XFile {
+        if (documents(parent) != null) throw FsException("Document storage cannot create symbolic links")
+        require(name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\u0000' !in name)
+        val path = super.createFile(parent, name).path
+        val created = runCatching { writeLink(path, target) }.getOrDefault(false)
+        if (!created && fallback?.createSymbolicLink(path, target) != true) throw FsException("Cannot create symbolic link: $name")
+        changed?.invoke(path)
+        return XFile(scheme, path, false, isSymbolicLink = true, linkTarget = target)
+    }
 
     override fun createFile(parent: XFile, name: String): XFile =
         documents(parent)?.createFile(parent, name) ?: super.createFile(parent, name)
@@ -357,7 +388,7 @@ class LocalFileSystem(
             canWrite = f.canWrite(),
             isSymbolicLink = link,
             linkTarget = target,
-            unixMode = unix?.mode,
+            unixMode = unix?.mode, unixUid = unix?.uid, unixGid = unix?.gid,
         )
     }
 
@@ -376,6 +407,8 @@ class LocalFileSystem(
 
         /** Android supplies Os.readlink; this module also runs on JVMs and Android API 24. */
         @Volatile var symbolicLinkTarget: ((String) -> String?)? = null
+        @Volatile var unixMetadataWriter: ((String, TransferAttributes) -> MetadataResult)? = null
+        @Volatile var symbolicLinkWriter: ((String, String) -> Boolean)? = null
         @Volatile var unixMetadataReader: ((String) -> UnixMetadata?)? = null
         @Volatile var selinuxContextReader: ((String) -> String?)? = null
 

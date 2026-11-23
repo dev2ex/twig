@@ -2,6 +2,8 @@ package com.twig.core
 
 /** Optional, read-only Unix attributes. All fields describe the entry itself, without following links. */
 interface UnixMetadataSource {
+    /** Equal non-null values mean numeric UID/GID refer to the same user namespace. */
+    val ownershipDomain: String? get() = null
     /** Blocking IO; null means unavailable. Bulk callers omit optional SELinux context reads. */
     fun unixMetadata(file: XFile, includeContext: Boolean = true): UnixMetadata?
     /** Raw symlink contents, including relative paths; null when unavailable. */

@@ -89,9 +89,14 @@ object StreamingTar {
                 val components = entry.name.replace('\\', '/').split('/').filter { it.isNotEmpty() && it != "." }
                 if (components.isEmpty()) continue
                 if (!tar.canReadEntryData(entry)) throw FsException("Unsupported tar entry: ${entry.name}")
+                if (!entry.isDirectory && !entry.isFile && !entry.isSymbolicLink)
+                    throw FsException("Unsupported tar entry type: ${entry.name}")
+                if (entry.isLink) throw FsException("Hard links cannot be extracted: ${entry.name}")
                 val file = XFile(scheme, "$identity$index/${components.joinToString("/")}", entry.isDirectory,
                     if (entry.isDirectory) 0 else entry.realSize,
-                    entry.lastModifiedDate?.time ?: 0, canWrite = false)
+                    entry.lastModifiedDate?.time ?: 0, canWrite = false,
+                    unixMode = entry.mode, unixUid = entry.longUserId, unixGid = entry.longGroupId,
+                    isSymbolicLink = entry.isSymbolicLink, linkTarget = entry.linkName.takeIf { entry.isSymbolicLink })
                 current = file
                 opened = false
                 return SequentialSource.Entry(file, components)

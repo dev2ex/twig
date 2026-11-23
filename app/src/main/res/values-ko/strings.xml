@@ -1279,4 +1279,5 @@
     <string name="transfer_duplicate_paths">출력 경로가 중복됩니다. 폴더 구조를 유지하거나 선택 항목을 변경하세요.</string>
     <string name="extract_to">압축 풀 위치…</string>
     <string name="progress_extract">압축 푸는 중…</string>
+    <string name="msg_metadata_not_preserved">%1$d개 항목의 일부 속성을 유지하지 못했습니다.</string>
 </resources>

@@ -1309,4 +1309,5 @@
     <string name="transfer_duplicate_paths">来源包含重复的输出路径，请开启保持目录结构或调整选择。</string>
     <string name="extract_to">解压到…</string>
     <string name="progress_extract">正在解压…</string>
+    <string name="msg_metadata_not_preserved">%1$d 个项目的部分属性未能保留。</string>
 </resources>

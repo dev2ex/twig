@@ -51,6 +51,7 @@ object SafeWrite {
         name: String,
         existing: XFile?,
         fallbackToDirect: Boolean = true,
+        preserveMetadata: Boolean = true,
         write: (OutputStream) -> Unit,
     ): XFile {
         if (existing == null) {
@@ -65,6 +66,7 @@ object SafeWrite {
 
         // A leftover from an interrupted attempt needs no cleanup: path-based backends
         // truncate it on open, and SAF simply creates "name (1)" next to it.
+        val attributes = if (preserveMetadata && !existing.isSymbolicLink) TransferMetadata.read(fs, existing, refresh = true).copy(modified = null) else null
         val tmpName = name + PART_SUFFIX
         val opened = runCatching {
             val tmp = fs.createFile(parent, tmpName)
@@ -88,7 +90,7 @@ object SafeWrite {
         // target, and that error names the temp file the content is in.
         runCatching { fs.delete(existing) }
         return try {
-            fs.rename(tmp, name)
+            fs.rename(tmp, name).also { target -> attributes?.let { TransferMetadata.apply(fs, target, it) } }
         } catch (t: Throwable) {
             throw RenameFailed(tmp.name, name, t)
         }

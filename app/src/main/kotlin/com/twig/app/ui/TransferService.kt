@@ -169,6 +169,7 @@ object Transfers {
 
         /** Entries skipped because their name cannot be written into a directory (zip slip attempts); reported when the transfer ends. */
         @Volatile var refused = 0
+        @Volatile var metadataFailures = 0
 
         /** "Apply to all" remembered choice (only when the conflict dialog's checkbox is ticked). */
         @Volatile var applyAll: CopyEngine.Decision? = null
@@ -302,6 +303,8 @@ object Transfers {
                 post(s)
             }
 
+            override fun onMetadataNotPreserved(file: XFile) { s.metadataFailures++ }
+
             override fun onItemDone(isDir: Boolean) {
                 if (isDir) { if (s.dirsLeft > 0) s.dirsLeft-- } else { if (s.filesLeft > 0) s.filesLeft-- }
                 post(s)
@@ -428,6 +431,7 @@ object Transfers {
             }
         }.map { }
 
+        s.metadataFailures = s.checkpoint.metadataFailures.size
         s.finished = result
         if (s.cancelled.get() || result.isSuccess) discardPartials(s)
         finish(ctx, s, onComplete)
@@ -504,12 +508,14 @@ object Transfers {
             } else if (u == null) pendingResult = s
             val error = s.finished?.exceptionOrNull()
             val cancelled = s.cancelled.get() || error is ArchiveWriter.Cancelled
-            val message = when {
+            val baseMessage = when {
                 cancelled -> ctx.getString(R.string.dialog_cancel)
                 error != null -> error.message ?: ctx.getString(R.string.err_failed)
                 s.refused > 0 -> ctx.getString(R.string.msg_done_refused, s.refused)
                 else -> ctx.getString(R.string.msg_done)
             }
+            val message = if (!cancelled && error == null && s.metadataFailures > 0)
+                baseMessage + "\n" + ctx.getString(R.string.msg_metadata_not_preserved, s.metadataFailures) else baseMessage
             OperationFeedback.finished(
                 ctx, ctx.getString(when {
                     s.isShare -> R.string.action_share

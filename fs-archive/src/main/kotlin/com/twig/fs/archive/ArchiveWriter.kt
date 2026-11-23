@@ -54,7 +54,7 @@ object ArchiveWriter {
     /** TAR stores links themselves; planning must not traverse directory links or count their targets. */
     fun plan(items: List<XFile>, format: Format, cancelled: CopyEngine.Cancelled = CopyEngine.Cancelled { false }): CopyEngine.Plan {
         if (cancelled.isCancelled()) throw Cancelled()
-        if (format != Format.TAR_GZ) return try { CopyEngine.plan(items, cancelled) }
+        if (format != Format.TAR_GZ) return try { CopyEngine.plan(items, followLinks = true, cancelled = cancelled) }
             catch (_: java.util.concurrent.CancellationException) { throw Cancelled() }
         var bytes = 0L
         var files = 0
@@ -285,7 +285,8 @@ object ArchiveWriter {
         private fun entry(name: String, src: XFile, type: Byte): TarArchiveEntry {
             val entry = TarArchiveEntry(name, type)
             (metadata?.mode ?: src.unixMode)?.let { entry.mode = it and 0xFFF }
-            metadata?.let { info -> entry.setUserId(info.uid); entry.setGroupId(info.gid) }
+            (metadata?.uid ?: src.unixUid)?.let { entry.setUserId(it) }
+            (metadata?.gid ?: src.unixGid)?.let { entry.setGroupId(it) }
             entry.setModTime(src.lastModified)
             return entry
         }

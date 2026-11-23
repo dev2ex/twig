@@ -44,12 +44,16 @@ object CopyEngine {
         fun onItemDone(isDir: Boolean) {}
         /** This entry was refused because its name cannot be written into a directory (see [isSafeName]). */
         fun onRefused(file: XFile) {}
+        /** Content is complete but some supported source attributes could not be preserved. */
+        fun onMetadataNotPreserved(file: XFile) {}
         /** Whole task finished. */
         fun onDone() {}
     }
 
     /** Recursively tallies entries; cancellation stops between backend calls without returning partial totals. */
-    fun plan(items: List<XFile>, cancelled: Cancelled = Cancelled { false }): Plan {
+    fun plan(items: List<XFile>, cancelled: Cancelled = Cancelled { false }): Plan = plan(items, false, cancelled)
+
+    fun plan(items: List<XFile>, followLinks: Boolean, cancelled: Cancelled = Cancelled { false }): Plan {
         var bytes = 0L
         var files = 0
         var dirs = 0
@@ -59,7 +63,7 @@ object CopyEngine {
         }
         fun walk(f: XFile) {
             checkCancelled()
-            if (f.isDir) {
+            if (!followLinks && f.isSymbolicLink) { files++ } else if (f.isDir) {
                 dirs++
                 val fs = FsRegistry.of(f)
                 val reader = if (fs is ReadBatchSource) readers.getOrPut(f.scheme) { fs.openReadBatch() } else fs
@@ -96,6 +100,18 @@ object CopyEngine {
         /** Cache of destination directory listings (dir uri -> name -> entry), to avoid re-listing remote dirs per file. */
         val listed = HashMap<String, MutableMap<String, XFile>>()
         val readers = HashMap<String, ReadBatch>()
+        val directoryAttributes = LinkedHashMap<String, Pair<XFile, TransferAttributes>>()
+        val metadataWarnings = HashSet<String>()
+
+        fun restore(fs: FileSystem, file: XFile, attributes: TransferAttributes): MetadataResult {
+            val result = TransferMetadata.apply(fs, file, attributes)
+            if (result.complete) checkpoint?.metadataFailures?.remove(file.toUri())
+            else {
+                checkpoint?.metadataFailures?.add(file.toUri())
+                if (metadataWarnings.add(file.toUri())) listener?.onMetadataNotPreserved(file)
+            }
+            return result
+        }
 
         fun source(file: XFile, destination: XFile): FileSystem {
             sequential?.let { if (it.scheme == file.scheme) return it }
@@ -144,11 +160,11 @@ object CopyEngine {
                         if (cancelled.isCancelled()) return
                         val children = childrenOf(task, destFs, directory)
                         val existing = children[segment]
-                        if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
+                        if (existing != null && (!existing.isDir || existing.isSymbolicLink)) throw FsException("Destination is not a directory: $segment")
                         directory = existing ?: destFs.mkdir(directory, segment).also { children[segment] = it }
                     }
                     val rootKey = checkpoint?.let { "root:" + it.key(file, directory) }
-                    if (rootKey != null && checkpoint?.completed?.contains(rootKey) == true || checkpoint?.isSkipped(file, directory) == true) {
+                    if (rootKey != null && !file.isDir && checkpoint?.completed?.contains(rootKey) == true || checkpoint?.isSkipped(file, directory) == true) {
                         skipItem(file, task)
                         continue
                     }
@@ -158,6 +174,12 @@ object CopyEngine {
                 } catch (t: Throwable) {
                     checkpoint?.let { if (it.failure == null) it.failure = TransferCheckpoint.Failure(file, directory, parts.last()) }
                     throw t
+                }
+            }
+            if (!cancelled.isCancelled() && !task.aborted) {
+                // TAR directories can precede their children; restore deepest directories only after EOF.
+                task.directoryAttributes.values.sortedByDescending { it.first.path.count { c -> c == '/' } }.forEach { (file, attributes) ->
+                    task.restore(destFs, file, attributes)
                 }
             }
             listener?.onDone()
@@ -217,7 +239,7 @@ object CopyEngine {
                         if (task.cancelled.isCancelled()) return
                         val entries = childrenOf(task, destFs, directory)
                         val existing = entries[segment]
-                        if (existing != null && !existing.isDir) throw FsException("Destination is not a directory: $segment")
+                        if (existing != null && (!existing.isDir || existing.isSymbolicLink)) throw FsException("Destination is not a directory: $segment")
                         directory = existing ?: destFs.mkdir(directory, segment).also { entries[segment] = it }
                     }
                     if (item.isDir && item.scheme == directory.scheme && item.path.startsWith("/") &&
@@ -233,7 +255,7 @@ object CopyEngine {
                     ) {
                         task.listed.remove(directory.toUri())
                         checkpoint?.let { it.complete("root:" + it.key(item, destDir)) }
-                        listener?.onItemDone(item.isDir)
+                        listener?.onItemDone(item.isDir && !item.isSymbolicLink)
                         continue
                     }
                     val priorKey = checkpoint?.key(item, directory)
@@ -279,9 +301,9 @@ object CopyEngine {
     }
 
     private fun skipItem(src: XFile, task: Task) {
-        task.bytes += src.size.coerceAtLeast(0)
+        task.bytes += if (src.isSymbolicLink) 0 else src.size.coerceAtLeast(0)
         task.listener?.onBytes(task.bytes, task.total)
-        task.listener?.onItemDone(src.isDir)
+        task.listener?.onItemDone(src.isDir && !src.isSymbolicLink)
     }
 
     private fun copyEntry(src: XFile, destDir: XFile, task: Task, attempt: TransferCheckpoint.Failure): Boolean {
@@ -296,7 +318,10 @@ object CopyEngine {
         val siblings = childrenOf(task, destFs, destDir)
         val existing = siblings[attempt.targetName]
 
+        val attributes = TransferMetadata.read(srcFs, src).forDestination(destFs)
+        if (src.isSymbolicLink) return copyLink(src, destDir, srcFs, destFs, siblings, attributes, task, attempt)
         if (src.isDir) {
+            if (existing?.isSymbolicLink == true) throw FsException("Destination directory is a symbolic link: ${existing.name}")
             // Same-name directory: merge into the existing directory directly.
             val newDir = if (existing?.isDir == true) existing
             else destFs.mkdir(destDir, attempt.targetName).also { siblings[it.name] = it }
@@ -305,6 +330,13 @@ object CopyEngine {
             for (child in task.order(srcFs.list(src), newDir)) {
                 if (!copyRecursive(child, newDir, task)) complete = false
                 if (task.cancelled.isCancelled() || task.aborted) return false
+            }
+            if (complete) {
+                if (task.sequential != null) task.directoryAttributes[newDir.toUri()] = newDir to attributes
+                else if (src.name != "." && src.name != "/") {
+                    val restored = task.restore(destFs, newDir, attributes)
+                    if (task.move && !restored.complete) complete = false
+                }
             }
             task.listener?.onItemDone(isDir = true)
             return complete
@@ -321,8 +353,9 @@ object CopyEngine {
         ) {
             task.bytes += src.size.coerceAtLeast(0)
             task.listener?.onBytes(task.bytes, task.total)
+            val restored = task.restore(destFs, savedEntry, attributes)
             task.listener?.onItemDone(false)
-            return true
+            return !task.move || restored.complete
         }
         if (key != null) checkpoint.completed.remove(key)
         val rememberedPartial = checkpoint?.partials?.get(key)
@@ -351,9 +384,12 @@ object CopyEngine {
         task.listener?.onFile(src)
         // RENAME picked a free name, so only OVERWRITE still has something to protect.
         val replacing = siblings[name]
+        val restore = if (replacing != null && !replacing.isSymbolicLink &&
+            (attributes.mode == null || attributes.uid == null || attributes.gid == null))
+            attributes.withFallback(TransferMetadata.read(destFs, replacing, refresh = true)) else attributes
         // Replacing ends with delete(existing), which is recursive — a file must never
         // "overwrite" a folder of the same name that way.
-        if (replacing?.isDir == true) throw FsException("A folder named ${src.name} is in the way")
+        if (replacing?.isDir == true && !replacing.isSymbolicLink) throw FsException("A folder named ${src.name} is in the way")
         val target = try {
             if (checkpoint != null && key != null && destFs is ResumableWrite && destFs.canResumeWrites(destDir) && src.size > 0 && src.lastModified > 0) {
                 var partial = checkpoint.partials[key]
@@ -396,14 +432,14 @@ object CopyEngine {
                     throw FsException("Incomplete destination for ${src.name}")
                 }
                 val old = after.firstOrNull { it.name == name }
-                if (old?.isDir == true) throw FsException("A folder named $name is in the way")
+                if (old?.isDir == true && !old.isSymbolicLink) throw FsException("A folder named $name is in the way")
                 if (old != null) destFs.delete(old)
                 destFs.rename(partial.file, name).also {
                     checkpoint.partial(key, null)
                 }
             } else {
                 srcFs.openInput(src).use { input ->
-                    SafeWrite.replace(destFs, destDir, name, replacing) { output ->
+                    SafeWrite.replace(destFs, destDir, name, replacing, preserveMetadata = false) { output ->
                         val copied = pump(input, output, task, src.size)
                         if (copied < 0) throw CopyCancelled()
                         // ★ A move deletes the source next, so "the stream ended" is not good
@@ -424,15 +460,45 @@ object CopyEngine {
             return false
         }
         siblings[target.name] = target
-        // Best-effort: write the source's modification time back to the destination.
-        // This step is not part of "did the copy succeed" — write failure /
-        // unsupported both leave the copy valid; the destination simply keeps the
-        // "moment of writing" timestamp (see setModifiedTime docs).
-        val timeSet = src.lastModified > 0 && runCatching { destFs.setModifiedTime(target, src.lastModified) }.getOrDefault(false)
+        val restored = task.restore(destFs, target, restore)
         checkpoint?.let { it.complete(key!!, target.copy(size = src.size,
-            lastModified = if (timeSet) src.lastModified else 0)) }
+            lastModified = if (restored.modified) restored.modifiedTime ?: src.lastModified else 0)) }
         task.listener?.onItemDone(isDir = false)
-        return true
+        return !task.move || restored.complete
+    }
+
+    private fun copyLink(src: XFile, destDir: XFile, srcFs: FileSystem, destFs: FileSystem,
+                         siblings: MutableMap<String, XFile>, attributes: TransferAttributes,
+                         task: Task, attempt: TransferCheckpoint.Failure): Boolean {
+        val writer = destFs as? UnixMetadataWrite ?: throw FsException("Destination cannot create symbolic links")
+        val target = (srcFs as? UnixMetadataSource)?.linkTarget(src) ?: src.linkTarget
+            ?: throw FsException("Cannot read symbolic link: ${src.name}")
+        var name = attempt.targetName
+        val existing = siblings[name]
+        if (existing != null) when (task.resolver.resolve(src, existing)) {
+            Decision.SKIP -> { skipItem(src, task); return false }
+            Decision.RENAME -> name = freeName(siblings.keys, src.name)
+            Decision.OVERWRITE -> if (existing.isDir && !existing.isSymbolicLink)
+                throw FsException("A folder named $name is in the way")
+            null -> { task.aborted = true; return false }
+        }
+        attempt.targetName = name
+        task.listener?.onFile(src)
+        val temporary = writer.createSymbolicLink(destDir, ".${java.util.UUID.randomUUID()}${SafeWrite.PART_SUFFIX}", target)
+        val output = try {
+            if (task.cancelled.isCancelled()) { destFs.delete(temporary); return false }
+            siblings[name]?.let { destFs.delete(it) }
+            destFs.rename(temporary, name)
+        } catch (t: Throwable) {
+            // Keep the new link if the final rename failed after deleting the old entry.
+            throw SafeWrite.RenameFailed(temporary.name, name, t)
+        }
+        val link = output.copy(isSymbolicLink = true, isDir = false, size = 0, linkTarget = target)
+        siblings[name] = link
+        val restored = task.restore(destFs, link, attributes)
+        task.checkpoint?.let { it.complete(it.key(src, destDir), link) }
+        task.listener?.onItemDone(false)
+        return !task.move || restored.complete
     }
 
     /** Unwinds a cancelled write; resumable writes keep their owned partial file. */

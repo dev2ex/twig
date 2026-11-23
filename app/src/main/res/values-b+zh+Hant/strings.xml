@@ -1278,4 +1278,5 @@
     <string name="transfer_duplicate_paths">來源包含重複的輸出路徑，請開啟保留目錄結構或調整選取。</string>
     <string name="extract_to">解壓縮至…</string>
     <string name="progress_extract">正在解壓縮…</string>
+    <string name="msg_metadata_not_preserved">%1$d 個項目的部分屬性無法保留。</string>
 </resources>

@@ -57,6 +57,16 @@ Local storage uses an injected Android `lstat` reader, with root/Shizuku fallbac
 failed reads. SFTP exposes lstat mode, numeric UID/GID, size and access/modification times;
 its unavailable inode change time is null. `UnixMetadataSource.linkTarget()` supplies raw
 symlink contents; bulk callers pass `includeContext=false` to avoid unused SELinux reads.
+`XFile.unixUid`/`unixGid` carry numeric ownership when listings or archive headers already
+supply it. Transfer snapshots reuse complete listing attributes rather than stat each
+source again; replacements refresh the destination attributes before staging.
+`UnixMetadataWrite` is an optional destination capability for Unix attributes and symbolic
+link creation. `TransferAttributes` excludes ctime, labels and ACLs; `TransferMetadata`
+filters numeric ownership by `UnixMetadataSource.ownershipDomain` before applying it.
+Local hooks use Android syscalls with the existing privileged fallback; SFTP uses SETSTAT
+for regular entries and never follows a link to set attributes. Metadata failure preserves
+completed content and is recorded separately from write failure. Directories are restored
+after their descendants; sequential tar defers directory restoration until EOF.
 `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
 folder counts and before size/time, without bind-time filesystem calls.
 `Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic

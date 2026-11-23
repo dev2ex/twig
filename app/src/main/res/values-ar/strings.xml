@@ -1283,4 +1283,5 @@
     <string name="transfer_duplicate_paths">مسارات الإخراج مكررة. حافظ على بنية المجلدات أو غيّر التحديد.</string>
     <string name="extract_to">استخراج إلى…</string>
     <string name="progress_extract">جارٍ الاستخراج…</string>
+    <string name="msg_metadata_not_preserved">تعذّر الاحتفاظ ببعض السمات لعدد %1$d من العناصر.</string>
 </resources>

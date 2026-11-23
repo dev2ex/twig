@@ -47,6 +47,8 @@ class TwigApp : Application() {
                 try { android.system.Os.readlink(path) } catch (_: android.system.ErrnoException) { null }
             }
             LocalFileSystem.unixMetadataReader = UnixFiles::stat
+            LocalFileSystem.unixMetadataWriter = UnixFiles::apply
+            LocalFileSystem.symbolicLinkWriter = UnixFiles::symlink
             LocalFileSystem.selinuxContextReader = UnixFiles::context
             FsRegistry.register(LocalFileSystem())
             FsRegistry.register(ZipFileSystem { TextCodec.preferred })

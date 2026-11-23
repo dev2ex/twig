@@ -7,6 +7,9 @@ import com.twig.core.FsException
 import com.twig.core.RandomSource
 import com.twig.core.UnixMetadata
 import com.twig.core.UnixMetadataSource
+import com.twig.core.UnixMetadataWrite
+import com.twig.core.TransferAttributes
+import com.twig.core.MetadataResult
 import com.twig.core.XFile
 import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.sshj.DefaultConfig
@@ -61,10 +64,11 @@ data class SftpConfig(
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource, UnixMetadataSource {
+) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource, UnixMetadataSource, UnixMetadataWrite {
 
     /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
     private val base = config.path.trim('/')
+    override val ownershipDomain = "sftp:${config.host.lowercase()}:${config.port}:${config.user}"
 
     override val displayName: String =
         "SFTP (${config.host}" + (if (base.isEmpty()) "" else "/$base") + ")"
@@ -592,6 +596,8 @@ class SftpFileSystem(
             isSymbolicLink = link,
             linkTarget = if (link) runCatching { retry { it.readlink(sp) } }.getOrNull() else null,
             unixMode = attrs.takeIf { it.has(FileAttributes.Flag.MODE) }?.mode?.mask,
+            unixUid = attrs.takeIf { it.has(FileAttributes.Flag.UIDGID) }?.uid?.let { it.toLong() and 0xFFFFFFFFL },
+            unixGid = attrs.takeIf { it.has(FileAttributes.Flag.UIDGID) }?.gid?.let { it.toLong() and 0xFFFFFFFFL },
         )
     }
 
@@ -709,7 +715,50 @@ class SftpFileSystem(
     override fun exists(file: XFile): Boolean =
         runCatching { retry { entryExists(it, serverPath(file.path)) } }.getOrDefault(false)
 
+    override fun createSymbolicLink(parent: XFile, name: String, target: String): XFile {
+        require(name.isNotEmpty() && name != "." && name != ".." && '/' !in name && '\u0000' !in name)
+        val path = join(parent.path, name)
+        val sp = serverPath(path)
+        mutate({ it.symlink(target, sp) }, { it.lstat(sp).type == FileMode.Type.SYMLINK && it.readlink(sp) == target })
+        return XFile(scheme, path, false, isSymbolicLink = true, linkTarget = target)
+    }
+
+    override fun applyMetadata(file: XFile, attributes: TransferAttributes): MetadataResult {
+        if (attributes.mode == null && attributes.uid == null && attributes.gid == null && attributes.modified == null)
+            return MetadataResult(true)
+        val sp = serverPath(file.path)
+        val current = retry { it.lstat(sp) }
+        val ownerChange = (attributes.uid != null && attributes.uid != (current.uid.toLong() and 0xFFFFFFFFL)) ||
+            (attributes.gid != null && attributes.gid != (current.gid.toLong() and 0xFFFFFFFFL))
+        // SFTP v3 SETSTAT follows symlinks; never use it to change the link's target.
+        if (current.type == FileMode.Type.SYMLINK) return MetadataResult(!ownerChange)
+        fun set(owner: Boolean) {
+            val builder = FileAttributes.Builder()
+            if (owner) builder.withUIDGID(attributes.uid?.toInt() ?: current.uid, attributes.gid?.toInt() ?: current.gid)
+            attributes.mode?.let {
+                val mode = it and 0xFFF
+                if (owner || current.mode.mask and 0xFFF != mode) builder.withPermissions(mode)
+            }
+            attributes.modified?.let { builder.withAtimeMtime(current.atime, it / 1000) }
+            retry { it.setattr(sp, builder.build()) }
+        }
+        var complete = true
+        try { set(ownerChange) } catch (error: SFTPException) {
+            if (!ownerChange || error.statusCode != Response.StatusCode.PERMISSION_DENIED) throw error
+            // An unprivileged account may set mode/time even when chown is refused.
+            set(false)
+            complete = false
+        }
+        // Servers may clear setuid/setgid during chown; set them in a later request.
+        if (ownerChange && attributes.mode != null && attributes.mode!! and 0xC00 != 0) {
+            retry { it.setattr(sp, FileAttributes.Builder().withPermissions(attributes.mode!! and 0xFFF).build()) }
+        }
+        return MetadataResult(complete, attributes.modified != null, attributes.modified?.let { it / 1000 * 1000 })
+    }
+
     override fun setModifiedTime(file: XFile, time: Long): Boolean = runCatching {
+        val current = retry { it.lstat(serverPath(file.path)) }
+        if (current.type == FileMode.Type.SYMLINK) return false
         val sec = time / 1000
         // SFTPv3's atime/mtime come as a pair, and the protocol has no notion of
         // "change mtime only"; with no better source for atime, just move it

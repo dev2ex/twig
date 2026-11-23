@@ -1358,4 +1358,5 @@
     <string name="transfer_duplicate_paths">Sources have duplicate output paths. Enable directory structure or change the selection.</string>
     <string name="extract_to">Extract to…</string>
     <string name="progress_extract">Extracting…</string>
+    <string name="msg_metadata_not_preserved">Some attributes could not be preserved for %1$d item(s).</string>
 </resources>

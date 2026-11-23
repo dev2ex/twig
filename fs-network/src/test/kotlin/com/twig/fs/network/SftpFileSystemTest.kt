@@ -157,6 +157,84 @@ class SftpFileSystemTest {
     }
 
     @Test
+    fun copyingLocalToSftpPreservesPermissionsAndTimeWithoutCopyingForeignOwnership() {
+        val directory = Files.createTempDirectory("sftp-metadata-local").toFile()
+        try {
+            val file = File(directory, "run").apply { writeText("script"); setLastModified(1600000000123) }
+            val local = LocalFileSystem()
+            val item = local.resolve(file.path).copy(unixMode = 0x81E9, unixUid = 900001, unixGid = 900002)
+            val applied = mutableListOf<com.twig.core.TransferAttributes>()
+            val destination = object : com.twig.core.FileSystem by fs, com.twig.core.UnixMetadataSource by fs,
+                com.twig.core.UnixMetadataWrite {
+                override fun applyMetadata(file: XFile, attributes: com.twig.core.TransferAttributes): com.twig.core.MetadataResult {
+                    applied += attributes
+                    return fs.applyMetadata(file, attributes)
+                }
+                override fun createSymbolicLink(parent: XFile, name: String, target: String) = fs.createSymbolicLink(parent, name, target)
+            }
+            FsRegistry.register(destination)
+            val checkpoint = com.twig.core.TransferCheckpoint()
+            CopyEngine.transfer(listOf(item), fs.root(), false, checkpoint = checkpoint)
+            val output = fs.stat("/run")!!
+            assertEquals("script", File(home, "run").readText())
+            assertEquals(0x1E9, output.unixMode!! and 0xFFF)
+            assertEquals(1600000000000L, output.lastModified)
+            assertEquals(output.lastModified, checkpoint.outputs.values.single().lastModified)
+            assertNull(applied.single().uid)
+            assertNull(applied.single().gid)
+            assertTrue(checkpoint.metadataFailures.isEmpty())
+            val link = fs.createSymbolicLink(fs.root(), "relative-link", "run")
+            assertEquals("run", fs.linkTarget(link))
+            assertEquals("run", Files.readSymbolicLink(File(home, "relative-link").toPath()).toString())
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test
+    fun connectionsToTheSameServerShareOwnershipEvenWithDifferentRoots() {
+        val from = File(home, "from").apply { mkdirs() }
+        File(from, "payload").writeText("same user namespace")
+        File(home, "to").mkdir()
+        val source = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "from"), "sftp-source")
+        val target = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "to"), "sftp-target")
+        var applied: com.twig.core.TransferAttributes? = null
+        val destination = object : com.twig.core.FileSystem by target, com.twig.core.UnixMetadataSource by target,
+            com.twig.core.UnixMetadataWrite {
+            override fun applyMetadata(file: XFile, attributes: com.twig.core.TransferAttributes): com.twig.core.MetadataResult {
+                applied = attributes
+                return target.applyMetadata(file, attributes)
+            }
+            override fun createSymbolicLink(parent: XFile, name: String, value: String) = target.createSymbolicLink(parent, name, value)
+        }
+        FsRegistry.register(source); FsRegistry.register(destination)
+        try {
+            val item = source.list(source.root()).single()
+            val info = source.unixMetadata(item)!!
+            CopyEngine.transfer(listOf(item), target.root(), false)
+            assertEquals(info.uid, applied!!.uid)
+            assertEquals(info.gid, applied!!.gid)
+            assertEquals("same user namespace", File(home, "to/payload").readText())
+        } finally {
+            source.disconnect(); target.disconnect()
+            FsRegistry.unregister(source.scheme); FsRegistry.unregister(target.scheme)
+        }
+    }
+
+    @Test
+    fun metadataOnASftpLinkNeverChangesItsTarget() {
+        val target = File(home, "target").apply { writeText("unchanged"); setLastModified(1600000000000) }
+        val permissions = Files.getPosixFilePermissions(target.toPath())
+        Files.createSymbolicLink(File(home, "link").toPath(), Path.of("target"))
+        val result = fs.applyMetadata(fs.stat("/link")!!, com.twig.core.TransferAttributes(mode = 0, modified = 1700000000000))
+        assertTrue(result.complete)
+        assertEquals(permissions, Files.getPosixFilePermissions(target.toPath()))
+        assertEquals(1600000000000L, target.lastModified())
+        assertEquals("unchanged", target.readText())
+        val cannotChownLink = fs.applyMetadata(fs.stat("/link")!!, com.twig.core.TransferAttributes(uid = 900001))
+        assertFalse(cannotChownLink.complete)
+        assertEquals(permissions, Files.getPosixFilePermissions(target.toPath()))
+    }
+
+    @Test
     fun uploadListDownload() {
         fs.openOutput(XFile("sftp", "/hello.txt", false)).use { it.write("hi-sftp".toByteArray()) }
 

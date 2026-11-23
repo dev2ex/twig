@@ -36,6 +36,9 @@ data class XFile(
     val linkTarget: String? = null,
     /** Raw lstat mode when the listing supplies it; null for unsupported or unreadable metadata. */
     val unixMode: Int? = null,
+    /** Numeric owners describe the source namespace; transfers must not assume remote IDs are portable. */
+    val unixUid: Long? = null,
+    val unixGid: Long? = null,
 ) {
     /** File name; prefer [displayName], otherwise the last segment of `path`; returns "/" for the root. */
     val name: String

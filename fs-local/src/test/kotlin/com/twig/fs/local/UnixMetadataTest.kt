@@ -56,6 +56,28 @@ class UnixMetadataTest {
         assertEquals(1, contexts)
     }
 
+    @Test fun `privileged metadata writes preserve quoted paths without following links`() {
+        val file = tmp.newFile("permissions ' newline\nfile").apply { writeText("keep"); setLastModified(1600000000000) }
+        val link = File(tmp.root, "link ' newline\nname")
+        val shell = PrivilegedShell(SuLauncher("/bin/sh"), timeoutMs = 10000)
+        assertTrue(shell.connect(grantTimeoutMs = 10000))
+        try {
+            val privileged = PrivilegedFs(shell)
+            val info = stat(file.path)
+            val result = privileged.applyMetadata(file.path, com.twig.core.TransferAttributes(
+                mode = 0x1E8, uid = info.uid, gid = info.gid, modified = 1600000100000))
+            assertTrue(result.complete)
+            assertEquals(0x1E8, stat(file.path).mode and 0xFFF)
+            assertEquals(1600000100000L, file.lastModified())
+            assertTrue(privileged.createSymbolicLink(link.path, file.path))
+            assertEquals(file.path, privileged.readLink(link.path))
+            assertTrue(privileged.applyMetadata(link.path, com.twig.core.TransferAttributes(mode = 0, modified = 1700000000000)).complete)
+            assertEquals(0x1E8, stat(file.path).mode and 0xFFF)
+            assertEquals(1600000100000L, file.lastModified())
+            assertEquals("keep", file.readText())
+        } finally { shell.close() }
+    }
+
     @Test fun `privileged properties use lstat with quoted newline paths and unreadable attributes stay unknown`() {
         val file = tmp.newFile("quoted ' pipe| newline\nfile").apply { writeText("hello") }
         val link = File(tmp.root, "broken ' link\n")

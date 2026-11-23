@@ -1279,4 +1279,5 @@
     <string name="transfer_duplicate_paths">Des chemins de sortie sont en double. Conservez la structure ou modifiez la sélection.</string>
     <string name="extract_to">Extraire vers…</string>
     <string name="progress_extract">Extraction…</string>
+    <string name="msg_metadata_not_preserved">Certains attributs de %1$d éléments n’ont pas pu être conservés.</string>
 </resources>

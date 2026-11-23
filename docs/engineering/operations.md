@@ -113,10 +113,37 @@ relative or dangling targets, and are never traversed while planning or packing 
 Long/Unicode paths use POSIX/PAX extensions; unknown entry sizes and unsupported special
 files fail the staged archive rather than producing malformed data. ACLs, xattrs,
 SELinux labels and hard-link identity are not preserved. Android shared storage can
-only supply the metadata its filesystem exposes. Recording attributes does not restore
-them: Twig extraction currently copies content/directories without restoring Unix modes,
-ownership or symbolic links; standard tar tools can restore archived metadata subject
-to destination support and the user's privileges.
+only supply the metadata its filesystem exposes.
+
+Copy/overwrite and archive extraction share metadata restoration. Permission bits and
+modification times are preserved across sources where the destination supports them.
+Numeric UID/GID are applied only within a known shared ownership domain: local-to-local,
+or SFTP connections to the same host/port/account even with different connection roots. Different
+hosts and archives do not establish that namespace; archived UID/GID remain recorded but
+are not automatically assigned during extraction. An overwrite falls back to the target's
+current mode/owner when the source does not provide applicable values. `SafeWrite` also
+preserves the existing mode/owner during staged replacements such as editor saves,
+without restoring the old modification time.
+
+Directories are restored after their children; streamed tar directories wait until the
+whole archive reaches validated EOF, deepest first. Cancelling or failing a transfer
+leaves those directories writable for retry. TAR and compressed-TAR extraction recreate
+raw symbolic links instead of following them; later entry paths cannot traverse an
+existing or newly created child link. Ordinary local/SFTP copies likewise copy links
+without following them, and size planning never traverses those links. ZIP/7z packing
+retains its existing followed-link behavior. Unsupported link destinations fail rather
+than silently create an empty file. TAR hard links and special device/FIFO entries are
+not restored. ZIP Unix permission bits are used when present; other formats retain the
+metadata their readers expose.
+
+Unsupported or denied metadata writes keep the completed content and are summarized in
+completion feedback. Failed attributes remain in retry checkpoints. A streamed replay
+queues explicit directories again even when their contents were already copied; known
+completed files do not need another data transfer. A move retains its source when metadata
+restoration fails. Attribute writes never chmod or touch a symbolic link's target; SFTP v3
+cannot modify the link inode itself, so differing link ownership is reported as unpreserved.
+SFTP modification times are recorded at server precision in completion checkpoints to
+avoid retransferring completed files merely because a local timestamp had milliseconds.
 Long-press transfers remain immediate for valid targets;
 otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
 

@@ -24,6 +24,7 @@ class TransferCheckpoint {
     internal fun isSourceSkipped(source: XFile): Boolean = skipped.any { it.startsWith(source.toUri() + "\u0000") }
     private fun locationKey(source: XFile, directory: XFile) = source.toUri() + "\u0000" + directory.toUri()
 
+    val metadataFailures = linkedSetOf<String>()
     val completed = linkedSetOf<String>()
     val outputs = linkedMapOf<String, XFile>()
     val partials = linkedMapOf<String, Partial>()

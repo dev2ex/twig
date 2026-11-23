@@ -59,6 +59,10 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
         val isDir: Boolean,
         val size: Long,
         val time: Long,
+        val mode: Int? = null,
+        val uid: Long? = null,
+        val gid: Long? = null,
+        val linkTarget: String? = null,
     )
 
     protected abstract fun readEntries(archivePath: String): List<ArchiveEntry>
@@ -169,7 +173,7 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
         return if (match != null && !match.isDir) {
             fileXFile(archive, inner, match)
         } else {
-            dirXFile(archive, inner)
+            dirXFile(archive, inner, match)
         }
     }
 
@@ -188,7 +192,7 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
             val n = normalize(e)
             val trimmed = n.trimEnd('/')
             if (trimmed == inner) {
-                return if (e.isDir) dirXFile(archive, inner) else fileXFile(archive, inner, e)
+                return if (e.isDir) dirXFile(archive, inner, e) else fileXFile(archive, inner, e)
             }
             if (!isDirPrefix && n.startsWith("$inner/")) isDirPrefix = true
         }
@@ -205,10 +209,12 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
         val prefix = if (inner.isEmpty()) "" else "$inner/"
 
         val dirNames = LinkedHashSet<String>()
+        val explicitDirectories = HashMap<String, ArchiveEntry>()
         val files = LinkedHashMap<String, ArchiveEntry>()
 
         for (e in entries) {
             val name = normalize(e)
+            if (e.isDir) explicitDirectories[name.trimEnd('/')] = e
             if (!name.startsWith(prefix) || name == prefix) continue
             val remainder = name.substring(prefix.length)
             if (remainder.isEmpty()) continue
@@ -221,7 +227,10 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
         }
 
         val result = ArrayList<XFile>(dirNames.size + files.size)
-        for (d in dirNames) result.add(dirXFile(archive, prefix + d))
+        for (d in dirNames) {
+            val path = prefix + d
+            result.add(dirXFile(archive, path, explicitDirectories[path]))
+        }
         for ((seg, e) in files) if (seg !in dirNames) result.add(fileXFile(archive, prefix + seg, e))
 
         result.sortWith(compareByDescending<XFile> { it.isDir }.thenBy { it.name.lowercase() })
@@ -276,11 +285,12 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
 
     // ---- utilities (subclasses may use) ----
 
-    protected fun dirXFile(archive: String, inner: String) = XFile(
+    protected fun dirXFile(archive: String, inner: String, entry: ArchiveEntry? = null) = XFile(
         scheme = scheme,
         path = "$archive$SEP$inner",
         isDir = true,
         canWrite = writable(archive),
+        lastModified = entry?.time ?: 0, unixMode = entry?.mode, unixUid = entry?.uid, unixGid = entry?.gid,
     )
 
     protected fun fileXFile(archive: String, inner: String, e: ArchiveEntry) = XFile(
@@ -290,6 +300,8 @@ abstract class ArchiveFileSystem : FileSystem, com.twig.core.ReadBatchSource {
         size = if (e.size >= 0) e.size else 0L,
         lastModified = e.time,
         canWrite = writable(archive),
+        unixMode = e.mode, unixUid = e.uid, unixGid = e.gid,
+        isSymbolicLink = e.linkTarget != null, linkTarget = e.linkTarget,
     )
 
     /**

@@ -75,7 +75,8 @@ class ZipFileSystem(
     }
 
     private fun archiveEntries(zf: OpenZip) = zf.entries.map {
-        ArchiveEntry(zf.names[it], it.isDirectory, if (it.isDirectory) 0L else it.size, it.time)
+        ArchiveEntry(zf.names[it], it.isDirectory, if (it.isDirectory) 0L else it.size, it.time,
+            mode = it.unixMode.takeIf { mode -> mode != 0 && !it.isUnixSymlink })
     }
 
     override fun openReader(archivePath: String): ArchiveReader {

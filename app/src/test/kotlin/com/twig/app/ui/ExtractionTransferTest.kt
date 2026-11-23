@@ -71,6 +71,24 @@ class ExtractionTransferTest {
         assertFalse(File(target, "bundle/bundle").exists())
     }
 
+    @Test fun metadataFailuresKeepCompletedContentAndRemainVisibleAfterRetry() {
+        val source = FakeFileSystem("extract-transfer-source", mapOf("/" to listOf("data")), mapOf("/data" to "content"))
+        FsRegistry.register(source)
+        FsRegistry.register(object : FileSystem by local, com.twig.core.UnixMetadataWrite {
+            override fun applyMetadata(file: XFile, attributes: com.twig.core.TransferAttributes) = com.twig.core.MetadataResult(false)
+            override fun createSymbolicLink(parent: XFile, name: String, target: String): XFile = error("Not needed")
+        })
+        val work = session(source.list(source.root()).map { it.copy(unixMode = 0x1ED) })
+        execute(work)
+        assertTrue(work.finished.toString(), work.finished!!.isSuccess)
+        assertEquals("content", File(target, "bundle/data").readText())
+        assertEquals(1, work.metadataFailures)
+        val retry = Transfers.retrySession(work, false)
+        execute(retry)
+        assertEquals(1, retry.metadataFailures)
+        assertEquals(listOf("/data"), source.opened)
+    }
+
     @Test fun anExistingFileAtTheWrapperNameIsPreserved() {
         val source = FakeFileSystem("extract-transfer-source", mapOf("/" to listOf("a")), mapOf("/a" to "first"))
         FsRegistry.register(source)

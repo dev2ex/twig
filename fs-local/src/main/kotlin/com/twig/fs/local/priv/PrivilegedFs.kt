@@ -3,6 +3,8 @@ package com.twig.fs.local.priv
 import com.twig.core.XFile
 import com.twig.core.UnixMetadata
 import com.twig.core.UnixPermissions
+import com.twig.core.TransferAttributes
+import com.twig.core.MetadataResult
 import com.twig.core.RandomSource
 import com.twig.fs.local.LocalFileSystem
 import com.twig.fs.local.priv.PrivilegedShell.Companion.quote
@@ -180,6 +182,29 @@ class PrivilegedFs(val shell: PrivilegedShell) {
         return UnixMetadata(mode, numbers[0], numbers[1], numbers[2],
             numbers[3] * 1000L, numbers[4] * 1000L, numbers[5] * 1000L, if (includeContext) selinuxContext(path) else null)
     }
+
+    fun applyMetadata(path: String, attributes: TransferAttributes): MetadataResult {
+        val current = unixMetadata(path, includeContext = false) ?: return MetadataResult(false)
+        val q = quote(path)
+        var complete = true
+        var ownerChanged = false
+        if ((attributes.uid != null && attributes.uid != current.uid) || (attributes.gid != null && attributes.gid != current.gid)) {
+            val owner = (attributes.uid?.toString() ?: "") + (attributes.gid?.let { ":$it" } ?: "")
+            ownerChanged = shell.exec("chown -h -- ${quote(owner)} $q", quiet = true).ok
+            if (!ownerChanged) complete = false
+        }
+        val mode = attributes.mode?.and(0xFFF)
+        if (!current.isSymbolicLink && mode != null && (ownerChanged || current.mode and 0xFFF != mode) &&
+            !shell.exec("[ ! -L $q ] && chmod ${mode.toString(8)} $q", quiet = true).ok) complete = false
+        val modified = attributes.modified?.takeUnless { current.isSymbolicLink }?.let {
+            if (shell.exec("[ -L $q ]", quiet = true).ok) false else setModifiedTime(path, it)
+        } ?: false
+        if (attributes.modified != null && !current.isSymbolicLink && !modified) complete = false
+        return MetadataResult(complete, modified, attributes.modified?.takeIf { modified }?.let { it / 1000 * 1000 })
+    }
+
+    fun createSymbolicLink(path: String, target: String): Boolean =
+        shell.exec("ln -s -- ${quote(target)} ${quote(path)}", quiet = true).ok
 
     fun selinuxContext(path: String): String? {
         // stat %C on toybox follows the target even when its other fields use lstat.

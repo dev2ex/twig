@@ -16,6 +16,7 @@ import java.util.zip.GZIPInputStream
 class TarGzipWriteTest {
     @get:Rule val tmp = TemporaryFolder()
     private lateinit var local: LocalFileSystem
+    private val restoredAttributes = mutableListOf<TransferAttributes>()
 
     private fun metadata(path: String): UnixMetadata {
         val attrs = Files.readAttributes(File(path).toPath(), "unix:*", NOFOLLOW_LINKS)
@@ -26,7 +27,17 @@ class TarGzipWriteTest {
     }
 
     @Before fun setup() {
-        local = LocalFileSystem(readUnix = ::metadata, readLink = { path ->
+        local = LocalFileSystem(readUnix = ::metadata,
+            writeMetadata = { path, attributes ->
+                restoredAttributes += attributes
+                val info = metadata(path)
+                if (!info.isSymbolicLink) {
+                    attributes.mode?.let { Files.setAttribute(File(path).toPath(), "unix:mode", it and 0xFFF, NOFOLLOW_LINKS) }
+                    attributes.modified?.let { Files.setLastModifiedTime(File(path).toPath(), FileTime.fromMillis(it)) }
+                }
+                MetadataResult(true, attributes.modified != null && !info.isSymbolicLink)
+            }, writeLink = { path, target -> Files.createSymbolicLink(File(path).toPath(), java.nio.file.Path.of(target)); true },
+            readLink = { path ->
             if (Files.isSymbolicLink(File(path).toPath())) Files.readSymbolicLink(File(path).toPath()).toString() else null
         })
         FsRegistry.register(local)
@@ -75,6 +86,56 @@ class TarGzipWriteTest {
         } }
         assertEquals(setOf("source/", "source/empty/", "source/run.sh", "source/cycle", "source/missing", "source/script-link"), seen)
         System.getenv("TWIG_DUMP_DIR")?.let { File(it).mkdirs(); File(archive.path).copyTo(File(it, "metadata.tar.gz"), overwrite = true) }
+    }
+
+    @Test fun streamingAndPlainTarRestoreModesDirectoryTimesAndRawLinks() {
+        val source = tmp.newFolder("restore")
+        val script = File(source, "run").apply { writeText("script"); setLastModified(1600000000000) }
+        Files.setAttribute(script.toPath(), "unix:mode", 0x1E9)
+        Files.createSymbolicLink(File(source, "cycle").toPath(), java.nio.file.Path.of("."))
+        Files.createSymbolicLink(File(source, "missing").toPath(), java.nio.file.Path.of("not-there"))
+        source.setLastModified(1600000100000)
+        val archive = target("restore.tar.gz")
+        pack(source, archive)
+        val plain = tmp.newFile("restore.tar")
+        GZIPInputStream(File(archive.path).inputStream()).use { input -> plain.outputStream().use { input.copyTo(it) } }
+        for (streaming in listOf(true, false)) {
+            val out = tmp.newFolder(if (streaming) "streaming" else "plain")
+            if (streaming) CopyEngine.transferSequential(StreamingTar.open(local.resolve(archive.path)), local.resolve(out.path), checkpoint = TransferCheckpoint())
+            else {
+                val tar = TarFileSystem().also { FsRegistry.register(it) }
+                val root = tar.rootOf(local.resolve(plain.path))
+                CopyEngine.transfer(tar.list(root), local.resolve(out.path), false, checkpoint = TransferCheckpoint())
+            }
+            assertEquals("script", File(out, "restore/run").readText())
+            assertEquals(0x1E9, metadata(File(out, "restore/run").path).mode and 0xFFF)
+            assertEquals(1600000000000L, File(out, "restore/run").lastModified())
+            assertEquals(1600000100000L, File(out, "restore").lastModified())
+            assertEquals(java.nio.file.Path.of("."), Files.readSymbolicLink(File(out, "restore/cycle").toPath()))
+            assertEquals(java.nio.file.Path.of("not-there"), Files.readSymbolicLink(File(out, "restore/missing").toPath()))
+        }
+        assertTrue(restoredAttributes.isNotEmpty())
+        assertTrue("An archive does not establish a numeric ownership namespace", restoredAttributes.all { it.uid == null && it.gid == null })
+    }
+
+    @Test fun extractedLinksCannotRedirectLaterEntriesOutsideTheDestination() {
+        val outside = tmp.newFolder("outside")
+        val existing = File(outside, "payload").apply { writeText("keep") }
+        val archive = tmp.newFile("unsafe.tar.gz")
+        java.util.zip.GZIPOutputStream(archive.outputStream()).use { gzip ->
+            org.apache.commons.compress.archivers.tar.TarArchiveOutputStream(gzip).use { tar ->
+                tar.putArchiveEntry(org.apache.commons.compress.archivers.tar.TarArchiveEntry("link", org.apache.commons.compress.archivers.tar.TarConstants.LF_SYMLINK).apply { linkName = "../outside" })
+                tar.closeArchiveEntry()
+                tar.putArchiveEntry(org.apache.commons.compress.archivers.tar.TarArchiveEntry("link/payload").apply { size = 3 })
+                tar.write("bad".toByteArray()); tar.closeArchiveEntry()
+            }
+        }
+        val out = tmp.newFolder("destination")
+        assertThrows(FsException::class.java) {
+            CopyEngine.transferSequential(StreamingTar.open(local.resolve(archive.path)), local.resolve(out.path))
+        }
+        assertEquals("keep", existing.readText())
+        assertTrue(Files.isSymbolicLink(File(out, "link").toPath()))
     }
 
     @Test fun unicodeLongPathsAndEmptyFilesRoundTripAtEveryLevel() {
