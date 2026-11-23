@@ -474,11 +474,11 @@ object Prefs {
         sp(ctx).edit().putBoolean("thumbs_on", on).apply()
     }
 
-    /** Grid mode: 0=off (big icons in tree) 1=media files only 2=all files. */
+    /** View mode: 0=list with large thumbnails, 1=media grid, 2=all-files grid, 3=compact list. */
     fun thumbsGrid(ctx: Context): Int = sp(ctx).getInt("thumbs_grid", 0)
 
     fun setThumbsGrid(ctx: Context, mode: Int) {
-        sp(ctx).edit().putInt("thumbs_grid", mode.coerceIn(0, 2)).apply()
+        sp(ctx).edit().putInt("thumbs_grid", mode.coerceIn(0, 3)).apply()
     }
 
     /**

@@ -161,6 +161,7 @@
     <string name="action_settings">Настройки</string>
     <string name="action_view_mode">Режим просмотра</string>
     <string name="action_thumbs">Миниатюры</string>
+    <string name="view_mode_compact">Список · Компактный</string>
     <string name="view_mode_grid_off">Список</string>
     <string name="view_mode_grid_media">Сетка · Только медиа</string>
     <string name="view_mode_grid_all">Сетка · Все файлы</string>

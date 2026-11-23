@@ -97,6 +97,38 @@ class ThumbnailPlaybackProgressTest {
     private fun image(holder: RecyclerView.ViewHolder, grid: Int) =
         holder.itemView.findViewById<ThumbnailImageView>(if (grid == 0) R.id.icon else R.id.thumb)
 
+    @Test fun `compact thumbnails ignore cached aspect shapes and recycled rows recover large previews`() {
+        val file = video.copy(path = "/missing/compact.jpg")
+        seed(file)
+        val adapter = adapter(grid = 0)
+        adapter.submitList(listOf(node(file)))
+        val holder = bind(adapter)
+        val icon = image(holder, 0)
+        val largeWidth = icon.layoutParams.width
+        assertTrue(largeWidth > FileAdapter.rowIconDp(1))
+        // The ordinary row above has populated the shared aspect-ratio cache.
+        val compactAdapter = adapter(grid = 3)
+        compactAdapter.submitList(listOf(node(file)))
+        val compactHolder = bind(compactAdapter)
+        val compactIcon = image(compactHolder, 0)
+        assertEquals(FileAdapter.rowIconDp(1), compactIcon.layoutParams.width)
+        assertEquals(compactIcon.layoutParams.width, compactIcon.layoutParams.height)
+        assertTrue(compactIcon.drawable is BitmapDrawable)
+        // Exercise the asynchronous completion's fill path with a tall image too.
+        val fill = Thumbs::class.java.getDeclaredMethod("fill", ImageView::class.java, Bitmap::class.java, String::class.java)
+            .apply { isAccessible = true }
+        fill.invoke(Thumbs, compactIcon, black(100, 300), "compact-result")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(FileAdapter.rowIconDp(1), compactIcon.layoutParams.height)
+        // Reusing the same holder in an ordinary list clears the fixed-size policy.
+        compactAdapter.gridMode = 0
+        compactAdapter.bindViewHolder(compactHolder, 0)
+        draw(compactHolder.itemView, 400, 160)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(largeWidth, compactIcon.layoutParams.width)
+        assertTrue(compactIcon.layoutParams.height < largeWidth)
+    }
+
     @Test fun `one and a half dp bar follows the actual fit-center thumbnail instead of the letterbox`() {
         val view = ThumbnailImageView(parent.context).apply {
             setBackgroundColor(Color.MAGENTA)

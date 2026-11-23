@@ -773,7 +773,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
      * gallery. In grid mode this grouping still happens even with thumbnails off
      * (cells show large icons then), otherwise cells and full-width rows mixed
      * together would be even messier. When both are off (tree list + no thumbnails)
-     * we keep the original sort, matching the long-standing behavior.
+     * we keep the original sort, matching the long-standing behavior. Compact list
+     * always keeps that sort and uses icon-sized thumbnails.
      */
     private fun sortList(key: String, list: List<XFile>): List<XFile> {
         val dir = mountRoots[key] ?: keyFile[key]
@@ -790,8 +791,8 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
             else file.lastModified
         }
         val grid = view.gridMode ?: defaultGridMode
-        // Both off (tree list + no thumbnails): no grouping, matching the long-standing behavior.
-        if (!Prefs.thumbs(app) && grid == 0) return SortRules.sorted(list, cmp, null)
+        // Compact rows preserve the selected sort even with thumbnails enabled.
+        if (grid == 3 || (!Prefs.thumbs(app) && grid == 0)) return SortRules.sorted(list, cmp, null)
         // Grid "All files" mode: archives, like directories, render as full expandable rows;
         // wedged between cells they'd split the grid, so they cluster right after directories;
         // in other modes an archive is a normal row and doesn't deserve its own group.

@@ -159,6 +159,7 @@
     <string name="action_settings">Configurações</string>
     <string name="action_view_mode">Visualização</string>
     <string name="action_thumbs">Miniaturas</string>
+    <string name="view_mode_compact">Lista · Compacta</string>
     <string name="view_mode_grid_off">Lista</string>
     <string name="view_mode_grid_media">Grade · Só mídia</string>
     <string name="view_mode_grid_all">Grade · Todos os arquivos</string>

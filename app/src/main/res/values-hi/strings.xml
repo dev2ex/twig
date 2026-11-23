@@ -159,6 +159,7 @@
     <string name="action_settings">सेटिंग</string>
     <string name="action_view_mode">दृश्य</string>
     <string name="action_thumbs">थंबनेल</string>
+    <string name="view_mode_compact">सूची · संक्षिप्त</string>
     <string name="view_mode_grid_off">सूची</string>
     <string name="view_mode_grid_media">ग्रिड · केवल मीडिया</string>
     <string name="view_mode_grid_all">ग्रिड · सभी फ़ाइलें</string>

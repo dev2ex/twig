@@ -159,6 +159,7 @@
     <string name="action_settings">설정</string>
     <string name="action_view_mode">보기</string>
     <string name="action_thumbs">미리보기</string>
+    <string name="view_mode_compact">목록 · 간결하게</string>
     <string name="view_mode_grid_off">목록</string>
     <string name="view_mode_grid_media">격자 · 미디어만</string>
     <string name="view_mode_grid_all">격자 · 모든 파일</string>

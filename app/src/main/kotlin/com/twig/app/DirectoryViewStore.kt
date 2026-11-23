@@ -29,7 +29,7 @@ object DirectoryViewStore {
                         FolderSortKey.valueOf(it.getString("folderBy")),
                     )
                 }
-                val grid = if (json.has("grid")) json.getInt("grid").takeIf { it in 0..2 } else null
+                val grid = if (json.has("grid")) json.getInt("grid").takeIf { it in 0..3 } else null
                 key to DirectoryView(sort, grid,
                     sort != null && json.optBoolean("sortRecursive"),
                     grid != null && json.optBoolean("viewRecursive"))
@@ -85,7 +85,7 @@ object DirectoryViewStore {
                 json.put("sort", JSONObject().put("by", it.by.name)
                     .put("reversed", it.reversed).put("folderBy", it.folderBy.name))
             }
-            view.gridMode?.let { json.put("grid", it.coerceIn(0, 2)) }
+            view.gridMode?.let { json.put("grid", it.coerceIn(0, 3)) }
             if (view.sort != null && view.sortRecursive) json.put("sortRecursive", true)
             if (view.gridMode != null && view.viewRecursive) json.put("viewRecursive", true)
             editor.putString(key(dir), json.toString())

@@ -159,6 +159,7 @@
     <string name="action_settings">設定</string>
     <string name="action_view_mode">檢視</string>
     <string name="action_thumbs">縮圖</string>
+    <string name="view_mode_compact">列表 · 緊湊</string>
     <string name="view_mode_grid_off">列表</string>
     <string name="view_mode_grid_media">網格 · 僅媒體檔案</string>
     <string name="view_mode_grid_all">網格 · 全部檔案</string>

@@ -159,6 +159,7 @@
     <string name="action_settings">Ajustes</string>
     <string name="action_view_mode">Vista</string>
     <string name="action_thumbs">Miniaturas</string>
+    <string name="view_mode_compact">Lista · Compacta</string>
     <string name="view_mode_grid_off">Lista</string>
     <string name="view_mode_grid_media">Cuadrícula · Solo multimedia</string>
     <string name="view_mode_grid_all">Cuadrícula · Todos los archivos</string>

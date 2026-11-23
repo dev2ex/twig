@@ -346,6 +346,7 @@ object Thumbs {
      * Asynchronously bind a thumbnail; on memory-cache hit fill immediately, otherwise
      * keep the placeholder icon and load / generate in the background.
      *
+     * @param fixedSize Keep the icon slot square, ignoring cached and newly loaded aspect ratios.
      * @param growPx Once the image arrives, allow this cell to **grow to this width**
      *   (px); 0 = keep the caller-given size. Used for directories: most directories
      *   have no cover, and growing on bind would make a screenful of folder icons
@@ -354,12 +355,13 @@ object Thumbs {
      *   changes `layoutParams` in a `post{}`, so adjusting the width in the same
      *   pass doesn't cost an extra layout.
      */
-    fun bind(view: ImageView, file: XFile, growPx: Int = 0) {
+    fun bind(view: ImageView, file: XFile, growPx: Int = 0, fixedSize: Boolean = false) {
+        view.setTag(R.id.thumb_fixed_size, fixedSize)
         view.setTag(R.id.thumb_grow, growPx)
         if (!canThumb(file)) return
         val key = keyOf(file)
         val ctx = view.context.applicationContext
-        applyKnownShape(view, key, growPx)
+        if (!fixedSize) applyKnownShape(view, key, growPx)
         mem.get(key)?.let { fill(view, it, key); return }
         if (recentlyFailed(ctx, key)) return
         if (!eligible(ctx, file)) { failed[key] = System.currentTimeMillis(); return }
@@ -460,7 +462,7 @@ object Thumbs {
     private fun fill(view: ImageView, bmp: Bitmap, key: String) {
         view.setPadding(0, 0, 0, 0)
         val box = (view.parent as? ViewGroup)?.findViewById<View>(R.id.infoBox)
-        if (box == null) {
+        if (box == null || view.getTag(R.id.thumb_fixed_size) == true) {
             view.tag = null
             view.scaleType = ImageView.ScaleType.CENTER_CROP
             setThumbnailBitmap(view, bmp)

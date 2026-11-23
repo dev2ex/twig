@@ -71,6 +71,7 @@ object SortDialog {
             gridMode = if (!viewOnly) drafts[scope].gridMode else if (scope == 0 || d.cbCustomView.isChecked) when (d.rgView.checkedRadioButtonId) {
                 R.id.view_media -> 1
                 R.id.view_all -> 2
+                R.id.view_compact -> 3
                 else -> 0
             } else null,
             sortRecursive = if (viewOnly) drafts[scope].sortRecursive
@@ -98,6 +99,7 @@ object SortDialog {
             d.rgView.check(when (cur.gridMode ?: inherited.gridMode ?: drafts[0].gridMode) {
                 1 -> R.id.view_media
                 2 -> R.id.view_all
+                3 -> R.id.view_compact
                 else -> R.id.view_list
             })
             d.cbCustomSort.isChecked = cur.sort != null

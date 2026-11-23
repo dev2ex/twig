@@ -111,6 +111,8 @@
             android:layout_height="wrap_content">
             <RadioButton android:id="@+id/view_list" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/view_mode_grid_off" />
+            <RadioButton android:id="@+id/view_compact" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/view_mode_compact" />
             <RadioButton android:id="@+id/view_media" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/view_mode_grid_media" />
             <RadioButton android:id="@+id/view_all" android:layout_width="match_parent"

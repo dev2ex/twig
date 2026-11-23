@@ -159,6 +159,7 @@
     <string name="action_settings">Cài đặt</string>
     <string name="action_view_mode">Chế độ xem</string>
     <string name="action_thumbs">Ảnh thu nhỏ</string>
+    <string name="view_mode_compact">Danh sách · Thu gọn</string>
     <string name="view_mode_grid_off">Danh sách</string>
     <string name="view_mode_grid_media">Lưới · Chỉ đa phương tiện</string>
     <string name="view_mode_grid_all">Lưới · Mọi tệp</string>

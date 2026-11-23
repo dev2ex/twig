@@ -159,6 +159,7 @@
     <string name="action_settings">Paramètres</string>
     <string name="action_view_mode">Affichage</string>
     <string name="action_thumbs">Miniatures</string>
+    <string name="view_mode_compact">Liste · Compacte</string>
     <string name="view_mode_grid_off">Liste</string>
     <string name="view_mode_grid_media">Grille · Médias seuls</string>
     <string name="view_mode_grid_all">Grille · Tous les fichiers</string>

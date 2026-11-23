@@ -159,6 +159,7 @@
     <string name="action_settings">設定</string>
     <string name="action_view_mode">表示</string>
     <string name="action_thumbs">サムネイル</string>
+    <string name="view_mode_compact">リスト · コンパクト</string>
     <string name="view_mode_grid_off">リスト</string>
     <string name="view_mode_grid_media">グリッド · メディアのみ</string>
     <string name="view_mode_grid_all">グリッド · すべてのファイル</string>

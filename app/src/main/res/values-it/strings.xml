@@ -159,6 +159,7 @@
     <string name="action_settings">Impostazioni</string>
     <string name="action_view_mode">Vista</string>
     <string name="action_thumbs">Miniature</string>
+    <string name="view_mode_compact">Elenco · Compatto</string>
     <string name="view_mode_grid_off">Elenco</string>
     <string name="view_mode_grid_media">Griglia · Solo media</string>
     <string name="view_mode_grid_all">Griglia · Tutti i file</string>

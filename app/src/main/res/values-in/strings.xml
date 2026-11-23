@@ -159,6 +159,7 @@
     <string name="action_settings">Pengaturan</string>
     <string name="action_view_mode">Tampilan</string>
     <string name="action_thumbs">Thumbnail</string>
+    <string name="view_mode_compact">Daftar · Ringkas</string>
     <string name="view_mode_grid_off">Daftar</string>
     <string name="view_mode_grid_media">Kisi · Hanya media</string>
     <string name="view_mode_grid_all">Kisi · Semua file</string>

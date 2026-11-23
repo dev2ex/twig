@@ -177,6 +177,7 @@
     <string name="action_settings">Settings</string>
     <string name="action_view_mode">View</string>
     <string name="action_thumbs">Thumbnails</string>
+    <string name="view_mode_compact">List · Compact</string>
     <string name="view_mode_grid_off">List</string>
     <string name="view_mode_grid_media">Grid · Media only</string>
     <string name="view_mode_grid_all">Grid · All files</string>

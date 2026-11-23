@@ -60,6 +60,25 @@ class DirectoryViewDialogTest {
     }
 
     @Test
+    fun `compact list saves defaults and recursive directory overrides`() {
+        withDialog(viewOnly = true) { dialog ->
+            dialog.findViewById<RadioGroup>(R.id.rg_view)!!.check(R.id.view_compact)
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        }
+        assertEquals(3, Prefs.thumbsGrid(app))
+        withDialog(viewOnly = true) { dialog ->
+            assertEquals(R.id.view_compact, dialog.findViewById<RadioGroup>(R.id.rg_view)!!.checkedRadioButtonId)
+            dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.check(R.id.scope_directory)
+            dialog.findViewById<CheckBox>(R.id.cb_custom_view)!!.isChecked = true
+            dialog.findViewById<CheckBox>(R.id.cb_recursive)!!.isChecked = true
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        }
+        val views = DirectoryViewStore.load(app)
+        assertEquals(3, DirectoryViewStore.get(views, dir)?.gridMode)
+        assertEquals(3, DirectoryViewStore.resolve(views, dir.copy(path = "${dir.path}/child")).gridMode)
+    }
+
+    @Test
     fun `sorting shortcut opens selected directory and falls back when none is selected`() {
         withDialog(selectedDirectory = true) { dialog ->
             assertEquals(R.id.scope_directory, dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.checkedRadioButtonId)

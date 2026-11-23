@@ -159,6 +159,7 @@
     <string name="action_settings">الإعدادات</string>
     <string name="action_view_mode">العرض</string>
     <string name="action_thumbs">المصغرات</string>
+    <string name="view_mode_compact">قائمة · مضغوطة</string>
     <string name="view_mode_grid_off">قائمة</string>
     <string name="view_mode_grid_media">شبكة · الوسائط فقط</string>
     <string name="view_mode_grid_all">شبكة · كل الملفات</string>

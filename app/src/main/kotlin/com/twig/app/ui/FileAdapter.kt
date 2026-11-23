@@ -59,8 +59,10 @@ import com.twig.core.UnixPermissions
  * - 0: tree-style list; 1/2: eligible files render as grid cells (media-only / all files),
  *   directories and expandable items (archives) still take a full row, tree expansion logic
  *   is unchanged. Websites use cells only in all-files mode.
+ * - 3: compact tree-style list with icon-sized thumbnails and the selected sort order.
  * Thumbnails (when [thumbs] is on): the tree-row icon is replaced with a larger thumbnail;
- * grid cells are filled with thumbnails; when off, cells show only the type icon.
+ * compact rows keep the regular icon size; grid cells are filled with thumbnails.
+ * When off, rows and cells show only the type icon.
  */
 class FileAdapter(
     private val density: Int,
@@ -171,7 +173,7 @@ class FileAdapter(
     private fun isCell(n: PaneViewModel.Node): Boolean = when (n) {
         is PaneViewModel.WebsiteNode -> gridMode == 2 && !n.reordering
         is PaneViewModel.FileNode -> (if (n.gridMode >= 0) n.gridMode else gridMode).let { mode ->
-            mode > 0 && n.label == null && !n.file.isDir && !n.expandable &&
+            mode in 1..2 && n.label == null && !n.file.isDir && !n.expandable &&
                 !n.file.scheme.startsWith("git") && (mode == 2 || Thumbs.canThumb(n.file))
         }
         else -> false
@@ -1304,6 +1306,7 @@ class FileAdapter(
         }
 
         private fun bindFile(node: PaneViewModel.FileNode) {
+            val compact = (if (node.gridMode >= 0) node.gridMode else gridMode) == 3
             val ctx = b.root.context
             val file = node.file
             b.infoToggle.setOnClickListener { onInfo(node) }
@@ -1380,8 +1383,8 @@ class FileAdapter(
                         // ★ Vertical margins must match the file branch: skip them and adjacent covers touch directly.
                         // Series / collections / playlists / media libraries **are all directories** going through this
                         // branch — movies are files, taking the branch below, hence the symptom "only the movie library has spacing".
-                        iconVMargin(b.icon, dpi.toInt())
-                        Thumbs.bind(b.icon, file, (thumbDp * dpi).toInt())
+                        if (!compact) iconVMargin(b.icon, dpi.toInt())
+                        Thumbs.bind(b.icon, file, if (compact) 0 else (thumbDp * dpi).toInt(), fixedSize = compact)
                     }
                 }
                 else -> {
@@ -1389,14 +1392,16 @@ class FileAdapter(
                     // Tree-style thumbnail (rows not handled by grid): the icon slot becomes a larger thumbnail;
                     // add minimum top/bottom margin so that thumbnails on adjacent rows don't touch when filenames are short
                     if (thumbs && Thumbs.canThumb(file)) {
-                        size(b.icon, thumbDp, dpi)
-                        iconVMargin(b.icon, dpi.toInt())
+                        if (!compact) {
+                            size(b.icon, thumbDp, dpi)
+                            iconVMargin(b.icon, dpi.toInt())
+                        }
                         // ★ Movies are **files** (Jellyfin's Movie entries have IsFolder=false), and their posters
                         // go through this branch instead of the directory branch above — without giving growPx,
                         // `maxH = maxOf(box.height, w)` crops 2:3 posters back to squares.
                         // Video / image thumbnails don't get this; the existing "crop if too tall" behaviour stands.
-                        val poster = if (Thumbs.hasCover(file)) (thumbDp * dpi).toInt() else 0
-                        Thumbs.bind(b.icon, file, poster)
+                        val poster = if (!compact && Thumbs.hasCover(file)) (thumbDp * dpi).toInt() else 0
+                        Thumbs.bind(b.icon, file, poster, fixedSize = compact)
                     }
                 }
             }

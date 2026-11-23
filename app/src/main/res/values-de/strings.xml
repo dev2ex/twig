@@ -159,6 +159,7 @@
     <string name="action_settings">Einstellungen</string>
     <string name="action_view_mode">Ansicht</string>
     <string name="action_thumbs">Vorschaubilder</string>
+    <string name="view_mode_compact">Liste · Kompakt</string>
     <string name="view_mode_grid_off">Liste</string>
     <string name="view_mode_grid_media">Raster · Nur Medien</string>
     <string name="view_mode_grid_all">Raster · Alle Dateien</string>

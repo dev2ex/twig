@@ -147,19 +147,26 @@ playlist exports. M3U network locations use `type://server/path`; malformed sing
 source addresses are skipped.
 Internal `scheme:path` keys remain separate from display text.
 
-## Grid view
+## List and grid views
 
 Grid view (independent of the thumbnail preference): the same RecyclerView switches to
 a `GridLayoutManager` and mixes spans — ordinary rows take a full span, file cells take
 one column, and the column count adapts to the pane width / 96dp. Directories and
 expandable items (archives) always take a full row, and tree expansion logic is
-unchanged. Group sorting lives in `PaneViewModel.sortList` and applies **when the
-thumbnail master switch is on or grid view is on** (tree list and grid are treated
-alike): directories → [in the grid's "All files" mode: expandable archives] → files
+unchanged. Group sorting lives in `PaneViewModel.sortList` and applies when the
+thumbnail master switch is on or grid view is on, except in List · Compact:
+directories → [in the grid's "All files" mode: expandable archives] → files
 that can produce a thumbnail → everything else, with the user's chosen sort inside each
 group. Archives get their own group only in the "All files" grid — there they are the
 only full-width row in a sea of cells, and leaving one in the middle would cut the grid
 in half.
+
+List · Compact (view value `3`) keeps the selected file/folder sorting without media
+grouping. Thumbnails and directory covers stay in the regular square icon slot,
+including memory-cache hits and asynchronous loads; cached large-thumbnail shapes
+do not resize compact rows. The thumbnail master switch still controls image loading.
+It uses the same global defaults, directory overrides, recursion and backup storage
+as the other views.
 
 ## SQLite browsing
 

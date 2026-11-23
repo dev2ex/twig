@@ -56,6 +56,29 @@ class DirectoryViewTest {
         .filter { !it.file.isDir && it.file.scheme == dir.scheme && it.file.parentPath == path }
 
     @Test
+    fun `compact list keeps mixed media in chosen order and restores grouping when disabled`() = runTest(dispatcher) {
+        FsRegistry.register(FakeFileSystem(dir.scheme,
+            dirs = mapOf("/" to listOf("photos"), "/photos" to listOf("a.txt", "b.jpg", "c.zip", "z.png")),
+            files = listOf("a.txt", "b.jpg", "c.zip", "z.png").associate { "/photos/$it" to "x" }))
+        Prefs.setThumbs(app, true)
+        for (spec in listOf(SortSpec(), reverse, SortSpec(by = FileSortKey.EXT))) {
+            DirectoryViewStore.save(app, dir, DirectoryView(spec, 3))
+            vm.refreshSortAndView()
+            vm.revealPath(dir)
+            advanceUntilIdle()
+            val rows = files(dir.path)
+            assertEquals(spec.sort(rows.map { it.file }).map { it.name }, rows.map { it.file.name })
+            assertTrue(rows.all { it.gridMode == 3 })
+            val adapter = FileAdapter(1, {}, {}, {}, { _, _ -> }, {}, thumbs = true, gridMode = 2)
+            adapter.submitList(rows)
+            assertTrue(rows.indices.none { adapter.isCellAt(it) })
+        }
+        DirectoryViewStore.save(app, dir, DirectoryView(SortSpec(), 0))
+        vm.refreshSortAndView()
+        assertEquals(listOf("b.jpg", "z.png", "a.txt", "c.zip"), files(dir.path).map { it.file.name })
+    }
+
+    @Test
     fun `parent and child keep independent sort and actual rendered view`() = runTest(dispatcher) {
         DirectoryViewStore.save(app, dir, DirectoryView(reverse, 2))
         vm.refreshSortAndView()

@@ -305,13 +305,14 @@ class SettingsActivity : TwigActivity() {
             set = { Prefs.setBackAction(this, Prefs.BackAction.entries[it]) },
         )
 
-        section(getString(R.string.settings_section_grid))
+        section(getString(R.string.action_view_mode))
         choiceRow(
-            getString(R.string.settings_grid_mode),
+            getString(R.string.action_view_mode),
             arrayOf(
-                getString(R.string.settings_grid_off),
-                getString(R.string.settings_grid_media),
-                getString(R.string.settings_grid_all),
+                getString(R.string.view_mode_grid_off),
+                getString(R.string.view_mode_grid_media),
+                getString(R.string.view_mode_grid_all),
+                getString(R.string.view_mode_compact),
             ),
             get = { Prefs.thumbsGrid(this) },
             set = { Prefs.setThumbsGrid(this, it) },

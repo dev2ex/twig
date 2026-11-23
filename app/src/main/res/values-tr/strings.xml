@@ -159,6 +159,7 @@
     <string name="action_settings">Ayarlar</string>
     <string name="action_view_mode">Görünüm</string>
     <string name="action_thumbs">Küçük resimler</string>
+    <string name="view_mode_compact">Liste · Kompakt</string>
     <string name="view_mode_grid_off">Liste</string>
     <string name="view_mode_grid_media">Izgara · Yalnızca medya</string>
     <string name="view_mode_grid_all">Izgara · Tüm dosyalar</string>
