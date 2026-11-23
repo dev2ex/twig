@@ -5,6 +5,8 @@ import com.twig.core.DirectoryCountSource
 import com.twig.core.ChildCounts
 import com.twig.core.FsException
 import com.twig.core.RandomSource
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixMetadataSource
 import com.twig.core.XFile
 import net.schmizz.keepalive.KeepAliveProvider
 import net.schmizz.sshj.DefaultConfig
@@ -59,7 +61,7 @@ data class SftpConfig(
 class SftpFileSystem(
     private val config: SftpConfig,
     override val scheme: String = SCHEME,
-) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource {
+) : FileSystem, com.twig.core.ResumableWrite, DirectoryCountSource, UnixMetadataSource {
 
     /** [SftpConfig.path] without the surrounding slashes; "" = rooted at the server root. */
     private val base = config.path.trim('/')
@@ -562,6 +564,18 @@ class SftpFileSystem(
         val attrs = runCatching { retry { it.lstat(serverPath(path)) } }.getOrNull() ?: return null
         return toXFile(path, attrs)
     }
+
+    override fun unixMetadata(file: XFile, includeContext: Boolean): UnixMetadata? {
+        val attrs = retry { it.lstat(serverPath(file.path)) }
+        if (listOf(FileAttributes.Flag.MODE, FileAttributes.Flag.UIDGID,
+                FileAttributes.Flag.SIZE, FileAttributes.Flag.ACMODTIME).any { !attrs.has(it) }) return null
+        return UnixMetadata(attrs.mode.mask, attrs.uid.toLong() and 0xFFFFFFFFL,
+            attrs.gid.toLong() and 0xFFFFFFFFL, attrs.size, attrs.mtime * 1000L,
+            attrs.atime * 1000L, changed = null) // SFTP v3 has no inode change time.
+    }
+
+    override fun linkTarget(file: XFile): String? =
+        file.linkTarget ?: retry { it.readlink(serverPath(file.path)) }
 
     private fun toXFile(path: String, attrs: FileAttributes): XFile {
         val link = attrs.type == FileMode.Type.SYMLINK

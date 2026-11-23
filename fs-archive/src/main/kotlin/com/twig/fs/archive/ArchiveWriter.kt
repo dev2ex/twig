@@ -4,12 +4,18 @@ import com.twig.core.CopyEngine
 import com.twig.core.FsException
 import com.twig.core.FsRegistry
 import com.twig.core.SourceLayout
+import com.twig.core.UnixMetadata
+import com.twig.core.UnixMetadataSource
 import com.twig.core.XFile
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
+import org.apache.commons.compress.archivers.tar.TarConstants
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
 import java.io.File
 import java.io.OutputStream
 import java.io.RandomAccessFile
+import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -23,7 +29,8 @@ import java.util.zip.ZipOutputStream
  * Blocking IO; the caller is responsible for putting it on a worker thread. Progress / cancel
  * reuse the CopyEngine interfaces, so the UI shares one progress dialog between copy and compress.
  *
- * The two formats take different write paths:
+ * Formats take different write paths:
+ *  - **tar.gz**: tar headers/data through gzip directly into the target, without an intermediate tar;
  *  - **zip** (java.util.zip): strictly sequential write, piped straight onto the target's
  *    openOutput, so remote targets need no local landing;
  *  - **7z** (commons-compress + xz): the header must be patched in place, so positional writes
@@ -36,8 +43,33 @@ import java.util.zip.ZipOutputStream
  */
 object ArchiveWriter {
 
-    enum class Format(val ext: String) { ZIP("zip"), SEVEN_Z("7z") }
+    enum class Format(val ext: String) {
+        ZIP("zip"), SEVEN_Z("7z"), TAR_GZ("tar.gz");
+
+        val levels: List<Level> get() = if (this == TAR_GZ) listOf(Level.FAST, Level.STANDARD) else Level.entries
+        fun normalizeLevel(level: Level): Level = level.takeIf { it in levels } ?: Level.STANDARD
+    }
     enum class Level { FAST, STANDARD, STORE }
+
+    /** TAR stores links themselves; planning must not traverse directory links or count their targets. */
+    fun plan(items: List<XFile>, format: Format, cancelled: CopyEngine.Cancelled = CopyEngine.Cancelled { false }): CopyEngine.Plan {
+        if (cancelled.isCancelled()) throw Cancelled()
+        if (format != Format.TAR_GZ) return try { CopyEngine.plan(items, cancelled) }
+            catch (_: java.util.concurrent.CancellationException) { throw Cancelled() }
+        var bytes = 0L
+        var files = 0
+        var dirs = 0
+        fun walk(file: XFile) {
+            if (cancelled.isCancelled()) throw Cancelled()
+            if (file.isSymbolicLink) { files++; return }
+            if (file.isDir) {
+                dirs++
+                FsRegistry.of(file).list(file).forEach(::walk)
+            } else { files++; bytes += file.size.coerceAtLeast(0) }
+        }
+        items.forEach { walk(FsRegistry.of(it).stat(it.path) ?: it) }
+        return CopyEngine.Plan(bytes, files, dirs)
+    }
 
     /** Cancelled (as opposed to a real failure): the caller uses this to say "cancelled" instead of erroring. */
     class Cancelled : RuntimeException("Cancelled")
@@ -81,16 +113,19 @@ object ArchiveWriter {
             throw FsException("Choose a different archive name: the target is a selected source file")
         }
         val pw = password?.takeIf { it.isNotEmpty() }
+        require(level in format.levels) { "Unsupported compression level for ${format.ext}: $level" }
+        require(format != Format.TAR_GZ || pw == null) { "tar.gz does not support passwords" }
         val destFs = FsRegistry.of(target)
         val name = target.name
         if (items.any { !it.isDir && it.scheme == destDir.scheme &&
                 it.parentPath == destDir.path && it.name == "$name$PART_SUFFIX" }) {
             throw FsException("Choose a different archive name: the temporary output is a selected source file")
         }
+        val total = if (plannedBytes >= 0) plannedBytes else plan(items, format, cancelled).bytes
         val part = destFs.createFile(destDir, "$name$PART_SUFFIX")
         val st = State(
             listener, cancelled,
-            if (plannedBytes >= 0) plannedBytes else CopyEngine.totalSize(items),
+            total,
             excluded = listOf(part, target),
             targetPaths = targetPaths,
         )
@@ -110,6 +145,19 @@ object ArchiveWriter {
                             Level.STANDARD -> 6
                             Level.STORE -> 0
                         }).use { zw -> writeAll(items, EncryptedZipSink(zw), st) }
+                    }
+                }
+                Format.TAR_GZ -> destFs.openOutput(part, append = false).use { out ->
+                    val gzip = object : GZIPOutputStream(out, 64 * 1024) {
+                        init { def.setLevel(if (level == Level.FAST) 1 else 6) }
+                    }
+                    gzip.use { compressed ->
+                        TarArchiveOutputStream(compressed, "UTF-8").use { tar ->
+                            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+                            tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
+                            tar.setAddPaxHeadersForNonAsciiNames(true)
+                            writeAll(items, TarSink(tar), st)
+                        }
                     }
                 }
                 Format.SEVEN_Z -> writeSevenZ(items, part, st, tmpDir, pw, level, hideNames)
@@ -179,27 +227,29 @@ object ArchiveWriter {
         }
     }
 
-    private fun walk(item: XFile, prefix: String, sink: Sink, st: State, targetPath: String? = null) {
+    private fun walk(original: XFile, prefix: String, sink: Sink, st: State, targetPath: String? = null) {
         if (st.cancelled.isCancelled()) throw Cancelled()
         // Compressing into ourselves (possible when both panes are parked in the same directory): the growing
         // .twigpart and the same-name old archive it is about to replace are both off-limits as sources
-        if (st.excluded.any { it.scheme == item.scheme && it.path == item.path }) return
+        if (st.excluded.any { it.scheme == original.scheme && it.path == original.path }) return
+        val item = sink.prepare(original)
+        val directory = item.isDir && !(sink.preservesLinks && item.isSymbolicLink)
         // A tar's synthetic '.' directory and filesystem roots represent their children.
-        if (item.isDir && (targetPath == "" || (targetPath == null && item.name in setOf(".", "/")))) {
+        if (directory && (targetPath == "" || (targetPath == null && item.name in setOf(".", "/")))) {
             for (child in FsRegistry.of(item).list(item)) walk(child, prefix, sink, st)
             st.listener?.onItemDone(isDir = true)
             return
         }
         require(SourceLayout.isSafeSegment(item.name)) { "Invalid archive entry: ${item.name}" }
-        val name = targetPath ?: if (prefix.isEmpty()) item.name else "$prefix/${item.name}"
+        val name = targetPath?.takeUnless { it.isEmpty() && !directory } ?: if (prefix.isEmpty()) item.name else "$prefix/${item.name}"
         val parents = name.split('/').dropLast(1).runningReduce { path, segment -> "$path/$segment" }
         if (name in st.names || parents.any { st.names[it] == false } ||
-            (!item.isDir && name in st.requiredDirectories))
+            (!directory && name in st.requiredDirectories))
             throw FsException("Duplicate archive entry: $name")
         st.requiredDirectories.addAll(parents)
-        st.names[name] = item.isDir
-        if (item.isDir) {
-            sink.dir(name, item.lastModified)
+        st.names[name] = directory
+        if (directory) {
+            sink.dir(name, item)
             for (child in FsRegistry.of(item).list(item)) walk(child, name, sink, st)
             st.listener?.onItemDone(isDir = true)
         } else {
@@ -211,12 +261,60 @@ object ArchiveWriter {
 
     /** One entry's write into the archive; each format has its own implementation, walk logic is shared. */
     private interface Sink {
-        fun dir(name: String, time: Long)
+        val preservesLinks: Boolean get() = false
+        fun prepare(file: XFile): XFile = file
+        fun dir(name: String, src: XFile)
         fun file(name: String, src: XFile, st: State)
     }
 
+    private class TarSink(private val tar: TarArchiveOutputStream) : Sink {
+        override val preservesLinks = true
+        private var metadata: UnixMetadata? = null
+
+        override fun prepare(file: XFile): XFile {
+            val fs = FsRegistry.of(file)
+            metadata = (fs as? UnixMetadataSource)?.unixMetadata(file, includeContext = false)
+            val info = metadata
+            return if (info == null) file else file.copy(
+                isSymbolicLink = info.isSymbolicLink, unixMode = info.mode,
+                isDir = if (info.isSymbolicLink) file.isDir else info.isDirectory,
+                size = if (info.isSymbolicLink || info.isDirectory) 0 else info.size,
+                lastModified = info.modified)
+        }
+
+        private fun entry(name: String, src: XFile, type: Byte): TarArchiveEntry {
+            val entry = TarArchiveEntry(name, type)
+            (metadata?.mode ?: src.unixMode)?.let { entry.mode = it and 0xFFF }
+            metadata?.let { info -> entry.setUserId(info.uid); entry.setGroupId(info.gid) }
+            entry.setModTime(src.lastModified)
+            return entry
+        }
+
+        override fun dir(name: String, src: XFile) {
+            tar.putArchiveEntry(entry("$name/", src, TarConstants.LF_DIR))
+            tar.closeArchiveEntry()
+        }
+
+        override fun file(name: String, src: XFile, st: State) {
+            if (src.isSymbolicLink) {
+                val fs = FsRegistry.of(src)
+                val target = (fs as? UnixMetadataSource)?.linkTarget(src) ?: src.linkTarget
+                    ?: fs.stat(src.path)?.linkTarget ?: throw FsException("Cannot read symbolic link: $name")
+                tar.putArchiveEntry(entry(name, src, TarConstants.LF_SYMLINK).apply { linkName = target })
+            } else {
+                require(src.size >= 0) { "Unknown tar entry size: $name" }
+                val mode = src.unixMode?.and(0xF000)
+                require(mode == null || mode == 0 || mode == 0x8000) { "Unsupported tar source type: $name" }
+                tar.putArchiveEntry(entry(name, src, TarConstants.LF_NORMAL).apply { size = src.size })
+                st.pump(src, tar)
+            }
+            tar.closeArchiveEntry()
+        }
+    }
+
     private class ZipSink(private val zos: ZipOutputStream) : Sink {
-        override fun dir(name: String, time: Long) {
+        override fun dir(name: String, src: XFile) {
+            val time = src.lastModified
             zos.putNextEntry(ZipEntry("$name/").also { if (time > 0) it.time = time })
             zos.closeEntry()
         }
@@ -230,7 +328,7 @@ object ArchiveWriter {
 
     /** Encrypted zip: same walk, just routed through our handwritten [ZipWriter]. */
     private class EncryptedZipSink(private val zw: ZipWriter) : Sink {
-        override fun dir(name: String, time: Long) = zw.putDir(name, time)
+        override fun dir(name: String, src: XFile) = zw.putDir(name, src.lastModified)
 
         override fun file(name: String, src: XFile, st: State) {
             // sizeHint decides whether to enable zip64 for this entry, must be set before writing (see ZipWriter comment)
@@ -247,7 +345,8 @@ object ArchiveWriter {
             override fun write(b: ByteArray, off: Int, len: Int) = szo.write(b, off, len)
         }
 
-        override fun dir(name: String, time: Long) {
+        override fun dir(name: String, src: XFile) {
+            val time = src.lastModified
             szo.putArchiveEntry(entry(name, isDir = true, time = time))
             szo.closeArchiveEntry()
         }

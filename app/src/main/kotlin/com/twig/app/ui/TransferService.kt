@@ -340,7 +340,11 @@ object Transfers {
                 ?: s.work.takeIf { s.isDelete }?.let { w ->
                     CopyEngine.Plan(0, w.items.count { !it.isDir }, w.items.count { it.isDir })
                 }
-                ?: runCatching { CopyEngine.plan(remaining) }.getOrNull()
+                ?: runCatching {
+                    val work = s.work
+                    if (work is Work.Compress) ArchiveWriter.plan(remaining, work.format) { s.cancelled.get() }
+                    else CopyEngine.plan(remaining)
+                }.getOrNull()
                 ?: CopyEngine.Plan(0, 0, 0)
             s.plan = plan.takeIf { streamingTar == null }
             s.dirsLeft = plan.dirs

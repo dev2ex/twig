@@ -47,6 +47,9 @@ class UnixMetadataTest {
         assertEquals(stat(link.path).mode, listed.getValue("link").unixMode)
         assertEquals(target.length(), listed.getValue("link").size)
         assertEquals(link.path, listed.getValue("link").path)
+        val basic = fs.unixMetadata(listed.getValue("link"), includeContext = false)!!
+        assertEquals(stat(link.path).uid, basic.uid)
+        assertEquals(0, contexts)
         val metadata = fs.unixMetadata(listed.getValue("link"))!!
         assertEquals(stat(link.path).uid, metadata.uid)
         assertEquals("u:object_r:app_data_file:s0", metadata.selinuxContext)

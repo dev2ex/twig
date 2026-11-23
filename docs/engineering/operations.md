@@ -96,8 +96,27 @@ Compression opens its form without a target too; "Save to source folder" uses th
 known writable common parent and leaves the other target intact until replaced.
 Without a usable opposite-pane target, it defaults on when that parent is writable;
 the form stays open instead of entering destination selection automatically.
-ZIP/7z offer Fast / Standard / Store, with the level remembered. Password-protected
-7z defaults to encrypted file names, with an opt-out; ZIP file names stay visible.
+ZIP/7z offer Fast / Standard / Store; tar.gz offers Fast / Standard. Format and level
+are remembered; a previously selected Store level falls back to Standard for tar.gz.
+Tar.gz streams tar headers/data through the platform gzip encoder directly to the
+selected backend, with no intermediate tar or new native dependency. Its levels use
+DEFLATE 1 / 6. Tar.gz has no password option;
+a password retained while switching formats is never sent to its writer. ZIP/7z retain
+their encryption options. Password-protected 7z defaults to encrypted file names, with
+an opt-out; ZIP file names stay visible.
+
+Tar.gz records permission bits (including special bits), numeric UID/GID and modification
+time when the source exposes Unix metadata. Local and SFTP use lstat attributes; SFTP
+respects the configured connection root and has no inode change time. Bulk metadata
+reads omit SELinux context lookups. Symbolic links retain their raw target, including
+relative or dangling targets, and are never traversed while planning or packing tar.gz.
+Long/Unicode paths use POSIX/PAX extensions; unknown entry sizes and unsupported special
+files fail the staged archive rather than producing malformed data. ACLs, xattrs,
+SELinux labels and hard-link identity are not preserved. Android shared storage can
+only supply the metadata its filesystem exposes. Recording attributes does not restore
+them: Twig extraction currently copies content/directories without restoring Unix modes,
+ownership or symbolic links; standard tar tools can restore archived metadata subject
+to destination support and the user's privileges.
 Long-press transfers remain immediate for valid targets;
 otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
 

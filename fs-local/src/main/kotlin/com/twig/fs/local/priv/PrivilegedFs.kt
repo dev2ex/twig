@@ -170,7 +170,7 @@ class PrivilegedFs(val shell: PrivilegedShell) {
     }
 
     /** Fixed metadata fields only: filenames, including newlines and separators, are never parsed. */
-    fun unixMetadata(path: String): UnixMetadata? {
+    fun unixMetadata(path: String, includeContext: Boolean = true): UnixMetadata? {
         val result = shell.exec("stat -c '%f|%u|%g|%s|%Y|%X|%Z' ${quote(path)}", quiet = true)
         if (!result.ok) return null
         val fields = result.lines.firstOrNull()?.split('|') ?: return null
@@ -178,7 +178,7 @@ class PrivilegedFs(val shell: PrivilegedShell) {
         val mode = fields[0].toIntOrNull(16) ?: return null
         val numbers = fields.drop(1).map { it.toLongOrNull() ?: return null }
         return UnixMetadata(mode, numbers[0], numbers[1], numbers[2],
-            numbers[3] * 1000L, numbers[4] * 1000L, numbers[5] * 1000L, selinuxContext(path))
+            numbers[3] * 1000L, numbers[4] * 1000L, numbers[5] * 1000L, if (includeContext) selinuxContext(path) else null)
     }
 
     fun selinuxContext(path: String): String? {

@@ -585,6 +585,70 @@ class CopyDestinationTest {
         assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, work.level)
     }
 
+    @Test fun `tar gzip retains compound names and destination choices while suppressing passwords`() {
+        openCompression()
+        var form = compressionDialog()
+        form.findViewById<android.widget.EditText>(R.id.et_password)!!.setText("secret")
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("chosen.zip")
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_tar_gz)
+        assertEquals("chosen.tar.gz", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals(android.view.View.GONE, form.findViewById<android.widget.EditText>(R.id.et_password)!!.visibility)
+        assertEquals(android.view.View.GONE, form.findViewById<TextView>(R.id.tv_encrypt_note)!!.visibility)
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
+        assertEquals("chosen.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals("secret", form.findViewById<android.widget.EditText>(R.id.et_password)!!.text.toString())
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_tar_gz)
+        form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.setSelection(0)
+        idle()
+        launchCompressionPicker()
+        cancelPicker()
+        controller.recreate()
+        idle()
+        form = compressionDialog()
+        assertEquals(R.id.rb_tar_gz, form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.checkedRadioButtonId)
+        assertEquals("chosen.tar.gz", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals(0, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ, work.format)
+        assertEquals("chosen.tar.gz", work.target.name)
+        assertNull(work.password)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.FAST, work.level)
+        assertEquals(target.path, work.destDir.path)
+    }
+
+    @Test fun `tar gzip hides store and falls back to standard when switching formats`() {
+        openCompression()
+        var form = compressionDialog()
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
+        form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.setSelection(2)
+        idle()
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, state().draft!!.compression!!.level)
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_tar_gz)
+        idle()
+        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
+        assertEquals(1, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STANDARD, state().draft!!.compression!!.level)
+        controller.recreate()
+        idle()
+        form = compressionDialog()
+        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
+        assertEquals(1, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
+        idle()
+        assertEquals(3, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
+    }
+
+    @Test fun `immediate compression uses the remembered tar gzip format`() {
+        Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ)
+        Prefs.setCompressLevel(activity, com.twig.fs.archive.ArchiveWriter.Level.STORE)
+        openCompression(immediate = true)
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ, work.format)
+        assertTrue(work.target.name.endsWith(".tar.gz"))
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STANDARD, work.level)
+    }
+
     @Test fun `source directory cannot select unrelated parents or readonly sources`() {
         openCompression(files = listOf(entry(source), entry(File(target, "elsewhere.txt"))))
         assertFalse(compressionDialog().findViewById<CheckBox>(R.id.cb_source_directory)!!.isEnabled)

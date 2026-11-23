@@ -100,6 +100,63 @@ class SftpFileSystemTest {
     }
 
     @Test
+    fun tarGzipPreservesSftpMetadataLinksAndConnectionRoot() {
+        val source = File(home, "srv/source").apply { mkdirs() }
+        val script = File(source, "run.sh").apply { writeText("#!/bin/sh\nexit 0\n") }
+        Files.setPosixFilePermissions(script.toPath(), PosixFilePermissions.fromString("rwxr-x---"))
+        script.setLastModified(1600000000000)
+        Files.createSymbolicLink(File(source, "cycle").toPath(), Path.of("."))
+        Files.createSymbolicLink(File(source, "missing").toPath(), Path.of("nowhere"))
+        val rooted = SftpFileSystem(SftpConfig("localhost", server.port, "u", "p", path = "srv"), "sftp-tar")
+        FsRegistry.register(rooted)
+        val destination = Files.createTempDirectory("sftp-tar-output").toFile()
+        try {
+            val item = rooted.list(rooted.root()).single()
+            val entries = rooted.list(item).associateBy { it.name }
+            val metadata = rooted.unixMetadata(entries.getValue("run.sh"))!!
+            assertEquals(0x1E8, metadata.mode and 0xFFF) // 0750.
+            assertEquals((Files.getAttribute(script.toPath(), "unix:uid") as Number).toLong(), metadata.uid)
+            assertEquals((Files.getAttribute(script.toPath(), "unix:gid") as Number).toLong(), metadata.gid)
+            assertEquals(1600000000000, metadata.modified)
+            assertNull(metadata.changed)
+            assertTrue(rooted.unixMetadata(entries.getValue("missing"))!!.isSymbolicLink)
+            assertEquals("nowhere", rooted.linkTarget(entries.getValue("missing")))
+            val archive = File(destination, "sftp.tar.gz")
+            val local = LocalFileSystem()
+            com.twig.fs.archive.ArchiveWriter.compress(listOf(item), local.resolve(destination.path),
+                XFile("file", archive.path, false), com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ)
+            val seen = mutableSetOf<String>()
+            java.util.zip.GZIPInputStream(archive.inputStream()).use { gzip ->
+                org.apache.commons.compress.archivers.tar.TarArchiveInputStream(gzip).use { tar ->
+                    while (true) {
+                        val entry = tar.nextTarEntry ?: break
+                        seen += entry.name
+                        when (entry.name) {
+                            "source/run.sh" -> {
+                                assertEquals(0x1E8, entry.mode and 0xFFF)
+                                assertEquals(metadata.uid, entry.longUserId)
+                                assertEquals(metadata.gid, entry.longGroupId)
+                                assertEquals(metadata.modified, entry.lastModifiedDate.time)
+                                assertEquals(script.readText(), tar.readBytes().decodeToString())
+                            }
+                            "source/cycle", "source/missing" -> {
+                                assertTrue(entry.isSymbolicLink)
+                                assertEquals(if (entry.name.endsWith("cycle")) "." else "nowhere", entry.linkName)
+                            }
+                        }
+                    }
+                }
+            }
+            assertEquals(setOf("source/", "source/run.sh", "source/cycle", "source/missing"), seen)
+            assertTrue(rooted.list(rooted.root()).isNotEmpty())
+        } finally {
+            rooted.disconnect()
+            FsRegistry.unregister(rooted.scheme)
+            destination.deleteRecursively()
+        }
+    }
+
+    @Test
     fun uploadListDownload() {
         fs.openOutput(XFile("sftp", "/hello.txt", false)).use { it.write("hi-sftp".toByteArray()) }
 

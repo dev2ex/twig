@@ -21,12 +21,16 @@ class ArchiveWriterTest {
     private lateinit var out: File
     private val zipFs = ZipFileSystem()
     private val sevenZFs = SevenZFileSystem()
+    private val gzipFs = SingleFileSystem.gzip()
+    private val tarFs = TarFileSystem()
 
     @Before
     fun setup() {
         FsRegistry.register(LocalFileSystem())
         FsRegistry.register(zipFs)
         FsRegistry.register(sevenZFs)
+        FsRegistry.register(gzipFs)
+        FsRegistry.register(tarFs)
 
         tmp = File.createTempFile("twigpack", "").let { it.delete(); it.mkdirs(); it }
         src = File(tmp, "src").apply { mkdirs() }
@@ -38,7 +42,7 @@ class ArchiveWriterTest {
     }
 
     /** The destination archive does not exist yet, so resolve() cannot be used; build it directly (same as what createFile would produce). */
-    private fun local(f: File) = XFile("file", f.absolutePath, isDir = f.isDirectory)
+    private fun local(f: File) = XFile("file", f.absolutePath, isDir = f.isDirectory, size = f.length(), lastModified = f.lastModified())
 
     /** A sorted "path:isDir" listing inside the archive (recursive). */
     private fun tree(fs: ArchiveFileSystem, archive: File): List<String> {
@@ -167,8 +171,15 @@ class ArchiveWriterTest {
         for (format in ArchiveWriter.Format.entries) {
             val archive = File(out, "structured.${format.ext}")
             ArchiveWriter.compress(items, local(out), local(archive), format, targetPaths = SourceLayout.paths(items))
-            val fs = if (format == ArchiveWriter.Format.ZIP) zipFs else sevenZFs
-            val root = fs.rootOf(local(archive))
+            val fs = when (format) {
+                ArchiveWriter.Format.ZIP -> zipFs
+                ArchiveWriter.Format.SEVEN_Z -> sevenZFs
+                ArchiveWriter.Format.TAR_GZ -> tarFs
+            }
+            val readable = if (format == ArchiveWriter.Format.TAR_GZ) File(out, archive.name + ".tar").apply {
+                java.util.zip.GZIPInputStream(archive.inputStream()).use { input -> outputStream().use { input.copyTo(it) } }
+            } else archive
+            val root = fs.rootOf(local(readable))
             val trip = fs.list(root).single { it.name == "trip" }
             val docs = fs.list(root).single { it.name == "docs" }
             assertEquals("trip", fs.openInput(fs.list(trip).single()).bufferedReader().use { it.readText() })
@@ -206,8 +217,15 @@ class ArchiveWriterTest {
             val archive = File(out, "contents.${format.ext}")
             ArchiveWriter.compress(listOf(local(src)), local(out), local(archive), format,
                 targetPaths = mapOf(local(src).toUri() to ""))
-            val fs = if (format == ArchiveWriter.Format.ZIP) zipFs else sevenZFs
-            assertEquals(listOf("dir:true", "dir/a.txt:false", "empty:true", "hello.txt:false"), tree(fs, archive))
+            val fs = when (format) {
+                ArchiveWriter.Format.ZIP -> zipFs
+                ArchiveWriter.Format.SEVEN_Z -> sevenZFs
+                ArchiveWriter.Format.TAR_GZ -> tarFs
+            }
+            val readable = if (format == ArchiveWriter.Format.TAR_GZ) File(out, archive.name + ".tar").apply {
+                java.util.zip.GZIPInputStream(archive.inputStream()).use { input -> outputStream().use { input.copyTo(it) } }
+            } else archive
+            assertEquals(listOf("dir:true", "dir/a.txt:false", "empty:true", "hello.txt:false"), tree(fs, readable))
         }
     }
 

@@ -361,14 +361,14 @@ class LocalFileSystem(
         )
     }
 
-    override fun unixMetadata(file: XFile): UnixMetadata? {
+    override fun unixMetadata(file: XFile, includeContext: Boolean): UnixMetadata? {
         if (documents(file) != null) return null
-        val unix = readUnix(file.path) ?: return fallback?.unixMetadata(file.path)
-        return unix.copy(selinuxContext = readContext(file.path) ?: fallback?.selinuxContext(file.path))
+        val unix = readUnix(file.path) ?: return fallback?.unixMetadata(file.path, includeContext)
+        return if (includeContext) unix.copy(selinuxContext = readContext(file.path) ?: fallback?.selinuxContext(file.path)) else unix
     }
 
     /** Called from properties on a worker thread; privileged listings do not read each link. */
-    fun linkTarget(file: XFile): String? =
+    override fun linkTarget(file: XFile): String? =
         file.linkTarget ?: readLink(file.path) ?: fallback?.readLink(file.path)
 
     companion object {

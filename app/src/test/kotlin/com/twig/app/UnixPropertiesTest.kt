@@ -53,7 +53,7 @@ class UnixPropertiesTest {
             assertEquals("1023", loaded[app.getString(R.string.info_gid)])
             assertEquals(Format.time(metadata.modified, app), basic[app.getString(R.string.info_modified)])
             assertEquals(Format.time(metadata.accessed, app), loaded[app.getString(R.string.info_accessed)])
-            assertEquals(Format.time(metadata.changed, app), loaded[app.getString(R.string.info_changed)])
+            assertEquals(Format.time(metadata.changed!!, app), loaded[app.getString(R.string.info_changed)])
             assertEquals("u:object_r:app_data_file:s0:c1,c2", loaded[app.getString(R.string.info_selinux_context)])
             assertEquals(1, stats)
             assertEquals(1, contexts)

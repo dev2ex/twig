@@ -22,6 +22,8 @@ dependencies {
     compileOnly("org.json:json:20240303")
 
     testImplementation(project(":fs-local"))
+    testImplementation(project(":fs-archive"))
+    testImplementation(libs.commons.compress)
     testImplementation(libs.ftpserver.core) // embedded FTP server
     testImplementation(libs.sshd.sftp)      // embedded SFTP server (Apache MINA)
     testImplementation(libs.mockwebserver)  // WebDAV / Jellyfin mock server

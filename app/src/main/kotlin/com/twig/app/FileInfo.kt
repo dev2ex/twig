@@ -189,7 +189,7 @@ object FileInfo {
                 add(s(ctx, R.string.info_uid) to attributes.uid.toString())
                 add(s(ctx, R.string.info_gid) to attributes.gid.toString())
                 if (attributes.accessed > 0) add(s(ctx, R.string.info_accessed) to Format.time(attributes.accessed, ctx))
-                if (attributes.changed > 0) add(s(ctx, R.string.info_changed) to Format.time(attributes.changed, ctx))
+                attributes.changed?.takeIf { it > 0 }?.let { add(s(ctx, R.string.info_changed) to Format.time(it, ctx)) }
                 attributes.selinuxContext?.let { add(s(ctx, R.string.info_selinux_context) to it) }
             }
         }

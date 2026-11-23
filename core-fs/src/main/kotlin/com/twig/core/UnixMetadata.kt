@@ -2,8 +2,10 @@ package com.twig.core
 
 /** Optional, read-only Unix attributes. All fields describe the entry itself, without following links. */
 interface UnixMetadataSource {
-    /** Blocking IO; null means attributes could not be read, never a set of invented defaults. */
-    fun unixMetadata(file: XFile): UnixMetadata?
+    /** Blocking IO; null means unavailable. Bulk callers omit optional SELinux context reads. */
+    fun unixMetadata(file: XFile, includeContext: Boolean = true): UnixMetadata?
+    /** Raw symlink contents, including relative paths; null when unavailable. */
+    fun linkTarget(file: XFile): String? = file.linkTarget
 }
 
 data class UnixMetadata(
@@ -13,8 +15,8 @@ data class UnixMetadata(
     val size: Long,
     val modified: Long,
     val accessed: Long,
-    /** Inode status change time, not creation time. */
-    val changed: Long,
+    /** Inode status change time, not creation time; null when the backend cannot provide it. */
+    val changed: Long?,
     val selinuxContext: String? = null,
 ) {
     val isSymbolicLink: Boolean get() = mode and 0xF000 == 0xA000

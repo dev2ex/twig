@@ -18,7 +18,7 @@
   "SMB directory → local zip" costs nothing extra. Key points:
   - **7z requires seekable writes** (the header is written back), so it can only be written
     to a local file — when the destination is not local, write into cacheDir and move the
-    finished archive across. Zip is purely sequential and streams straight into the
+    finished archive across. ZIP and tar.gz are purely sequential and stream straight into the
     destination's openOutput.
   - **Do not use `SevenZOutputFile(File)`**: internally it uses `Files.newByteChannel`
     (java.nio.file, API 26+) while minSdk is 24; pass your own
@@ -29,7 +29,9 @@
     dictionary in memory (~90 MB of Java heap), which OOMs easily on a phone when compressing
     large files; cap Standard at 4 MB explicitly, at a marginal cost in
     compression ratio.
-  - Packing levels are Fast / Standard / Store. ZIP uses DEFLATE 1 / 6 / method 0;
+  - ZIP/7z packing levels are Fast / Standard / Store. Tar.gz offers Fast / Standard
+    using gzip DEFLATE 1 / 6
+    around a sequential tar stream; it never materializes a tar. ZIP uses DEFLATE 1 / 6 / method 0;
     STORED ZIP entries stream through `ZipWriter` with data descriptors instead of
     pre-reading each source for CRC/size. AES extras must carry the real method, including 0.
     7z uses LZMA2 preset 1 with a 1 MB dictionary / preset 6 capped at 4 MB / COPY.

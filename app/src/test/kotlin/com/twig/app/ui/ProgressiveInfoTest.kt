@@ -121,7 +121,7 @@ class ProgressiveInfoTest {
         val local = FakeFileSystem("file", mapOf("/" to listOf("test.bin")), mapOf("/test.bin" to "hello"))
         var contentReads = 0
         FsRegistry.register(object : FileSystem by local, com.twig.core.UnixMetadataSource {
-            override fun unixMetadata(file: XFile) = com.twig.core.UnixMetadata(
+            override fun unixMetadata(file: XFile, includeContext: Boolean) = com.twig.core.UnixMetadata(
                 "100644".toInt(8), 10001, 10001, 5, 0, 0, 0)
             override fun openInput(file: XFile): java.io.InputStream {
                 contentReads++

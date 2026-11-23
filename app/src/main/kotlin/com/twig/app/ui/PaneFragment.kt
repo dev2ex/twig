@@ -1982,7 +1982,7 @@ class PaneFragment : Fragment() {
         val sourceDirectory = parents.firstOrNull()?.takeIf { first ->
             first.isWritableDir() && parents.all { it?.scheme == first.scheme && it.path == first.path }
         }
-        val level = Prefs.compressLevel(requireContext())
+        val level = format.normalizeLevel(Prefs.compressLevel(requireContext()))
         val draft = DestinationState.Draft(sel.toList(), dest, move = false,
             movable = allowMove && sel.all { it.isMovableSource() },
             compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory,

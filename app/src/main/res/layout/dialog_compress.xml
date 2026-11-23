@@ -41,8 +41,15 @@
                 android:id="@+id/rb_7z"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="24dp"
+                android:layout_marginStart="16dp"
                 android:text="7Z"
+                android:textSize="14sp" />
+            <RadioButton
+                android:id="@+id/rb_tar_gz"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="tar.gz"
                 android:textSize="14sp" />
         </RadioGroup>
 

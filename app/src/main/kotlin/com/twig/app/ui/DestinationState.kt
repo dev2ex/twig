@@ -29,11 +29,22 @@ class DestinationState : ViewModel() {
     fun prepare(draft: Draft) {
         clear()
         this.draft = draft
+        replan()
+    }
+
+    fun replan() {
+        planning?.cancel()
+        plan.value = null
+        val draft = draft ?: return
         if (draft.extraction?.streamingTar != null) return
+        val format = draft.compression?.format
         planning = viewModelScope.launch {
             plan.value = withContext(Dispatchers.IO) {
                 val context = currentCoroutineContext()
-                runCatching { CopyEngine.plan(draft.sources) { !context.isActive } }.getOrNull()
+                runCatching {
+                    if (format == null) CopyEngine.plan(draft.sources) { !context.isActive }
+                    else ArchiveWriter.plan(draft.sources, format) { !context.isActive }
+                }.getOrNull()
             }
         }
     }

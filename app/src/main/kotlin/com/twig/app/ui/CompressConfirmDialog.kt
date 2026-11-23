@@ -41,7 +41,9 @@ class CompressConfirmDialog : DialogFragment() {
         form.etName.setText(options.name)
         form.etPassword.setText(options.password)
         fun updateEncryptionOptions() {
-            form.tvEncryptNote.visibility = if (options.password.isEmpty()) View.GONE else View.VISIBLE
+            val encryption = options.format != ArchiveWriter.Format.TAR_GZ
+            form.etPassword.visibility = if (encryption) View.VISIBLE else View.GONE
+            form.tvEncryptNote.visibility = if (!encryption || options.password.isEmpty()) View.GONE else View.VISIBLE
             form.cbHideNames.visibility = if (options.password.isNotEmpty() && options.format == ArchiveWriter.Format.SEVEN_Z)
                 View.VISIBLE else View.GONE
         }
@@ -54,22 +56,34 @@ class CompressConfirmDialog : DialogFragment() {
             options.saveToSource = checked
             updateDestination()
         }
-        val levels = listOf(R.string.compress_fast, R.string.compress_standard, R.string.compress_store)
-        form.spLevel.adapter = android.widget.ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,
-            levels.map(::getString)).apply { setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        form.spLevel.setSelection(options.level.ordinal)
-        form.spLevel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        val levelListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                options.level = ArchiveWriter.Level.entries[position]
+                options.level = options.format.levels.getOrNull(position) ?: return
                 Prefs.setCompressLevel(requireContext(), options.level)
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         }
-        form.rgFormat.check(if (options.format == ArchiveWriter.Format.SEVEN_Z) R.id.rb_7z else R.id.rb_zip)
+        fun updateLevels() {
+            options.level = options.format.normalizeLevel(options.level)
+            val labels = listOf(R.string.compress_fast, R.string.compress_standard, R.string.compress_store)
+            form.spLevel.onItemSelectedListener = null
+            form.spLevel.adapter = android.widget.ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,
+                options.format.levels.map { getString(labels[it.ordinal]) }).apply {
+                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                }
+            form.spLevel.setSelection(options.format.levels.indexOf(options.level))
+            form.spLevel.onItemSelectedListener = levelListener
+        }
+        updateLevels()
+        form.rgFormat.check(when (options.format) {
+            ArchiveWriter.Format.ZIP -> R.id.rb_zip
+            ArchiveWriter.Format.SEVEN_Z -> R.id.rb_7z
+            ArchiveWriter.Format.TAR_GZ -> R.id.rb_tar_gz
+        })
         form.cbMove.isChecked = draft.move
         form.cbMove.visibility = if (draft.movable) View.VISIBLE else View.GONE
         // The in-memory draft owns these values, including the password; never put them in a Bundle.
-        for (view in listOf(form.etName, form.etPassword, form.rbZip, form.rb7z, form.cbMove,
+        for (view in listOf(form.etName, form.etPassword, form.rbZip, form.rb7z, form.rbTarGz, form.cbMove,
                             form.spLevel, form.cbHideNames, form.cbSourceDirectory)) {
             view.isSaveEnabled = false
         }
@@ -83,7 +97,13 @@ class CompressConfirmDialog : DialogFragment() {
             updateEncryptionOptions()
         }
         form.rgFormat.setOnCheckedChangeListener { _, id ->
-            options.format = if (id == R.id.rb_7z) ArchiveWriter.Format.SEVEN_Z else ArchiveWriter.Format.ZIP
+            options.format = when (id) {
+                R.id.rb_7z -> ArchiveWriter.Format.SEVEN_Z
+                R.id.rb_tar_gz -> ArchiveWriter.Format.TAR_GZ
+                else -> ArchiveWriter.Format.ZIP
+            }
+            updateLevels()
+            state.replan()
             Prefs.setCompressFormat(requireContext(), options.format)
             updateEncryptionOptions()
             val name = form.etName.text.toString()
@@ -126,7 +146,7 @@ class CompressConfirmDialog : DialogFragment() {
                 form.etName.error = getString(R.string.batch_invalid_name, name)
                 return@setOnClickListener
             }
-            val password = options.password
+            val password = if (options.format == ArchiveWriter.Format.TAR_GZ) "" else options.password
             val plan = state.plan.value
             state.clear()
             dismiss()
@@ -137,7 +157,9 @@ class CompressConfirmDialog : DialogFragment() {
         form.etName.requestFocus()
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         val name = form.etName.text.toString()
-        form.etName.setSelection(0, name.lastIndexOf('.').takeIf { it > 0 } ?: name.length)
+        val extension = ".${options.format.ext}"
+        form.etName.setSelection(0, if (name.endsWith(extension, ignoreCase = true))
+            name.length - extension.length else name.lastIndexOf('.').takeIf { it > 0 } ?: name.length)
     }
 
     private fun updateDestination(): XFile? {

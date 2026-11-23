@@ -54,7 +54,10 @@ Twig WebDAV uses it for the immediate source rows of a marked all-sources endpoi
 
 `UnixMetadataSource` (`core-fs/UnixMetadata.kt`) is a read-only capability for Unix properties.
 Local storage uses an injected Android `lstat` reader, with root/Shizuku fallback only for
-failed reads. `XFile.unixMode` carries the entry's own mode into listings; render its permissions after
+failed reads. SFTP exposes lstat mode, numeric UID/GID, size and access/modification times;
+its unavailable inode change time is null. `UnixMetadataSource.linkTarget()` supplies raw
+symlink contents; bulk callers pass `includeContext=false` to avoid unused SELinux reads.
+`XFile.unixMode` carries the entry's own mode into listings; render its permissions after
 folder counts and before size/time, without bind-time filesystem calls.
 `Prefs.unixPermissionsOctal` defaults on and switches the list between octal and symbolic
 notation. Octal labels have an outline shield matching count-icon size, tint and opacity.
@@ -79,7 +82,7 @@ its listing size must still describe the followed stream for copy/resume checks.
 |---|---|
 | `:core-fs` | Pure JVM: `XFile` / `FileSystem` / `FsRegistry` / `CopyEngine` |
 | `:fs-local` | `LocalFileSystem` (java.io.File) + `priv/` privileged fallback (`PrivilegedShell`, shared by root and Shizuku) |
-| `:fs-archive` | `ArchiveFileSystem` base + Zip (read/write, auto-detects GBK) / 7z (read-only) / tar (read-only, entries read by offset slicing) / gz·xz·bz2·zst (`SingleFileSystem`, one entry, stacks into tar.gz; zstd's decoder is injected by `:app` because this module is plain JVM); `ArchiveWriter` packing (zip/7z) across backends; encrypted archives (`ZipAes`/`ZipCrypto`/`ZipWriter`) |
+| `:fs-archive` | `ArchiveFileSystem` base + Zip (read/write, auto-detects GBK) / 7z (read-only) / tar (read-only, entries read by offset slicing) / gz·xz·bz2·zst (`SingleFileSystem`, one entry, stacks into tar.gz; zstd's decoder is injected by `:app` because this module is plain JVM); `ArchiveWriter` packing (zip/7z/tar.gz) across backends; encrypted archives (`ZipAes`/`ZipCrypto`/`ZipWriter`) |
 | `:fs-archive-rar` | `RarFileSystem` (RAR4 + RAR5, read-only). **A separate module purely for licensing** — junrar is non-free and only ships in the full flavor, see [docs/lessons/rar-and-fdroid.md](../lessons/rar-and-fdroid.md) |
 | `:fs-network` | `FtpFileSystem` / `SftpFileSystem` (SSHJ) / `WebDavFileSystem` (hand-written PROPFIND) / `S3FileSystem` (hand-written SigV4 + REST) / `JellyfinFileSystem` (Jellyfin + Emby, read-only virtual tree) |
 | `:fs-smb` | `SmbFileSystem` — libsmb2 via NDK/JNI, read/write |
