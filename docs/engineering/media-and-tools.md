@@ -19,6 +19,11 @@ Music inside mounted restic repositories and archives uses an in-memory queue
 These tracks cannot be favorited, saved into playlists or exported; player exit
 clears the queue. Resolve them through the live filesystem, without reopening a
 repository or archive from a persisted descriptor.
+Network music uses `AudioCache` to share disk blocks between playback, waveform
+reads and prefetch. Entry locks protect state only: remote open/close runs outside
+those locks. Eviction, retention changes and cache clearing invalidate entries and
+clean up local files immediately, with remote reader closure on a single background
+worker so a slow backend cannot block the UI. Late opens cannot revive disposed entries.
 The video player has a session-only loop toggle floating below the toolbar at the
 right, sharing control visibility and the music player's repeat icons. It defaults off
 and survives activity recreation. Looping repeats the current video before auto-next;

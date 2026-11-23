@@ -4,6 +4,18 @@
 > shared conventions are in [AGENTS.md](../../AGENTS.md); the other sections live
 > beside this file in [docs/lessons/](.).
 
+- **Music playback froze while evicting an audio cache entry (2026-11-23)**:
+  the ANR stack showed the main thread in `AudioCache` LRU disposal waiting for
+  an entry lock held by the playback loader. That loader was closing an SMB
+  reader after a failed read and waiting for native socket I/O. Network opens
+  and closes must never hold the entry lock, including unknown-length fallback,
+  retry cleanup and completed-prefetch cleanup. Eviction, retention changes and
+  cache clearing detach readers and queue remote close on one background worker;
+  disposal marks the entry unusable and wakes block waiters immediately. Late
+  connection results are closed rather than reinstalled. Keep local cache-file
+  cleanup synchronous so delayed network cleanup cannot delete a replacement's file.
+  `AudioCacheTest` blocks close/open while exercising eviction, replacement and release.
+
 - **A UHD MKV played sound with no picture (2026-11-04)**: the reported remux's
   video track was `video/dolby-vision`, `dvhe.07.06`, `supported=false`, while both
   TrueHD and AC-3 audio were supported. Media3 1.9 deliberately excludes Profile 7

@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
  * - **Prefetch the next track**: [prefetch] pulls the whole song into the cache in the
  *   background (paired with waveform/cover prefetch), so the next song starts instantly.
  * - **LRU keeps the last [MAX] tracks**: when the 6th track arrives, the least-recently-used
- *   one's connection and cache file are closed and deleted.
+ *   one's cache file is closed and deleted, and remote closure is queued in the background.
  *
  * The shared source's [Entry.close] is a no-op — lifecycle is owned solely by the registry
  * (LRU eviction / [releaseAll]), avoiding the old version's "ExoPlayer calls close on every
@@ -46,6 +46,16 @@ object AudioCache {
     @Volatile private var maxTracks = DEFAULT_MAX // how many recent tracks to keep; configurable in settings
     private val prefetchExec = Executors.newSingleThreadExecutor { r ->
         Thread(r, "twig-audio-prefetch").apply { isDaemon = true }
+    }
+
+    // Remote close can wait for a socket timeout. Never run it on the UI thread or
+    // while holding an entry/registry lock; keep the worker count bounded.
+    private val closeExec = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "twig-audio-close").apply { isDaemon = true }
+    }
+
+    private fun closeLater(source: RandomSource?) {
+        if (source != null) closeExec.execute { runCatching { source.close() } }
     }
 
     // accessOrder=true → get/put refreshes the entry as most-recently-used; eldest is at the head
@@ -72,7 +82,7 @@ object AudioCache {
         }
     }
 
-    /** Adjust the retention count; if reduced, immediately evict the extra least-recently-used entries (close connection, delete cache file). */
+    /** Adjust retention and immediately evict extra entries; remote connections close in the background. */
     fun setMax(n: Int) = synchronized(lock) {
         maxTracks = n.coerceIn(1, 20)
         val it = entries.entries.iterator() // iteration order = least-recently-used first
@@ -101,7 +111,7 @@ object AudioCache {
     fun cacheBytes(ctx: Context): Long =
         cacheDir(ctx).listFiles()?.sumOf { it.length() } ?: 0L
 
-    /** Clear the music cache: release all entries (close connections, delete cache files) then sweep up any leftover. Clearing during playback briefly interrupts the current track. */
+    /** Invalidate entries and delete cache files, then sweep leftovers; remote close is asynchronous. Clearing briefly interrupts playback. */
     fun clearCache(ctx: Context) {
         releaseAll()
         cacheDir(ctx).listFiles()?.forEach { runCatching { it.delete() } }
@@ -212,6 +222,7 @@ object AudioCache {
                     }.getOrDefault(false)
                     if (ok) {
                         synchronized(state) {
+                            if (disposed) return false
                             channel?.write(ByteBuffer.wrap(buf, 0, size), off)
                             downloaded.set(bi)
                         }
@@ -239,22 +250,33 @@ object AudioCache {
                 upstream?.let { return it }
             }
             val up = FsRegistry.of(file).openRandom(file) // connection outside the lock
-            synchronized(state) {
-                if (disposed) { runCatching { up.close() }; throw IllegalStateException("disposed") }
-                upstream?.let { runCatching { up.close() }; return it } // race: someone already opened it; close mine
-                upstream = up
-                return up
+            val selected = synchronized(state) {
+                if (disposed) null else upstream ?: up.also { upstream = it }
             }
+            if (selected !== up) closeLater(up)
+            return selected ?: throw IllegalStateException("disposed")
         }
 
-        private fun dropUpstream() = synchronized(state) {
-            runCatching { upstream?.close() }
-            upstream = null
+        private fun dropUpstream() {
+            val old = synchronized(state) { upstream.also { upstream = null } }
+            runCatching { old?.close() }
         }
 
-        private fun passthrough(): RandomSource = synchronized(state) {
-            if (disposed) throw IllegalStateException("disposed")
-            passthrough ?: BufferedRandomSource(FsRegistry.of(file).openRandom(file)).also { passthrough = it }
+        private fun passthrough(): RandomSource {
+            synchronized(state) {
+                if (disposed) throw IllegalStateException("disposed")
+                passthrough?.let { return it }
+            }
+            val source = FsRegistry.of(file).openRandom(file)
+            val opened = try { BufferedRandomSource(source) } catch (e: Throwable) {
+                closeLater(source)
+                throw e
+            }
+            val selected = synchronized(state) {
+                if (disposed) null else passthrough ?: opened.also { passthrough = it }
+            }
+            if (selected !== opened) closeLater(opened)
+            return selected ?: throw IllegalStateException("disposed")
         }
 
         /** Pull the whole track sequentially; when fully downloaded, close the upstream connection to save resources, after which all reads go through disk. */
@@ -265,13 +287,11 @@ object AudioCache {
                 synchronized(state) { if (disposed) return }
                 if (!ensureBlock(bi)) return // network dropped; prefetch gives up (no per-block backoff retry dragging it out)
             }
-            synchronized(state) {
+            val old = synchronized(state) {
                 downloadAllDone = true
-                if (downloaded.cardinality() == blocks) {
-                    runCatching { upstream?.close() }
-                    upstream = null
-                }
+                if (downloaded.cardinality() == blocks) upstream.also { upstream = null } else null
             }
+            runCatching { old?.close() }
         }
 
         /** Shared source: close is a no-op; lifecycle belongs to [AudioCache]. */
@@ -281,8 +301,10 @@ object AudioCache {
             synchronized(state) {
                 if (disposed) return
                 disposed = true
-                runCatching { upstream?.close() }
-                runCatching { passthrough?.close() }
+                closeLater(upstream)
+                closeLater(passthrough)
+                inflight.values.forEach { it.countDown() }
+                inflight.clear()
                 runCatching { channel?.close() }
                 runCatching { raf?.close() }
                 upstream = null; passthrough = null; channel = null; raf = null
