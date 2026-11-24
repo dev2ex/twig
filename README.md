@@ -229,9 +229,15 @@ and the app can be built in trimmed configurations by dropping modules.
 | **Installed apps** | Read-only virtual tree | PackageManager; a split app is packed into an XAPK on the fly, so copying one out keeps its `split_config.*` |
 
 Network sources connect on expand, support multiple servers (each gets a unique
-scheme), and persist their configuration. Extraction is just a cross-source copy;
-so is compression, which is why "compress a folder on SMB into a local archive"
-needs no special case.
+scheme), and persist their configuration. Archives can be created and extracted across sources.
+
+Long-press an archive and choose **Extract to…** to open the extraction dialog.
+Pick a directory in the opposite pane or save beside the archive. The dialog streams
+`.tar.gz`, `.tar.xz`, `.tar.bz2` and `.tar.zst` (including shorthand extensions)
+directly to the destination without caching an intermediate tar file. Batch extraction
+and copying entries out of ZIP and 7z archives reuse readers to reduce repeated
+parsing and decompression.
+
 The compression dialog remembers the last ZIP, 7z or tar.gz format and Fast / Standard / Store level across launches, even if cancelled. Store with tar.gz creates a plain `.tar`. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible. ZIP file names remain visible.
 
 ### New in 1.18

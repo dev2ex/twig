@@ -173,9 +173,10 @@ avoid retransferring completed files merely because a local timestamp had millis
 Long-press transfers remain immediate for valid targets;
 otherwise choose a target or show confirmation. Source-size planning is shared across recreation.
 
-The archive context menu offers **Extract to…**, using the same destination draft,
-clickable path field and opposite-pane chooser as copying/compression. The default
-destination is the other pane's current writable directory. With no usable target,
+The archive context menu opens a dedicated **Extract to…** confirmation with
+extraction progress. It shares the destination draft, clickable path field and
+opposite-pane chooser with copying and compression. The default destination is the other pane's
+current writable directory. With no usable target,
 show the confirmation form and default "Save to source folder" on when the archive's
 own parent is writable; otherwise leave confirmation disabled until a target is chosen.
 Picking a different location clears source-folder mode; cancelling the picker preserves
@@ -187,10 +188,10 @@ Create/merge that folder only in the confirmed background transfer, and use the 
 folder for retry checkpoints. A same-named file is never replaced by that folder.
 Preserve internal directories and keep the source archive. Passwords and nested-archive
 materialization follow the existing mount policy, without expanding or navigating the
-source tree. **Extract to…** on compressed tar (`tar.gz`/xz/bz2/zst and shorthand
-extensions) uses sequential decompression directly into the destination, with no full
-tar cache. A cancellable preflight scans tar headers until a second distinct top-level
-entry is found; a genuinely single-root archive needs a full scan. This preflight may
+source tree. **Extract to…** streams `.tar.gz`, `.tar.xz`, `.tar.bz2` and `.tar.zst`
+(and the `.tgz`, `.txz`, `.tbz`, `.tbz2` and `.tzst` aliases) into the destination
+without caching an intermediate tar. A cancellable preflight scans tar headers
+until a second distinct top-level entry is found; a genuinely single-root archive needs a full scan. This preflight may
 decompress data but never stores it. Confirmed extraction opens a fresh forward stream,
 so even interleaved directories need only one source pass. Tree browsing retains its
 random-access mount/materialization policy.
