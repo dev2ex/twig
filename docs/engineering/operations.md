@@ -38,6 +38,11 @@ including two files in the same pane or files with different names. It uses left
 checks first and follows row order within a pane. Long-press reverses the inputs.
 Without an eligible pair, the action compares the panes' current directories.
 
+Directory comparison keeps its browser content left-to-right in every locale:
+left/right panes and the status column retain their physical order, as do path
+icons, tree indentation and selection buttons. Row names align left while keeping
+bidirectional text rendering. The toolbar retains the locale's layout direction.
+
 File compare: ★ **a listing that fails is unknown, never empty** — `scanCompare` marks such a
 directory `PairState.ERROR` (no children, sync skips it), and `statSides` / `lookupChild`
 report failure separately from "not found". Reading a failed listing as empty turned the
