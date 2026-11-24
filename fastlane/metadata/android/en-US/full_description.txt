@@ -9,12 +9,12 @@ The 1.18.0 libre APK is 10.88 MiB for arm64-v8a + x86_64, including terminal and
 <b>Features</b>
 
 <ul>
-<li>Single/dual panes; cross-directory/range selection; pinned or independent branches; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and per-folder views</li>
+<li>Single/dual panes; cross-directory/range/pattern selection; pinned or independent branches; reorder roots, favorites, websites and actions; OLED theme, folder counts, Unix permissions and per-folder views</li>
 <li>Opposite-pane copy/move targets; optional directory structure for transfers/compression; background transfers, retry and resume; local trash with batch restore/purge</li>
 <li>Dual-pane file picking and shared file/text saving; cache remote selections and shares</li>
 <li>Batch rename with text/regex replacement, numbering and previews</li>
-<li>Read/create encrypted ZIP/7z; compression levels, optional 7z name encryption and saving beside sources; browse tar and gz/xz/bz2/zst</li>
-<li>Folder compare and sync between any two sources</li>
+<li>Create encrypted ZIP/7z and tar/tar.gz; stream compressed tar extraction; browse gz/xz/bz2/zst</li>
+<li>File comparison and cross-source folder comparison/sync</li>
 <li>SQLite tables in the tree: search, sort, filter, read-only SQL, BLOB hex previews and CSV export</li>
 <li>Disk usage treemap with pinch zoom and scanned sizes/usage bars in the tree; bottom toolbar/address bar, Back navigation/exit choices, completion vibration and foreground notifications</li>
 <li>Private space excluded from backups and configuration exports; files are deleted when Twig is uninstalled</li>

@@ -16,7 +16,7 @@ restic are all implemented from scratch.
 
 If you enjoy Twig or find it useful, consider giving it a ⭐ or sharing it.
 
-**Version 1.18.2** (versionCode 323) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.18.3-preview.1** (versionCode 324) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 [Download](#download) · [Buttons and Gestures](docs/buttons-and-gestures.md) · [Support](#support)
@@ -269,6 +269,7 @@ The compression dialog remembers the last ZIP, 7z or tar.gz format and Fast / St
   Check or uncheck a starting item, then long-press another item's checkbox in the same
   directory to repeat that action across the whole range in display order, including
   both endpoints, in lists or grids. Items outside the range retain their selection.
+  Use **Pattern** to select or deselect files and folders by keyword or wildcard.
 - Choose copy/move destinations directly in the opposite pane. Optionally tap rows to
   toggle selection once items are checked; external multi-file pickers select by tapping.
   Enable the hidden **Duplicate** action to confirm editable copy names; hold it to make
