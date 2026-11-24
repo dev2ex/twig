@@ -1966,6 +1966,7 @@ class PaneFragment : Fragment() {
         if (childFragmentManager.findFragmentByTag(DestinationState.CONFIRMATION_TAG) != null) return
         val dest = host?.siblingOf(this)?.viewModel?.currentDir
         val format = Prefs.compressFormat(requireContext())
+        val level = Prefs.compressLevel(requireContext())
         val paths = sourcePaths(sel)
         // Only a shared top-level directory can become the archive's enclosing name.
         // Independent roots keep their distinguishing prefixes inside the archive.
@@ -1975,7 +1976,7 @@ class PaneFragment : Fragment() {
                 path?.startsWith("$root/") == true || (file.isDir && path == root)
             }
         }
-        val name = "${nameFrom?.let(::archiveStem) ?: structureRoot ?: defaultArchiveName(sel)}.${format.ext}"
+        val name = "${nameFrom?.let(::archiveStem) ?: structureRoot ?: defaultArchiveName(sel)}.${format.extensionFor(level)}"
         val parents = sel.map { file ->
             viewModel.renameParent(file) ?: file.takeIf { it.path.startsWith("/") && it.path != "/" }
                 ?.let { XFile(it.scheme, it.parentPath, isDir = true) }
@@ -1983,7 +1984,6 @@ class PaneFragment : Fragment() {
         val sourceDirectory = parents.firstOrNull()?.takeIf { first ->
             first.isWritableDir() && parents.all { it?.scheme == first.scheme && it.path == first.path }
         }
-        val level = format.normalizeLevel(Prefs.compressLevel(requireContext()))
         val draft = DestinationState.Draft(sel.toList(), dest, move = false,
             movable = allowMove && sel.all { it.isMovableSource() },
             compression = DestinationState.Compression(name, format, level = level, sourceDirectory = sourceDirectory,

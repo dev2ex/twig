@@ -56,25 +56,31 @@ class CompressConfirmDialog : DialogFragment() {
             options.saveToSource = checked
             updateDestination()
         }
-        val levelListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        fun updateNameExtension() {
+            val name = form.etName.text.toString()
+            val extensions = ArchiveWriter.Format.entries.map { it.ext } +
+                ArchiveWriter.Format.TAR_GZ.extensionFor(ArchiveWriter.Level.STORE)
+            val extension = extensions.firstOrNull { name.endsWith(".$it", ignoreCase = true) }
+            val stem = if (extension == null) name else name.dropLast(extension.length + 1)
+            form.etName.setText("$stem.${options.format.extensionFor(options.level)}")
+            form.etName.setSelection(stem.length)
+        }
+        val labels = listOf(R.string.compress_fast, R.string.compress_standard, R.string.compress_store)
+        form.spLevel.adapter = android.widget.ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,
+            labels.map { getString(it) }).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+        form.spLevel.setSelection(options.level.ordinal)
+        form.spLevel.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                options.level = options.format.levels.getOrNull(position) ?: return
-                Prefs.setCompressLevel(requireContext(), options.level)
+                val level = ArchiveWriter.Level.entries[position]
+                val previousExtension = options.format.extensionFor(options.level)
+                options.level = level
+                Prefs.setCompressLevel(requireContext(), level)
+                if (options.format.extensionFor(level) != previousExtension) updateNameExtension()
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
         }
-        fun updateLevels() {
-            options.level = options.format.normalizeLevel(options.level)
-            val labels = listOf(R.string.compress_fast, R.string.compress_standard, R.string.compress_store)
-            form.spLevel.onItemSelectedListener = null
-            form.spLevel.adapter = android.widget.ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item,
-                options.format.levels.map { getString(labels[it.ordinal]) }).apply {
-                    setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-                }
-            form.spLevel.setSelection(options.format.levels.indexOf(options.level))
-            form.spLevel.onItemSelectedListener = levelListener
-        }
-        updateLevels()
         form.rgFormat.check(when (options.format) {
             ArchiveWriter.Format.ZIP -> R.id.rb_zip
             ArchiveWriter.Format.SEVEN_Z -> R.id.rb_7z
@@ -102,15 +108,10 @@ class CompressConfirmDialog : DialogFragment() {
                 R.id.rb_tar_gz -> ArchiveWriter.Format.TAR_GZ
                 else -> ArchiveWriter.Format.ZIP
             }
-            updateLevels()
             state.replan()
             Prefs.setCompressFormat(requireContext(), options.format)
             updateEncryptionOptions()
-            val name = form.etName.text.toString()
-            val extension = ArchiveWriter.Format.entries.firstOrNull { name.endsWith(".${it.ext}", ignoreCase = true) }
-            val stem = if (extension == null) name else name.dropLast(extension.ext.length + 1)
-            form.etName.setText("$stem.${options.format.ext}")
-            form.etName.setSelection(stem.length)
+            updateNameExtension()
         }
         val sourceLabel = if (draft.sources.size == 1) draft.sources.single().name
             else getString(R.string.copy_items, draft.sources.size)
@@ -157,7 +158,7 @@ class CompressConfirmDialog : DialogFragment() {
         form.etName.requestFocus()
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
         val name = form.etName.text.toString()
-        val extension = ".${options.format.ext}"
+        val extension = ".${options.format.extensionFor(options.level)}"
         form.etName.setSelection(0, if (name.endsWith(extension, ignoreCase = true))
             name.length - extension.length else name.lastIndexOf('.').takeIf { it > 0 } ?: name.length)
     }

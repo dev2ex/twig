@@ -62,7 +62,7 @@ class CompressionFormatMemoryTest {
             controller.recreate()
             val reopened = open()
             assertEquals(R.id.rb_7z, reopened.findViewById<RadioGroup>(R.id.rg_format)!!.checkedRadioButtonId)
-            assertEquals("report.7z", reopened.findViewById<EditText>(R.id.et_name)!!.text.toString())
+            assertEquals("${folder.name}.7z", reopened.findViewById<EditText>(R.id.et_name)!!.text.toString())
             assertFalse(reopened.findViewById<CheckBox>(R.id.cb_move)!!.isChecked)
             assertEquals("", reopened.findViewById<EditText>(R.id.et_password)!!.text.toString())
             reopened.findViewById<RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
@@ -70,7 +70,7 @@ class CompressionFormatMemoryTest {
             shadowOf(Looper.getMainLooper()).idle()
             val zipAgain = open()
             assertEquals(R.id.rb_zip, zipAgain.findViewById<RadioGroup>(R.id.rg_format)!!.checkedRadioButtonId)
-            assertEquals("report.zip", zipAgain.findViewById<EditText>(R.id.et_name)!!.text.toString())
+            assertEquals("${folder.name}.zip", zipAgain.findViewById<EditText>(R.id.et_name)!!.text.toString())
         } finally {
             ShadowDialog.getLatestDialog()?.dismiss()
             controller.pause().stop().destroy()

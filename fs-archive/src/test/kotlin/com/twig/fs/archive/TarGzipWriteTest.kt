@@ -144,11 +144,18 @@ class TarGzipWriteTest {
         val payload = ByteArray(200000) { (it % 23).toByte() }
         File(source, name).apply { parentFile!!.mkdirs(); writeBytes(payload) }
         File(source, "zero").writeBytes(byteArrayOf())
-        for (level in ArchiveWriter.Format.TAR_GZ.levels) {
-            val archive = target("${level.name}.tar.gz")
+        for (level in ArchiveWriter.Level.entries) {
+            val archive = target("${level.name}.${ArchiveWriter.Format.TAR_GZ.extensionFor(level)}")
             pack(source, archive, level, mapOf(local.resolve(source.path).toUri() to ""))
             val out = tmp.newFolder(level.name)
-            CopyEngine.transferSequential(StreamingTar.open(local.resolve(archive.path)), local.resolve(out.path))
+            val packed = local.resolve(archive.path)
+            if (level == ArchiveWriter.Level.STORE) {
+                assertTrue(archive.name.endsWith(".tar"))
+                val tar = TarFileSystem().also { FsRegistry.register(it) }
+                CopyEngine.transfer(tar.list(tar.rootOf(packed)), local.resolve(out.path), false)
+            } else {
+                CopyEngine.transferSequential(StreamingTar.open(packed), local.resolve(out.path))
+            }
             assertArrayEquals(payload, File(out, name).readBytes())
             assertTrue(File(out, "zero").isFile)
             assertEquals(0L, File(out, "zero").length())
@@ -200,14 +207,6 @@ class TarGzipWriteTest {
         }
         FsRegistry.register(broken)
         assertThrows(IOException::class.java) { pack(source, local.resolve(archive.path)) }
-        assertEquals("original", archive.readText())
-        assertFalse(File(tmp.root, "old.tar.gz.twigpart").exists())
-    }
-
-    @Test fun storeModeIsRejectedBeforeOpeningTheOutput() {
-        val source = tmp.newFile("input")
-        val archive = tmp.newFile("old.tar.gz").apply { writeText("original") }
-        assertThrows(IllegalArgumentException::class.java) { pack(source, local.resolve(archive.path), ArchiveWriter.Level.STORE) }
         assertEquals("original", archive.readText())
         assertFalse(File(tmp.root, "old.tar.gz.twigpart").exists())
     }

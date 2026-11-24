@@ -651,36 +651,44 @@ class CopyDestinationTest {
         assertEquals(target.path, work.destDir.path)
     }
 
-    @Test fun `tar gzip hides store and falls back to standard when switching formats`() {
+    @Test fun `tar store changes the suffix and survives dialog recreation`() {
         openCompression()
         var form = compressionDialog()
-        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_zip)
-        form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.setSelection(2)
-        idle()
-        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, state().draft!!.compression!!.level)
+        form.findViewById<android.widget.EditText>(R.id.et_name)!!.setText("chosen.zip")
         form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_tar_gz)
+        val level = form.findViewById<android.widget.Spinner>(R.id.sp_level)!!
+        assertEquals(3, level.count)
+        level.setSelection(2)
         idle()
-        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
-        assertEquals(1, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
-        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STANDARD, state().draft!!.compression!!.level)
+        assertEquals("chosen.tar", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        level.setSelection(1)
+        idle()
+        assertEquals("chosen.tar.gz", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        level.setSelection(2)
+        idle()
         controller.recreate()
         idle()
         form = compressionDialog()
-        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
-        assertEquals(1, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
-        form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!.check(R.id.rb_7z)
-        idle()
-        assertEquals(3, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.count)
+        assertEquals("chosen.tar", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        assertEquals(2, form.findViewById<android.widget.Spinner>(R.id.sp_level)!!.selectedItemPosition)
+        val formats = form.findViewById<android.widget.RadioGroup>(R.id.rg_format)!!
+        formats.check(R.id.rb_7z)
+        assertEquals("chosen.7z", form.findViewById<android.widget.EditText>(R.id.et_name)!!.text.toString())
+        formats.check(R.id.rb_tar_gz)
+        form.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+        val work = compressionSession().work as Transfers.Work.Compress
+        assertEquals("chosen.tar", work.target.name)
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, work.level)
     }
 
-    @Test fun `immediate compression uses the remembered tar gzip format`() {
+    @Test fun `immediate compression uses the remembered tar store level`() {
         Prefs.setCompressFormat(activity, com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ)
         Prefs.setCompressLevel(activity, com.twig.fs.archive.ArchiveWriter.Level.STORE)
         openCompression(immediate = true)
         val work = compressionSession().work as Transfers.Work.Compress
         assertEquals(com.twig.fs.archive.ArchiveWriter.Format.TAR_GZ, work.format)
-        assertTrue(work.target.name.endsWith(".tar.gz"))
-        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STANDARD, work.level)
+        assertTrue(work.target.name.endsWith(".tar"))
+        assertEquals(com.twig.fs.archive.ArchiveWriter.Level.STORE, work.level)
     }
 
     @Test fun `source directory cannot select unrelated parents or readonly sources`() {

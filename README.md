@@ -14,7 +14,7 @@ restic are all implemented from scratch.
 
 **Twig will always be open source. No ads, no tracking, and no collection of any of your data.**
 
-If you enjoy Twig or find it useful, consider giving it a ⭐. Your support means a lot to me.
+If you enjoy Twig or find it useful, consider giving it a ⭐ or sharing it.
 
 **Version 1.18.2** (versionCode 323) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
@@ -212,7 +212,7 @@ and the app can be built in trimmed configurations by dropping modules.
 | **System directories** (`/system`, `/vendor`, etc.) | Browse readable directories and files | Direct access to readable system paths even when listing `/` is blocked; protected contents require root/Shizuku, and read-only mounts remain read-only |
 | **ZIP** | **Read + write**, legacy GBK names detected | Mounted as a filesystem; opens like a folder |
 | **7z** | Read + **create** (LZMA2) | commons-compress + xz |
-| **tar** | Read-only | Entries are contiguous, so they are read by slicing — a nested archive inside opens without being unpacked first |
+| **tar** | Read + **create** | Entries are contiguous, so they are read by slicing — a nested archive inside opens without being unpacked first |
 | **gz / xz / bz2 / zst** | Read-only | One stream, not an archive: mounted as a single entry, so `foo.tar.gz` opens to `foo.tar` and expands again — `.tgz`/`.txz`/`.tbz2`/`.tzst` included |
 | **zstd** | Read-only | Streaming decode through the same bundled libzstd that restic uses — no second copy of the library |
 | **RAR** | Read-only (RAR4 + RAR5) | junrar, in its own module — `full` builds only, the `libre` build has no RAR |
@@ -232,7 +232,7 @@ Network sources connect on expand, support multiple servers (each gets a unique
 scheme), and persist their configuration. Extraction is just a cross-source copy;
 so is compression, which is why "compress a folder on SMB into a local archive"
 needs no special case.
-The compression dialog remembers the last ZIP/7z format and Fast / Standard / Store level across launches, even if cancelled. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible; ZIP file names remain visible.
+The compression dialog remembers the last ZIP, 7z or tar.gz format and Fast / Standard / Store level across launches, even if cancelled. Store with tar.gz creates a plain `.tar`. Choose a destination in the opposite pane or save beside the sources. Password-protected 7z encrypts file names by default, with an option to leave them visible. ZIP file names remain visible.
 
 ### New in 1.18
 

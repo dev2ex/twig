@@ -30,7 +30,7 @@ import java.util.zip.ZipOutputStream
  * reuse the CopyEngine interfaces, so the UI shares one progress dialog between copy and compress.
  *
  * Formats take different write paths:
- *  - **tar.gz**: tar headers/data through gzip directly into the target, without an intermediate tar;
+ *  - **tar / tar.gz**: tar headers/data stream into the target, optionally through gzip;
  *  - **zip** (java.util.zip): strictly sequential write, piped straight onto the target's
  *    openOutput, so remote targets need no local landing;
  *  - **7z** (commons-compress + xz): the header must be patched in place, so positional writes
@@ -46,8 +46,7 @@ object ArchiveWriter {
     enum class Format(val ext: String) {
         ZIP("zip"), SEVEN_Z("7z"), TAR_GZ("tar.gz");
 
-        val levels: List<Level> get() = if (this == TAR_GZ) listOf(Level.FAST, Level.STANDARD) else Level.entries
-        fun normalizeLevel(level: Level): Level = level.takeIf { it in levels } ?: Level.STANDARD
+        fun extensionFor(level: Level): String = if (this == TAR_GZ && level == Level.STORE) "tar" else ext
     }
     enum class Level { FAST, STANDARD, STORE }
 
@@ -113,8 +112,7 @@ object ArchiveWriter {
             throw FsException("Choose a different archive name: the target is a selected source file")
         }
         val pw = password?.takeIf { it.isNotEmpty() }
-        require(level in format.levels) { "Unsupported compression level for ${format.ext}: $level" }
-        require(format != Format.TAR_GZ || pw == null) { "tar.gz does not support passwords" }
+        require(format != Format.TAR_GZ || pw == null) { "Tar does not support passwords" }
         val destFs = FsRegistry.of(target)
         val name = target.name
         if (items.any { !it.isDir && it.scheme == destDir.scheme &&
@@ -148,16 +146,13 @@ object ArchiveWriter {
                     }
                 }
                 Format.TAR_GZ -> destFs.openOutput(part, append = false).use { out ->
-                    val gzip = object : GZIPOutputStream(out, 64 * 1024) {
-                        init { def.setLevel(if (level == Level.FAST) 1 else 6) }
-                    }
-                    gzip.use { compressed ->
-                        TarArchiveOutputStream(compressed, "UTF-8").use { tar ->
-                            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
-                            tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
-                            tar.setAddPaxHeadersForNonAsciiNames(true)
-                            writeAll(items, TarSink(tar), st)
+                    if (level == Level.STORE) {
+                        writeTar(items, out, st)
+                    } else {
+                        val gzip = object : GZIPOutputStream(out, 64 * 1024) {
+                            init { def.setLevel(if (level == Level.FAST) 1 else 6) }
                         }
+                        gzip.use { writeTar(items, it, st) }
                     }
                 }
                 Format.SEVEN_Z -> writeSevenZ(items, part, st, tmpDir, pw, level, hideNames)
@@ -174,6 +169,15 @@ object ArchiveWriter {
         if (runCatching { destFs.exists(target) }.getOrDefault(false)) destFs.delete(target)
         destFs.rename(part, name)
         listener?.onDone()
+    }
+
+    private fun writeTar(items: List<XFile>, out: OutputStream, st: State) {
+        TarArchiveOutputStream(out, "UTF-8").use { tar ->
+            tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX)
+            tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX)
+            tar.setAddPaxHeadersForNonAsciiNames(true)
+            writeAll(items, TarSink(tar), st)
+        }
     }
 
     /**
