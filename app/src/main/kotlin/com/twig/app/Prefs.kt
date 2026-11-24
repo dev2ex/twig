@@ -3,6 +3,7 @@ package com.twig.app
 import android.content.Context
 import androidx.appcompat.app.AppCompatDelegate
 import com.twig.fs.archive.ArchiveWriter
+import org.json.JSONArray
 
 /** Lightweight preferences (SharedPreferences). */
 object Prefs {
@@ -10,6 +11,8 @@ object Prefs {
     private const val KEY_THEME = "theme_mode"
     private const val KEY_DENSITY = "row_density"
     private const val KEY_TEXT_SIZE = "row_text_size"
+    private const val KEY_SELECTION_PATTERNS = "selection_patterns"
+    private const val MAX_SELECTION_PATTERNS = 20
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -113,6 +116,33 @@ object Prefs {
         val edit = sp(ctx).edit().putString("strip_item_order", items.joinToString(",") { it.id })
         items.forEach { edit.putBoolean("strip_item_${it.id}", it.id in visible) }
         edit.apply()
+    }
+
+    fun selectionPatterns(ctx: Context): List<String> {
+        val raw = sp(ctx).getString(KEY_SELECTION_PATTERNS, null) ?: return emptyList()
+        val patterns = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
+        return (0 until minOf(patterns.length(), MAX_SELECTION_PATTERNS))
+            .map { patterns.optString(it) }.filter { it.isNotBlank() }
+    }
+
+    fun rememberSelectionPattern(ctx: Context, pattern: String) {
+        val recent = (listOf(pattern) + selectionPatterns(ctx).filter { it != pattern }).take(MAX_SELECTION_PATTERNS)
+        sp(ctx).edit().putString(KEY_SELECTION_PATTERNS, JSONArray(recent).toString()).apply()
+    }
+
+    data class PatternSelectionTypes(val files: Boolean, val folders: Boolean) {
+        val any: Boolean get() = files || folders
+
+        fun includes(isDir: Boolean): Boolean = if (isDir) folders else files
+    }
+
+    fun patternSelectionTypes(ctx: Context): PatternSelectionTypes = sp(ctx).let {
+        PatternSelectionTypes(it.getBoolean("pattern_select_files", true), it.getBoolean("pattern_select_folders", false))
+    }
+
+    fun setPatternSelectionTypes(ctx: Context, types: PatternSelectionTypes) {
+        sp(ctx).edit().putBoolean("pattern_select_files", types.files)
+            .putBoolean("pattern_select_folders", types.folders).apply()
     }
 
     /** 0=system region, 1=yy-MM-dd, 2=dd.MM.yy, 3=MM/dd/yy. */

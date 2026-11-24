@@ -1181,6 +1181,34 @@ class PaneFragment : Fragment() {
         }
     }
 
+    fun actionPatternSelection(invert: Boolean = false) {
+        if (!isReady() || mapMode || host?.isChoosingDestination() == true) return
+        val dir = viewModel.currentDir ?: return
+        val folder = viewModel.openDirectoryRow(adapter.currentList) ?: return
+        val ctx = requireContext()
+        if (invert) {
+            val types = Prefs.patternSelectionTypes(ctx)
+            adapter.changeChildSelection(folder, dir.scheme, { types.includes(it.isDir) }) { !it }
+            return
+        }
+        PatternSelectionDialog.show(ctx) { action, pattern, types ->
+            if (!isReady() || mapMode || host?.isChoosingDestination() == true) return@show
+            val current = viewModel.currentDir ?: return@show
+            if (current.scheme != dir.scheme || current.path != dir.path) return@show
+            val target = viewModel.openDirectoryRow(adapter.currentList)?.takeIf { it.key == folder.key }
+                ?: return@show
+            Prefs.setPatternSelectionTypes(ctx, types)
+            val matchesName = pattern?.let(::searchMatcher)
+            if (pattern != null) Prefs.rememberSelectionPattern(ctx, pattern)
+            val count = adapter.changeChildSelection(target, dir.scheme, {
+                types.includes(it.isDir) && (matchesName?.invoke(it.name) ?: true)
+            }, action::checked)
+            if (count == 0) {
+                toast(getString(R.string.pattern_no_matches))
+            }
+        }
+    }
+
     // ---- File search (recursive glob, results attached as a virtual directory on the tree) ----
 
     /** Last-entered glob; pre-filled in the dialog so consecutive searches don't re-type. */
@@ -1533,6 +1561,7 @@ class PaneFragment : Fragment() {
         val delete: Boolean = false,
         val treemap: Boolean = false,
         val search: Boolean = false,
+        val pattern: Boolean = false,
         val info: Boolean = false,
     )
 
@@ -1550,6 +1579,7 @@ class PaneFragment : Fragment() {
             delete = modify,
             treemap = mapMode || target?.let { it.isDir || com.twig.fs.archive.Archives.isArchive(it) } == true,
             search = viewModel.sqliteSearchTarget() != null || target?.isDir == true,
+            pattern = !mapMode && viewModel.openDirectoryRow() != null,
             info = !mapMode && transfer,
         )
     }

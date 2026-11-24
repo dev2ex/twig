@@ -75,6 +75,11 @@
     <string name="strip_swap">Bereiche</string>
     <string name="strip_menu">Menü</string>
     <string name="strip_search">Suchen</string>
+    <string name="strip_pattern">Muster</string>
+    <string name="pattern_history">Letzte Muster</string>
+    <string name="pattern_files">Dateien</string>
+    <string name="pattern_invert">Auswahl umkehren</string>
+    <string name="pattern_no_matches">Keine passenden Einträge</string>
     <string name="strip_share">Teilen</string>
     <string name="strip_history">Zuletzt</string>
     <string name="history_title">Verlauf</string>

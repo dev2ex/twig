@@ -75,6 +75,11 @@
     <string name="strip_swap">اللوحات</string>
     <string name="strip_menu">القائمة</string>
     <string name="strip_search">بحث</string>
+    <string name="strip_pattern">نمط</string>
+    <string name="pattern_history">الأنماط الأخيرة</string>
+    <string name="pattern_files">الملفات</string>
+    <string name="pattern_invert">عكس التحديد</string>
+    <string name="pattern_no_matches">لا توجد عناصر مطابقة</string>
     <string name="strip_share">مشاركة</string>
     <string name="strip_history">الأخيرة</string>
     <string name="history_title">السجل</string>

@@ -75,6 +75,11 @@
     <string name="strip_swap">Paneles</string>
     <string name="strip_menu">Menú</string>
     <string name="strip_search">Buscar</string>
+    <string name="strip_pattern">Patrón</string>
+    <string name="pattern_history">Patrones recientes</string>
+    <string name="pattern_files">Archivos</string>
+    <string name="pattern_invert">Invertir selección</string>
+    <string name="pattern_no_matches">No hay elementos coincidentes</string>
     <string name="strip_share">Compartir</string>
     <string name="strip_history">Recientes</string>
     <string name="history_title">Historial</string>

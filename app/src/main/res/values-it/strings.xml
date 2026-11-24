@@ -75,6 +75,11 @@
     <string name="strip_swap">Pannelli</string>
     <string name="strip_menu">Menu</string>
     <string name="strip_search">Cerca</string>
+    <string name="strip_pattern">Schema</string>
+    <string name="pattern_history">Schemi recenti</string>
+    <string name="pattern_files">File</string>
+    <string name="pattern_invert">Inverti selezione</string>
+    <string name="pattern_no_matches">Nessun elemento corrispondente</string>
     <string name="strip_share">Condividi</string>
     <string name="strip_history">Recenti</string>
     <string name="history_title">Cronologia</string>

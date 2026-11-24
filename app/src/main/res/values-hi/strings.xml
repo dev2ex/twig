@@ -75,6 +75,11 @@
     <string name="strip_swap">पैनल</string>
     <string name="strip_menu">मेन्यू</string>
     <string name="strip_search">खोजें</string>
+    <string name="strip_pattern">पैटर्न</string>
+    <string name="pattern_history">हाल के पैटर्न</string>
+    <string name="pattern_files">फ़ाइलें</string>
+    <string name="pattern_invert">चयन उलटें</string>
+    <string name="pattern_no_matches">कोई मेल खाने वाला आइटम नहीं</string>
     <string name="strip_share">साझा करें</string>
     <string name="strip_history">हाल के</string>
     <string name="history_title">इतिहास</string>

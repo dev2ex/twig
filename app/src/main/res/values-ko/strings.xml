@@ -75,6 +75,11 @@
     <string name="strip_swap">창</string>
     <string name="strip_menu">메뉴</string>
     <string name="strip_search">검색</string>
+    <string name="strip_pattern">패턴</string>
+    <string name="pattern_history">최근 패턴</string>
+    <string name="pattern_files">파일</string>
+    <string name="pattern_invert">선택 반전</string>
+    <string name="pattern_no_matches">일치하는 항목이 없습니다</string>
     <string name="strip_share">공유</string>
     <string name="strip_history">최근</string>
     <string name="history_title">기록</string>

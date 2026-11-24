@@ -535,6 +535,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asSort.setOnLongClickListener { showSortDialog(selectedDirectory = true); true }
         s.asRefresh.setOnLongClickListener { activePane()?.actionRefreshThumbnails(); true }
         s.asNewFolder.setOnLongClickListener { activePane()?.actionNewTextFile(); true }
+        s.asPattern.setOnLongClickListener { activePane()?.actionPatternSelection(invert = true); true }
         s.asCopy.setOnLongClickListener { activePane()?.actionCopy(move = false, immediate = true); true }
         s.asDuplicate.setOnLongClickListener { activePane()?.actionDuplicate(immediate = true); true }
         s.asMove.setOnLongClickListener { activePane()?.actionCopy(move = true, immediate = true); true }
@@ -561,6 +562,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         s.asSort.setOnClickListener { showSortDialog() }
         s.asRefresh.setOnClickListener { activePane()?.actionRefresh() }
         s.asNewFolder.setOnClickListener { activePane()?.actionNewFolder() }
+        s.asPattern.setOnClickListener { activePane()?.actionPatternSelection() }
         s.asCopy.setOnClickListener { activePane()?.actionCopy(move = false) }
         s.asDuplicate.setOnClickListener { activePane()?.actionDuplicate() }
         s.asMove.setOnClickListener { activePane()?.actionCopy(move = true) }
@@ -947,6 +949,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val compare = pane?.viewModel?.currentDir?.isDir == true || checkedComparePair() != null
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             setStripEnabled(s.asNewFolder, actions.create)
+            setStripEnabled(s.asPattern, actions.pattern && !choosing)
             setStripEnabled(s.asCopy, actions.copy && !choosing)
             setStripEnabled(s.asCompress, actions.copy && !choosing)
             setStripEnabled(s.asDuplicate, actions.rename && !choosing)

@@ -12,6 +12,15 @@ recreation; folding clears checks for rows that disappear, while other visible b
 retain theirs. Aliases share one check. The path-bar count and file context menus open a selection review
 with individual removal and Clear all, including when the path bar is hidden. Directory checkbox cycles and virtual select-all
 affect only their branch; range selection stays within displayed siblings.
+The main action panel's Pattern dialog uses the file search name matcher on visible
+direct children of the open directory. Every whitespace-separated keyword must
+occur in the name, in any order. `*` or `?` switches to full-name wildcard matching
+and treats spaces literally. Both ignore case. Files and Folders
+are independent filters. Files is on by default. Select and Deselect update
+matches and save the type filters and pattern. Invert selection in the dialog
+saves its type filters and flips all checks for those types. Long-press uses
+the saved filters to invert the same checks. The last 20 applied patterns and
+type filters are stored in `twig_prefs`.
 Operations normalize selected ancestors/descendants using cached tree parents (including
 opaque SAF/media paths), falling back to lexical parents only for absolute paths.
 Copy/move and compression confirmations offer default-off Keep directory structure and

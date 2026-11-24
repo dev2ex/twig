@@ -75,6 +75,11 @@
     <string name="strip_swap">Paneller</string>
     <string name="strip_menu">Menü</string>
     <string name="strip_search">Ara</string>
+    <string name="strip_pattern">Desen</string>
+    <string name="pattern_history">Son desenler</string>
+    <string name="pattern_files">Dosyalar</string>
+    <string name="pattern_invert">Seçimi tersine çevir</string>
+    <string name="pattern_no_matches">Eşleşen öğe yok</string>
     <string name="strip_share">Paylaş</string>
     <string name="strip_history">Son</string>
     <string name="history_title">Geçmiş</string>

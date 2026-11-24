@@ -254,7 +254,7 @@ class FileAdapter(
      *  same key/depth positioning). */
     private fun directChildren(node: PaneViewModel.Node): List<PaneViewModel.FileNode> {
         val list = currentList
-        val i = list.indexOfFirst { it.key == node.key }
+        val i = list.indexOfFirst { it === node }.takeIf { it >= 0 } ?: list.indexOfFirst { it.key == node.key }
         if (i < 0) return emptyList()
         val res = ArrayList<PaneViewModel.FileNode>()
         var j = i + 1
@@ -279,6 +279,34 @@ class FileAdapter(
         resetRangeAnchor()
         refreshSelection()
         onSelectionChanged()
+    }
+
+    /** Apply one selection change to matching direct children and publish it in one update. */
+    internal fun changeChildSelection(
+        folder: PaneViewModel.Node,
+        scheme: String,
+        matches: (XFile) -> Boolean,
+        checked: (Boolean) -> Boolean,
+    ): Int {
+        val seen = HashSet<String>()
+        var changed = false
+        for (node in directChildren(folder)) {
+            val file = node.file
+            if (file.scheme != scheme || node.label != null || !matches(file)) continue
+            val key = selectionKey(node)
+            if (!seen.add(key)) continue
+            val wasChecked = key in selected
+            val nowChecked = checked(wasChecked)
+            if (nowChecked == wasChecked) continue
+            if (nowChecked) selected.add(key) else selected.remove(key)
+            changed = true
+        }
+        if (changed) {
+            resetRangeAnchor()
+            refreshSelection()
+            onSelectionChanged()
+        }
+        return seen.size
     }
 
     /** Replace all checks, including entries returned by the image viewer. */

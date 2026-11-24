@@ -158,17 +158,7 @@ fun excludeRuleFor(name: String, relPath: String, patterns: List<String>): Strin
     }
 
 /** `*` / `?` full-name glob match (case-insensitive); without wildcards, exact equality is required. */
-internal fun globMatches(text: String, pattern: String): Boolean {
-    val regex = buildString {
-        append("(?i)")
-        for (c in pattern) when (c) {
-            '*' -> append(".*")
-            '?' -> append(".")
-            else -> append(Regex.escape(c.toString()))
-        }
-    }
-    return regex.toRegex().matches(text)
-}
+internal fun globMatches(text: String, pattern: String): Boolean = globMatcher(pattern)(text)
 
 /**
  * Whether two timestamps count as "the same moment": first check the tolerance, then check

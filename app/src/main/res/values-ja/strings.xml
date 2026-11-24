@@ -75,6 +75,11 @@
     <string name="strip_swap">ペイン</string>
     <string name="strip_menu">メニュー</string>
     <string name="strip_search">検索</string>
+    <string name="strip_pattern">パターン</string>
+    <string name="pattern_history">最近使ったパターン</string>
+    <string name="pattern_files">ファイル</string>
+    <string name="pattern_invert">選択を反転</string>
+    <string name="pattern_no_matches">一致する項目はありません</string>
     <string name="strip_share">共有</string>
     <string name="strip_history">履歴</string>
     <string name="history_title">履歴</string>

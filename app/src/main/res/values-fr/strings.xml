@@ -75,6 +75,11 @@
     <string name="strip_swap">Volets</string>
     <string name="strip_menu">Menu</string>
     <string name="strip_search">Rechercher</string>
+    <string name="strip_pattern">Motif</string>
+    <string name="pattern_history">Motifs récents</string>
+    <string name="pattern_files">Fichiers</string>
+    <string name="pattern_invert">Inverser la sélection</string>
+    <string name="pattern_no_matches">Aucun élément correspondant</string>
     <string name="strip_share">Partager</string>
     <string name="strip_history">Récents</string>
     <string name="history_title">Historique</string>

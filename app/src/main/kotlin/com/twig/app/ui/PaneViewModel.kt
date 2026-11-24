@@ -1181,6 +1181,25 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
 
     data class PathSegment(val key: String, val file: XFile, val label: String)
 
+    /** Find the open directory in the selected row's branch, including mounted roots. */
+    internal fun openDirectoryRow(rows: List<Node> = state.value.rows): Node? {
+        val dir = currentDir ?: return null
+        val index = rows.indexOfFirst { it.key == currentKey }
+        if (index < 0) return null
+        var depth = rows[index].depth + 1
+        for (i in index downTo 0) {
+            val row = rows[i]
+            if (row.depth >= depth) continue
+            val file = mountRoots[row.key] ?: keyFile[row.key]
+            if (file?.scheme == dir.scheme && file.path == dir.path) {
+                return row.takeIf { it.key in expanded }
+            }
+            depth = row.depth
+            if (depth == 0) break
+        }
+        return null
+    }
+
     var pathBarExpanded = false
     private var pathTrail = emptyList<PathSegment>()
 

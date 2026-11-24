@@ -76,6 +76,11 @@
     <string name="strip_swap">Panes</string>
     <string name="strip_menu">Menu</string>
     <string name="strip_search">Search</string>
+    <string name="strip_pattern">Pattern</string>
+    <string name="pattern_history">Recent patterns</string>
+    <string name="pattern_files">Files</string>
+    <string name="pattern_invert">Invert selection</string>
+    <string name="pattern_no_matches">No matching items</string>
     <string name="strip_share">Share</string>
     <string name="strip_history">Recent</string>
     <string name="history_title">Recent</string>

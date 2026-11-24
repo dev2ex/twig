@@ -586,6 +586,122 @@ class StripWriteActionsTest {
     }
 
     @Test
+    fun `pattern strip selects deselects and inverts direct files with reusable history`() {
+        val pane = pane0()
+        val adapter = adapterOf(pane)
+        val button = activity.findViewById<View>(R.id.strip_right).findViewById<View>(R.id.as_pattern)
+        pane.viewModel.collapseAll()
+        idle()
+        assertStrip(R.id.as_pattern, false)
+        val dir = java.io.File(activity.cacheDir, "pattern-test").apply { mkdirs() }
+        val matching = java.io.File(dir, "photo1.JPG").apply { writeText("image") }
+        val other = java.io.File(dir, "notes.txt").apply { writeText("text") }
+        val folder = java.io.File(dir, "photo2.jpg").apply { mkdirs() }
+        pane.mountPinnedDirectory(XFile("file", dir.path, true), "Pattern test")
+        awaitCondition {
+            button.isEnabled && adapter.currentList.filterIsInstance<PaneViewModel.FileNode>()
+                .any { it.file.path == matching.path }
+        }
+
+        fun open() = (org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog)
+        fun selectedPaths() = adapter.selectedItems().map { it.path }
+        button.performClick()
+        val selectDialog = open()
+        val select = selectDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+        assertFalse(select.isEnabled)
+        editInputs(selectDialog.window!!.decorView).single().setText("photo?.jpg")
+        assertTrue(select.isEnabled)
+        select.performClick()
+        idle()
+        assertEquals(listOf(matching.path), selectedPaths())
+
+        button.performClick()
+        val deselectDialog = open()
+        val history = arrayListOf<View>()
+        deselectDialog.window!!.decorView.findViewsWithText(
+            history, activity.getString(R.string.pattern_history), View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION,
+        )
+        history.single().performClick()
+        open().listView.performItemClick(null, 0, 0)
+        idle()
+        assertEquals("photo?.jpg", editInputs(deselectDialog.window!!.decorView).single().text.toString())
+        deselectDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        assertTrue(selectedPaths().isEmpty())
+        assertEquals(listOf("photo?.jpg"), com.twig.app.Prefs.selectionPatterns(activity))
+
+        button.performLongClick()
+        assertEquals(setOf(matching.path, other.path), selectedPaths().toSet())
+        button.performLongClick()
+        assertTrue(selectedPaths().isEmpty())
+
+        button.performClick()
+        val folderDialog = open()
+        fun control(dialog: androidx.appcompat.app.AlertDialog, label: Int): View {
+            val views = arrayListOf<View>()
+            val text = activity.getString(label)
+            dialog.window!!.decorView.findViewsWithText(views, text, View.FIND_VIEWS_WITH_TEXT)
+            return views.filterIsInstance<android.widget.Button>().single { it.text.toString() == text }
+        }
+        fun files(dialog: androidx.appcompat.app.AlertDialog) =
+            control(dialog, R.string.pattern_files) as android.widget.CheckBox
+        fun folders(dialog: androidx.appcompat.app.AlertDialog) =
+            control(dialog, R.string.media_folders) as android.widget.CheckBox
+        assertTrue(files(folderDialog).isChecked)
+        assertFalse(folders(folderDialog).isChecked)
+        files(folderDialog).performClick()
+        assertFalse(folderDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).isEnabled)
+        folders(folderDialog).performClick()
+        editInputs(folderDialog.window!!.decorView).single().setText("photo?.jpg")
+        folderDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        idle()
+        assertEquals(listOf(folder.path), selectedPaths())
+
+        button.performLongClick()
+        assertTrue(selectedPaths().isEmpty())
+        button.performClick()
+        val invertDialog = open()
+        assertFalse(files(invertDialog).isChecked)
+        assertTrue(folders(invertDialog).isChecked)
+        assertTrue(editInputs(invertDialog.window!!.decorView).single().text.isEmpty())
+        val invertButton = invertDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL)
+        assertEquals(activity.getString(R.string.pattern_invert), invertButton.text.toString())
+        invertButton.performClick()
+        idle()
+        assertEquals(listOf(folder.path), selectedPaths())
+        assertEquals(listOf("photo?.jpg"), com.twig.app.Prefs.selectionPatterns(activity))
+
+        button.performClick()
+        val cancelDialog = open()
+        files(cancelDialog).performClick()
+        val close = arrayListOf<View>()
+        cancelDialog.window!!.decorView.findViewsWithText(
+            close, activity.getString(R.string.dialog_cancel), View.FIND_VIEWS_WITH_CONTENT_DESCRIPTION,
+        )
+        close.single().performClick()
+        idle()
+        assertFalse(cancelDialog.isShowing)
+        assertEquals(listOf(folder.path), selectedPaths())
+        assertFalse(com.twig.app.Prefs.patternSelectionTypes(activity).files)
+
+        button.performClick()
+        val keywordDialog = open()
+        editInputs(keywordDialog.window!!.decorView).single().setText(" JPG   TO2 ")
+        keywordDialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE).performClick()
+        idle()
+        assertTrue(selectedPaths().isEmpty())
+        assertEquals(listOf("JPG   TO2", "photo?.jpg"), com.twig.app.Prefs.selectionPatterns(activity))
+
+        repeat(21) { com.twig.app.Prefs.rememberSelectionPattern(activity, "pattern$it") }
+        com.twig.app.Prefs.rememberSelectionPattern(activity, "pattern5")
+        val recent = com.twig.app.Prefs.selectionPatterns(activity)
+        assertEquals(20, recent.size)
+        assertEquals("pattern5", recent.first())
+        assertEquals(20, recent.distinct().size)
+        assertFalse("pattern0" in recent)
+    }
+
+    @Test
     fun `duplicate confirms edited names while holds copy and rename with numbering`() {
         val dir = java.io.File(activity.cacheDir, "duplicate-test").apply { mkdirs() }
         val original = java.io.File(dir, "photo.jpg").apply { writeText("image") }

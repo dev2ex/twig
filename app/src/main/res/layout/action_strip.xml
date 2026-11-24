@@ -149,6 +149,12 @@
             <TextView style="@style/StripLabel" android:text="@string/strip_search" />
         </com.twig.app.ui.SearchStripItem>
 
+        <LinearLayout android:id="@+id/as_pattern" style="@style/StripItem" android:visibility="gone">
+            <ImageView style="@style/StripIcon" android:src="@drawable/ic_select_pattern"
+                android:contentDescription="@null" />
+            <TextView style="@style/StripLabel" android:text="@string/strip_pattern" />
+        </LinearLayout>
+
         <LinearLayout android:id="@+id/as_history" style="@style/StripItem">
             <ImageView style="@style/StripIcon" android:src="@drawable/ic_history"
                 android:contentDescription="@null" />

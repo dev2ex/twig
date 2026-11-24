@@ -75,6 +75,11 @@
     <string name="strip_swap">切換</string>
     <string name="strip_menu">選單</string>
     <string name="strip_search">搜尋</string>
+    <string name="strip_pattern">按模式</string>
+    <string name="pattern_history">最近使用的模式</string>
+    <string name="pattern_files">檔案</string>
+    <string name="pattern_invert">反向選取</string>
+    <string name="pattern_no_matches">沒有相符的項目</string>
     <string name="strip_share">共享</string>
     <string name="strip_history">歷史</string>
     <string name="history_title">歷史</string>

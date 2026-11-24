@@ -12,19 +12,38 @@ import kotlinx.coroutines.flow.flowOn
 
 private const val SEARCH_MAX_DEPTH = 64
 private const val SEARCH_MAX_RESULTS = 5000
+private val keywordSeparator = Regex("[\\s\\p{Z}]+")
 
-/** When `*`/`?` are present, match as wildcards against the full name; otherwise fall back to case-insensitive substring match (more natural for plain keywords). */
+/** Match a full-name glob or require every whitespace-separated keyword anywhere in the name. */
 fun matchesSearchPattern(name: String, pattern: String): Boolean = searchMatcher(pattern)(name)
 
-/** Compile wildcards once per scan, rather than once per visited entry. */
-private fun searchMatcher(pattern: String): (String) -> Boolean {
-    if (pattern.none { it == '*' || it == '?' }) return { it.contains(pattern, ignoreCase = true) }
+/** Prepare the name matcher once per operation. */
+internal fun searchMatcher(pattern: String): (String) -> Boolean {
+    if (pattern.any { it == '*' || it == '?' }) return globMatcher(pattern)
+    val keywords = pattern.split(keywordSeparator).filter(String::isNotEmpty)
+    return { name -> keywords.all { name.contains(it, ignoreCase = true) } }
+}
+
+/** Compile a case-insensitive full-name glob with `*` and `?`. */
+internal fun globMatcher(pattern: String): (String) -> Boolean {
+    val parts = pattern.split('*')
+    fun StringBuilder.appendPart(part: String) {
+        for (c in part) append(if (c == '?') "." else Regex.escape(c.toString()))
+    }
     val regex = buildString {
         append("(?i)")
-        for (c in pattern) when (c) {
-            '*' -> append(".*")
-            '?' -> append(".")
-            else -> append(Regex.escape(c.toString()))
+        appendPart(parts.first())
+        // The earliest match for each interior part leaves the most room for the rest.
+        // Commit to it so repeated stars cannot cause a combinatorial search.
+        for (i in 1 until parts.lastIndex) {
+            if (parts[i].isEmpty()) continue
+            append("(?>.*?")
+            appendPart(parts[i])
+            append(')')
+        }
+        if (parts.size > 1) {
+            append(".*")
+            appendPart(parts.last())
         }
     }
     val compiled = regex.toRegex()

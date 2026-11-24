@@ -75,6 +75,11 @@
     <string name="strip_swap">Panel</string>
     <string name="strip_menu">Menu</string>
     <string name="strip_search">Cari</string>
+    <string name="strip_pattern">Pola</string>
+    <string name="pattern_history">Pola terbaru</string>
+    <string name="pattern_files">File</string>
+    <string name="pattern_invert">Balikkan pilihan</string>
+    <string name="pattern_no_matches">Tidak ada item yang cocok</string>
     <string name="strip_share">Bagikan</string>
     <string name="strip_history">Terakhir</string>
     <string name="history_title">Riwayat</string>

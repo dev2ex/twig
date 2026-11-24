@@ -59,6 +59,17 @@ class FileSearchTest {
         assertTrue(scanSearch(root(), "*.txt").toList().isEmpty())
     }
 
+    @Test fun `keyword search requires every word in any order while globs preserve spaces`() = runBlocking {
+        val reordered = temp.newFile("Vacation_2024_Photo.JPG")
+        val spaced = temp.newFile("2024 photo.jpg")
+        temp.newFile("photo.jpg")
+        temp.newFile("2024.jpg")
+
+        val hits = scanSearch(root(), "photo   \t2024\u3000JPG").toList()
+        assertEquals(setOf(reordered.path, spaced.path), hits.map { it.path }.toSet())
+        assertEquals(listOf(spaced.path), scanSearch(root(), "*2024 photo.jp?").toList().map { it.path })
+    }
+
     @Test fun slowCollectorReceivesEveryHitAndEarlyStopCancelsWalk() = runBlocking {
         repeat(220) { File(temp.root, "hit$it").writeText("x") }
         withTimeout(10_000) {

@@ -76,6 +76,11 @@
     <string name="strip_swap">Панели</string>
     <string name="strip_menu">Меню</string>
     <string name="strip_search">Поиск</string>
+    <string name="strip_pattern">Маска</string>
+    <string name="pattern_history">Недавние маски</string>
+    <string name="pattern_files">Файлы</string>
+    <string name="pattern_invert">Инвертировать выбор</string>
+    <string name="pattern_no_matches">Нет подходящих элементов</string>
     <string name="strip_share">Поделиться</string>
     <string name="strip_history">Недавние</string>
     <string name="history_title">История</string>

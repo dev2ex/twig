@@ -75,6 +75,11 @@
     <string name="strip_swap">Khung</string>
     <string name="strip_menu">Menu</string>
     <string name="strip_search">Tìm</string>
+    <string name="strip_pattern">Mẫu</string>
+    <string name="pattern_history">Mẫu gần đây</string>
+    <string name="pattern_files">Tệp</string>
+    <string name="pattern_invert">Đảo ngược lựa chọn</string>
+    <string name="pattern_no_matches">Không có mục nào khớp</string>
     <string name="strip_share">Chia sẻ</string>
     <string name="strip_history">Gần đây</string>
     <string name="history_title">Lịch sử</string>

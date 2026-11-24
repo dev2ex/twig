@@ -115,4 +115,25 @@ class CrossDirectorySelectionTest {
         assertFalse(adapter.isSelected(a))
         assertEquals(listOf(b.file), adapter.selectedItems())
     }
+
+    @Test fun `pattern applies to direct files by displayed name and preserves other checks`() {
+        val adapter = adapter()
+        val folder = node("/photos", true, 0)
+        val a = node("/photos/a.jpg").let { it.copy(file = it.file.copy(displayName = "Photo[1].JPG")) }
+        val b = node("/photos/b.jpg")
+        val childFolder = node("/photos/sub.jpg", true)
+        val nested = node("/photos/sub.jpg/photo2.jpg", depth = 2)
+        val other = node("/downloads/c.jpg", depth = 0)
+        submit(adapter, listOf(folder, a, b, childFolder, nested, other))
+        listOf(b, childFolder, nested, other).forEach(adapter::toggleSelection)
+
+        val matchName = globMatcher("photo[?].jpg")
+        val matches: (XFile) -> Boolean = { !it.isDir && matchName(it.name) }
+        assertEquals(1, adapter.changeChildSelection(folder, "file", matches) { true })
+        assertEquals(setOf(a.file, b.file, childFolder.file, nested.file, other.file), adapter.selectedItems().toSet())
+        assertEquals(1, adapter.changeChildSelection(folder, "file", matches) { false })
+        assertEquals(setOf(b.file, childFolder.file, nested.file, other.file), adapter.selectedItems().toSet())
+        assertEquals(3, adapter.changeChildSelection(folder, "file", { true }) { !it })
+        assertEquals(setOf(a.file, nested.file, other.file), adapter.selectedItems().toSet())
+    }
 }
