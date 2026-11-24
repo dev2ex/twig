@@ -246,6 +246,63 @@ class StripWriteActionsTest {
         }
     }
 
+    @Test
+    fun `compare strip uses two checked files from either pane and can reverse them`() {
+        val leftAdapter = adapterOf(pane0())
+        val rightAdapter = adapterOf(pane1())
+        val first = XFile("file", "/source/test", isDir = false)
+        val second = XFile("saf", "content://provider/document/42", isDir = false, displayName = "test-1")
+        val third = XFile("file", "/source/test-2", isDir = false)
+        val directory = XFile("file", "/source", isDir = true)
+        val originalImage = XFile("file", "/source/original.png", isDir = false)
+        val editedImage = XFile("file", "/source/edited.jpg", isDir = false)
+        val files = listOf(first, second, third, directory, originalImage, editedImage)
+        for (adapter in listOf(leftAdapter, rightAdapter)) {
+            adapter.submitList(files.map { PaneViewModel.FileNode(it, 1, it.isDir, false) })
+            awaitList(adapter, files.size)
+        }
+        pane0().viewModel.currentDir = null
+        pane1().viewModel.currentDir = null
+        val button = activity.findViewById<View>(R.id.strip_mid).findViewById<View>(R.id.as_compare)
+
+        leftAdapter.setSelection(listOf(first))
+        rightAdapter.setSelection(listOf(second))
+        assertStrip(R.id.as_compare, true)
+        button.performClick()
+        val across = shadowOf(activity).nextStartedActivity
+        assertEquals(DiffActivity::class.java.name, across.component?.className)
+        assertEquals(first.path, across.getStringExtra("path"))
+        assertEquals(second.path, across.getStringExtra("r_path"))
+        assertEquals(second.displayName, across.getStringExtra("r_name"))
+
+        leftAdapter.clearSelection()
+        rightAdapter.setSelection(listOf(first, second))
+        assertStrip(R.id.as_compare, true)
+        button.performLongClick()
+        val reversed = shadowOf(activity).nextStartedActivity
+        assertEquals(second.path, reversed.getStringExtra("path"))
+        assertEquals(first.path, reversed.getStringExtra("r_path"))
+
+        rightAdapter.setSelection(listOf(originalImage, editedImage))
+        button.performClick()
+        assertEquals(ImageCompareActivity::class.java.name, shadowOf(activity).nextStartedActivity.component?.className)
+
+        rightAdapter.setSelection(listOf(first, second, third))
+        assertStrip(R.id.as_compare, false)
+        rightAdapter.setSelection(listOf(first, directory))
+        assertStrip(R.id.as_compare, false)
+        leftAdapter.setSelection(listOf(first))
+        rightAdapter.setSelection(listOf(first))
+        assertStrip(R.id.as_compare, false)
+
+        pane0().viewModel.currentDir = directory
+        pane1().viewModel.currentDir = directory.copy(path = "/destination")
+        activity.onClipTargetChanged()
+        assertStrip(R.id.as_compare, true)
+        button.performClick()
+        assertEquals(CompareActivity::class.java.name, shadowOf(activity).nextStartedActivity.component?.className)
+    }
+
     private fun adapterOf(pane: PaneFragment): FileAdapter =
         ReflectionHelpers.getField<FileAdapter>(pane, "adapter")
 
@@ -385,6 +442,7 @@ class StripWriteActionsTest {
         assertStrip(R.id.as_compare, true)
         assertStrip(R.id.as_map, true)
         assertStrip(R.id.as_search, true)
+        adapter.setSelection(files.take(1))
         pane1().viewModel.currentDir = null
         activity.onClipTargetChanged()
         assertStrip(R.id.as_compare, true)

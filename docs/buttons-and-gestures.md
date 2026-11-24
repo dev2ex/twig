@@ -31,7 +31,7 @@ Twig keeps a left and a right pane. By default, portrait shows one and landscape
 | Active pane | The side you are operating on. Touching a side in dual-pane mode activates it. | Most file actions take their source items from this pane. |
 | Current directory | The location in the path bar, usually the highlighted directory in the tree. | New items are created here. Transfers normally use the other pane's current directory as their destination. |
 | Checked items | Files or folders selected with checkboxes. | Copy, move, compress, rename, delete and properties prefer checked items; with none checked, they normally use the highlighted item. Roots have additional protections. |
-| Other pane | The opposite side, even when hidden. | Supplies the default transfer destination. Compare uses both panes' current directories. |
+| Other pane | The opposite side, even when hidden. | Supplies the default transfer destination. Compare includes checked files from both panes. |
 
 Folders **expand and collapse in place**. Ancestors and other branches can remain visible after you expand a child directory. Check the path bar when choosing a destination; visible filenames alone do not identify the current directory.
 
@@ -71,7 +71,7 @@ The strip scrolls and normally has one column in portrait and two in landscape. 
 | <img src="img/buttons/ic_rename.svg" width="32" alt="Rename"> Rename | Edit one name, or open batch rename with a preview for multiple items. | **Immediately rename the original items with numbered names**, such as `notes.txt` → `notes_1.txt`, skipping occupied numbers. Does not create copies. |
 | <img src="img/buttons/ic_delete.svg" width="32" alt="Delete"> Delete | Confirm deletion; eligible local items can use the recycle bin. | Skip confirmation only when the recycle bin is enabled and every item can be recycled. Otherwise still confirm. App entries go through Android's uninstall UI. |
 | <img src="img/buttons/ic_info.svg" width="32" alt="Properties"> Properties (hidden by default) | Toggle properties, or show aggregate properties for a multiple selection. | Open the second properties tab for one item; its contents depend on the file type. Multiple selections still show aggregate properties. |
-| <img src="img/buttons/ic_compare.svg" width="32" alt="Compare"> Compare | Compare the left and right current directories. | Open comparison with left and right inputs reversed. Does not swap the main panes' contents. |
+| <img src="img/buttons/ic_compare.svg" width="32" alt="Compare"> Compare | Compare two readable checked files, in the same pane or across panes, even if their names differ. With no eligible pair, compare the two current directories. | Open comparison with the inputs reversed. |
 | <img src="img/buttons/ic_treemap.svg" width="32" alt="Usage"> Usage | Analyse the highlighted directory or archive; leave the usage map when already viewing it. | Open Android's storage settings. The system determines the page's appearance. |
 | <img src="img/buttons/ic_search.svg" width="32" alt="Search"> Search | Search names recursively in the highlighted or current directory, with patterns such as `*.jpg`; for SQLite databases/tables, open the corresponding search. | Open the configured search-engine homepage in the built-in browser. Works even when file search is unavailable. |
 | <img src="img/buttons/ic_history.svg" width="32" alt="Recent"> Recent | Open recent locations. | Open the Continue watching tab directly. |

@@ -71,7 +71,7 @@ Twig 保留左、右两个面板。默认竖屏显示一个，横屏同时显示
 | <img src="img/buttons/ic_rename.svg" width="32" alt="改名"> 改名 | 单项打开名称编辑；多项打开带预览的批量重命名。 | **直接给原文件编号改名**，例如 `notes.txt` → `notes_1.txt`，跳过已占用的编号。这会更改原名，不会创建副本。 |
 | <img src="img/buttons/ic_delete.svg" width="32" alt="删除"> 删除 | 打开删除确认；支持回收的本地项目可使用回收站。 | 仅在回收站已开启且所有项目均可回收时，跳过确认并移入回收站；其他情况仍确认。应用条目交给系统卸载。 |
 | <img src="img/buttons/ic_info.svg" width="32" alt="属性"> 属性（默认隐藏） | 展开或收起属性；多选时查看汇总属性。 | 单项直接打开属性的第二个标签页；具体内容取决于文件类型。多选仍显示汇总属性。 |
-| <img src="img/buttons/ic_compare.svg" width="32" alt="对比"> 对比 | 对比左右两侧当前目录。 | 将左右输入对调后打开对比。不会交换主界面的面板内容。 |
+| <img src="img/buttons/ic_compare.svg" width="32" alt="对比"> 对比 | 对比勾选的两个可读文件，支持同侧、跨侧和不同文件名。没有符合条件的文件对时，对比左右两侧当前目录。 | 将两个输入对调后打开对比。 |
 | <img src="img/buttons/ic_treemap.svg" width="32" alt="占用"> 占用 | 分析当前目录或压缩包的空间占用；已在占用图中时退出占用图。 | 打开 Android 系统存储页面；页面样式由系统决定。 |
 | <img src="img/buttons/ic_search.svg" width="32" alt="搜索"> 搜索 | 在当前或高亮目录内递归搜索名称，支持 `*.jpg` 等通配符；SQLite 数据库/表中打开相应搜索。 | 用内置浏览器打开配置的搜索引擎首页。文件搜索不可用时仍可长按。 |
 | <img src="img/buttons/ic_history.svg" width="32" alt="历史"> 历史 | 打开最近位置。 | 直接打开「继续观看」标签页。 |

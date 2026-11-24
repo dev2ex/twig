@@ -33,11 +33,16 @@ selection still uses the opposite pane’s current directory, independently of i
 
 ## File comparison
 
+The main action strip compares two distinct, readable checked files across both panes,
+including two files in the same pane or files with different names. It uses left-pane
+checks first and follows row order within a pane. Long-press reverses the inputs.
+Without an eligible pair, the action compares the panes' current directories.
+
 File compare: ★ **a listing that fails is unknown, never empty** — `scanCompare` marks such a
 directory `PairState.ERROR` (no children, sync skips it), and `statSides` / `lookupChild`
 report failure separately from "not found". Reading a failed listing as empty turned the
 other side's contents into "extras" that mirror sync deleted (2026-09-17 review).
-`CompareActivity` (directory tree) dispatches a pair to `ImageCompareActivity`
+Both entry points dispatch a file pair to `ImageCompareActivity`
 (images) or `DiffActivity` (two-column text). ★ `DiffActivity` **hands binaries and oversized
 pairs on to `HexCompareActivity`** rather than dead-ending on `diff_binary` — whether a file is
 binary is only knowable after reading it, so that routing cannot happen back on the compare page.

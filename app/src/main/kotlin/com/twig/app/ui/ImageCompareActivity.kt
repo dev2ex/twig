@@ -200,19 +200,16 @@ class ImageCompareActivity : TwigActivity() {
         private const val EXTRA_B_TIME = "b_time"
         private const val EXTRA_TITLE = "title"
 
-        fun start(ctx: Context, left: XFile, right: XFile, title: String) {
-            ctx.startActivity(
-                Intent(ctx, ImageCompareActivity::class.java)
-                    .putExtra(EXTRA_A_SCHEME, left.scheme)
-                    .putExtra(EXTRA_A_PATH, left.path)
-                    .putExtra(EXTRA_A_SIZE, left.size)
-                    .putExtra(EXTRA_A_TIME, left.lastModified)
-                    .putExtra(EXTRA_B_SCHEME, right.scheme)
-                    .putExtra(EXTRA_B_PATH, right.path)
-                    .putExtra(EXTRA_B_SIZE, right.size)
-                    .putExtra(EXTRA_B_TIME, right.lastModified)
-                    .putExtra(EXTRA_TITLE, title),
-            )
-        }
+        internal fun pairIntent(ctx: Context, left: XFile, right: XFile, title: String): Intent =
+            Intent(ctx, ImageCompareActivity::class.java)
+                .putExtra(EXTRA_A_SCHEME, left.scheme)
+                .putExtra(EXTRA_A_PATH, left.path)
+                .putExtra(EXTRA_A_SIZE, left.size)
+                .putExtra(EXTRA_A_TIME, left.lastModified)
+                .putExtra(EXTRA_B_SCHEME, right.scheme)
+                .putExtra(EXTRA_B_PATH, right.path)
+                .putExtra(EXTRA_B_SIZE, right.size)
+                .putExtra(EXTRA_B_TIME, right.lastModified)
+                .putExtra(EXTRA_TITLE, title)
     }
 }

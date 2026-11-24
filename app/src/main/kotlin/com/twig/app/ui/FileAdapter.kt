@@ -193,6 +193,7 @@ class FileAdapter(
         rangeSelect = true
     }
     fun selectedItems(): List<XFile> {
+        if (selected.isEmpty()) return emptyList()
         val visible = currentList.filterIsInstance<PaneViewModel.FileNode>()
             .filter { selectionKey(it) in selected }.map { it.file }.distinctBy { PaneViewModel.fileKey(it) }
         val live = visible.mapTo(HashSet()) { PaneViewModel.fileKey(it) }

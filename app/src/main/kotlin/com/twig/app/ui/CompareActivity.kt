@@ -1015,18 +1015,9 @@ class CompareActivity : TwigActivity() {
         else (l ?: r)?.let { OpenFiles.openWith(this, it) }
     }
 
-    /**
-     * A pair present on both sides: images go to side-by-side image compare, everything else to the
-     * two-column text diff — which hands binaries and oversized files on to [HexCompareActivity]
-     * itself, since only after reading can it tell text from binary.
-     */
     private fun openPair(n: Node, l: XFile, r: XFile, side: Int = activeSide) {
-        if (OpenFiles.isImage(l) && OpenFiles.isImage(r)) {
-            ImageCompareActivity.start(this, l, r, n.name)
-        } else {
-            diffedKey = n.key
-            diffLauncher.launch(DiffActivity.pairIntent(this, l, r, n.name, side))
-        }
+        diffedKey = n.key
+        diffLauncher.launch(filePairIntent(this, l, r, n.name, side))
     }
 
     /** The last item for which the two-column diff was opened; if a merge was applied and saved in the diff page, it has to be revalidated. */
@@ -1310,6 +1301,14 @@ class CompareActivity : TwigActivity() {
         private const val EXTRA_RIGHT_PATH = "rp"
         private const val EXTRA_RIGHT_NAME = "rn"
         private const val EXTRA_SESSION_ID = "sid"
+
+        /** Text diff hands binaries and oversized files on to [HexCompareActivity]. */
+        internal fun filePairIntent(ctx: Context, left: XFile, right: XFile, title: String, side: Int = 0): Intent =
+            if (OpenFiles.isImage(left) && OpenFiles.isImage(right)) {
+                ImageCompareActivity.pairIntent(ctx, left, right, title)
+            } else {
+                DiffActivity.pairIntent(ctx, left, right, title, side)
+            }
 
         fun start(ctx: Context, left: XFile, right: XFile) {
             ctx.startActivity(

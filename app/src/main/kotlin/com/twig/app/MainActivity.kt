@@ -29,6 +29,7 @@ import com.twig.app.databinding.ActivityMainBinding
 import com.twig.app.databinding.DialogFtpBinding
 import com.twig.app.databinding.DialogSmbBinding
 import com.twig.app.databinding.DialogWebdavBinding
+import com.twig.app.ui.CompareActivity
 import com.twig.app.ui.FileClipboard
 import com.twig.app.share.WebShare
 import com.twig.app.ui.PaneFragment
@@ -831,12 +832,19 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         }
     }
 
-    /**
-     * Open the comparison page with the current directories of the two panes. Both sides
-     * need a selected directory first — right after launch, before any directory has been
-     * tapped, `currentDir` is null, so we prompt instead of forcing the root.
-     */
+    private fun checkedComparePair(): List<XFile>? {
+        val checked = (0..1).flatMap { paneAt(it)?.checkedFiles().orEmpty() }
+            .distinctBy { PaneViewModel.fileKey(it) }
+        return checked.takeIf { it.size == 2 && it.all { file -> !file.isDir && file.canRead } }
+    }
+
     private fun startCompare(reversed: Boolean = false) {
+        checkedComparePair()?.let { pair ->
+            val (left, right) = if (reversed) pair.asReversed() else pair
+            val title = if (left.name == right.name) left.name else "${left.name} ↔ ${right.name}"
+            startActivity(CompareActivity.filePairIntent(this, left, right, title))
+            return
+        }
         val l = paneAt(0)?.viewModel?.currentDir
         val r = paneAt(1)?.viewModel?.currentDir
         if (l == null || r == null) {
@@ -845,7 +853,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         }
         paneAt(0)?.viewModel?.noteChangedIn(l)
         paneAt(1)?.viewModel?.noteChangedIn(r)
-        com.twig.app.ui.CompareActivity.start(this, if (reversed) r else l, if (reversed) l else r)
+        CompareActivity.start(this, if (reversed) r else l, if (reversed) l else r)
     }
 
     /** Back-triggered exits always ask; explicit exit shortcuts ask only when tasks are running. */
@@ -936,7 +944,7 @@ class MainActivity : TwigActivity(), PaneFragment.Host {
         val pane = activePane()?.takeIf { it.isReady() }
         val actions = pane?.stripActions() ?: PaneFragment.StripActions()
         val choosing = destinationSource() != null
-        val compare = pane?.viewModel?.currentDir?.isDir == true
+        val compare = pane?.viewModel?.currentDir?.isDir == true || checkedComparePair() != null
         for (s in listOf(b.browser.stripMid, b.browser.stripLeft, b.browser.stripRight)) {
             setStripEnabled(s.asNewFolder, actions.create)
             setStripEnabled(s.asCopy, actions.copy && !choosing)

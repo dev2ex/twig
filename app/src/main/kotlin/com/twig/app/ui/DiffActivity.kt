@@ -232,8 +232,10 @@ class DiffActivity : TwigActivity() {
         val rightScheme = intent.getStringExtra(EXTRA_R_SCHEME)
         val rightPath = intent.getStringExtra(EXTRA_R_PATH)
         pairMode = rightScheme != null && rightPath != null
-        fileLeft = XFile(scheme, path, isDir = false)
-        fileRight = if (pairMode) XFile(rightScheme!!, rightPath!!, isDir = false) else null
+        fileLeft = XFile(scheme, path, isDir = false, displayName = intent.getStringExtra(EXTRA_L_NAME))
+        fileRight = if (pairMode) {
+            XFile(rightScheme!!, rightPath!!, isDir = false, displayName = intent.getStringExtra(EXTRA_R_NAME))
+        } else null
         // The side on the compare page that was tapped decides which side is shown first in
         // portrait — if you tapped the left copy, of course you want to see the left first
         if (pairMode) side = intent.getIntExtra(EXTRA_SIDE, 0)
@@ -257,8 +259,7 @@ class DiffActivity : TwigActivity() {
             val sides = withContext(Dispatchers.IO) {
                 runCatching {
                     if (pairMode) {
-                        readSide(XFile(scheme, path, isDir = false)) to
-                            readSide(XFile(rightScheme!!, rightPath!!, isDir = false))
+                        readSide(fileLeft!!) to readSide(fileRight!!)
                     } else {
                         (FsRegistry.of(scheme) as? GitFileSystem)?.diffSides(path)
                     }
@@ -968,6 +969,8 @@ class DiffActivity : TwigActivity() {
         private const val EXTRA_SIDE = "side"
         private const val EXTRA_R_SCHEME = "r_scheme"
         private const val EXTRA_R_PATH = "r_path"
+        private const val EXTRA_L_NAME = "l_name"
+        private const val EXTRA_R_NAME = "r_name"
         private const val EXTRA_L_SIZE = "l_size"
         private const val EXTRA_R_SIZE = "r_size"
         private const val DEL_BG = 0x26EF5350
@@ -987,7 +990,7 @@ class DiffActivity : TwigActivity() {
         }
 
         /**
-         * Compare any two files (the path entered from the directory-compare page).
+         * Compare any two files from the main screen or directory comparison.
          * Shares the full two-pane rendering with git mode; only the text source changes
          * from `GitFileSystem.diffSides` to one read per side.
          *
@@ -1001,6 +1004,8 @@ class DiffActivity : TwigActivity() {
                 .putExtra(EXTRA_PATH, left.path)
                 .putExtra(EXTRA_R_SCHEME, right.scheme)
                 .putExtra(EXTRA_R_PATH, right.path)
+                .putExtra(EXTRA_L_NAME, left.displayName)
+                .putExtra(EXTRA_R_NAME, right.displayName)
                 .putExtra(EXTRA_L_SIZE, left.size)
                 .putExtra(EXTRA_R_SIZE, right.size)
                 .putExtra(EXTRA_SIDE, side)
