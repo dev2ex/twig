@@ -29,14 +29,13 @@
     <string name="action_remember_location">Lembrar última localização</string>
     <string name="action_fullscreen">Tela cheia (ocultar barra de status)</string>
     <string name="sort_by">Ordenar por</string>
-    <string name="sort_name">Nome</string>
+    <string name="sort_name">Nome: 1 → 2 → 10 (ordem natural)</string>
     <string name="sort_size">Tamanho</string>
     <string name="sort_ext">Extensão</string>
     <string name="sort_date">Data</string>
     <string name="sort_reversed">Inverso</string>
+    <string name="sort_files_by">Ordem dos arquivos</string>
     <string name="sort_folders_by">Ordem das pastas</string>
-    <string name="sort_date_old">Data: antiga → recente</string>
-    <string name="sort_date_new">Data: recente → antiga</string>
     <string name="density_compact">Compacta</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Espaçosa</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">Usar padrões</string>
     <string name="directory_view_recursive">Aplicar às subpastas</string>
     <string name="sort_name_az">Nome: A → Z</string>
-    <string name="sort_name_za">Nome: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Preparando para compartilhar…</string>

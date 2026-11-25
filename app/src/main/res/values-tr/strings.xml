@@ -29,14 +29,13 @@
     <string name="action_remember_location">Son konumu hatırla</string>
     <string name="action_fullscreen">Tam ekran (durum çubuğunu gizle)</string>
     <string name="sort_by">Sıralama ölçütü</string>
-    <string name="sort_name">Ad</string>
+    <string name="sort_name">Ad: 1 → 2 → 10 (doğal sıralama)</string>
     <string name="sort_size">Boyut</string>
     <string name="sort_ext">Uzantı</string>
     <string name="sort_date">Tarih</string>
     <string name="sort_reversed">Ters sırala</string>
+    <string name="sort_files_by">Dosya sırası</string>
     <string name="sort_folders_by">Klasör sırası</string>
-    <string name="sort_date_old">Tarih: eski → yeni</string>
-    <string name="sort_date_new">Tarih: yeni → eski</string>
     <string name="density_compact">Yoğun</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Geniş</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">Varsayılanları kullan</string>
     <string name="directory_view_recursive">Alt klasörlere uygula</string>
     <string name="sort_name_az">Ad: A → Z</string>
-    <string name="sort_name_za">Ad: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Paylaşım hazırlanıyor…</string>

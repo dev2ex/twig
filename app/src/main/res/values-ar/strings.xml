@@ -29,14 +29,13 @@
     <string name="action_remember_location">تذكر آخر موقع</string>
     <string name="action_fullscreen">ملء الشاشة (إخفاء شريط الحالة)</string>
     <string name="sort_by">ترتيب حسب</string>
-    <string name="sort_name">الاسم</string>
+    <string name="sort_name">الاسم: &#x2066;1 → 2 → 10&#x2069; (ترتيب طبيعي)</string>
     <string name="sort_size">الحجم</string>
     <string name="sort_ext">الامتداد</string>
     <string name="sort_date">التاريخ</string>
     <string name="sort_reversed">عكس الترتيب</string>
+    <string name="sort_files_by">ترتيب الملفات</string>
     <string name="sort_folders_by">ترتيب المجلدات</string>
-    <string name="sort_date_old">التاريخ: الأقدم → الأحدث</string>
-    <string name="sort_date_new">التاريخ: الأحدث → الأقدم</string>
     <string name="density_compact">مضغوط</string>
     <string name="density_normal">عادي</string>
     <string name="density_large">متباعد</string>
@@ -1135,7 +1134,6 @@
     <string name="directory_view_reset">استخدام الإعدادات الافتراضية</string>
     <string name="directory_view_recursive">تطبيق على المجلدات الفرعية</string>
     <string name="sort_name_az">الاسم: A → Z</string>
-    <string name="sort_name_za">الاسم: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">جارٍ التحضير للمشاركة…</string>

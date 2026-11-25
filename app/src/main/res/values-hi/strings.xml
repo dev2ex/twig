@@ -29,14 +29,13 @@
     <string name="action_remember_location">पिछला स्थान याद रखें</string>
     <string name="action_fullscreen">पूर्ण स्क्रीन (स्थिति पट्टी छिपाएँ)</string>
     <string name="sort_by">क्रम का आधार</string>
-    <string name="sort_name">नाम</string>
+    <string name="sort_name">नाम: 1 → 2 → 10 (प्राकृतिक क्रम)</string>
     <string name="sort_size">आकार</string>
     <string name="sort_ext">एक्सटेंशन</string>
     <string name="sort_date">तारीख</string>
     <string name="sort_reversed">उल्टा क्रम</string>
+    <string name="sort_files_by">फ़ाइलों का क्रम</string>
     <string name="sort_folders_by">फ़ोल्डर का क्रम</string>
-    <string name="sort_date_old">तारीख: पुरानी → नई</string>
-    <string name="sort_date_new">तारीख: नई → पुरानी</string>
     <string name="density_compact">सघन</string>
     <string name="density_normal">सामान्य</string>
     <string name="density_large">खुला</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">डिफ़ॉल्ट इस्तेमाल करें</string>
     <string name="directory_view_recursive">सबफ़ोल्डर पर लागू करें</string>
     <string name="sort_name_az">नाम: A → Z</string>
-    <string name="sort_name_za">नाम: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">साझा करने की तैयारी…</string>

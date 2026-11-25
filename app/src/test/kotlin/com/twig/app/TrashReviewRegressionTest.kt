@@ -146,9 +146,9 @@ class TrashReviewRegressionTest {
         }
         val vm = expandedPane()
         fun rows() = vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().filter { it.file.scheme == "trash" && it.depth > 0 }.map { it.file }
-        vm.setSort(SortSpec(by = FileSortKey.DATE, folderBy = FolderSortKey.DATE_OLD))
+        vm.setSort(SortSpec(by = FileSortKey.DATE, folderBy = FolderSortKey.DATE))
         assertEquals(listOf("b-dir", "a-dir", "b.txt", "a.txt"), rows().map { it.name })
-        vm.setSort(SortSpec(by = FileSortKey.DATE, reversed = true, folderBy = FolderSortKey.DATE_NEW))
+        vm.setSort(SortSpec(by = FileSortKey.DATE, reversed = true, folderBy = FolderSortKey.DATE, folderReversed = true))
         assertEquals(listOf("a-dir", "b-dir", "a.txt", "b.txt"), rows().map { it.name })
         val a = rows().single { it.name == "a.txt" }
         assertEquals(1_600_000_000_000L, a.lastModified)

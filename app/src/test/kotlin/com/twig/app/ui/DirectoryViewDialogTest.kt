@@ -281,29 +281,60 @@ class DirectoryViewDialogTest {
     }
 
     @Test
-    fun `reverse folder names save and restore for default and recursive directory sorting`() {
+    fun `folder criterion and direction save independently for defaults and recursive overrides`() {
         withDialog { dialog ->
-            dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.check(R.id.rf_name_reversed)
+            assertEquals(R.id.rb_name, dialog.findViewById<RadioGroup>(R.id.rg_by)!!.checkedRadioButtonId)
+            assertEquals(R.id.rf_name, dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.checkedRadioButtonId)
+            dialog.findViewById<RadioGroup>(R.id.rg_by)!!.check(R.id.rb_name_alphabetical)
+            dialog.findViewById<CheckBox>(R.id.cb_folder_reversed)!!.isChecked = true
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         }
-        assertEquals(FolderSortKey.NAME_REVERSED, SortSpec.load(app).folderBy)
+        assertEquals(SortSpec(by = FileSortKey.NAME_ALPHABETICAL, folderReversed = true), SortSpec.load(app))
+        val customSort = SortSpec(by = FileSortKey.NAME_ALPHABETICAL,
+            folderBy = FolderSortKey.NAME_ALPHABETICAL, folderReversed = true)
         withDialog { dialog ->
-            assertEquals(R.id.rf_name_reversed, dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.checkedRadioButtonId)
+            assertEquals(R.id.rb_name_alphabetical, dialog.findViewById<RadioGroup>(R.id.rg_by)!!.checkedRadioButtonId)
+            assertTrue(dialog.findViewById<CheckBox>(R.id.cb_folder_reversed)!!.isChecked)
             dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.check(R.id.scope_directory)
+            assertFalse(dialog.findViewById<CheckBox>(R.id.cb_folder_reversed)!!.isEnabled)
             dialog.findViewById<CheckBox>(R.id.cb_custom_sort)!!.isChecked = true
-            dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.check(R.id.rf_name_reversed)
+            dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.check(R.id.rf_name_alphabetical)
             dialog.findViewById<CheckBox>(R.id.cb_recursive)!!.isChecked = true
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         }
         val views = DirectoryViewStore.load(app)
         val custom = DirectoryViewStore.get(views, dir)!!
-        assertEquals(FolderSortKey.NAME_REVERSED, custom.sort?.folderBy)
+        assertEquals(customSort, custom.sort)
         assertTrue(custom.sortRecursive)
-        assertEquals(FolderSortKey.NAME_REVERSED,
-            DirectoryViewStore.resolve(views, dir.copy(path = "${dir.path}/child")).sort?.folderBy)
+        assertEquals(customSort, DirectoryViewStore.resolve(views, dir.copy(path = "${dir.path}/child")).sort)
         withDialog { dialog ->
             dialog.findViewById<RadioGroup>(R.id.rg_scope)!!.check(R.id.scope_directory)
-            assertEquals(R.id.rf_name_reversed, dialog.findViewById<RadioGroup>(R.id.rg_folder)!!.checkedRadioButtonId)
+            val alphabetical = dialog.findViewById<RadioButton>(R.id.rf_name_alphabetical)!!
+            assertTrue(alphabetical.isChecked)
+            assertTrue(dialog.findViewById<CheckBox>(R.id.cb_folder_reversed)!!.isChecked)
+            assertEquals(app.getString(R.string.sort_name_az), alphabetical.text)
+        }
+    }
+
+    @Test
+    fun `existing folder sort preferences and directory overrides keep their basis and direction`() {
+        val oldOrders = listOf(
+            "NAME" to SortSpec(),
+            "DATE_OLD" to SortSpec(folderBy = FolderSortKey.DATE),
+            "DATE_NEW" to SortSpec(folderBy = FolderSortKey.DATE, folderReversed = true),
+            "NAME_REVERSED" to SortSpec(folderReversed = true),
+        )
+        val defaults = app.getSharedPreferences("twig_sort", Context.MODE_PRIVATE)
+        val overrides = app.getSharedPreferences(DirectoryViewStore.FILE, Context.MODE_PRIVATE)
+        for ((ordinal, pair) in oldOrders.withIndex()) {
+            val (name, expected) = pair
+            defaults.edit().putInt("folderBy", ordinal).apply()
+            overrides.edit().putString("file:${dir.path}",
+                """{"sort":{"by":"NAME","reversed":false,"folderBy":"$name"},"grid":2,"sortRecursive":true}""").apply()
+
+            assertEquals(name, expected, SortSpec.load(app))
+            assertEquals(name, DirectoryView(expected, 2, sortRecursive = true),
+                DirectoryViewStore.get(DirectoryViewStore.load(app), dir))
         }
     }
 

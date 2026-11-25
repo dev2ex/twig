@@ -23,10 +23,12 @@ object DirectoryViewStore {
             runCatching {
                 val json = JSONObject(value as String)
                 val sort = json.optJSONObject("sort")?.let {
+                    val folder = StoredFolderOrder.valueOf(it.getString("folderBy"))
                     SortSpec(
-                        FileSortKey.valueOf(it.getString("by")),
-                        it.getBoolean("reversed"),
-                        FolderSortKey.valueOf(it.getString("folderBy")),
+                        by = FileSortKey.valueOf(it.getString("by")),
+                        reversed = it.getBoolean("reversed"),
+                        folderBy = folder.key,
+                        folderReversed = folder.reversed,
                     )
                 }
                 val grid = if (json.has("grid")) json.getInt("grid").takeIf { it in 0..3 } else null
@@ -83,7 +85,7 @@ object DirectoryViewStore {
             val json = JSONObject()
             view.sort?.let {
                 json.put("sort", JSONObject().put("by", it.by.name)
-                    .put("reversed", it.reversed).put("folderBy", it.folderBy.name))
+                    .put("reversed", it.reversed).put("folderBy", it.storedFolderOrder.name))
             }
             view.gridMode?.let { json.put("grid", it.coerceIn(0, 3)) }
             if (view.sort != null && view.sortRecursive) json.put("sortRecursive", true)

@@ -291,7 +291,8 @@ class SharedTextTest {
             strip.findViewById<android.view.View>(R.id.as_sort).performClick()
             val sort = org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.appcompat.app.AlertDialog
             sort.findViewById<android.widget.RadioGroup>(R.id.rg_by)!!.check(R.id.rb_size)
-            sort.findViewById<android.widget.RadioGroup>(R.id.rg_folder)!!.check(R.id.rf_date_new)
+            sort.findViewById<android.widget.RadioGroup>(R.id.rg_folder)!!.check(R.id.rf_date)
+            sort.findViewById<android.widget.CheckBox>(R.id.cb_folder_reversed)!!.isChecked = true
             sort.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
             shadowOf(Looper.getMainLooper()).idle()
             for (pane in panes) {

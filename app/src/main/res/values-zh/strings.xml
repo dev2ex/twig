@@ -29,14 +29,13 @@
     <string name="action_remember_location">记住上次位置</string>
     <string name="action_fullscreen">全屏(隐藏状态栏)</string>
     <string name="sort_by">排序方式</string>
-    <string name="sort_name">名称</string>
+    <string name="sort_name">名称：1 → 2 → 10（自然排序）</string>
     <string name="sort_size">大小</string>
     <string name="sort_ext">扩展名</string>
     <string name="sort_date">日期</string>
     <string name="sort_reversed">反转</string>
+    <string name="sort_files_by">文件排序</string>
     <string name="sort_folders_by">文件夹排序</string>
-    <string name="sort_date_old">时间：旧 → 新</string>
-    <string name="sort_date_new">时间：新 → 旧</string>
     <string name="density_compact">紧凑</string>
     <string name="density_normal">正常</string>
     <string name="density_large">宽松</string>
@@ -1162,7 +1161,6 @@
     <string name="directory_view_reset">恢复默认</string>
     <string name="directory_view_recursive">应用到子目录</string>
     <string name="sort_name_az">名称：A → Z</string>
-    <string name="sort_name_za">名称：Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">正在准备分享…</string>

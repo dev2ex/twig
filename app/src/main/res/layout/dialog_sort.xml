@@ -44,7 +44,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/sort_by"
+            android:text="@string/sort_files_by"
             android:textColor="@color/primary"
             android:textStyle="bold"
             android:paddingTop="6dp"
@@ -56,6 +56,8 @@
             android:layout_height="wrap_content">
             <RadioButton android:id="@+id/rb_name" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/sort_name" />
+            <RadioButton android:id="@+id/rb_name_alphabetical" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/sort_name_az" />
             <RadioButton android:id="@+id/rb_size" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/sort_size" />
             <RadioButton android:id="@+id/rb_ext" android:layout_width="match_parent"
@@ -90,14 +92,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content">
             <RadioButton android:id="@+id/rf_name" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/sort_name" />
+            <RadioButton android:id="@+id/rf_name_alphabetical" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:text="@string/sort_name_az" />
-            <RadioButton android:id="@+id/rf_name_reversed" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="@string/sort_name_za" />
-            <RadioButton android:id="@+id/rf_date_old" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="@string/sort_date_old" />
-            <RadioButton android:id="@+id/rf_date_new" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="@string/sort_date_new" />
+            <RadioButton android:id="@+id/rf_date" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="@string/sort_date" />
         </RadioGroup>
+
+        <CheckBox
+            android:id="@+id/cb_folder_reversed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/sort_reversed" />
 
         </LinearLayout>
 

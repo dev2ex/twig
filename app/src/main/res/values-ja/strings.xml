@@ -29,14 +29,13 @@
     <string name="action_remember_location">前回の場所を記憶</string>
     <string name="action_fullscreen">全画面（ステータスバーを隠す）</string>
     <string name="sort_by">並べ替えの基準</string>
-    <string name="sort_name">名前</string>
+    <string name="sort_name">名前：1 → 2 → 10（自然順）</string>
     <string name="sort_size">サイズ</string>
     <string name="sort_ext">拡張子</string>
     <string name="sort_date">日時</string>
     <string name="sort_reversed">逆順</string>
+    <string name="sort_files_by">ファイルの並び順</string>
     <string name="sort_folders_by">フォルダーの並び順</string>
-    <string name="sort_date_old">日時：古い → 新しい</string>
-    <string name="sort_date_new">日時：新しい → 古い</string>
     <string name="density_compact">コンパクト</string>
     <string name="density_normal">標準</string>
     <string name="density_large">ゆったり</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">既定に戻す</string>
     <string name="directory_view_recursive">サブフォルダにも適用</string>
     <string name="sort_name_az">名前：A → Z</string>
-    <string name="sort_name_za">名前：Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">共有の準備中…</string>

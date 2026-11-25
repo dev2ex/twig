@@ -29,14 +29,13 @@
     <string name="action_remember_location">Помнить посл. расположение</string>
     <string name="action_fullscreen">Полный экран (скр. статусбар)</string>
     <string name="sort_by">Сортировать по</string>
-    <string name="sort_name">Имени</string>
+    <string name="sort_name">Имя: 1 → 2 → 10 (естественный порядок)</string>
     <string name="sort_size">Размеру</string>
     <string name="sort_ext">Расширению</string>
     <string name="sort_date">Дате</string>
     <string name="sort_reversed">Обратная</string>
-    <string name="sort_folders_by">Порядок папок по</string>
-    <string name="sort_date_old">Дате: старые → новые</string>
-    <string name="sort_date_new">Дате: новые → старые</string>
+    <string name="sort_files_by">Порядок файлов</string>
+    <string name="sort_folders_by">Порядок папок</string>
     <string name="density_compact">Компактная</string>
     <string name="density_normal">Нормальная</string>
     <string name="density_large">Увеличенная</string>
@@ -1166,8 +1165,7 @@
     <string name="directory_view_custom_view">Свой вид</string>
     <string name="directory_view_reset">Использовать по умолчанию</string>
     <string name="directory_view_recursive">Применить к подпапкам</string>
-    <string name="sort_name_az">Имени: А → Я</string>
-    <string name="sort_name_za">Имени: Я → А</string>
+    <string name="sort_name_az">Имя: А → Я</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Подготовка к отправке…</string>

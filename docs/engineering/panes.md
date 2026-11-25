@@ -147,9 +147,11 @@ playlist exports. M3U network locations use `type://server/path`; malformed sing
 source addresses are skipped.
 Internal `scheme:path` keys remain separate from display text.
 
-Name sorting for files and folders compares consecutive ASCII digits numerically
-wherever they occur in the name. For otherwise equivalent names, fewer leading zeros
-sort first. Extension sorting uses the same name comparison within an extension.
+Files and folders each have their own sort key and direction. Both offer natural name
+sorting by default, an alphabetical name option, and date sorting. Natural name sorting
+compares consecutive ASCII digits numerically and uses fewer leading zeros to break ties.
+Files also support size and extension sorting. Extension sorting uses natural name order
+within an extension.
 
 ## List and grid views
 

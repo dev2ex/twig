@@ -29,14 +29,13 @@
     <string name="action_remember_location">Ingat lokasi terakhir</string>
     <string name="action_fullscreen">Layar penuh (sembunyikan bilah status)</string>
     <string name="sort_by">Urutkan berdasarkan</string>
-    <string name="sort_name">Nama</string>
+    <string name="sort_name">Nama: 1 → 2 → 10 (urutan alami)</string>
     <string name="sort_size">Ukuran</string>
     <string name="sort_ext">Ekstensi</string>
     <string name="sort_date">Tanggal</string>
     <string name="sort_reversed">Terbalik</string>
+    <string name="sort_files_by">Urutan berkas</string>
     <string name="sort_folders_by">Urutan folder</string>
-    <string name="sort_date_old">Tanggal: lama → baru</string>
-    <string name="sort_date_new">Tanggal: baru → lama</string>
     <string name="density_compact">Rapat</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Longgar</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">Gunakan default</string>
     <string name="directory_view_recursive">Terapkan ke subfolder</string>
     <string name="sort_name_az">Nama: A → Z</string>
-    <string name="sort_name_za">Nama: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Menyiapkan berbagi…</string>

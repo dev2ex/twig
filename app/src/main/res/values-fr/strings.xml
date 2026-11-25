@@ -29,14 +29,13 @@
     <string name="action_remember_location">Mémoriser le dernier emplacement</string>
     <string name="action_fullscreen">Plein écran (masquer la barre d’état)</string>
     <string name="sort_by">Trier par</string>
-    <string name="sort_name">Nom</string>
+    <string name="sort_name">Nom : 1 → 2 → 10 (ordre naturel)</string>
     <string name="sort_size">Taille</string>
     <string name="sort_ext">Extension</string>
     <string name="sort_date">Date</string>
     <string name="sort_reversed">Inversé</string>
+    <string name="sort_files_by">Ordre des fichiers</string>
     <string name="sort_folders_by">Ordre des dossiers</string>
-    <string name="sort_date_old">Date : ancienne → récente</string>
-    <string name="sort_date_new">Date : récente → ancienne</string>
     <string name="density_compact">Compacte</string>
     <string name="density_normal">Normale</string>
     <string name="density_large">Aérée</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">Utiliser les réglages par défaut</string>
     <string name="directory_view_recursive">Appliquer aux sous-dossiers</string>
     <string name="sort_name_az">Nom : A → Z</string>
-    <string name="sort_name_za">Nom : Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Préparation du partage…</string>

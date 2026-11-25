@@ -29,14 +29,13 @@
     <string name="action_remember_location">Remember last location</string>
     <string name="action_fullscreen">Fullscreen (hide status bar)</string>
     <string name="sort_by">Sort by</string>
-    <string name="sort_name">Name</string>
+    <string name="sort_name">Name: 1 → 2 → 10 (Natural)</string>
     <string name="sort_size">Size</string>
     <string name="sort_ext">Extension</string>
     <string name="sort_date">Date</string>
     <string name="sort_reversed">Reversed</string>
+    <string name="sort_files_by">File order</string>
     <string name="sort_folders_by">Folder order</string>
-    <string name="sort_date_old">Date: oldest → newest</string>
-    <string name="sort_date_new">Date: newest → oldest</string>
     <string name="density_compact">Compact</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Relaxed</string>
@@ -1211,7 +1210,6 @@
     <string name="directory_view_reset">Use defaults</string>
     <string name="directory_view_recursive">Apply to subdirectories</string>
     <string name="sort_name_az">Name: A → Z</string>
-    <string name="sort_name_za">Name: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Preparing to share…</string>

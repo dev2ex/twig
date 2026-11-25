@@ -16,15 +16,15 @@ class SortSpecTest {
     @Test
     fun `four folder orders stay independent of file reversal and keep folders first`() {
         val expected = mapOf(
-            FolderSortKey.NAME to listOf("alpha", "Beta", "Gamma"),
-            FolderSortKey.NAME_REVERSED to listOf("Gamma", "Beta", "alpha"),
-            FolderSortKey.DATE_OLD to listOf("Beta", "alpha", "Gamma"),
-            FolderSortKey.DATE_NEW to listOf("Gamma", "alpha", "Beta"),
+            SortSpec() to listOf("alpha", "Beta", "Gamma"),
+            SortSpec(folderReversed = true) to listOf("Gamma", "Beta", "alpha"),
+            SortSpec(folderBy = FolderSortKey.DATE) to listOf("Beta", "alpha", "Gamma"),
+            SortSpec(folderBy = FolderSortKey.DATE, folderReversed = true) to listOf("Gamma", "alpha", "Beta"),
         )
-        for ((folderBy, folders) in expected) for (reversed in listOf(false, true)) {
+        for ((spec, folders) in expected) for (reversed in listOf(false, true)) {
             val files = if (reversed) listOf("z.txt", "a.txt") else listOf("a.txt", "z.txt")
-            assertEquals("folder=$folderBy, file reversal=$reversed", folders + files,
-                SortSpec(reversed = reversed, folderBy = folderBy).sort(entries).map { it.name })
+            assertEquals("$spec, file reversal=$reversed", folders + files,
+                spec.copy(reversed = reversed).sort(entries).map { it.name })
         }
     }
 
@@ -42,9 +42,22 @@ class SortSpecTest {
         }.shuffled(kotlin.random.Random(74))
 
         assertEquals(names + names, SortSpec().sort(entries).map { it.name })
-        assertEquals(names.reversed() + names, SortSpec(folderBy = FolderSortKey.NAME_REVERSED)
+        assertEquals(names.reversed() + names, SortSpec(folderReversed = true)
             .sort(entries).map { it.name })
         assertEquals(names + names.reversed(), SortSpec(reversed = true).sort(entries).map { it.name })
+    }
+
+    @Test
+    fun `alphabetical order can be selected independently for files and folders`() {
+        val names = listOf("1.2", "1.12", "IMG_2", "img_12")
+        val entries = names.flatMap { name ->
+            listOf(XFile("file", "/file/$name", false), XFile("file", "/folder/$name", true))
+        }
+        val alphabetical = listOf("1.12", "1.2", "img_12", "IMG_2")
+        val filesAlphabetical = SortSpec(by = FileSortKey.NAME_ALPHABETICAL)
+        val foldersAlphabetical = SortSpec(folderBy = FolderSortKey.NAME_ALPHABETICAL, folderReversed = true)
+        assertEquals(names + alphabetical, filesAlphabetical.sort(entries).map { it.name })
+        assertEquals(alphabetical.reversed() + names, foldersAlphabetical.sort(entries).map { it.name })
     }
 
     @Test

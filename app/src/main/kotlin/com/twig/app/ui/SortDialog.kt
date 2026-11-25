@@ -49,12 +49,14 @@ object SortDialog {
             enable(d.rgBy, sort)
             enable(d.rgFolder, sort)
             d.cbReversed.isEnabled = sort
+            d.cbFolderReversed.isEnabled = sort
             enable(d.rgView, scope == 0 || d.cbCustomView.isChecked)
             d.cbRecursive.isEnabled = if (viewOnly) d.cbCustomView.isChecked else d.cbCustomSort.isChecked
         }
         fun read(): DirectoryView = drafts[scope].copy(
             sort = if (viewOnly) drafts[scope].sort else if (scope == 0 || d.cbCustomSort.isChecked) SortSpec(
                 by = when (d.rgBy.checkedRadioButtonId) {
+                    R.id.rb_name_alphabetical -> FileSortKey.NAME_ALPHABETICAL
                     R.id.rb_size -> FileSortKey.SIZE
                     R.id.rb_ext -> FileSortKey.EXT
                     R.id.rb_date -> FileSortKey.DATE
@@ -62,11 +64,11 @@ object SortDialog {
                 },
                 reversed = d.cbReversed.isChecked,
                 folderBy = when (d.rgFolder.checkedRadioButtonId) {
-                    R.id.rf_name_reversed -> FolderSortKey.NAME_REVERSED
-                    R.id.rf_date_old -> FolderSortKey.DATE_OLD
-                    R.id.rf_date_new -> FolderSortKey.DATE_NEW
+                    R.id.rf_name_alphabetical -> FolderSortKey.NAME_ALPHABETICAL
+                    R.id.rf_date -> FolderSortKey.DATE
                     else -> FolderSortKey.NAME
                 },
+                folderReversed = d.cbFolderReversed.isChecked,
             ) else null,
             gridMode = if (!viewOnly) drafts[scope].gridMode else if (scope == 0 || d.cbCustomView.isChecked) when (d.rgView.checkedRadioButtonId) {
                 R.id.view_media -> 1
@@ -85,6 +87,7 @@ object SortDialog {
             val sort = cur.sort ?: inherited.sort ?: requireNotNull(drafts[0].sort)
             d.rgBy.check(when (sort.by) {
                 FileSortKey.NAME -> R.id.rb_name
+                FileSortKey.NAME_ALPHABETICAL -> R.id.rb_name_alphabetical
                 FileSortKey.SIZE -> R.id.rb_size
                 FileSortKey.EXT -> R.id.rb_ext
                 FileSortKey.DATE -> R.id.rb_date
@@ -92,10 +95,10 @@ object SortDialog {
             d.cbReversed.isChecked = sort.reversed
             d.rgFolder.check(when (sort.folderBy) {
                 FolderSortKey.NAME -> R.id.rf_name
-                FolderSortKey.NAME_REVERSED -> R.id.rf_name_reversed
-                FolderSortKey.DATE_OLD -> R.id.rf_date_old
-                FolderSortKey.DATE_NEW -> R.id.rf_date_new
+                FolderSortKey.NAME_ALPHABETICAL -> R.id.rf_name_alphabetical
+                FolderSortKey.DATE -> R.id.rf_date
             })
+            d.cbFolderReversed.isChecked = sort.folderReversed
             d.rgView.check(when (cur.gridMode ?: inherited.gridMode ?: drafts[0].gridMode) {
                 1 -> R.id.view_media
                 2 -> R.id.view_all

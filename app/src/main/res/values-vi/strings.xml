@@ -29,14 +29,13 @@
     <string name="action_remember_location">Nhớ vị trí trước</string>
     <string name="action_fullscreen">Toàn màn hình (ẩn thanh trạng thái)</string>
     <string name="sort_by">Sắp xếp theo</string>
-    <string name="sort_name">Tên</string>
+    <string name="sort_name">Tên: 1 → 2 → 10 (thứ tự tự nhiên)</string>
     <string name="sort_size">Kích thước</string>
     <string name="sort_ext">Phần mở rộng</string>
     <string name="sort_date">Ngày</string>
     <string name="sort_reversed">Đảo thứ tự</string>
+    <string name="sort_files_by">Thứ tự tệp</string>
     <string name="sort_folders_by">Thứ tự thư mục</string>
-    <string name="sort_date_old">Ngày: cũ → mới</string>
-    <string name="sort_date_new">Ngày: mới → cũ</string>
     <string name="density_compact">Gọn</string>
     <string name="density_normal">Bình thường</string>
     <string name="density_large">Thoáng</string>
@@ -1130,7 +1129,6 @@
     <string name="directory_view_reset">Dùng mặc định</string>
     <string name="directory_view_recursive">Áp dụng cho thư mục con</string>
     <string name="sort_name_az">Tên: A → Z</string>
-    <string name="sort_name_za">Tên: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Đang chuẩn bị chia sẻ…</string>

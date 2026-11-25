@@ -29,14 +29,13 @@
     <string name="action_remember_location">Letzten Ort merken</string>
     <string name="action_fullscreen">Vollbild (Statusleiste ausblenden)</string>
     <string name="sort_by">Sortieren nach</string>
-    <string name="sort_name">Name</string>
+    <string name="sort_name">Name: 1 → 2 → 10 (natürlich)</string>
     <string name="sort_size">Größe</string>
     <string name="sort_ext">Erweiterung</string>
     <string name="sort_date">Datum</string>
     <string name="sort_reversed">Umgekehrt</string>
+    <string name="sort_files_by">Dateireihenfolge</string>
     <string name="sort_folders_by">Ordnerreihenfolge</string>
-    <string name="sort_date_old">Datum: alt → neu</string>
-    <string name="sort_date_new">Datum: neu → alt</string>
     <string name="density_compact">Kompakt</string>
     <string name="density_normal">Normal</string>
     <string name="density_large">Groß</string>
@@ -1131,7 +1130,6 @@
     <string name="directory_view_reset">Standard verwenden</string>
     <string name="directory_view_recursive">Auf Unterordner anwenden</string>
     <string name="sort_name_az">Name: A → Z</string>
-    <string name="sort_name_za">Name: Z → A</string>
 
     <!-- Preparing files for system sharing -->
     <string name="share_preparing">Freigabe wird vorbereitet…</string>
