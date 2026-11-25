@@ -147,6 +147,10 @@ playlist exports. M3U network locations use `type://server/path`; malformed sing
 source addresses are skipped.
 Internal `scheme:path` keys remain separate from display text.
 
+Name sorting for files and folders compares consecutive ASCII digits numerically
+wherever they occur in the name. For otherwise equivalent names, fewer leading zeros
+sort first. Extension sorting uses the same name comparison within an extension.
+
 ## List and grid views
 
 Grid view (independent of the thumbnail preference): the same RecyclerView switches to

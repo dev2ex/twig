@@ -20,15 +20,15 @@ data class SortSpec(
 ) {
     fun comparator(dateOf: (XFile) -> Long = { it.lastModified }): Comparator<XFile> {
         val fileBase: Comparator<XFile> = when (by) {
-            FileSortKey.NAME -> compareBy { it.name.lowercase() }
+            FileSortKey.NAME -> nameOrder
             FileSortKey.SIZE -> compareBy { it.size }
-            FileSortKey.EXT -> compareBy<XFile> { it.extension }.thenBy { it.name.lowercase() }
+            FileSortKey.EXT -> compareBy<XFile> { it.extension }.then(nameOrder)
             FileSortKey.DATE -> compareBy { dateOf(it) }
         }
         val fileCmp = if (reversed) fileBase.reversed() else fileBase
         val folderCmp: Comparator<XFile> = when (folderBy) {
-            FolderSortKey.NAME -> compareBy { it.name.lowercase() }
-            FolderSortKey.NAME_REVERSED -> compareByDescending { it.name.lowercase() }
+            FolderSortKey.NAME -> nameOrder
+            FolderSortKey.NAME_REVERSED -> nameOrder.reversed()
             FolderSortKey.DATE_OLD -> compareBy { dateOf(it) }
             FolderSortKey.DATE_NEW -> compareByDescending { dateOf(it) }
         }
@@ -45,6 +45,7 @@ data class SortSpec(
 
     companion object {
         private const val FILE = "twig_sort"
+        private val nameOrder = compareBy<XFile, String>(NaturalNameOrder) { it.name.lowercase() }
 
         fun load(ctx: Context): SortSpec {
             val sp = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)

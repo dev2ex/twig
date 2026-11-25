@@ -27,4 +27,31 @@ class SortSpecTest {
                 SortSpec(reversed = reversed, folderBy = folderBy).sort(entries).map { it.name })
         }
     }
+
+    @Test
+    fun `files and folders use natural name order in both directions`() {
+        val names = listOf(
+            "2", "02", "002",
+            "2 xxx", "2-xxx", "2.xxx", "2_xxx",
+            "10", "12 xxx", "12-xxx", "12.xxx", "12_xxx",
+            "99999999999999999999", "100000000000000000000",
+            "S01E2.mkv", "s1e10.mkv", "S02E1.mkv", "第2章", "第12章",
+        )
+        val entries = names.flatMapIndexed { i, name ->
+            listOf(XFile("file", "/files/$name", false), XFile("saf", "id$i", true, displayName = name))
+        }.shuffled(kotlin.random.Random(74))
+
+        assertEquals(names + names, SortSpec().sort(entries).map { it.name })
+        assertEquals(names.reversed() + names, SortSpec(folderBy = FolderSortKey.NAME_REVERSED)
+            .sort(entries).map { it.name })
+        assertEquals(names + names.reversed(), SortSpec(reversed = true).sort(entries).map { it.name })
+    }
+
+    @Test
+    fun `extension sorting orders names naturally within each extension`() {
+        val names = listOf("img_12.png", "img_12.jpg", "img_2.png", "IMG_2.JPG")
+        val files = names.map { XFile("file", "/$it", false) }
+        assertEquals(listOf("IMG_2.JPG", "img_12.jpg", "img_2.png", "img_12.png"),
+            SortSpec(by = FileSortKey.EXT).sort(files).map { it.name })
+    }
 }
