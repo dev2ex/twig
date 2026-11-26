@@ -7,9 +7,14 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
+import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.test.core.app.ApplicationProvider
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder
+import androidx.media3.exoplayer.source.SilenceMediaSource
 import java.lang.reflect.Proxy
+import java.time.Duration
 import com.twig.app.PlaylistTrack
 import com.twig.app.R
 import org.junit.After
@@ -137,6 +142,89 @@ class MusicNotificationExitTest {
             assertEquals(4, notification.actions.size)
             assertEquals(app.getString(R.string.music_exit), notification.actions.last().title)
             assertEquals(listOf("com.twig.app.music.EXIT"), requireNotNull(session(service).state).customActions.map { it.action })
+        } finally { controller.destroy() }
+    }
+
+    @Test fun `manual skips wrap in playback order in every repeat mode`() {
+        MusicEngine.shutdown()
+        val real = MusicEngine.ensurePlayer(app)
+        real.setMediaSources(List(3) { SilenceMediaSource.Factory().setDurationUs(10_000_000).createMediaSource() })
+        real.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(intArrayOf(2, 0, 1), 0L))
+        for ((shuffled, first, last) in listOf(Triple(false, 0, 2), Triple(true, 2, 1))) {
+            real.shuffleModeEnabled = shuffled
+            for (mode in listOf(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ONE, Player.REPEAT_MODE_ALL)) {
+                real.repeatMode = mode
+                real.seekTo(last, 4_000)
+                MusicEngine.next()
+                assertEquals(first, real.currentMediaItemIndex)
+                assertEquals(0L, real.currentPosition)
+                real.seekTo(first, 4_000)
+                MusicEngine.prev()
+                assertEquals(first, real.currentMediaItemIndex)
+                assertEquals(0L, real.currentPosition)
+                MusicEngine.prev()
+                assertEquals(last, real.currentMediaItemIndex)
+                assertEquals(0L, real.currentPosition)
+                assertFalse(real.playWhenReady)
+            }
+        }
+    }
+
+    @Test fun `queue completion keeps the foreground session paused and allows replay or seeking`() {
+        MusicEngine.shutdown()
+        val real = MusicEngine.ensurePlayer(app)
+        real.trackSelectionParameters = real.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true).build()
+        real.setMediaSources(List(3) { SilenceMediaSource.Factory().setDurationUs(200_000).createMediaSource() })
+        real.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(intArrayOf(1, 0, 2), 0L))
+        real.shuffleModeEnabled = true
+        val controller = Robolectric.buildService(MusicService::class.java).create()
+        val service = controller.get()
+        val recorded = session(service)
+        val callback = requireNotNull(recorded.callback)
+
+        fun finishQueue() {
+            real.seekToDefaultPosition(2)
+            real.play()
+            val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
+            while (real.playbackState != Player.STATE_ENDED && System.nanoTime() < deadline) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(25))
+                Thread.sleep(5)
+            }
+            assertEquals(Player.STATE_ENDED, real.playbackState)
+            assertFalse(real.playWhenReady)
+            assertFalse(shadowOf(service).isStoppedBySelf)
+            assertNotNull(shadowOf(service).lastForegroundNotification)
+            assertEquals(PlaybackState.STATE_PAUSED, recorded.state?.state)
+        }
+
+        try {
+            service.onStartCommand(null, 0, 1)
+            real.prepare()
+
+            finishQueue()
+            MusicEngine.togglePlay()
+            assertEquals(1, real.currentMediaItemIndex)
+            assertTrue(real.playWhenReady)
+
+            finishQueue()
+            callback.onSkipToNext()
+            assertEquals(1, real.currentMediaItemIndex)
+            assertFalse(real.playWhenReady)
+
+            finishQueue()
+            callback.onSkipToPrevious()
+            assertEquals(0, real.currentMediaItemIndex)
+            assertFalse(real.playWhenReady)
+
+            finishQueue()
+            callback.onSeekTo(50)
+            assertFalse(real.playWhenReady)
+            callback.onPlay()
+            assertEquals(2, real.currentMediaItemIndex)
+            assertEquals(50L, real.currentPosition)
+            assertTrue(real.playWhenReady)
+            assertFalse(shadowOf(service).isStoppedBySelf)
         } finally { controller.destroy() }
     }
 }

@@ -45,11 +45,6 @@ class MusicService : Service() {
         override fun onPositionChanged() { pushNotification() }
         override fun onModeChanged() { pushNotification() }
         override fun onFavChanged() { pushNotification() } // player page / list page changed favorite, the heart switches to filled too
-        override fun onEnded() {
-            // Played to the end without repeat: exit foreground (notification becomes clearable), stop the service
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
     }
 
     override fun onCreate() {
@@ -65,7 +60,7 @@ class MusicService : Service() {
         }
         session = MediaSession(this, "twig-music").apply {
             setCallback(object : MediaSession.Callback() {
-                override fun onPlay() { MusicEngine.togglePlay(); pushNotification() }
+                override fun onPlay() { MusicEngine.resumePlayback(this@MusicService); pushNotification() }
                 override fun onPause() { MusicEngine.pause(); pushNotification() }
                 override fun onSkipToNext() { MusicEngine.next() }
                 override fun onSkipToPrevious() { MusicEngine.prev() }

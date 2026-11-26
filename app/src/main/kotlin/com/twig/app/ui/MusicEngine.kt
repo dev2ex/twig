@@ -41,8 +41,6 @@ object MusicEngine {
         fun onQueueChanged() {}
         /** The current track's "favorite" state was changed (player page heart, list page menu, or notification heart — anywhere). */
         fun onFavChanged() {}
-        /** Playback finished the last track (no repeat). */
-        fun onEnded() {}
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -115,7 +113,10 @@ object MusicEngine {
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) errorSkips = 0 // successfully loaded a track, reset failure counter
-                if (state == Player.STATE_ENDED) listeners.forEach { it.onEnded() }
+                if (state == Player.STATE_ENDED && p.mediaItemCount > 0) {
+                    // Keep the ended position but require an explicit Play after a seek or skip.
+                    p.pause()
+                }
             }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 android.util.Log.e("twig", "music: player error ${error.errorCodeName}", error)
@@ -316,20 +317,40 @@ object MusicEngine {
     fun trackCount(): Int = tracks.size
     fun trackAt(i: Int): PlaylistTrack? = tracks.getOrNull(i)
 
-    fun togglePlay() { player?.let { if (it.isPlaying) it.pause() else { it.play(); app?.let { c -> MusicService.start(c) } } } }
+    fun togglePlay() {
+        if (isPlaying()) pause() else app?.let(::resumePlayback)
+    }
+
     fun resumePlayback(ctx: Context) {
         if (loadingQueue) { resumeWhenLoaded = true; return }
         val current = player ?: return
-        if (current.playbackState == Player.STATE_ENDED) current.seekToDefaultPosition()
+        if (current.playbackState == Player.STATE_ENDED) seekToQueueStart(current)
         current.play()
         MusicService.start(ctx.applicationContext)
     }
 
     fun pause() { player?.pause() }
-    fun next() { player?.seekToNextMediaItem() }
+    fun next() {
+        val p = player ?: return
+        if (p.hasNextMediaItem()) p.seekToNextMediaItem() else seekToQueueStart(p)
+    }
+
+    private fun seekToQueueStart(p: Player) {
+        val first = p.currentTimeline.getFirstWindowIndex(p.shuffleModeEnabled)
+        if (first != C.INDEX_UNSET) p.seekToDefaultPosition(first)
+    }
+
     fun prev() {
         val p = player ?: return
-        if (p.currentPosition > 3000) p.seekTo(0) else p.seekToPreviousMediaItem()
+        val timeline = p.currentTimeline
+        if (timeline.isEmpty) return
+        val shuffled = p.shuffleModeEnabled
+        when {
+            p.playbackState != Player.STATE_ENDED && p.currentPosition > 3000 -> p.seekTo(0)
+            p.currentMediaItemIndex == timeline.getFirstWindowIndex(shuffled) ->
+                p.seekToDefaultPosition(timeline.getLastWindowIndex(shuffled))
+            else -> p.seekToPreviousMediaItem()
+        }
     }
     fun seekTo(ms: Long) { player?.seekTo(ms) }
 

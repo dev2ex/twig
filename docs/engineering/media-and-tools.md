@@ -19,6 +19,14 @@ Music inside mounted restic repositories and archives uses an in-memory queue
 These tracks cannot be favorited, saved into playlists or exported; player exit
 clears the queue. Resolve them through the live filesystem, without reopening a
 repository or archive from a persisted descriptor.
+Manual Next and Previous wrap at the ends of the current playback order, including
+shuffle, in any repeat mode. After more than three seconds into a track, Previous
+first returns to the start of that track.
+With repeat off, reaching the end of the music queue pauses playback and keeps the
+foreground service, notification and media session available. Play from the end starts
+at the first track in the current playback order. Previous from the ended position
+selects the preceding track, or restarts a single track. Skipping or seeking from the
+end leaves playback paused until Play.
 Network music uses `AudioCache` to share disk blocks between playback, waveform
 reads and prefetch. Entry locks protect state only: remote open/close runs outside
 those locks. Eviction, retention changes and cache clearing invalidate entries and
