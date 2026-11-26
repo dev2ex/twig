@@ -16,7 +16,7 @@ restic are all implemented from scratch.
 
 If you enjoy Twig or find it useful, consider giving it a ⭐ or sharing it.
 
-**Version 1.18.3-preview.1** (versionCode 324) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
+**Version 1.18.3** (versionCode 325) · minSdk 24 / targetSdk 34 / compileSdk 36 ·
 [GPL-3.0](LICENSE)
 
 [Download](#download) · [Buttons and Gestures](docs/buttons-and-gestures.md) · [Support](#support)
@@ -331,7 +331,8 @@ The compression dialog remembers the last ZIP, 7z or tar.gz format and Fast / St
 - **Folder sorting and views:** set global defaults or separate overrides for a folder's
   sorting and list/media-grid/all-files-grid view. Each override can optionally apply to
   subfolders; a folder's own setting wins, followed by its nearest recursive ancestor,
-  then the global default. Folder names can be sorted in either direction.
+  then the global default. Files and folders can each use natural or alphabetical
+  name order in either direction. Natural order puts `file2` before `file10`.
 - **Thumbnails** for images and videos on local and network sources, with an optional
   remembered playback-progress bar inside video thumbnails.
 - **Optional folder/file counts** beneath local and SMB directories, off by default;
@@ -526,8 +527,9 @@ all work the same way.
   button; silent playback leaves other music playing.
 - **Playback controls** include swipe seeking, brightness/volume gestures and
   temporary speed-up while holding the screen; embedded and external subtitles
-  can be selected alongside audio tracks. Text subtitle size and color are configurable;
-  playing video controls hide after ten seconds of inactivity
+  can be selected alongside audio tracks. Text subtitle size and color are configurable,
+  and video controls hide after ten seconds of inactivity. Loop the current video for
+  the session or replay it after it ends.
 
 #### Dedicated music player
 
