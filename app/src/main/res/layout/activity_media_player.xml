@@ -51,7 +51,7 @@
         android:layout_gravity="bottom|center_horizontal"
         android:layout_marginStart="16dp"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="56dp"
+        android:layout_marginBottom="8dp"
         android:gravity="center"
         android:shadowColor="#FF000000"
         android:shadowDx="1"

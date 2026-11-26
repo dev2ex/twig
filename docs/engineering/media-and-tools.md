@@ -14,6 +14,10 @@ out of 255, scaling bright text colors proportionally. HEVC falls back to the
 base-layer SPS when the container omits the transfer function. The cap applies
 only to text and leaves the stored color intact. SDR video and bitmap subtitles
 use their original colors. The display compositor controls physical luminance.
+The text overlay keeps an 8 dp minimum gap above the viewport bottom or visible controls.
+In best-fit mode its bottom edge can extend at most 1.2 subtitle line heights
+below the picture. This follows the current font size and scale.
+
 The image viewer plays GIF and animated WebP on Android 9+ using the platform decoder;
 Android 7/8 and image comparison retain static frames. Only the displayed animation
 owns a decoder, outside the bitmap cache and prefetch. Pause it when leaving the

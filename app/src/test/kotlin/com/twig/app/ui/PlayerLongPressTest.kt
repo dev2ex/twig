@@ -6,6 +6,8 @@ import org.robolectric.shadows.ShadowDialog
 import android.content.Intent
 import android.os.Looper
 import android.view.View
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.TrackGroup
@@ -31,6 +33,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import org.robolectric.util.ReflectionHelpers
 import org.robolectric.util.ReflectionHelpers.ClassParameter.from
 
@@ -114,6 +117,51 @@ class PlayerLongPressTest {
         ReflectionHelpers.setField(activity, "prepared", true)
         activity.findViewById<View>(R.id.btn_audio_track).performClick()
         return ShadowDialog.getLatestDialog() as AlertDialog
+    }
+
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun `subtitle bottom follows the picture and clears visible controls`() {
+        val subtitle = activity.findViewById<TextView>(R.id.tv_subtitle)
+        val controls = activity.findViewById<View>(R.id.controls)
+        val root = subtitle.parent as View
+        fun dp(value: Int) = (value * root.resources.displayMetrics.density).toInt()
+        fun bottomMargin() = (subtitle.layoutParams as FrameLayout.LayoutParams).bottomMargin
+        fun showControls(show: Boolean) = ReflectionHelpers.callInstanceMethod<Unit>(
+            activity, "setControlsVisible", from(Boolean::class.javaPrimitiveType!!, show),
+        )
+        fun layout(width: Int, height: Int) {
+            root.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+            root.layout(0, 0, width, height)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "resizeSurface")
+        }
+        ReflectionHelpers.setField(activity, "videoW", 1920)
+        ReflectionHelpers.setField(activity, "videoH", 1080)
+
+        val width = dp(400)
+        val height = dp(800)
+        showControls(false)
+        layout(width, height)
+        val bottomBlackBar = (height - (width * 9 / 16) + 1) / 2
+        val originalSize = com.twig.app.Prefs.subtitleSize(app)
+        val originalMargin = bottomMargin()
+        assertEquals(bottomBlackBar - (subtitle.lineHeight * 1.2f).toInt(), originalMargin)
+        try {
+            com.twig.app.Prefs.setSubtitleSize(app, com.twig.app.Prefs.SUBTITLE_SIZE_MAX)
+            ReflectionHelpers.callInstanceMethod<Unit>(activity, "applySubtitleAppearance")
+            assertEquals(bottomBlackBar - (subtitle.lineHeight * 1.2f).toInt(), bottomMargin())
+            assertTrue(bottomMargin() < originalMargin)
+        } finally {
+            com.twig.app.Prefs.setSubtitleSize(app, originalSize)
+        }
+
+        layout(640, 360)
+        assertEquals(dp(8), bottomMargin())
+        showControls(true)
+        layout(640, 360)
+        assertTrue(controls.height > 0)
+        assertEquals(controls.height + dp(8), bottomMargin())
     }
 
     @Test fun `videos start with audio disabled before preparation and manual unmute restores focus`() {

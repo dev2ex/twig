@@ -1398,6 +1398,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         b.tvSubtitle.textSize = com.twig.app.Prefs.subtitleSize(this).toFloat()
         applySubtitleColor()
         b.tvSubtitle.setShadowLayer(4f, 1f, 1f, Color.BLACK)
+        syncSubtitleInset()
     }
 
     private fun applySubtitleColor() {
@@ -1710,16 +1711,17 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         }
     }
 
-    /**
-     * Lift the subtitles clear of the control bar while it is up. The bar is three rows tall,
-     * so the margin is read from its measured height instead of being a second hard-coded number
-     * that would drift the moment a row is added.
-     */
     private fun syncSubtitleInset() {
         val lp = b.tvSubtitle.layoutParams as? android.widget.FrameLayout.LayoutParams ?: return
         val d = resources.displayMetrics.density
-        val want = if (b.controls.visibility == View.VISIBLE) b.controls.height + (8 * d).toInt()
-        else (56 * d).toInt()
+        val gap = (8 * d).toInt()
+        val controlsInset = if (b.controls.visibility == View.VISIBLE) b.controls.height else 0
+        val surfaceHeight = b.surface.layoutParams.height
+        val viewportHeight = b.root.height - b.root.paddingTop - b.root.paddingBottom
+        // The centered surface can leave a black bar below the picture in best-fit mode.
+        val letterbox = if (surfaceHeight in 1 until viewportHeight) (viewportHeight - surfaceHeight + 1) / 2 else 0
+        val maxBelowPicture = (b.tvSubtitle.lineHeight * 1.2f).toInt()
+        val want = maxOf(controlsInset + gap, letterbox - maxBelowPicture)
         if (lp.bottomMargin != want) { lp.bottomMargin = want; b.tvSubtitle.layoutParams = lp }
     }
 
@@ -1762,6 +1764,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         }
         b.surface.layoutParams = b.surface.layoutParams.apply { width = w; height = h }
         b.surface.requestLayout()
+        syncSubtitleInset()
         // Bitmap subtitles are mapped to the video display rectangle (centered)
         b.pgsView.setVideoRect((vw - w) / 2f, (vh - h) / 2f, w.toFloat(), h.toFloat())
     }
