@@ -7,7 +7,6 @@ import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.common.util.CodecSpecificDataUtil
 import androidx.media3.container.NalUnitUtil
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.extractor.Extractor
@@ -30,13 +29,7 @@ internal object DolbyVisionFallback {
         // Derive the real HEVC profile/level from the base-layer SPS. Relabelling dvhe.07.06
         // alone leaves codec selection using Dolby Vision's unrelated profile/level numbers.
         val base = try {
-            val sps = original.initializationData.asSequence()
-                .flatMap { CodecSpecificDataUtil.splitNalUnits(it)?.asSequence() ?: emptySequence() }
-                .firstOrNull { nal ->
-                    nal.size > 6 && (nal[4].toInt() and 0x7e) shr 1 == 33 &&
-                        nal[4].toInt() and 1 == 0 && nal[5].toInt() and 0xf8 == 0
-                }?.let { NalUnitUtil.parseH265SpsNalUnit(it, 4, it.size, null) }
-                ?: return original
+            val sps = hevcBaseLayerSps(original) ?: return original
             val codecs = NalUnitUtil.getH265BaseLayerCodecsString(original.initializationData)
                 ?: return original
             // MatroskaExtractor does not copy SPS colour fields into Format. Some remuxes,

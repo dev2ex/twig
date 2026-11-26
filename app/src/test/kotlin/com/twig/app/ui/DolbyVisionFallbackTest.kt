@@ -53,6 +53,14 @@ class DolbyVisionFallbackTest {
         assertSame(original, DolbyVisionFallback.format(original) { true })
     }
 
+    @Test fun recognizesHdrHevcWithoutContainerColorMetadata() {
+        val hevc = vision().buildUpon().setSampleMimeType(MimeTypes.VIDEO_H265)
+            .setCodecs("hvc1.2.4.H153.90").setColorInfo(null).build()
+        assertTrue(isHdrVideo(hevc))
+        assertFalse(isHdrVideo(hevc.buildUpon().setInitializationData(emptyList()).build()))
+        assertFalse(isHdrVideo(hevc.buildUpon().setColorInfo(ColorInfo.SDR_BT709_LIMITED).build()))
+    }
+
     @Test fun unsupportedHevcDoesNotAdvertisePlayableVideo() {
         val original = vision()
         assertSame(original, DolbyVisionFallback.format(original) { false })

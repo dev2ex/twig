@@ -53,7 +53,9 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.twig.app.Connections
 import com.twig.app.PlaybackMark
@@ -170,6 +172,7 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
     private var previousAudioTrack: Tracks.Group? = null
     private lateinit var audio: AudioManager
 
+    private var hdrVideo = false
     // Subtitles: external (self-parsed) preferred; embedded text tracks (SRT/ASS in MKV etc.) are decoded by ExoPlayer and shown via onCues
     private var cues: List<SubCue> = emptyList()
     private var subEnabled = true
@@ -474,6 +477,18 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         // bringing down the whole player. Since we don't use it, disable it directly.
         p.trackSelectionParameters =
             p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_METADATA, true).build()
+
+        p.addAnalyticsListener(object : AnalyticsListener {
+            override fun onVideoInputFormatChanged(
+                eventTime: AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: DecoderReuseEvaluation?,
+            ) {
+                if (player !== p) return
+                hdrVideo = isHdrVideo(format)
+                applySubtitleColor()
+            }
+        })
 
         p.addListener(object : Player.Listener {
             override fun onVideoSizeChanged(size: VideoSize) {
@@ -1381,8 +1396,23 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
 
     private fun applySubtitleAppearance() {
         b.tvSubtitle.textSize = com.twig.app.Prefs.subtitleSize(this).toFloat()
-        b.tvSubtitle.setTextColor(com.twig.app.Prefs.subtitleTextColor(this))
+        applySubtitleColor()
         b.tvSubtitle.setShadowLayer(4f, 1f, 1f, Color.BLACK)
+    }
+
+    private fun applySubtitleColor() {
+        val color = com.twig.app.Prefs.subtitleTextColor(this)
+        val red = Color.red(color)
+        val green = Color.green(color)
+        val blue = Color.blue(color)
+        val peak = maxOf(red, green, blue)
+        // Mid-gray is about 22% of SDR white in linear sRGB. Scale bright custom colors
+        // proportionally to keep their hue.
+        val limit = 128
+        val textColor = if (hdrVideo && peak > limit) {
+            Color.argb(Color.alpha(color), red * limit / peak, green * limit / peak, blue * limit / peak)
+        } else color
+        b.tvSubtitle.setTextColor(textColor)
     }
 
     private fun showSubtitleDialog() {
@@ -1990,6 +2020,8 @@ class MediaPlayerActivity : TwigActivity(), SurfaceHolder.Callback {
         subFiles = emptyList()
         subChoice = 0
         subEnabled = true
+        hdrVideo = false
+        applySubtitleColor()
         b.tvSubtitle.visibility = View.GONE
         b.pgsView.setCues(emptyList())
         loadMemo()

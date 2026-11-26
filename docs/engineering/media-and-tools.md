@@ -8,6 +8,12 @@ Update this reference in place when behavior changes.
 
 Viewers: `TextViewerActivity` / `HexViewerActivity` / `ImageViewerActivity` /
 `MediaPlayerActivity` (ExoPlayer + ffmpeg software audio decoding).
+External and embedded text subtitles share an SDR text overlay above the video
+surface. For HDR decoder input, the overlay caps the largest sRGB channel at 128
+out of 255, scaling bright text colors proportionally. HEVC falls back to the
+base-layer SPS when the container omits the transfer function. The cap applies
+only to text and leaves the stored color intact. SDR video and bitmap subtitles
+use their original colors. The display compositor controls physical luminance.
 The image viewer plays GIF and animated WebP on Android 9+ using the platform decoder;
 Android 7/8 and image comparison retain static frames. Only the displayed animation
 owns a decoder, outside the bitmap cache and prefetch. Pause it when leaving the
