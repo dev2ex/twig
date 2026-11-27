@@ -165,6 +165,13 @@ object OpenFiles {
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"
     }
 
+    internal fun knownOpenMimeOf(name: String): String? {
+        if (name.endsWith(".dwg", ignoreCase = true)) return "application/dwg"
+        return mimeOf(name).takeUnless { it == "*/*" }
+    }
+
+    internal fun openMimeOf(name: String): String = knownOpenMimeOf(name) ?: "application/octet-stream"
+
     private const val DIRECT_SHARE_LIMIT = 512L * 1024
 
     /** Share local files and small known-size sources directly; otherwise prepare the batch first. */
@@ -227,8 +234,10 @@ object OpenFiles {
                 edit = true
             }
         }
+        val mime = openMimeOf(file.name)
+        target = StreamProvider.withOpenMime(context, target, mime)
         return Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(target, mimeOf(file.name))
+            setDataAndType(target, mime)
             clipData = ClipData.newRawUri(file.name, target)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (edit) addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)

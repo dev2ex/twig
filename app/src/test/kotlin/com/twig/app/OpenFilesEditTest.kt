@@ -166,6 +166,33 @@ class OpenFilesEditTest {
         }
     }
 
+    @Test fun `opening DWG and unknown files uses a specific type without changing shares`() {
+        val host = activity()
+        shadowOf(android.webkit.MimeTypeMap.getSingleton())
+            .addExtensionMimeTypeMapping("dwg", "image/vnd.dwg")
+        val cases = listOf(
+            Triple("plan.DWG", "application/dwg", "image/vnd.dwg"),
+            Triple("sample.twig-unknown", "application/octet-stream", "*/*"),
+            Triple("sample", "application/octet-stream", "*/*"),
+        )
+        for ((name, viewType, shareType) in cases) {
+            val file = XFile("file", File(app.cacheDir, name).path, false)
+            assertTrue(OpenFiles.openWith(host, file))
+            val view = shadowOf(host).nextStartedActivity
+            assertEquals(Intent.ACTION_VIEW, view.action)
+            assertEquals(name, viewType, view.type)
+            assertEquals(viewType, stream.getType(view.data!!))
+
+            OpenFiles.sharePrepared(host, listOf(file))
+            val send = shadowOf(host).nextStartedActivity.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)!!
+            val uri = send.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)!!
+            assertEquals(Intent.ACTION_SEND, send.action)
+            assertEquals(StreamProvider.uriFor(host, file), uri)
+            assertEquals(shareType, send.type)
+            assertEquals(shareType, stream.getType(uri))
+        }
+    }
+
     @Test fun `PDF chooser keeps readers and edit-only apps with writable original handles`() {
         val host = activity()
         local = File(app.cacheDir, "document.pdf").apply { writeText("original") }

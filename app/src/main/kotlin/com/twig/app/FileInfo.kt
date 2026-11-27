@@ -215,7 +215,7 @@ object FileInfo {
     private fun apps(ctx: Context, file: XFile): List<Pair<String, String>> = runCatching {
         val pm = ctx.packageManager
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(StreamProvider.uriFor(ctx, file), OpenFiles.mimeOf(file.name))
+            setDataAndType(StreamProvider.uriFor(ctx, file), OpenFiles.openMimeOf(file.name))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         val rows = ArrayList<Pair<String, String>>()

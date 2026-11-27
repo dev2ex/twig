@@ -69,8 +69,10 @@ class StreamProvider : ContentProvider() {
      */
     private fun ctx(): Context = requireNotNull(context)
 
-    override fun getType(uri: Uri): String =
-        OpenFiles.mimeOf(uri.lastPathSegment ?: "")
+    override fun getType(uri: Uri): String {
+        val name = uri.lastPathSegment.orEmpty()
+        return if (uri.getQueryParameter(OPEN_MIME) == "1") OpenFiles.openMimeOf(name) else OpenFiles.mimeOf(name)
+    }
 
     override fun query(
         uri: Uri,
@@ -186,6 +188,7 @@ class StreamProvider : ContentProvider() {
 
     companion object {
         private const val B64 = Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+        private const val OPEN_MIME = "open_mime"
 
         private const val KEY_FILE = "twig_stream"
         private const val KEY_NAME = "hmac"
@@ -216,6 +219,14 @@ class StreamProvider : ContentProvider() {
         }
 
         fun uriFor(context: Context, f: XFile): Uri = uriFor(context, f, localEdit = false)
+
+        /** Keep the provider type consistent with ACTION_VIEW when it overrides the ordinary stream type. */
+        internal fun withOpenMime(context: Context, uri: Uri, mime: String): Uri {
+            if (uri.authority != "${context.packageName}.stream" || mime == OpenFiles.mimeOf(uri.lastPathSegment.orEmpty())) {
+                return uri
+            }
+            return uri.buildUpon().appendQueryParameter(OPEN_MIME, "1").build()
+        }
 
         /** A separate signed capability; ordinary share/view URIs remain read-only. */
         internal fun uriForLocalEdit(context: Context, f: XFile): Uri {

@@ -307,8 +307,7 @@ object FileIcons {
         }
         // System default app for this extension (only set after the user picks "always")
         val ext = key.removePrefix("ext:")
-        val mime = OpenFiles.mimeOf("x.$ext")
-        if (mime == "*/*") return null
+        val mime = OpenFiles.knownOpenMimeOf("x.$ext") ?: return null
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(Uri.parse("content://${ctx.packageName}.stream/probe/probe.$ext"), mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)

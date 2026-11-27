@@ -224,6 +224,9 @@ Completed files are reused by scheme/path/name/size/mtime when size and time are
 known; partial files are removed on failure/cancellation. Cache hits refresh the
 24-hour idle retention, and the next preparation prunes expired files except those
 held by an active preparation. "Open with" continues to stream.
+External file opens use `application/dwg` for DWG and `application/octet-stream` when
+the extension has no system mapping. These MIME rules apply to the open intent and
+its Twig stream URI. Share and picker URIs retain the ordinary system extension lookup.
 Incoming `content://` URIs are all carried by `ShareSourceFileSystem` (scheme `share`),
 whose `openRandom` seeks through `openFileDescriptor` — so archives are parsed
 streaming without materializing and video can seek.
