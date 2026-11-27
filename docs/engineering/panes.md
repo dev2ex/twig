@@ -117,6 +117,8 @@ ordinary listings even with counts disabled; extra nonlocal probes remain opt-in
 
 Persistence: connections in `ConnectionStore`, favorites in `FavoritesStore`,
 preferences in `Prefs` — all SharedPreferences.
+When an expanded directory, saved connection root or favorite points to a restic
+repository, the pane shows a repository row. Tap it to unlock and browse snapshots.
 Recent locations also record directories used inside restic snapshots, storing the repository
 connection/path, snapshot selector and internal path rather than a session scheme. Fixed
 snapshot metadata is frozen for display; `latest` remains a dynamic alias. Restoring reconnects

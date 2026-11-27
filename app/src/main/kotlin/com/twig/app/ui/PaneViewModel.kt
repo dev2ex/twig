@@ -3724,7 +3724,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
                 rows += ActionNode(AndroidDataAccess.ACTION_PREFIX + file.path,
                     str(R.string.android_data_grant), depth + 1)
             }
-            if (resticRepos.contains(fileKey(file))) addRestic(rows, file, depth + 1)
+            addResticIfDetected(rows, file, depth + 1)
         }
     }
 
@@ -3795,8 +3795,11 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         return Listing.Git(key, dir, scheme, label, cheap)
     }
 
-    private fun addRestic(rows: MutableList<Node>, repoDir: XFile, depth: Int) {
-        val nodeKey = "restic:${fileKey(repoDir)}"
+    private fun addResticIfDetected(rows: MutableList<Node>, dir: XFile?, depth: Int) {
+        if (dir == null) return
+        val dirKey = fileKey(dir)
+        if (dirKey !in resticRepos) return
+        val nodeKey = "restic:$dirKey"
         // "Unlocked" = the repo is open **AND** the snapshot list was also fetched.
         // If we only checked resticScheme, a single "open succeeded, list snapshots
         // failed" would pin this row as unlocked forever, yet tapping it expands to
@@ -3804,7 +3807,7 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         // re-walks the unlock path on tap, self-healing.
         val unlocked = resticScheme.containsKey(nodeKey) && children.containsKey(nodeKey)
         val exp = expanded.contains(nodeKey)
-        rows += ResticNode(repoDir, depth, exp, unlocked, busy(nodeKey))
+        rows += ResticNode(dir, depth, exp, unlocked, busy(nodeKey))
         if (exp && unlocked) {
             // fs-restic is a pure JVM module with no string resources available, so
             // the "latest" virtual directory (path=="/latest") only carries the raw,
@@ -3931,23 +3934,23 @@ class PaneViewModel(app: Application) : AndroidViewModel(app) {
         keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
         if (exp) {
             addListedFiles(rows, key, 2)
-            // The favorite's directory itself is a restic repo root (fav.kind is
-            // local/conn, not yet through resolveFavorite's restic branch for unlock):
-            // consistent with regular browsing, add a "restic repository" hint row
-            // to allow expand-to-unlock.
-            keyFile[key]?.let { dir -> if (resticRepos.contains(fileKey(dir))) addRestic(rows, dir, 2) }
+            addResticIfDetected(rows, keyFile[key], 2)
         }
     }
 
     private fun addServer(rows: MutableList<Node>, conn: SavedConnection) {
         val key = "s:${conn.label()}"
         val exp = expanded.contains(key)
-        val capacity = keyFile[key]?.let { remoteCapacity(it) }
+        val dir = keyFile[key]
+        val capacity = dir?.let { remoteCapacity(it) }
         rows += ServerNode(conn, exp, busy(key), listOfNotNull(serverInfo[conn.label()], capacity)
             .takeIf { it.isNotEmpty() }?.joinToString("  "))
         // Info cards / search results hang under it like a regular directory row (key based on the server root directory), same as [addFavorite].
-        keyFile[key]?.let { dir -> addAttachments(rows, dir, depth = 1) }
-        if (exp) addListedFiles(rows, key, 2)
+        dir?.let { addAttachments(rows, it, depth = 1) }
+        if (exp) {
+            addListedFiles(rows, key, 2)
+            addResticIfDetected(rows, dir, 2)
+        }
     }
 
     // ---- Utilities ----

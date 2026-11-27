@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Environment
 import androidx.test.core.app.ApplicationProvider
 import com.twig.app.*
+import com.twig.core.FileSystem
 import com.twig.core.FsRegistry
 import com.twig.core.XFile
 import com.twig.fs.local.LocalFileSystem
@@ -66,13 +67,11 @@ class ResticHistoryTest {
         FsRegistry.all().filter { it.scheme.startsWith("restic") }.forEach { FsRegistry.unregister(it.scheme) }
     }
 
-    @Test fun `network repository reconnects from persisted locator in a new pane with a saved password`() = runTest(dispatcher) {
-        val conn = SavedConnection("ftp", "restic-history.invalid", port = 21, user = "test")
+    private fun registerConnection(conn: SavedConnection, base: String): String {
         ConnectionStore.save(app, conn)
         val remoteScheme = Connections.schemeOf(conn)
         val local = LocalFileSystem()
-        val base = repository.parentFile!!.path
-        FsRegistry.register(object : com.twig.core.FileSystem by local {
+        FsRegistry.register(object : FileSystem by local {
             override val scheme = remoteScheme
             override fun root() = XFile(scheme, "/", true)
             override fun list(dir: XFile): List<XFile> = local.list(dir.copy(scheme = "file", path = base + dir.path))
@@ -82,6 +81,41 @@ class ResticHistoryTest {
             override fun resolve(path: String) = local.resolve(base + path).copy(scheme = scheme, path = path)
             override fun stat(path: String) = local.stat(base + path)?.copy(scheme = scheme, path = path)
         })
+        return remoteScheme
+    }
+
+    @Test fun `expanding an S3 connection rooted at a repository offers snapshot browsing`() = runTest(dispatcher) {
+        val conn = SavedConnection("s3", "https://restic-root.invalid", share = "backups", user = "test")
+        val scheme = registerConnection(conn, repository.path)
+        try {
+            vm.refreshRootItems()
+            vm.toggle(vm.state.value.rows.single { it.key == "g:s3" })
+            val server = vm.state.value.rows.filterIsInstance<PaneViewModel.ServerNode>().single()
+            vm.toggle(server)
+            advanceUntilIdle()
+
+            val node = vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single()
+            assertEquals(XFile(scheme, "/", true), node.repoDir)
+            assertEquals(server.depth + 1, node.depth)
+            assertFalse(node.unlocked)
+
+            vm.unlockRestic(node.repoDir, "test123") { ok, error -> assertTrue(error, ok) }
+            advanceUntilIdle()
+            val unlocked = vm.state.value.rows.filterIsInstance<PaneViewModel.ResticNode>().single()
+            assertTrue(unlocked.unlocked)
+            assertTrue(unlocked.expanded)
+            assertTrue(vm.state.value.rows.filterIsInstance<PaneViewModel.FileNode>().any {
+                it.file.scheme.startsWith("restic") && it.file.path == "/latest" && it.depth == node.depth + 1
+            })
+        } finally {
+            ConnectionStore.remove(app, conn)
+            Connections.drop(scheme)
+        }
+    }
+
+    @Test fun `network repository reconnects from persisted locator in a new pane with a saved password`() = runTest(dispatcher) {
+        val conn = SavedConnection("ftp", "restic-history.invalid", port = 21, user = "test")
+        val remoteScheme = registerConnection(conn, repository.parentFile!!.path)
         try {
             val recent = entry().copy(repoPath = "/${repository.name}", repoConnLabel = conn.label())
             var completed = false
